@@ -773,23 +773,18 @@ for(let i=0; i<3; i++) { const fg = new THREE.BoxGeometry(TILE, 0.4, TILE, 4, 1,
 const wallPatterns = [];
 // 벽, 바위, 크리스탈 재질에 Cutout 셰이더 적용!
 const matWallBase = applyCutoutShader(getLowPolyMat(0x1a2230));
-const matCrystal = applyCutoutShader(getGlowMat(0xff3344));
-
 for(let i=0; i<4; i++) {
     const grp = new THREE.Group();
     const baseGeo = new THREE.BoxGeometry(TILE, TILE * 0.7, TILE, 3, 2, 3); jitterGeometry(baseGeo, 0.5);
     const baseMesh = new THREE.Mesh(baseGeo, matWallBase); baseMesh.castShadow = true; baseMesh.receiveShadow = true; grp.add(baseMesh);
     
     for(let r=0; r<3; r++) {
-        const isCrystal = Math.random() < 0.2; 
-        const rockGeo = isCrystal ? new THREE.ConeGeometry(0.3, 0.8, 4) : new THREE.IcosahedronGeometry(TILE * (0.3 + Math.random()*0.2), 1);
+        const rockGeo = new THREE.IcosahedronGeometry(TILE * (0.3 + Math.random()*0.2), 1);
         jitterGeometry(rockGeo, 0.2);
-        
-        const rockMesh = new THREE.Mesh(rockGeo, isCrystal ? matCrystal : matWallBase);
+        const rockMesh = new THREE.Mesh(rockGeo, matWallBase);
         const rx = (Math.random()-0.5)*TILE*0.7, ry = (Math.random()-0.5)*TILE*0.4, rz = (Math.random()-0.5)*TILE*0.7;
         rockMesh.position.set(rx, ry, rz);
-        if (isCrystal) { rockMesh.lookAt(rx*2, ry*2, rz*2); } 
-        else { rockMesh.castShadow = true; rockMesh.receiveShadow = true; }
+        rockMesh.castShadow = true; rockMesh.receiveShadow = true;
         grp.add(rockMesh);
     }
     wallPatterns.push(grp);
@@ -807,9 +802,9 @@ function generateDungeon() {
   // 목표 방 개수: 3층마다 1개씩 증가(시작 3개), 보스층은 적게.
   let targetRooms;
   if (isBossFloor) targetRooms = 3 + Math.floor(Math.random() * 2); // 3~4개(단순)
-  else targetRooms = Math.min(12, 3 + Math.floor((player.floor - 1) / 3));
-  // 맵 크기도 3층마다 커진다(초반 작고 아담 → 후반 넓음). 보스층은 보스방을 위해 약간 여유.
-  const sizeStep = Math.floor((player.floor - 1) / 3) * 3;
+  else targetRooms = Math.min(11, 3 + Math.floor((player.floor - 1) / 4));
+  // 맵 크기도 4층마다 2칸씩 완만하게 커진다(초반 작고 아담 → 후반 넓음). 보스층은 보스방을 위해 약간 여유.
+  const sizeStep = Math.floor((player.floor - 1) / 4) * 2;
   MAP_W = MAP_H = Math.min(MAP_MAX, MAP_MIN + sizeStep + (isBossFloor ? 4 : 0));
 
   for (let attempt = 0; attempt < 30; attempt++) {
@@ -880,11 +875,11 @@ function buildDungeonMesh(dgn) {
 
 // ---------------- PARTICLES (Hit Effect) ----------------
 const particles = [];
-const particleGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
+const particleGeo = new THREE.BoxGeometry(0.13, 0.13, 0.13);
 const particleMats = [
-  new THREE.MeshBasicMaterial({ color: 0xffdd00, depthWrite: false, fog: false }),
-  new THREE.MeshBasicMaterial({ color: 0xff3300, depthWrite: false, fog: false }),
-  new THREE.MeshBasicMaterial({ color: 0xffffff, depthWrite: false, fog: false })
+  new THREE.MeshBasicMaterial({ color: 0xfff14d, depthWrite: false, depthTest: false, fog: false }), // 밝은 노랑
+  new THREE.MeshBasicMaterial({ color: 0xff5a2c, depthWrite: false, depthTest: false, fog: false }), // 주황빨강
+  new THREE.MeshBasicMaterial({ color: 0xffffff, depthWrite: false, depthTest: false, fog: false })  // 흰색
 ];
 
 // ===== 골드 동전 튀어오르기 이펙트(마리오식) =====
@@ -955,10 +950,11 @@ function spawnHitEffect(x, y, z, multiplier) {
   for (let i = 0; i < count; i++) {
     const pMat = particleMats[Math.floor(Math.random() * particleMats.length)];
     const p = new THREE.Mesh(particleGeo, pMat);
-    p.position.set(x, y + 0.8, z);
+    p.renderOrder = 999; // depthTest를 껐으므로 항상 맨 위에 그려지도록
+    p.position.set(x, y + 0.6, z); // 전달받은 몸통 높이에서 살짝 더 위
     const angle = Math.random() * Math.PI * 2;
-    const speed = (Math.random() * 8 + 8) * multiplier;
-    const vx = Math.cos(angle) * speed; const vy = Math.random() * 6 + 4; const vz = Math.sin(angle) * speed;
+    const speed = (Math.random() * 3 + 3) * (0.8 + multiplier * 0.2); // 느리게: 약 3~6
+    const vx = Math.cos(angle) * speed; const vy = Math.random() * 4 + 5; const vz = Math.sin(angle) * speed; // 위로 더 솟음(5~9)
     scene.add(p); particles.push({ mesh: p, vx, vy, vz, life: 1.0 });
   }
 }
@@ -966,9 +962,9 @@ function spawnHitEffect(x, y, z, multiplier) {
 function updateParticles(dt) {
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
-    p.life -= dt * 2.5; 
+    p.life -= dt * 2.5; // 원래 속도로 빠르게 사라짐
     if (p.life <= 0) { scene.remove(p.mesh); particles.splice(i, 1); continue; }
-    p.vy -= 20 * dt; 
+    p.vy -= 14 * dt; // 중력 약화(20→14)로 부드럽게 낙하
     p.mesh.position.x += p.vx * dt; p.mesh.position.y += p.vy * dt; p.mesh.position.z += p.vz * dt;
     p.mesh.rotation.x += dt * 10; p.mesh.rotation.y += dt * 10; p.mesh.scale.setScalar(p.life);
   }
@@ -1060,14 +1056,11 @@ function spawnSlash(multiplier) {
   mesh.rotation.y = player.yaw + Math.PI / 2; // 볼록한 앞날이 진행 방향을 향하게
   mesh.rotation.z = 0;
   scene.add(mesh);
-  // 검기 발광용 빛 (충전 강할수록 밝게)
-  const light = new THREE.PointLight(0x88e6ff, 1.5 + multiplier * 1.5, 5);
-  mesh.add(light);
   const speed = 14 + multiplier * 8;
   // 일반(multiplier 1.0): 0.05타일, 강공격 최대(multiplier 2.0): 0.5타일
   const range = TILE * (0.05 + t * 0.45);
   slashes.push({
-    mesh, mat, light, vx: dirX * speed, vz: dirZ * speed, dirX, dirZ,
+    mesh, mat, vx: dirX * speed, vz: dirZ * speed, dirX, dirZ,
     traveled: 0, range, damage: Math.floor((player.atk + 4) * multiplier),
     radius: (1.0 + widthScale * 0.6), hitSet: new Set(), life: 1.0, power: multiplier
   });
@@ -1089,9 +1082,6 @@ function spawnMageFireball(multiplier) {
   mesh.scale.setScalar(sizeScale);
   scene.add(mesh);
 
-  // 주황빛 발광(불빛)
-  const light = new THREE.PointLight(0xff7818, 2.0 + t * 2.5, 6 + t * 4);
-  mesh.add(light);
   // 속 노란 코어로 더 불같이
   const core = new THREE.Mesh(mageFireGeo, new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.9, fog: false, depthWrite: false }));
   core.scale.setScalar(0.55); mesh.add(core);
@@ -1102,9 +1092,9 @@ function spawnMageFireball(multiplier) {
   const speed = 16 - t * 8;                 // 일반 16 → 최대 차지 8 (느려짐)
 
   slashes.push({
-    mesh, mat, light, vx: dirX * speed, vz: dirZ * speed, dirX, dirZ,
+    mesh, mat, vx: dirX * speed, vz: dirZ * speed, dirX, dirZ,
     traveled: 0, range, damage: Math.floor((player.atk + 4) * multiplier),
-    radius: (0.5 + sizeScale * 0.5), hitSet: new Set(), life: 1.0, power: multiplier,
+    radius: (0.3 + sizeScale * 0.35), hitSet: new Set(), life: 1.0, power: multiplier,
     isFire: true, spin: (Math.random() * 2 - 1) * 4
   });
 }
@@ -1127,7 +1117,7 @@ function updateSlashes(dt) {
         e.hp -= s.damage;
         const d = Math.hypot(dx, dz) || 1;
         e.kbX = (dx / d) * 14; e.kbZ = (dz / d) * 14;
-        spawnHitEffect(e.obj.position.x, e.obj.position.y, e.obj.position.z, 1.0); flashObj(e.obj);
+        spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale, e.obj.position.z, 1.0); flashObj(e.obj);
         SFX.hit(s.power || 1.0); // 검기 타격음(위력에 비례)
         if (e.hp <= 0) killEnemy(e);
       }
@@ -1161,7 +1151,6 @@ function spawnFireball(e) {
   const mesh = new THREE.Mesh(fireballGeo, mat);
   mesh.position.set(ox + (dx/d)*0.6, oy, oz + (dz/d)*0.6);
   scene.add(mesh);
-  const light = new THREE.PointLight(0x66ccff, 1.6, 4); mesh.add(light);
   fireballs.push({ mesh, mat, vx: (dx/d)*speed, vz: (dz/d)*speed, damage: Math.floor(e.damage * 0.9), life: 3.0, owner: e, reflected: false });
 }
 
@@ -1227,7 +1216,7 @@ function updateFireballs(dt) {
         if (Math.hypot(edx, edz) < 0.8 + e.radius) {
           e.hp -= f.damage;
           const d3 = Math.hypot(edx, edz) || 1; e.kbX = (edx / d3) * 16; e.kbZ = (edz / d3) * 16;
-          spawnHitEffect(e.obj.position.x, e.obj.position.y + 0.5, e.obj.position.z, 1.2); flashObj(e.obj);
+          spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale, e.obj.position.z, 1.2); flashObj(e.obj);
           SFX.hit(1.2);
           if (e.hp <= 0) killEnemy(e);
           hitEnemy = true; break;
@@ -1285,13 +1274,14 @@ let runGold = 0;          // 이번 판에 던전에서 번 골드(게임오버 
 scene.add(player.obj);
 let selectedChar = 'knight'; // 선택된 캐릭터(기본: 기사)
 // 스태미나: 방어 유지·강공격·스킬에 소모, 시간이 지나면 자동 회복
-const STA_REGEN = 22;        // 초당 회복량
-const STA_REGEN_DELAY = 0.6; // 마지막 소모 후 이 시간 뒤부터 회복
+const STA_REGEN = 14;        // 초당 회복량(낮춤: 22→14)
+const STA_REGEN_DELAY = 1.0; // 마지막 소모 후 이 시간 뒤부터 회복(늘림: 0.6→1.0)
 const STA_BLOCK_DRAIN_KNIGHT = 18; // 기사 방어 유지 중 초당 소모
 const STA_BLOCK_DRAIN_MAGE = 30;   // 마법사 방어 유지 중 초당 소모(기사보다 큼)
-const STA_HEAVY_COST = 25;   // 강공격(차지 발사) 1회 소모
+const STA_HEAVY_COST = 40;   // 강공격(차지 발사) 1회 소모(늘림: 25→40)
 const STA_SHIELD_COST = 35;  // (사용 안 함, 호환을 위해 남김)
 const STA_PARRY_COST = 18;   // 패링 성공 시 소모(기사·마법사 공통)
+const STA_MAGE_BLOCK_START = 20; // 마법사 방어(마나 보호막) 시작 시 즉시 소모
 let staRegenCooldown = 0;    // 회복 지연 타이머
 function useStamina(amount) {
   if (player.sta < amount) return false;
@@ -1638,7 +1628,7 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
   const headGeo = new THREE.IcosahedronGeometry(0.35, 1); jitterGeometry(headGeo, 0.03);
   const head = new THREE.Mesh(headGeo, skinMat); head.castShadow = true; headGrp.add(head);
 
-  const eyeMat = new THREE.MeshStandardMaterial({ color: (type === 'skeleton' ? 0x110000 : 0xaa0000), emissive: (type === 'skeleton' ? 0x000000 : 0x330000), emissiveIntensity: 0.4, roughness: 0.6 });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: (type === 'skeleton' ? 0x220000 : 0xaa0000), emissive: (type === 'skeleton' ? 0x110000 : 0x330000), emissiveIntensity: (type === 'skeleton' ? 0.2 : 0.4), roughness: 0.6 });
   const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), eyeMat); eyeL.position.set(-0.15, 0.1, -0.3);
   const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), eyeMat); eyeR.position.set(0.15, 0.1, -0.3);
   if (type !== 'skeleton') { eyeL.rotation.z = -0.2; eyeR.rotation.z = 0.2; } 
@@ -1797,19 +1787,38 @@ function spawnEnemies(dgn) {
       const type = ranged ? pick(rp) : pick(meleePool());
       enemies.push(createAdvancedMonster(ex, ez, type, false, ranged));
     }
-    toast('⚠️ 강력한 적의 군단이 몰려옵니다...');
+    toast('⚠️ 강력한 적의 군단이 몰려옵니다...', 3000);
   } else {
     const rp = rangedPool();
     for (let i = 1; i < dgn.rooms.length; i++) {
       const r = dgn.rooms[i];
       const n = Math.min(10, 2 + Math.floor(player.floor / 2));
+      const placed = []; // 이 방에 이미 배치된 위치(그리드 좌표)
+      const minGap = 2.2; // 몬스터 간 최소 간격(타일)
       for (let k = 0; k < n; k++) {
-        const safeX = r.x + 1.2 + Math.random() * (r.w - 2.4), safeY = r.y + 1.2 + Math.random() * (r.h - 2.4);
+        let safeX, safeY, best = null, bestDist = -1;
+        // 여러 후보 중 '중앙을 피하고 + 기존 몬스터와 가장 멀리 떨어진' 위치 선택
+        for (let tryN = 0; tryN < 24; tryN++) {
+          const cx = r.x + 1.2 + Math.random() * (r.w - 2.4);
+          const cy = r.y + 1.2 + Math.random() * (r.h - 2.4);
+          if (Math.hypot(cx - r.cx, cy - r.cy) < Math.min(r.w, r.h) * 0.28) continue; // 중앙 회피
+          // 기존 몬스터들과의 최소 거리 계산
+          let nearest = Infinity;
+          for (const p of placed) { const dd = Math.hypot(cx - p.x, cy - p.y); if (dd < nearest) nearest = dd; }
+          if (placed.length === 0) nearest = 99;
+          if (nearest >= minGap) { safeX = cx; safeY = cy; best = null; break; } // 충분히 멀면 즉시 채택
+          if (nearest > bestDist) { bestDist = nearest; best = { x: cx, y: cy }; } // 아니면 가장 나은 후보 기억
+        }
+        if (best) { safeX = best.x; safeY = best.y; } // 끝까지 못 찾으면 가장 떨어진 후보 사용
+        if (safeX === undefined) { safeX = r.x + 1.2 + Math.random() * (r.w - 2.4); safeY = r.y + 1.2 + Math.random() * (r.h - 2.4); }
+        placed.push({ x: safeX, y: safeY });
         const ex = (safeX - MAP_W / 2) * TILE, ez = (safeY - MAP_H / 2) * TILE;
-        // 일정 확률로 원거리 캐스터 스폰(해금된 경우)
         const ranged = rp.length > 0 && Math.random() < 0.3;
         const type = ranged ? pick(rp) : pick(meleePool());
-        enemies.push(createAdvancedMonster(ex, ez, type, false, ranged));
+        const mon = createAdvancedMonster(ex, ez, type, false, ranged);
+        mon.homeRoom = r;       // 소속 방
+        mon.awake = false;      // 플레이어가 방에 들어오기 전엔 잠듦
+        enemies.push(mon);
       }
     }
 
@@ -1822,14 +1831,16 @@ function spawnEnemies(dgn) {
       const elite = createAdvancedMonster(ex, ez, etype, true, false);
       elite.isElite = true;
       enemies.push(elite);
-      toast('⚠️ 격파한 보스가 난입했습니다! (' + etype.toUpperCase() + ')');
+      toast('⚠️ 격파한 보스가 난입했습니다! (' + etype.toUpperCase() + ')', 3000);
     }
   }
 }
 
+let stairsRoom = null; // 계단이 놓인 방(보물상자·샘물 제외용)
 function placeStairs(dgn) {
   if (stairsMesh) scene.remove(stairsMesh);
   const last = dgn.rooms[dgn.rooms.length - 1];
+  stairsRoom = last;
   const sx = (last.cx - MAP_W / 2) * TILE, sz = (last.cy - MAP_H / 2) * TILE;
   const g = new THREE.Group();
   const baseGeo = new THREE.CylinderGeometry(2.5, 3, 0.5, 6); jitterGeometry(baseGeo, 0.1);
@@ -1841,50 +1852,72 @@ function placeStairs(dgn) {
 
 // ---------------- TREASURE CHEST (10% per floor) & FOUNTAIN (every 5 floors) ----------------
 let chestMesh = null, fountainMesh = null;
-// 보물상자 보장: 현재 보스 주기(직전 보스층 이후)에 상자가 나왔는지 추적
-let chestSeenThisCycle = false;
+// 보물상자 보장: 마지막으로 상자를 '획득'한 층을 기억.
+// 마지막 획득 이후 10개 층을 지나도록 한 번도 못 먹으면 다음 층에 필수 등장.
+let lastChestFloor = 0; // 0 = 아직 한 번도 획득 안 함(시작 기준)
 
 function placeInteractables(dgn) {
   if (chestMesh) { scene.remove(chestMesh); chestMesh = null; }
   if (fountainMesh) { scene.remove(fountainMesh); fountainMesh = null; }
 
-  // 보스 주기 추적 리셋: 보스층(10의 배수)에 들어오면 새 주기 시작
-  if (player.floor % 10 === 1 || player.floor === 1) chestSeenThisCycle = false;
-
   // 보물상자 스폰 여부 결정
-  // 기본 10% 확률. 단, 보스층 직전 층(9,19,29...: floor%10===9)인데
-  // 이번 주기(직전 보스 이후)에 상자가 한 번도 안 나왔으면 무조건 스폰.
+  // 기본 10% 확률. 단, 마지막으로 상자를 '획득'한 이후 10개 층을 지나도록
+  // 한 번도 못 먹었으면(=현재 층이 마지막 획득 층보다 10 이상 큼) 무조건 스폰.
   let spawnChest = Math.random() < 0.10;
-  if (player.floor % 10 === 9 && !chestSeenThisCycle) spawnChest = true;
+  let forcedChest = false;
+  if (player.floor - lastChestFloor >= 10) { spawnChest = true; forcedChest = true; }
 
+  let chestRoom = null; // 이번 층에서 상자가 놓인 방(샘물 겹침 방지용)
   if (spawnChest && dgn.rooms.length > 1) {
-    const r = pick(dgn.rooms.slice(1));
-    const cx = (r.cx - MAP_W / 2) * TILE, cz = (r.cy - MAP_H / 2) * TILE;
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.6, 0.6), getLowPolyMat(0x8a5a2b)); body.position.y = 0.3; body.castShadow = true; g.add(body);
-    const lid = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.25, 0.65), getLowPolyMat(0x6b4420)); lid.position.y = 0.7; lid.castShadow = true; g.add(lid);
-    const lock = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, 0.1), getLowPolyMat(0xf6e05e, true)); lock.position.set(0, 0.45, 0.33); g.add(lock);
-    const glow = new THREE.PointLight(0xffcc55, 1.2, 4); glow.position.y = 1.0; g.add(glow);
-    g.position.set(cx, 0, cz); scene.add(g); chestMesh = g; chestMesh._opened = false;
-    chestSeenThisCycle = true; // 이번 주기에 상자 등장 기록
+    // 시작 방(0)과 계단 방을 제외한 후보 중에서 선택
+    const cand = dgn.rooms.slice(1).filter(rm => rm !== stairsRoom);
+    if (cand.length > 0) {
+      const r = pick(cand);
+      chestRoom = r;
+      const cx = (r.cx - MAP_W / 2) * TILE, cz = (r.cy - MAP_H / 2) * TILE;
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.6, 0.6), getLowPolyMat(0x8a5a2b)); body.position.y = 0.3; body.castShadow = true; g.add(body);
+      const lid = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.25, 0.65), getLowPolyMat(0x6b4420)); lid.position.y = 0.7; lid.castShadow = true; g.add(lid);
+      const lock = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, 0.1), getLowPolyMat(0xf6e05e, true)); lock.position.set(0, 0.45, 0.33); g.add(lock);
+      const glow = new THREE.PointLight(0xffcc55, 1.2, 4); glow.position.y = 1.0; g.add(glow);
+      g.position.set(cx, 0, cz); scene.add(g); chestMesh = g; chestMesh._opened = false;
+      // 주의: 스폰 시점이 아니라 실제 '획득(open)' 시점에만 lastChestFloor를 갱신한다.
+      if (forcedChest) toast('📦 어딘가에 보물상자가 있습니다!', 3000);
+    }
   }
 
   // 회복의 샘: 5층마다 등장
   if (player.floor % 5 === 0 && dgn.rooms.length > 1) {
     // 보스층이면 보스 등장 방(마지막 방) 바로 앞 방에, 아니면 임의의 방에 배치
-    let r;
+    let r = null;
     if (player.floor % 10 === 0 && dgn.rooms.length >= 2) {
       r = dgn.rooms[dgn.rooms.length - 2]; // 보스 방 직전 방
-      if (r === dgn.rooms[0] && dgn.rooms.length >= 3) r = dgn.rooms[dgn.rooms.length - 3]; // 시작방과 겹치면 한 칸 더 앞 방
+      if ((r === dgn.rooms[0] || r === stairsRoom) && dgn.rooms.length >= 3) r = dgn.rooms[dgn.rooms.length - 3];
     } else {
-      r = pick(dgn.rooms.slice(1));
+      // 시작 방(0)·계단 방·상자 방을 제외한 후보 우선 선택
+      let cand = dgn.rooms.slice(1).filter(rm => rm !== stairsRoom && rm !== chestRoom);
+      if (cand.length === 0) cand = dgn.rooms.slice(1).filter(rm => rm !== stairsRoom); // 없으면 상자 방 허용
+      r = cand.length > 0 ? pick(cand) : null;
     }
-    const fx = (r.cx - MAP_W / 2) * TILE, fz = (r.cy - MAP_H / 2) * TILE;
-    const g = new THREE.Group();
-    const basin = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, 0.5, 10), getLowPolyMat(0x556677, true)); basin.position.y = 0.25; basin.receiveShadow = true; g.add(basin);
-    const water = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.1, 12), new THREE.MeshBasicMaterial({ color: 0x55ccff, transparent: true, opacity: 0.8, fog: false })); water.position.y = 0.5; g.add(g._water = water);
-    const glow = new THREE.PointLight(0x55ccff, 1.6, 6); glow.position.y = 1.2; g.add(glow);
-    g.position.set(fx, 0, fz); scene.add(g); fountainMesh = g; fountainMesh._used = false;
+    if (r && r !== stairsRoom) {
+      let fx = (r.cx - MAP_W / 2) * TILE, fz = (r.cy - MAP_H / 2) * TILE;
+      // 상자와 같은 방이면 서로 떨어진 위치로(방 안에서 오프셋)
+      if (r === chestRoom && chestMesh) {
+        const offX = Math.min((r.w - 2) * TILE * 0.4, 2.2);
+        const offZ = Math.min((r.h - 2) * TILE * 0.4, 2.2);
+        fx = chestMesh.position.x - offX * 2; // 상자 반대쪽으로
+        fz = chestMesh.position.z - offZ * 2;
+        // 방 경계 안으로 클램프
+        const minX = (r.x + 1 - MAP_W / 2) * TILE, maxX = (r.x + r.w - 1 - MAP_W / 2) * TILE;
+        const minZ = (r.y + 1 - MAP_H / 2) * TILE, maxZ = (r.y + r.h - 1 - MAP_H / 2) * TILE;
+        fx = Math.max(minX, Math.min(maxX, fx)); fz = Math.max(minZ, Math.min(maxZ, fz));
+      }
+      const g = new THREE.Group();
+      const basin = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, 0.5, 10), getLowPolyMat(0x556677, true)); basin.position.y = 0.25; basin.receiveShadow = true; g.add(basin);
+      const water = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.1, 12), new THREE.MeshBasicMaterial({ color: 0x55ccff, transparent: true, opacity: 0.8, fog: false })); water.position.y = 0.5; g.add(g._water = water);
+      const glow = new THREE.PointLight(0x55ccff, 1.6, 6); glow.position.y = 1.2; g.add(glow);
+      g.position.set(fx, 0, fz); scene.add(g); fountainMesh = g; fountainMesh._used = false;
+    }
   }
 }
 
@@ -1893,6 +1926,7 @@ function updateInteractables(dt) {
   if (chestMesh && !chestMesh._opened) {
     if (Math.hypot(player.obj.position.x - chestMesh.position.x, player.obj.position.z - chestMesh.position.z) < 1.6) {
       chestMesh._opened = true;
+      lastChestFloor = player.floor; // 이 층에서 상자를 획득함(다음 보장까지 10층 카운트 리셋)
       // 보상 풀: 물약 4종 + 골드, 그 중 하나만 랜덤 획득
       const pool = STAT_KEYS.concat(['gold']);
       const pick = pool[Math.floor(Math.random() * pool.length)];
@@ -1900,7 +1934,7 @@ function updateInteractables(dt) {
         const tier = Math.ceil(player.floor / 10);
         let cg = (12 + Math.floor(Math.random() * 8)) * tier;
         cg = Math.round(cg * (1 + upgradeLevel('gold') * 0.1));
-        meta.gold += cg; runGold += cg; saveMeta();
+        runGold += cg;
         spawnCoinEffect(chestMesh.position.x, chestMesh.position.y + 0.6, chestMesh.position.z, Math.min(30, cg));
         toast('💰 골드 +' + cg);
       } else {
@@ -1968,14 +2002,16 @@ window.addEventListener('mousemove', e => {
 function startBlock() {
   if (!player.alive || player.isBlocking) return;
   if (player.sta < 8) { toast('스태미나 부족'); return; } // 최소치 없으면 사용 불가
-  player.isBlocking = true;
   if (selectedChar === 'mage') {
-    // 마법사: 마나 보호막 발동(전방위 방어). 즉시 소모는 없음, 유지 중에만 소모.
+    // 마법사: 마나 보호막 발동 시 일정 스태미나를 즉시 소모. 부족하면 발동 불가.
+    if (!useStamina(STA_MAGE_BLOCK_START)) { toast('스태미나 부족'); return; }
+    player.isBlocking = true;
     if (player.manaShield) { player.manaShield.visible = true; }
     SFX.block();
     // 빙결 패링 윈도우(보호막을 막 펼친 순간 공격받으면 적을 얼림)
     if (parryTimer <= PARRY_COOLDOWN_AT) parryTimer = PARRY_WINDOW;
   } else {
+    player.isBlocking = true;
     // 기사: 직전 패링 쿨다운이 끝났을 때만 새 패링 윈도우 시작
     if (parryTimer <= PARRY_COOLDOWN_AT) parryTimer = PARRY_WINDOW;
   }
@@ -1998,8 +2034,11 @@ function releaseCharge() {
   isHeavySwing = chargeTime >= HEAVY_CHARGE_MIN; // 충분히 길게 눌렀을 때만 강공격
   // 강공격은 스태미나 소모. 부족하면 약공격으로 강등.
   if (isHeavySwing) {
-    if (useStamina(STA_HEAVY_COST)) {
-      currentAtkMultiplier = 1.0 + Math.min(1.0, chargeTime / 1.0);
+    // 차지량(chargeTime)에 비례해 스태미나 소모: 최소 차지=절반, 최대 차지=전량(STA_HEAVY_COST)
+    const chargeRatio = Math.min(1.0, chargeTime / 1.0); // 0~1
+    const cost = Math.round(STA_HEAVY_COST * (0.5 + 0.5 * chargeRatio)); // 50%~100%
+    if (useStamina(cost)) {
+      currentAtkMultiplier = 1.0 + chargeRatio;
       SFX.release(currentAtkMultiplier); // 강공격 발사음
     } else {
       isHeavySwing = false; currentAtkMultiplier = 1.0; toast('스태미나 부족');
@@ -2147,7 +2186,7 @@ function dealSwingDamage(multiplier) {
     const damage = Math.floor((player.atk + Math.random() * 4) * multiplier);
     e.hp -= damage; e.kbX = (dx / d) * 20 * multiplier; e.kbZ = (dz / d) * 20 * multiplier;
     
-    spawnHitEffect(e.obj.position.x, e.obj.position.y, e.obj.position.z, multiplier); flashObj(e.obj);
+    spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale, e.obj.position.z, multiplier); flashObj(e.obj);
     didHit = true;
     if (e.hp <= 0) killEnemy(e);
   }
@@ -2159,12 +2198,12 @@ function killEnemy(e) {
   // 보스(또는 난입 보스) 격파 시 종류를 기록 → 이후 일반 층에 난입 가능
   if ((e.isBoss || e.isElite) && e.type) defeatedBosses.add(e.type);
   player.exp += e.exp; player.kills++;
-  // 골드 드롭(영구 골드에 직접 적립). 점수 환산이 없어졌으니 양을 줄임.
+  // 골드 드롭: 던전 중에는 임시(runGold)에만 쌓고, 영구 골드는 회차 종료(죽음/마을 귀환) 시 정산.
   const tier = Math.ceil(player.floor / 10); // 10층 단위 계단(1~10층=1, 11~20층=2 ...)
   let g = (1 + Math.floor(Math.random() * 2)) * tier; // 기본 1~2 × 층 배수
   if (e.isBoss) g *= 10; else if (e.isElite) g *= 5;
   g = Math.round(g * (1 + upgradeLevel('gold') * 0.1)); // 골드 획득량 강화
-  meta.gold += g; runGold += g; saveMeta();
+  runGold += g;
   spawnCoinEffect(e.obj.position.x, e.obj.position.y + 0.5, e.obj.position.z, Math.min(30, g));
   toast('+' + e.exp + ' EXP · 💰 +' + g);
   if (player.exp >= player.expMax) { player.lv++; player.exp -= player.expMax; player.expMax = Math.floor(player.expMax * 1.5); player.hpMax += 15; player.hp = player.hpMax; player.atk += 4; toast('✦ LEVEL UP! Lv.' + player.lv); }
@@ -2193,42 +2232,11 @@ function applyStat(stat, amount) {
 
 let rewardPaused = false;
 function openBossReward() {
-  const box = $('rewardChoices');
-  box.innerHTML = '';
-  // 4가지 고정 능력치 + 랜덤
-  const cards = STAT_KEYS.map(k => ({ key: k, rand: false })); 
-  cards.push({ key: 'random', rand: true });
-  for (const c of cards) {
-    const div = document.createElement('div');
-    div.className = 'reward-card' + (c.rand ? ' rand' : '');
-    if (c.rand) {
-      div.innerHTML = `<div class="ic">🎲</div><div class="nm">랜덤</div><div class="ds">50% 꽝!<br>성공 시 2배 강화</div>`;
-    } else {
-      const info = STAT_INFO[c.key];
-      div.innerHTML = `<div class="ic">${info.icon}</div><div class="nm">${info.name}</div><div class="ds">+${info.boss} 강화</div>`;
-    }
-    div.addEventListener('click', () => chooseBossReward(c));
-    box.appendChild(div);
-  }
-  rewardPaused = true;
-  $('rewardOverlay').classList.remove('hidden');
-}
-
-function chooseBossReward(c) {
-  $('rewardOverlay').classList.add('hidden');
-  rewardPaused = false;
-  if (c.rand) {
-    // 50% 꽝, 성공 시 나머지 능력치 중 하나를 2배 수치로
-    if (Math.random() < 0.5) { toast('🎲 꽝! 아무 일도 일어나지 않았다...'); return; }
-    const k = STAT_KEYS[Math.floor(Math.random() * STAT_KEYS.length)];
-    const info = STAT_INFO[k];
-    applyStat(k, info.boss * 2);
-    toast('🎲 대성공! ' + info.name + ' +' + (info.boss * 2) + ' (2배!)');
-  } else {
-    const info = STAT_INFO[c.key];
-    applyStat(c.key, info.boss);
-    toast(info.icon + ' ' + info.name + ' +' + info.boss);
-  }
+  // 선택 없이 4가지 능력치 중 하나를 랜덤으로 즉시 강화(꽝 없음).
+  const k = STAT_KEYS[Math.floor(Math.random() * STAT_KEYS.length)];
+  const info = STAT_INFO[k];
+  applyStat(k, info.boss);
+  toast('🎁 보스 보상! ' + info.icon + ' ' + info.name + ' +' + info.boss, 3000);
 }
 
 function damagePlayer(amount, enemyObj) {
@@ -2276,7 +2284,7 @@ function damagePlayer(amount, enemyObj) {
       enemyObj.kbX = ux * 26; enemyObj.kbZ = uz * 26;
       const reflectDmg = Math.floor(amount * 1.5);
       enemyObj.hp -= reflectDmg;
-      spawnHitEffect(enemyObj.obj.position.x, enemyObj.obj.position.y + 0.5, enemyObj.obj.position.z, 1.4); flashObj(enemyObj.obj);
+      spawnHitEffect(enemyObj.obj.position.x, enemyObj.obj.position.y + (enemyObj.scale || 1), enemyObj.obj.position.z, 1.4); flashObj(enemyObj.obj);
       if (enemyObj.hp <= 0) killEnemy(enemyObj);
       player.hurtCooldown = 0.15; // 무피해
       toast('⚡ 패링!');
@@ -2296,8 +2304,22 @@ function damagePlayer(amount, enemyObj) {
 }
 
 function moveWithCollision(pos, dx, dz, radius) {
+  // 벽 충돌
   pos.x += dx; for (const w of walls) if (Math.abs(pos.x - w.x) < w.halfW + radius && Math.abs(pos.z - w.z) < w.halfD + radius) { pos.x -= dx; break; }
   pos.z += dz; for (const w of walls) if (Math.abs(pos.x - w.x) < w.halfW + radius && Math.abs(pos.z - w.z) < w.halfD + radius) { pos.z -= dz; break; }
+  // 몬스터 충돌(살아있는 적은 통과 못 함)
+  for (const e of enemies) {
+    if (e.isDead || !e.obj.visible) continue;
+    const ex = e.obj.position.x, ez = e.obj.position.z;
+    const minDist = radius + e.radius;
+    let ddx = pos.x - ex, ddz = pos.z - ez;
+    const dist = Math.hypot(ddx, ddz);
+    if (dist < minDist && dist > 0.0001) {
+      // 겹친 만큼 플레이어를 적 바깥으로 밀어냄
+      const push = (minDist - dist);
+      pos.x += (ddx / dist) * push; pos.z += (ddz / dist) * push;
+    }
+  }
 }
 
 const clock = new THREE.Clock();
@@ -2306,7 +2328,7 @@ const clock = new THREE.Clock();
 function checkLineOfSight(ex, ez) {
   const dx = ex - player.obj.position.x, dz = ez - player.obj.position.z;
   const dist = Math.hypot(dx, dz);
-  if (dist > TILE * 8.5) return false; 
+  if (dist > TILE * 6) return false; 
   
   let angleToEnemy = Math.atan2(-dx, -dz);
   let angleDiff = player.yaw - angleToEnemy;
@@ -2633,6 +2655,25 @@ function update(dt) {
     const dx = player.obj.position.x - e.obj.position.x, dz = player.obj.position.z - e.obj.position.z;
     const d = Math.hypot(dx, dz);
 
+    // 발견 로직: 소속 방이 있는 일반 몬스터는 플레이어가 그 방에 들어와야 깨어남(한 번 깨면 계속 추격).
+    if (e.awake === false) {
+      if (e.homeRoom) {
+        const pgx = player.obj.position.x / TILE + MAP_W / 2;
+        const pgy = player.obj.position.z / TILE + MAP_H / 2;
+        const r = e.homeRoom;
+        // 방 경계 안(약간의 여유 포함)에 플레이어가 들어오면 깨어남
+        const inRoom = pgx >= r.x - 0.5 && pgx <= r.x + r.w + 0.5 && pgy >= r.y - 0.5 && pgy <= r.y + r.h + 0.5;
+        // 또는 아주 가까이(2타일) 다가오면 깨어남(복도에서 마주쳤을 때)
+        if (inRoom || d < TILE * 2) e.awake = true;
+      } else {
+        e.awake = true; // 소속 방 정보가 없으면 기존처럼 동작
+      }
+      if (e.awake === false) { // 아직 잠들어 있으면 이동/공격 안 함
+        e.attackCd = Math.max(0, e.attackCd - dt);
+        continue;
+      }
+    }
+
     // 이동 방향 결정: 근접은 추격, 원거리는 일정 거리(약 3타일=15유닛 이하 적정선) 유지하며 카이팅
     let moveDir = 0; // +1 접근, -1 후퇴, 0 정지
     const meleeStop = 1.4 * (e.scale * 0.8);
@@ -2659,6 +2700,50 @@ function update(dt) {
     }
     if (!bX) e.obj.position.x += eTotalWx; if (!bZ) e.obj.position.z += eTotalWz;
     e.kbX += (0 - e.kbX) * 10 * dt; e.kbZ += (0 - e.kbZ) * 10 * dt;
+
+    // 플레이어와 충돌: 겹치면 몬스터를 플레이어 바깥으로 밀어냄(서로 통과 방지)
+    {
+      const pdx = e.obj.position.x - player.obj.position.x, pdz = e.obj.position.z - player.obj.position.z;
+      const pdist = Math.hypot(pdx, pdz);
+      const minD = e.radius + player.radius;
+      if (pdist < minD && pdist > 0.0001) {
+        const push = (minD - pdist);
+        // 벽에 끼지 않도록, 밀어낸 위치가 벽과 겹치지 않을 때만 적용
+        const nxp = e.obj.position.x + (pdx / pdist) * push;
+        const nzp = e.obj.position.z + (pdz / pdist) * push;
+        let blocked = false;
+        for (const w of walls) { if (Math.abs(nxp - w.x) < w.halfW + e.radius && Math.abs(nzp - w.z) < w.halfD + e.radius) { blocked = true; break; } }
+        if (!blocked) { e.obj.position.x = nxp; e.obj.position.z = nzp; }
+      }
+    }
+
+    // 몬스터끼리 충돌: 겹치면 서로 밀어냄(자기 자신·죽은 적 제외)
+    for (let j = 0; j < enemies.length; j++) {
+      const o = enemies[j];
+      if (o === e || o.isDead) continue;
+      const odx = e.obj.position.x - o.obj.position.x, odz = e.obj.position.z - o.obj.position.z;
+      const odist = Math.hypot(odx, odz);
+      const minOD = e.radius + o.radius;
+      if (odist < minOD && odist > 0.0001) {
+        const push = (minOD - odist) * 0.5; // 절반만 밀어냄(상대도 자기 차례에 밀려남)
+        const nxp = e.obj.position.x + (odx / odist) * push;
+        const nzp = e.obj.position.z + (odz / odist) * push;
+        let blocked = false;
+        for (const w of walls) { if (Math.abs(nxp - w.x) < w.halfW + e.radius && Math.abs(nzp - w.z) < w.halfD + e.radius) { blocked = true; break; } }
+        if (!blocked) { e.obj.position.x = nxp; e.obj.position.z = nzp; }
+      }
+    }
+
+    // 계단 충돌: 몬스터가 계단 위/뒤에 숨지 못하게 계단 영역 밖으로 밀어냄(활성 상태일 때만)
+    if (stairsMesh && stairsMesh.position.y > -10) {
+      const sdx = e.obj.position.x - stairsMesh.position.x, sdz = e.obj.position.z - stairsMesh.position.z;
+      const sdist = Math.hypot(sdx, sdz);
+      const stairR = 2.6 + e.radius; // 계단 받침대 반경(약 2.6) + 몬스터 반경
+      if (sdist < stairR && sdist > 0.0001) {
+        e.obj.position.x = stairsMesh.position.x + (sdx / sdist) * stairR;
+        e.obj.position.z = stairsMesh.position.z + (sdz / sdist) * stairR;
+      }
+    }
     
     if (d < 20) {
       e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI; 
@@ -2785,6 +2870,8 @@ function applyMetaUpgrades() {
 loadMeta();
 
 // ===== 진행 중인 판 저장(이어하기) : 죽지 않고 종료했을 때만 재개 =====
+// 악용 방지: 저장은 '층 진입 시점'에만 한다. 이어하기는 그 층의 시작 상태로 복원되므로,
+// 같은 층에서 골드/물약/회복을 모으고 껐다 켜기를 반복해도 누적되지 않는다.
 function saveRun() {
   if (!player.alive) return;
   try {
@@ -2796,7 +2883,8 @@ function saveRun() {
       kills: player.kills, runGold: runGold, noHitFloors: player.noHitFloors,
       elapsed: Date.now() - runStartTime,
       defeated: Array.from(defeatedBosses),
-      chestSeen: chestSeenThisCycle
+      chestFloor: lastChestFloor,
+      metaGold: meta.gold // 층 진입 시점의 영구 골드(이어하기 시 이 값으로 되돌림)
     };
     localStorage.setItem('dungeon_run', JSON.stringify(data));
   } catch (e) {}
@@ -2814,8 +2902,8 @@ function die() {
   const prevBest = getBestScore();
   const isNewBest = sc.total > prevBest;
   if (isNewBest) saveBestScore(sc.total);
-  // 골드는 던전에서 이미 영구 골드로 적립됨(여기선 환산하지 않음)
-  saveMeta();
+  // 회차 종료 정산: 이번 판에서 모은 골드(runGold)를 영구 골드로 적립.
+  meta.gold += runGold; saveMeta();
   setTimeout(() => {
     $('overFloor').textContent = player.floor;
     $('overKills').textContent = player.kills;
@@ -2833,12 +2921,12 @@ function die() {
     $('overOverlay').classList.remove('hidden');
   }, 800);
 }
-function resetGame() { defeatedBosses.clear(); chestSeenThisCycle = false; player.alive = true; player.lv = 1; player.exp = 0; player.expMax = 10; player.atkSpeed = 1.0; player.kills = 0; player.floor = 1; staRegenCooldown = 0; player.gold = 0; runGold = 0; player.noHitFloors = 0; player.hitThisFloor = false; applyMetaUpgrades(); runStartTime = Date.now(); $('rewardOverlay').classList.add('hidden'); rewardPaused = false; startFloor(); }
+function resetGame() { defeatedBosses.clear(); lastChestFloor = 0; player.alive = true; player.lv = 1; player.exp = 0; player.expMax = 10; player.atkSpeed = 1.0; player.kills = 0; player.floor = 1; staRegenCooldown = 0; player.gold = 0; runGold = 0; player.noHitFloors = 0; player.hitThisFloor = false; applyMetaUpgrades(); runStartTime = Date.now(); $('rewardOverlay').classList.add('hidden'); rewardPaused = false; startFloor(); }
 // 저장된 진행으로 재개(이어하기). 같은 층의 새 맵에서 시작.
 function resumeGame() {
   const r = loadRun();
   if (!r) { resetGame(); return; }
-  defeatedBosses.clear(); chestSeenThisCycle = !!r.chestSeen;
+  defeatedBosses.clear(); lastChestFloor = r.chestFloor || 0;
   if (Array.isArray(r.defeated)) r.defeated.forEach(t => defeatedBosses.add(t));
   player.alive = true; player.atkSpeed = r.atkSpeed || 1.0;
   player.floor = r.floor || 1;
@@ -2847,7 +2935,10 @@ function resumeGame() {
   player.atk = r.atk || 12; player.speed = r.speed || 6.5;
   player.staMax = r.staMax || 100; player.sta = r.sta || player.staMax;
   player.kills = r.kills || 0; player.noHitFloors = r.noHitFloors || 0; player.hitThisFloor = false;
+  // 악용 방지: 이번 판 골드(runGold)를 층 진입 시점 값으로 되돌린다.
+  // 골드는 회차 종료 시에만 영구 적립되므로, 그 층에서 모은 골드는 이걸로 무효화된다.
   runGold = r.runGold || 0; staRegenCooldown = 0;
+  if (typeof r.metaGold === 'number') { meta.gold = r.metaGold; saveMeta(); }
   runStartTime = Date.now() - (r.elapsed || 0); // 경과 시간 이어가기
   $('rewardOverlay').classList.add('hidden'); rewardPaused = false;
   startFloor();
@@ -2859,7 +2950,7 @@ function updateHUD() {
   if ($('staFill')) { $('staFill').style.width = Math.max(0, (player.sta / player.staMax) * 100) + '%'; $('staText').textContent = Math.floor(player.sta) + '/' + player.staMax; }
   $('lvText').textContent = player.lv; $('floor').textContent = player.floor; $('kills').textContent = player.kills; $('atk').textContent = player.atk;
   if ($('scoreHud')) $('scoreHud').textContent = computeScore().total.toLocaleString();
-  if ($('goldHud')) $('goldHud').textContent = meta.gold.toLocaleString();
+  if ($('goldHud')) $('goldHud').textContent = (meta.gold + runGold).toLocaleString();
 }
 
 const miniCtx = $('minimap').getContext('2d');
@@ -2895,7 +2986,7 @@ function drawMinimap() {
   miniCtx.strokeStyle = '#fff'; miniCtx.lineWidth = 1.5; miniCtx.beginPath(); miniCtx.moveTo(px, pz); miniCtx.lineTo(px - Math.sin(player.yaw) * 8, pz - Math.cos(player.yaw) * 8); miniCtx.stroke();
 }
 
-let toastTimer = 0; function toast(text) { $('toast').textContent = text; $('toast').classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.remove('show'), 2000); }
+let toastTimer = 0; function toast(text, duration = 2000) { $('toast').textContent = text; $('toast').classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.remove('show'), duration); }
 
 let isFetchingOracle = false;
 async function fetchOracle() {
@@ -2914,9 +3005,9 @@ async function fetchOracle() {
   }
 }
 
-// 앱을 백그라운드로 보내거나 페이지를 떠날 때 최신 상태 저장(이어하기 정확도↑)
-document.addEventListener('visibilitychange', () => { if (document.hidden) saveRun(); });
-window.addEventListener('pagehide', saveRun);
+// 주의: 페이지 이탈/백그라운드 시점에는 저장하지 않는다.
+// 저장은 오직 '층 진입(startFloor)' 시점에만 일어나므로, 같은 층에서 골드/물약/회복을
+// 모은 뒤 껐다 켜도 그 층 시작 상태로 복원되어 누적 악용이 불가능하다.
 
 window.addEventListener('resize', () => { 
   renderer.setSize(window.innerWidth, window.innerHeight); 
@@ -3079,7 +3170,53 @@ $('oracleBtn').addEventListener('click', (e) => { e.stopPropagation(); fetchOrac
 
 dungeon = generateDungeon(); buildDungeonMesh(dungeon); const _r0 = dungeon.rooms[0]; player.obj.position.set((_r0.cx - MAP_W / 2) * TILE, 0, (_r0.cy - MAP_H / 2) * TILE); 
 camera.position.set((_r0.cx - MAP_W / 2) * TILE + isoOffsetX, isoOffsetY, (_r0.cy - MAP_H / 2) * TILE + isoOffsetZ); camera.lookAt(player.obj.position);
-placeStairs(dungeon); spawnEnemies(dungeon); tick();
+placeStairs(dungeon); spawnEnemies(dungeon);
+
+// 셰이더 워밍업: 전투 이펙트 머티리얼/셰이더를 미리 컴파일해 첫 발생 시 끊김 방지.
+function warmupShaders() {
+  try {
+    const wx = player.obj.position.x, wy = -50, wz = player.obj.position.z;
+    spawnHitEffect(wx, wy, wz, 1.0);
+    spawnParryEffect(wx, wy, wz, 'parry');
+    spawnParryEffect(wx, wy, wz, 'mage');
+    spawnCoinEffect(wx, wy, wz, 2);
+    spawnPotionEffect(wx, wy, wz, 0xff4488);
+    // 검기/파이어볼/실드가 쓰는 머티리얼 조합을 더미 메시로 미리 컴파일
+    const dummies = [];
+    const matOpts = [
+      { color: 0xddfaff, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false, fog: false }, // 검기
+      { color: 0xff8a1e, transparent: true, opacity: 0.96, depthWrite: false, fog: false },                          // 플레이어 파이어볼
+      { color: 0x66ccff, transparent: true, opacity: 0.95, depthWrite: false, fog: false },                          // 적 화염구
+      { color: 0xffe066, transparent: true, opacity: 0.9, depthWrite: false, fog: false },                           // 파이어볼 코어
+      { color: 0x66ccff, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false, fog: false },  // 실드
+    ];
+    for (const opt of matOpts) {
+      const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.2, 1), new THREE.MeshBasicMaterial(opt));
+      m.position.set(wx, wy, wz); scene.add(m); dummies.push(m);
+    }
+    // 발광용 PointLight도 한 번 씬에 넣어 조명 셰이더 변형까지 컴파일
+    const dl = new THREE.PointLight(0x88e6ff, 1.0, 5); dl.position.set(wx, wy, wz); scene.add(dl); dummies.push(dl);
+    // 몬스터(일반 + 보스) 더미를 미리 만들어 셰이더 컴파일(보스방 첫 진입 끊김 방지)
+    const warmMonsters = [];
+    try {
+      const types = ['goblin', 'skeleton', 'orc'];
+      for (const t of types) {
+        const m1 = createAdvancedMonster(wx, wz - 100, t, false, false); warmMonsters.push(m1);
+        const m2 = createAdvancedMonster(wx, wz - 100, t, true, false);  warmMonsters.push(m2); // 보스 스케일/구조
+      }
+      // 원거리 캐스터 변형도 하나
+      warmMonsters.push(createAdvancedMonster(wx, wz - 100, 'goblin', false, true));
+    } catch (e) {}
+    renderer.compile(scene, camera);
+    renderer.setRenderTarget(rt); renderer.render(scene, camera); renderer.setRenderTarget(null);
+    // 더미 정리
+    for (const d of dummies) { scene.remove(d); if (d.geometry) d.geometry.dispose(); if (d.material) d.material.dispose(); }
+    for (const m of warmMonsters) { if (m && m.obj) scene.remove(m.obj); }
+  } catch (e) { console.error('warmup', e); }
+}
+warmupShaders();
+
+tick();
 </script>
 </body>
 </html>
