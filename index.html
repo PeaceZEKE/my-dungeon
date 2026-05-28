@@ -621,6 +621,27 @@ const isoOffsetX = 9; const isoOffsetY = 13.5; const isoOffsetZ = 9;
 camera.position.set(isoOffsetX, isoOffsetY, isoOffsetZ); 
 scene.add(camera);
 
+// 화면 비율이 달라져도 캐릭터가 비슷한 크기로 보이도록 FOV를 보정.
+// 기준 가로비(16:9)에서 세로 FOV 55가 되도록 하고, 화면이 그보다 세로로 길면(aspect 작으면) FOV를 키워 수평 시야를 유지.
+const BASE_FOV = 55;            // 기준 세로 FOV
+const BASE_ASPECT = 16 / 9;     // 기준 화면 비율
+function applyAdaptiveFOV() {
+  const aspect = window.innerWidth / window.innerHeight;
+  camera.aspect = aspect;
+  if (aspect >= BASE_ASPECT) {
+    // 기준보다 가로로 넓으면 세로 FOV 그대로(수평이 더 넓어짐) — 보이는 크기 유지
+    camera.fov = BASE_FOV;
+  } else {
+    // 세로로 길수록 수평 시야가 좁아지므로, 수평 시야를 기준과 같게 유지하도록 세로 FOV를 키운다
+    const baseVRad = BASE_FOV * Math.PI / 180;
+    const baseHorizontal = 2 * Math.atan(Math.tan(baseVRad / 2) * BASE_ASPECT);
+    const newVRad = 2 * Math.atan(Math.tan(baseHorizontal / 2) / aspect);
+    camera.fov = Math.min(105, newVRad * 180 / Math.PI);
+  }
+  camera.updateProjectionMatrix();
+}
+applyAdaptiveFOV();
+
 // --- LIGHTING (그라데이션 및 FOV) ---
 const ambientLight = new THREE.AmbientLight(0x0a101a, 0.6); 
 scene.add(ambientLight);
@@ -2737,7 +2758,7 @@ window.addEventListener('resize', () => {
   lowResH = Math.max(240, Math.floor(window.innerHeight / PIXEL_SCALE));
   rt.setSize(lowResW, lowResH);
   quadMat.uniforms.uTexel.value.set(1 / lowResW, 1 / lowResH);
-  camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); 
+  applyAdaptiveFOV();
   updateOrientationWarning();
 });
 
