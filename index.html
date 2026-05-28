@@ -562,11 +562,11 @@ const PIXEL_SCALE = 1.5;
 let lowResW = Math.max(320, Math.floor(window.innerWidth / PIXEL_SCALE));
 let lowResH = Math.max(240, Math.floor(window.innerHeight / PIXEL_SCALE));
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(1);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
+renderer.shadowMap.type = THREE.PCFShadowMap; // 부드러운 그림자(PCFSoft)보다 가벼움
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 renderer.autoClear = false;
@@ -671,7 +671,7 @@ const nearLight = new THREE.PointLight(0xfff0dd, 1.6, TILE * 1.4, 2.0);
 scene.add(nearLight);
 
 const viewLight = new THREE.SpotLight(0xffaa55, 6.0, TILE * 14, Math.PI / 2.7, 0.8, 1.5);
-viewLight.castShadow = true; viewLight.shadow.mapSize.width = 2048; viewLight.shadow.mapSize.height = 2048; viewLight.shadow.bias = -0.0015; 
+viewLight.castShadow = true; viewLight.shadow.mapSize.width = 1024; viewLight.shadow.mapSize.height = 1024; viewLight.shadow.bias = -0.0015; 
 viewLight.shadow.camera.near = 0.5; viewLight.shadow.camera.far = TILE * 15; // 먼 벽 그림자까지 잡도록
 scene.add(viewLight);
 const lightTarget = new THREE.Object3D(); scene.add(lightTarget); viewLight.target = lightTarget;
@@ -2943,14 +2943,22 @@ function updateOrientationWarning() {
 window.addEventListener('orientationchange', () => setTimeout(updateOrientationWarning, 200));
 updateOrientationWarning();
 
-function tick() {
+const TARGET_FPS = 60, FRAME_MIN = 1000 / TARGET_FPS;
+let lastFrameT = 0;
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (now === undefined) now = performance.now();
+  // 60fps 제한: 목표 간격보다 빨리 호출되면 이번 프레임은 건너뜀(고주사율 기기 발열 완화)
+  if (now - lastFrameT < FRAME_MIN - 0.5) return;
+  lastFrameT = now;
+
   let dt = Math.min(0.05, clock.getDelta());
   // 패링 히트스톱: 짧은 슬로우모션으로 타격감 강조
   if (hitStop > 0) { hitStop -= dt; dt *= 0.18; }
   if (player.alive && !rewardPaused) update(dt);
   renderer.setRenderTarget(rt); renderer.clear(); renderer.render(scene, camera); 
   renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
-  drawMinimap(); requestAnimationFrame(tick);
+  drawMinimap();
 }
 
 async function lockOrientation() { if (screen.orientation && screen.orientation.lock) try { await screen.orientation.lock('landscape'); } catch(e){} }
