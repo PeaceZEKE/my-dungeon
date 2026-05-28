@@ -124,6 +124,7 @@
     </div>
     <div class="panel stats">
       <div>SCORE <span id="scoreHud">0</span></div>
+      <div>💰 <span id="goldHud">0</span></div>
       <div>FLOOR <span id="floor">1</span></div>
       <div>KILLS <span id="kills">0</span></div>
       <div>ATK <span id="atk">12</span></div>
@@ -617,7 +618,7 @@ scene.fog = new THREE.FogExp2(0x010204, 0.025);
 
 // 쿼터뷰 카메라 설정
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 200);
-const isoOffsetX = 9; const isoOffsetY = 13.5; const isoOffsetZ = 9;
+const isoOffsetX = 6.75; const isoOffsetY = 10.125; const isoOffsetZ = 6.75;
 camera.position.set(isoOffsetX, isoOffsetY, isoOffsetZ); 
 scene.add(camera);
 
@@ -852,6 +853,39 @@ const particleMats = [
   new THREE.MeshBasicMaterial({ color: 0xff3300, depthWrite: false, fog: false }),
   new THREE.MeshBasicMaterial({ color: 0xffffff, depthWrite: false, fog: false })
 ];
+
+// ===== 골드 동전 튀어오르기 이펙트(마리오식) =====
+const coins = [];
+const coinGeo = new THREE.CylinderGeometry(0.16, 0.16, 0.04, 10); // 납작한 원판
+const coinMat = new THREE.MeshStandardMaterial({ color: 0xffcc33, emissive: 0x6a4a00, emissiveIntensity: 0.5, metalness: 0.4, roughness: 0.4, flatShading: true });
+function spawnCoinEffect(x, y, z, count) {
+  for (let i = 0; i < count; i++) {
+    const c = new THREE.Mesh(coinGeo, coinMat);
+    c.position.set(x + (Math.random() - 0.5) * 0.4, y, z + (Math.random() - 0.5) * 0.4);
+    c.rotation.x = Math.PI / 2; // 원판이 카메라쪽으로 서도록(동전 면이 보이게)
+    // 위로 솟구치는 속도 + 약간의 좌우 흩어짐
+    const vy = 6 + Math.random() * 4;
+    const vx = (Math.random() - 0.5) * 2.5;
+    const vz = (Math.random() - 0.5) * 2.5;
+    const spin = 12 + Math.random() * 10;
+    scene.add(c);
+    coins.push({ mesh: c, vx, vy, vz, spin, life: 1.2, baseY: y });
+  }
+}
+function updateCoins(dt) {
+  for (let i = coins.length - 1; i >= 0; i--) {
+    const c = coins[i];
+    c.life -= dt;
+    c.vy -= 22 * dt; // 중력
+    c.mesh.position.x += c.vx * dt;
+    c.mesh.position.y += c.vy * dt;
+    c.mesh.position.z += c.vz * dt;
+    c.mesh.rotation.y += c.spin * dt; // 회전하며 반짝
+    // 바닥 아래로 떨어지거나 수명 다하면 제거. 마지막엔 살짝 작아지며 사라짐.
+    if (c.life < 0.3) c.mesh.scale.setScalar(Math.max(0.01, c.life / 0.3));
+    if (c.life <= 0 || c.mesh.position.y < -0.5) { scene.remove(c.mesh); coins.splice(i, 1); }
+  }
+}
 
 function spawnHitEffect(x, y, z, multiplier) {
   const count = Math.floor(15 * multiplier);
@@ -1184,6 +1218,7 @@ const player = {
   hitThisFloor: false     // 현재 층에서 피격당했는지
 };
 let runStartTime = 0;     // 이번 판 시작 시각(ms) — 시간 보너스용
+let runGold = 0;          // 이번 판에 던전에서 번 골드(게임오버 표시용)
 scene.add(player.obj);
 let selectedChar = 'knight'; // 선택된 캐릭터(기본: 기사)
 // 스태미나: 방어 유지·강공격·스킬에 소모, 시간이 지나면 자동 회복
@@ -1794,7 +1829,13 @@ function updateInteractables(dt) {
       const k = STAT_KEYS[Math.floor(Math.random() * STAT_KEYS.length)];
       const info = STAT_INFO[k];
       applyStat(k, info.potion);
-      toast('🧪 ' + info.name + ' 물약! +' + info.potion);
+      const tier = Math.ceil(player.floor / 10);
+      let cg = (12 + Math.floor(Math.random() * 8)) * tier; // 기본 12~19 × 층 배수
+      cg = Math.round(cg * (1 + upgradeLevel('gold') * 0.1));
+      meta.gold += cg; runGold += cg; saveMeta();
+      spawnCoinEffect(chestMesh.position.x, chestMesh.position.y + 0.6, chestMesh.position.z, Math.min(30, cg));
+      toast('🧪 ' + info.name + ' 물약! +' + info.potion + ' · 💰 +' + cg);
+      updateHUD();
       // 상자 열림 연출 후 제거
       scene.remove(chestMesh); chestMesh = null;
     }
@@ -2047,7 +2088,15 @@ function killEnemy(e) {
   e.isDead = true; e.deathTimer = 1.5; 
   // 보스(또는 난입 보스) 격파 시 종류를 기록 → 이후 일반 층에 난입 가능
   if ((e.isBoss || e.isElite) && e.type) defeatedBosses.add(e.type);
-  player.exp += e.exp; player.kills++; toast('+' + e.exp + ' EXP');
+  player.exp += e.exp; player.kills++;
+  // 골드 드롭(영구 골드에 직접 적립). 점수 환산이 없어졌으니 양을 줄임.
+  const tier = Math.ceil(player.floor / 10); // 10층 단위 계단(1~10층=1, 11~20층=2 ...)
+  let g = (1 + Math.floor(Math.random() * 2)) * tier; // 기본 1~2 × 층 배수
+  if (e.isBoss) g *= 10; else if (e.isElite) g *= 5;
+  g = Math.round(g * (1 + upgradeLevel('gold') * 0.1)); // 골드 획득량 강화
+  meta.gold += g; runGold += g; saveMeta();
+  spawnCoinEffect(e.obj.position.x, e.obj.position.y + 0.5, e.obj.position.z, Math.min(30, g));
+  toast('+' + e.exp + ' EXP · 💰 +' + g);
   if (player.exp >= player.expMax) { player.lv++; player.exp -= player.expMax; player.expMax = Math.floor(player.expMax * 1.5); player.hpMax += 15; player.hp = player.hpMax; player.atk += 4; toast('✦ LEVEL UP! Lv.' + player.lv); }
   updateHUD();
   // 보스/난입 보스 격파 시 능력 강화 아이템 드랍(선택 UI)
@@ -2251,6 +2300,7 @@ function update(dt) {
   }
   swingTimer = Math.max(0, swingTimer - dt);
   updateParticles(dt);
+  updateCoins(dt);
   updateParryRings(dt);
   updateSlashes(dt);
   updateFireballs(dt);
@@ -2613,15 +2663,14 @@ function startFloor() {
 function computeScore() {
   const floorPts = player.floor * 100;
   const killPts = player.kills * 10;
-  const goldPts = player.gold * 1;
   // 시간 보너스: 기준(층당 45초)보다 빠르면 가점. 느리면 0까지 감소.
   const elapsedSec = Math.max(1, (Date.now() - runStartTime) / 1000);
   const parSec = player.floor * 45;
   const timeBonus = Math.max(0, Math.round((parSec - elapsedSec) * 2));
   // 노히트 보너스: 한 번도 안 맞고 넘긴 층마다 50점
   const noHitBonus = player.noHitFloors * 50;
-  const total = floorPts + killPts + goldPts + timeBonus + noHitBonus;
-  return { total, floorPts, killPts, goldPts, timeBonus, noHitBonus, elapsedSec: Math.round(elapsedSec) };
+  const total = floorPts + killPts + timeBonus + noHitBonus;
+  return { total, floorPts, killPts, timeBonus, noHitBonus, elapsedSec: Math.round(elapsedSec) };
 }
 function getBestScore() {
   try { return parseInt(localStorage.getItem('dungeon_best_score') || '0', 10) || 0; } catch (e) { return 0; }
@@ -2636,7 +2685,7 @@ const UPGRADE_DEFS = [
   { key: 'atk',   name: '공격력',       desc: '레벨당 +3',      icon: '⚔️', baseCost: 80,  growth: 1.7, max: 10 },
   { key: 'sta',   name: '최대 스태미나', desc: '레벨당 +15',     icon: '⚡', baseCost: 50,  growth: 1.5, max: 10 },
   { key: 'speed', name: '이동 속도',    desc: '레벨당 +0.4',    icon: '🥾', baseCost: 70,  growth: 1.7, max: 6 },
-  { key: 'gold',  name: '시작 골드 보너스', desc: '다음 판 점수골드 +8%', icon: '💰', baseCost: 90, growth: 1.8, max: 8 },
+  { key: 'gold',  name: '골드 획득량', desc: '레벨당 골드 +10%', icon: '💰', baseCost: 90, growth: 1.8, max: 8 },
 ];
 let meta = { gold: 0, upgrades: {} };
 function loadMeta() {
@@ -2669,10 +2718,8 @@ function die() {
   const prevBest = getBestScore();
   const isNewBest = sc.total > prevBest;
   if (isNewBest) saveBestScore(sc.total);
-  // 점수의 10%를 골드로 환산(시작 골드 보너스 강화: 레벨당 +8%)
-  const goldBonusMul = 1 + upgradeLevel('gold') * 0.08;
-  const earnedGold = Math.round(sc.total * 0.10 * goldBonusMul);
-  meta.gold += earnedGold; saveMeta();
+  // 골드는 던전에서 이미 영구 골드로 적립됨(여기선 환산하지 않음)
+  saveMeta();
   setTimeout(() => {
     $('overFloor').textContent = player.floor;
     $('overKills').textContent = player.kills;
@@ -2685,12 +2732,12 @@ function die() {
     }
     if ($('overBest')) $('overBest').textContent = Math.max(prevBest, sc.total).toLocaleString();
     if ($('overNewBest')) $('overNewBest').style.display = isNewBest ? 'block' : 'none';
-    if ($('overGold')) $('overGold').textContent = '+' + earnedGold.toLocaleString();
+    if ($('overGold')) $('overGold').textContent = '+' + runGold.toLocaleString();
     if ($('overTotalGold')) $('overTotalGold').textContent = meta.gold.toLocaleString();
     $('overOverlay').classList.remove('hidden');
   }, 800);
 }
-function resetGame() { defeatedBosses.clear(); chestSeenThisCycle = false; player.alive = true; player.lv = 1; player.exp = 0; player.expMax = 10; player.atkSpeed = 1.0; player.kills = 0; player.floor = 1; staRegenCooldown = 0; player.gold = 0; player.noHitFloors = 0; player.hitThisFloor = false; applyMetaUpgrades(); runStartTime = Date.now(); $('rewardOverlay').classList.add('hidden'); rewardPaused = false; startFloor(); }
+function resetGame() { defeatedBosses.clear(); chestSeenThisCycle = false; player.alive = true; player.lv = 1; player.exp = 0; player.expMax = 10; player.atkSpeed = 1.0; player.kills = 0; player.floor = 1; staRegenCooldown = 0; player.gold = 0; runGold = 0; player.noHitFloors = 0; player.hitThisFloor = false; applyMetaUpgrades(); runStartTime = Date.now(); $('rewardOverlay').classList.add('hidden'); rewardPaused = false; startFloor(); }
 
 function updateHUD() {
   $('hpFill').style.width = Math.max(0, (player.hp / player.hpMax) * 100) + '%'; $('hpText').textContent = Math.max(0, Math.floor(player.hp)) + '/' + player.hpMax;
@@ -2698,6 +2745,7 @@ function updateHUD() {
   if ($('staFill')) { $('staFill').style.width = Math.max(0, (player.sta / player.staMax) * 100) + '%'; $('staText').textContent = Math.floor(player.sta) + '/' + player.staMax; }
   $('lvText').textContent = player.lv; $('floor').textContent = player.floor; $('kills').textContent = player.kills; $('atk').textContent = player.atk;
   if ($('scoreHud')) $('scoreHud').textContent = computeScore().total.toLocaleString();
+  if ($('goldHud')) $('goldHud').textContent = meta.gold.toLocaleString();
 }
 
 const miniCtx = $('minimap').getContext('2d');
