@@ -86,7 +86,8 @@
   .turn-base::after { content: "↻"; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; font-size: 36px; color: rgba(180,210,255,0.35); pointer-events: none; }
   .turn-stick { position: absolute; left: 65px; top: 65px; width: 50px; height: 50px; border-radius: 50%; background: rgba(150,200,255,0.45); pointer-events: none; transition: transform 0.05s linear; }
   
-  .action-btns { position: absolute; right: 20px; bottom: 20px; display: flex; gap: 15px; pointer-events: none; }
+  .action-btns { position: absolute; right: 20px; bottom: 40px; display: flex; gap: 15px; pointer-events: none; }
+  #btnBlock { width: 92px; height: 92px; font-size: 38px; background: rgba(80,140,220,0.28); border-color: rgba(120,180,255,0.55); }
   .act-btn { width: 84px; height: 84px; border-radius: 50%; background: rgba(10,12,19,0.6); border: 2px solid rgba(255,255,255,0.2); color: #fff; font-weight: bold; font-size: 18px; display: flex; align-items: center; justify-content: center; pointer-events: auto; touch-action: none; transition: background 0.1s, transform 0.1s, box-shadow 0.1s; backdrop-filter: blur(4px); }
   .act-btn:active { background: rgba(255,255,255,0.2); transform: scale(0.9); }
   .btn-atk { width: 104px; height: 104px; font-size: 28px; background: rgba(229,62,62,0.3); border-color: rgba(229,62,62,0.6); margin-bottom: 20px; }
@@ -122,6 +123,7 @@
       </div>
     </div>
     <div class="panel stats">
+      <div>SCORE <span id="scoreHud">0</span></div>
       <div>FLOOR <span id="floor">1</span></div>
       <div>KILLS <span id="kills">0</span></div>
       <div>ATK <span id="atk">12</span></div>
@@ -142,7 +144,9 @@
 <div class="mobile-controls" id="mobileControls" style="display:none">
   <div class="joy-base" id="joyBase"><div class="joy-stick" id="joyStick"></div></div>
   <div class="turn-base" id="turnBase"><div class="turn-stick" id="turnStick"></div></div>
-  <div class="action-btns"></div>
+  <div class="action-btns">
+    <div class="act-btn" id="btnBlock">🛡️</div>
+  </div>
 </div>
 
 <div class="overlay" id="startOverlay">
@@ -181,7 +185,7 @@
   <div id="howtoMobile" style="display:none; max-width:520px; line-height:1.7; font-size:16px; text-align:left; margin:10px 0;">
     <div>· <b>왼쪽 화면 드래그</b> — 이동</div>
     <div>· <b>오른쪽 패드 드래그</b> — 방향 전환(조준)</div>
-    <div>· <b>오른쪽 패드 가만히 탭/홀드</b> — 방어</div>
+    <div>· <b>🛡️ 방어 버튼</b> — 방어(누른 채 드래그하면 회전도 가능)</div>
     <div>· <b>반지름 50% 이상 당김</b> — 일반공격 연타</div>
     <div>· <b>반지름 끝(90%)까지 당겼다 놓기</b> — 강공격</div>
   </div>
@@ -200,7 +204,25 @@
   <p>당신은 <b id="overFloor">1</b>층에서 쓰러졌고,<br>
     <b id="overKills">0</b>마리의 몬스터를 물리쳤습니다.<br>
     최종 레벨: <b id="overLv">1</b></p>
-  <button id="restartBtn">↻ RETRY</button>
+  <div style="margin:14px 0; padding:14px 20px; background:rgba(120,180,255,0.08); border:1px solid rgba(150,200,255,0.25); border-radius:12px;">
+    <div style="font-size:13px; color:#a0aec0; letter-spacing:1px;">SCORE</div>
+    <div style="font-size:clamp(32px,8vw,52px); font-weight:900; color:#ffce8a; line-height:1.1;"><span id="overScore">0</span></div>
+    <div id="overScoreBreak" style="font-size:11px; color:#8b96a8; margin-top:4px;"></div>
+    <div style="font-size:13px; color:#a0aec0; margin-top:8px;">최고 기록: <b id="overBest" style="color:#e2e8f0;">0</b></div>
+    <div id="overNewBest" style="display:none; margin-top:6px; font-size:15px; font-weight:bold; color:#5fe39a;">🏆 신기록 달성!</div>
+    <div style="margin-top:10px; font-size:15px; color:#ffd86b;">💰 획득 골드 <b id="overGold">+0</b> <span style="color:#8b96a8; font-size:12px;">(보유 <span id="overTotalGold">0</span>)</span></div>
+  </div>
+  <button id="restartBtn">🏘️ 마을로</button>
+</div>
+
+<div class="overlay hidden" id="townOverlay" style="align-items:stretch; justify-content:flex-start; padding:0; overflow-y:auto;">
+  <div style="min-height:100%; display:flex; flex-direction:column; align-items:center; padding:14px 12px; width:100%; box-sizing:border-box;">
+    <h1 style="font-size:clamp(20px,5vw,34px); margin:0;">🏘️ 마을</h1>
+    <div style="font-size:15px; color:#ffd86b; margin:4px 0 8px;">💰 보유 골드: <b id="townGold">0</b></div>
+    <div style="font-size:13px; color:#a0aec0; margin-bottom:8px;">⚒️ 영구 강화 상점 — 죽어도 유지됩니다</div>
+    <div id="shopList" style="display:flex; flex-direction:column; gap:7px; width:min(540px,92vw); margin-bottom:12px;"></div>
+    <button id="enterDungeonBtn" style="margin:0 0 6px;">⚔️ 던전 입장</button>
+  </div>
 </div>
 
 <div class="overlay hidden" id="rewardOverlay">
@@ -1135,8 +1157,12 @@ const player = {
   obj: new THREE.Group(), yaw: 0, pitch: 0, hp: 100, hpMax: 100, lv: 1, exp: 0, expMax: 10, atk: 12, kills: 0, floor: 1,
   alive: true, isBlocking: false, attackCooldown: 0, hurtCooldown: 0, jumpVy: 0, onGround: true, radius: 0.5, speed: 6.5,
   walkPhase: 0, limbs: {}, kbX: 0, kbZ: 0, atkSpeed: 1.0,
-  sta: 100, staMax: 100  // 스태미나(방어 유지·강공격·스킬에 소모, 자동 회복)
+  sta: 100, staMax: 100,  // 스태미나(방어 유지·강공격·스킬에 소모, 자동 회복)
+  gold: 0,                // 골드(메타 진행용, 추후 연결)
+  noHitFloors: 0,         // 한 번도 안 맞고 넘긴 층 수(노히트 보너스)
+  hitThisFloor: false     // 현재 층에서 피격당했는지
 };
+let runStartTime = 0;     // 이번 판 시작 시각(ms) — 시간 보너스용
 scene.add(player.obj);
 let selectedChar = 'knight'; // 선택된 캐릭터(기본: 기사)
 // 스태미나: 방어 유지·강공격·스킬에 소모, 시간이 지나면 자동 회복
@@ -1930,7 +1956,42 @@ const handleTouchEnd = (e) => {
 };
 document.addEventListener('touchend', handleTouchEnd); document.addEventListener('touchcancel', handleTouchEnd);
 
-// 방어 버튼 제거됨: 회전 패드 가만히 누르기로 방어 발동
+// 방어 버튼: 누르면 방어 시작, 그 손가락을 드래그하면 회전도 함께, 떼면 방어 해제
+let blockTouchId = null, blockCx = 0, blockCy = 0;
+const btnBlockEl = $('btnBlock');
+btnBlockEl.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (blockTouchId !== null) return;
+  const t = e.changedTouches[0];
+  blockTouchId = t.identifier;
+  const r = btnBlockEl.getBoundingClientRect();
+  blockCx = r.left + r.width / 2; blockCy = r.top + r.height / 2;
+  if (player.alive) startBlock();
+}, { passive: false });
+btnBlockEl.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const t = e.changedTouches[i];
+    if (t.identifier !== blockTouchId) continue;
+    const dx = t.clientX - blockCx, dy = t.clientY - blockCy;
+    const dist = Math.hypot(dx, dy);
+    // 버튼을 누른 채 드래그하면 그 방향으로 회전(데드존 밖일 때만)
+    if (dist > 12) { turnVec.x = dx; turnVec.y = dy; turnActive = true; }
+  }
+}, { passive: false });
+function endBlockTouch(e) {
+  if (blockTouchId === null) return;
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    if (e.changedTouches[i].identifier === blockTouchId) {
+      blockTouchId = null; endBlock();
+      // 방어 버튼 드래그로 켠 회전은 끈다(회전 패드가 따로 잡고 있지 않으면)
+      if (turnTouchId === null) { turnActive = false; turnVec = { x: 0, y: 0 }; }
+      break;
+    }
+  }
+}
+btnBlockEl.addEventListener('touchend', endBlockTouch, { passive: false });
+btnBlockEl.addEventListener('touchcancel', endBlockTouch, { passive: false });
 
 function executeSwing(multiplier) {
   // 들어올림(고정) + 내려침(일반/강공격에 따라 다름)
@@ -2085,12 +2146,12 @@ function damagePlayer(amount, enemyObj) {
     if (facing > 0.1) { 
       amount = Math.floor(amount * 0.2); $('shieldEffect').style.opacity = '1'; setTimeout(() => { $('shieldEffect').style.opacity = '0'; }, 100);
       SFX.block(); // 방어 성공음
-      player.hurtCooldown = 0.2; player.kbX = (dx / d) * 8; player.kbZ = (dz / d) * 8; player.hp -= amount; updateHUD(); return;
+      player.hurtCooldown = 0.2; player.kbX = (dx / d) * 8; player.kbZ = (dz / d) * 8; player.hp -= amount; player.hitThisFloor = true; updateHUD(); return;
     }
   }
   player.kbX = (dx / d) * 15; player.kbZ = (dz / d) * 15; flashObj(player.obj);
   SFX.hurt(); // 피격음
-  player.hp -= amount; player.hurtCooldown = 0.5; $('hurt').style.opacity = '1'; setTimeout(() => { $('hurt').style.opacity = '0'; }, 150);
+  player.hp -= amount; player.hurtCooldown = 0.5; player.hitThisFloor = true; $('hurt').style.opacity = '1'; setTimeout(() => { $('hurt').style.opacity = '0'; }, 150);
   updateHUD(); if (player.hp <= 0) die();
 }
 
@@ -2201,17 +2262,7 @@ function update(dt) {
     executeSwing(1.0);
   }
 
-  // [실험] 회전 패드를 데드존 안에서 누르고 있으면 즉시 방어 발동. 움직이면 해제.
-  const TURN_BLOCK_DELAY = 0;
-  if (turnTouchId !== null && turnDragDist <= 15 && !turnCharging) {
-    turnStillTime += dt;
-    if (turnStillTime >= TURN_BLOCK_DELAY && !turnBlockActive && !player.isBlocking) {
-      turnBlockActive = true; startBlock();
-    }
-  } else {
-    turnStillTime = 0;
-    if (turnBlockActive) { turnBlockActive = false; endBlock(); }
-  }
+  // (방어는 별도 방어 버튼으로 분리됨)
 
   // 강공격 충전 단계에 따라 검을 점점 강하게 빛나게 함. 단타(빠른 클릭)는 발광하지 않음.
   {
@@ -2360,8 +2411,9 @@ function update(dt) {
   if (!isCharging && inDownswing) armRLerp = isHeavySwing ? 90 : 60;
   player.limbs.armR.rotation.x += (targetArmRX - player.limbs.armR.rotation.x) * armRLerp * dt;
   player.limbs.armR.rotation.z += (targetArmRZ - player.limbs.armR.rotation.z) * armRLerp * dt;
-  player.limbs.armL.rotation.x += (targetArmLX - player.limbs.armL.rotation.x) * 15 * dt;
-  player.limbs.armL.rotation.z += (targetArmLZ - player.limbs.armL.rotation.z) * 15 * dt;
+  const armLLerp = (selectedChar === 'knight' && player.isBlocking) ? 24 : 15;
+  player.limbs.armL.rotation.x += (targetArmLX - player.limbs.armL.rotation.x) * armLLerp * dt;
+  player.limbs.armL.rotation.z += (targetArmLZ - player.limbs.armL.rotation.z) * armLLerp * dt;
 
   // 방패/책 자세
   if (selectedChar === 'mage') {
@@ -2387,9 +2439,9 @@ function update(dt) {
     const shieldTargetX = player.isBlocking ? -Math.PI / 2 : 0;
     const shieldTargetY = player.isBlocking ? 0 : Math.PI / 2;
     const shieldTargetZ = player.isBlocking ? 0 : -Math.PI / 2; // 평상시: 뾰족한 끝이 뒤쪽을 향하도록 90도 회전
-    shieldGrp.rotation.x += (shieldTargetX - shieldGrp.rotation.x) * 15 * dt;
-    shieldGrp.rotation.y += (shieldTargetY - shieldGrp.rotation.y) * 15 * dt;
-    shieldGrp.rotation.z += (shieldTargetZ - shieldGrp.rotation.z) * 15 * dt;
+    shieldGrp.rotation.x += (shieldTargetX - shieldGrp.rotation.x) * 24 * dt;
+    shieldGrp.rotation.y += (shieldTargetY - shieldGrp.rotation.y) * 24 * dt;
+    shieldGrp.rotation.z += (shieldTargetZ - shieldGrp.rotation.z) * 24 * dt;
     // 방패 위치: 방어 시 얼굴 쪽(안쪽·앞)으로 더 당김
     const shPosX = player.isBlocking ? 0.05 : -0.12;
     const shPosZ = player.isBlocking ? -0.18 : -0.05;
@@ -2525,7 +2577,7 @@ function update(dt) {
   }
 }
 
-function descend() { player.floor += 1; toast('▼ Floor ' + player.floor); player.hp = Math.min(player.hpMax, player.hp + 25); startFloor(); }
+function descend() { if (!player.hitThisFloor) player.noHitFloors++; player.hitThisFloor = false; player.floor += 1; toast('▼ Floor ' + player.floor); player.hp = Math.min(player.hpMax, player.hp + 25); startFloor(); }
 function startFloor() {
   for (const f of fireballs) scene.remove(f.mesh); fireballs.length = 0;
   for (const s of slashes) scene.remove(s.mesh); slashes.length = 0;
@@ -2535,14 +2587,96 @@ function startFloor() {
   camera.position.set(px + isoOffsetX, isoOffsetY, pz + isoOffsetZ); camera.lookAt(player.obj.position);
   updateHUD();
 }
-function die() { isCharging = false; SFX.chargeStop(false); player.alive = false; setTimeout(() => { $('overFloor').textContent = player.floor; $('overKills').textContent = player.kills; $('overLv').textContent = player.lv; $('overOverlay').classList.remove('hidden'); }, 800); }
-function resetGame() { defeatedBosses.clear(); chestSeenThisCycle = false; player.alive = true; player.hp = 100; player.hpMax = 100; player.lv = 1; player.exp = 0; player.expMax = 10; player.atk = 12; player.atkSpeed = 1.0; player.speed = 6.5; player.kills = 0; player.floor = 1; player.sta = player.staMax; staRegenCooldown = 0; $('rewardOverlay').classList.add('hidden'); rewardPaused = false; startFloor(); }
+// ===== 점수 시스템 =====
+// 층수×100 + 처치×10 + 골드×1 + 시간 보너스 + 노히트 보너스
+function computeScore() {
+  const floorPts = player.floor * 100;
+  const killPts = player.kills * 10;
+  const goldPts = player.gold * 1;
+  // 시간 보너스: 기준(층당 45초)보다 빠르면 가점. 느리면 0까지 감소.
+  const elapsedSec = Math.max(1, (Date.now() - runStartTime) / 1000);
+  const parSec = player.floor * 45;
+  const timeBonus = Math.max(0, Math.round((parSec - elapsedSec) * 2));
+  // 노히트 보너스: 한 번도 안 맞고 넘긴 층마다 50점
+  const noHitBonus = player.noHitFloors * 50;
+  const total = floorPts + killPts + goldPts + timeBonus + noHitBonus;
+  return { total, floorPts, killPts, goldPts, timeBonus, noHitBonus, elapsedSec: Math.round(elapsedSec) };
+}
+function getBestScore() {
+  try { return parseInt(localStorage.getItem('dungeon_best_score') || '0', 10) || 0; } catch (e) { return 0; }
+}
+function saveBestScore(s) {
+  try { localStorage.setItem('dungeon_best_score', String(s)); } catch (e) {}
+}
+
+// ===== 영구 진행(메타) : 누적 골드 + 영구 강화 레벨 =====
+const UPGRADE_DEFS = [
+  { key: 'hp',    name: '최대 체력',    desc: '레벨당 +20',     icon: '❤️', baseCost: 60,  growth: 1.6, max: 10 },
+  { key: 'atk',   name: '공격력',       desc: '레벨당 +3',      icon: '⚔️', baseCost: 80,  growth: 1.7, max: 10 },
+  { key: 'sta',   name: '최대 스태미나', desc: '레벨당 +15',     icon: '⚡', baseCost: 50,  growth: 1.5, max: 10 },
+  { key: 'speed', name: '이동 속도',    desc: '레벨당 +0.4',    icon: '🥾', baseCost: 70,  growth: 1.7, max: 6 },
+  { key: 'gold',  name: '시작 골드 보너스', desc: '다음 판 점수골드 +8%', icon: '💰', baseCost: 90, growth: 1.8, max: 8 },
+];
+let meta = { gold: 0, upgrades: {} };
+function loadMeta() {
+  try {
+    const raw = localStorage.getItem('dungeon_meta');
+    if (raw) meta = JSON.parse(raw);
+  } catch (e) {}
+  if (!meta || typeof meta !== 'object') meta = { gold: 0, upgrades: {} };
+  if (typeof meta.gold !== 'number') meta.gold = 0;
+  if (!meta.upgrades) meta.upgrades = {};
+}
+function saveMeta() {
+  try { localStorage.setItem('dungeon_meta', JSON.stringify(meta)); } catch (e) {}
+}
+function upgradeLevel(key) { return meta.upgrades[key] || 0; }
+function upgradeCost(def) { return Math.round(def.baseCost * Math.pow(def.growth, upgradeLevel(def.key))); }
+// 강화 레벨을 플레이어 시작 능력치에 적용
+function applyMetaUpgrades() {
+  const hpLv = upgradeLevel('hp'), atkLv = upgradeLevel('atk'), staLv = upgradeLevel('sta'), spdLv = upgradeLevel('speed');
+  player.hpMax = 100 + hpLv * 20; player.hp = player.hpMax;
+  player.atk = 12 + atkLv * 3;
+  player.staMax = 100 + staLv * 15; player.sta = player.staMax;
+  player.speed = 6.5 + spdLv * 0.4;
+}
+loadMeta();
+
+function die() {
+  isCharging = false; SFX.chargeStop(false); player.alive = false;
+  const sc = computeScore();
+  const prevBest = getBestScore();
+  const isNewBest = sc.total > prevBest;
+  if (isNewBest) saveBestScore(sc.total);
+  // 점수의 10%를 골드로 환산(시작 골드 보너스 강화: 레벨당 +8%)
+  const goldBonusMul = 1 + upgradeLevel('gold') * 0.08;
+  const earnedGold = Math.round(sc.total * 0.10 * goldBonusMul);
+  meta.gold += earnedGold; saveMeta();
+  setTimeout(() => {
+    $('overFloor').textContent = player.floor;
+    $('overKills').textContent = player.kills;
+    $('overLv').textContent = player.lv;
+    if ($('overScore')) $('overScore').textContent = sc.total.toLocaleString();
+    if ($('overScoreBreak')) {
+      const mm = Math.floor(sc.elapsedSec / 60), ss = sc.elapsedSec % 60;
+      $('overScoreBreak').textContent =
+        `층 ${sc.floorPts} · 처치 ${sc.killPts} · 시간보너스 ${sc.timeBonus} · 노히트 ${sc.noHitBonus} · ${mm}분 ${ss}초`;
+    }
+    if ($('overBest')) $('overBest').textContent = Math.max(prevBest, sc.total).toLocaleString();
+    if ($('overNewBest')) $('overNewBest').style.display = isNewBest ? 'block' : 'none';
+    if ($('overGold')) $('overGold').textContent = '+' + earnedGold.toLocaleString();
+    if ($('overTotalGold')) $('overTotalGold').textContent = meta.gold.toLocaleString();
+    $('overOverlay').classList.remove('hidden');
+  }, 800);
+}
+function resetGame() { defeatedBosses.clear(); chestSeenThisCycle = false; player.alive = true; player.lv = 1; player.exp = 0; player.expMax = 10; player.atkSpeed = 1.0; player.kills = 0; player.floor = 1; staRegenCooldown = 0; player.gold = 0; player.noHitFloors = 0; player.hitThisFloor = false; applyMetaUpgrades(); runStartTime = Date.now(); $('rewardOverlay').classList.add('hidden'); rewardPaused = false; startFloor(); }
 
 function updateHUD() {
   $('hpFill').style.width = Math.max(0, (player.hp / player.hpMax) * 100) + '%'; $('hpText').textContent = Math.max(0, Math.floor(player.hp)) + '/' + player.hpMax;
   $('expFill').style.width = (player.exp / player.expMax * 100) + '%'; $('expText').textContent = player.exp + '/' + player.expMax;
   if ($('staFill')) { $('staFill').style.width = Math.max(0, (player.sta / player.staMax) * 100) + '%'; $('staText').textContent = Math.floor(player.sta) + '/' + player.staMax; }
   $('lvText').textContent = player.lv; $('floor').textContent = player.floor; $('kills').textContent = player.kills; $('atk').textContent = player.atk;
+  if ($('scoreHud')) $('scoreHud').textContent = computeScore().total.toLocaleString();
 }
 
 const miniCtx = $('minimap').getContext('2d');
@@ -2667,16 +2801,64 @@ function beginGameWith(kind) {
 }
 function startActualGame() {
   $('howtoOverlay').classList.add('hidden');
+  openTown(); // 던전 직행이 아니라 마을부터
+}
+// 실제 던전 진입
+function enterDungeon() {
+  $('townOverlay').classList.add('hidden');
   $('hud').style.display = 'block'; $('minimap').style.display = 'block';
   if (isTouchDevice) $('mobileControls').style.display = 'block';
   lockOrientation(); resetGame();
+}
+// 마을 화면 열기 + 상점 렌더
+function openTown() {
+  $('hud').style.display = 'none'; $('minimap').style.display = 'none';
+  $('mobileControls').style.display = 'none';
+  renderShop();
+  $('townOverlay').classList.remove('hidden');
+}
+function renderShop() {
+  $('townGold').textContent = meta.gold.toLocaleString();
+  const list = $('shopList'); list.innerHTML = '';
+  UPGRADE_DEFS.forEach(def => {
+    const lv = upgradeLevel(def.key);
+    const maxed = lv >= def.max;
+    const cost = upgradeCost(def);
+    const afford = meta.gold >= cost;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 12px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.12); border-radius:9px;';
+    row.innerHTML =
+      `<div style="font-size:20px;">${def.icon}</div>
+       <div style="flex:1; text-align:left;">
+         <div style="font-weight:bold; color:#e2e8f0; font-size:14px;">${def.name} <span style="color:#8b96a8; font-size:11px;">Lv.${lv}/${def.max}</span></div>
+         <div style="font-size:11px; color:#a0aec0;">${def.desc}</div>
+       </div>
+       <button class="shop-buy" data-key="${def.key}" ${maxed||!afford?'disabled':''}
+         style="pointer-events:auto; padding:7px 12px; border-radius:8px; font-weight:bold; font-size:13px; border:1px solid ${maxed?'#4a5568':(afford?'#5fb0d0':'#4a5568')}; background:${maxed?'rgba(80,80,90,0.4)':(afford?'rgba(95,176,208,0.25)':'rgba(80,80,90,0.4)')}; color:${maxed?'#888':(afford?'#aee3f5':'#888')};">
+         ${maxed ? 'MAX' : '💰 ' + cost.toLocaleString()}
+       </button>`;
+    list.appendChild(row);
+  });
+  list.querySelectorAll('.shop-buy').forEach(btn => {
+    onTap(btn, () => {
+      const key = btn.getAttribute('data-key');
+      const def = UPGRADE_DEFS.find(d => d.key === key);
+      const lv = upgradeLevel(key);
+      if (lv >= def.max) return;
+      const cost = upgradeCost(def);
+      if (meta.gold < cost) { toast('골드 부족'); return; }
+      meta.gold -= cost; meta.upgrades[key] = lv + 1; saveMeta();
+      safeResume(); renderShop();
+    });
+  });
 }
 document.querySelectorAll('#charChoices .char-card').forEach(card => {
   onTap(card, () => beginGameWith(card.getAttribute('data-char')));
 });
 onTap($('howtoBtn'), () => { safeResume(); startActualGame(); });
+onTap($('enterDungeonBtn'), () => { safeResume(); enterDungeon(); });
 
-onTap($('restartBtn'), () => { safeResume(); $('overOverlay').classList.add('hidden'); lockOrientation(); resetGame(); });
+onTap($('restartBtn'), () => { safeResume(); $('overOverlay').classList.add('hidden'); openTown(); });
 $('oracleBtn').addEventListener('click', (e) => { e.stopPropagation(); fetchOracle(); });
 
 dungeon = generateDungeon(); buildDungeonMesh(dungeon); const _r0 = dungeon.rooms[0]; player.obj.position.set((_r0.cx - MAP_W / 2) * TILE, 0, (_r0.cy - MAP_H / 2) * TILE); 
