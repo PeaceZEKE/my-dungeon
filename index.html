@@ -216,7 +216,7 @@
   <button id="restartBtn">🏘️ 마을로</button>
 </div>
 
-<div class="overlay hidden" id="townOverlay" style="align-items:stretch; justify-content:flex-start; padding:0; overflow-y:auto;">
+<div class="overlay hidden" id="townOverlay" style="align-items:stretch; justify-content:flex-start; padding:0; overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y;">
   <div style="min-height:100%; display:flex; flex-direction:column; align-items:center; padding:14px 12px; width:100%; box-sizing:border-box;">
     <h1 style="font-size:clamp(20px,5vw,34px); margin:0;">🏘️ 마을</h1>
     <div style="font-size:15px; color:#ffd86b; margin:4px 0 8px;">💰 보유 골드: <b id="townGold">0</b></div>
@@ -1544,13 +1544,13 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
   let hp, dmg, sp, exp, scale, skinMat, armorMat;
 
   if (type === 'goblin') {
-    hp = 20 + player.floor * 3; dmg = 5 + player.floor * 1.5; sp = 3.5; exp = 4 + player.floor;
+    hp = (20 + player.floor * 3) * 1.5; dmg = 5 + player.floor * 1.5; sp = 3.5; exp = 4 + player.floor;
     scale = isBoss ? 1.8 : 0.8; skinMat = matGobSkin.clone(); armorMat = matGobCloth.clone();
   } else if (type === 'skeleton') {
-    hp = 35 + player.floor * 4; dmg = 8 + player.floor * 2; sp = 2.8; exp = 8 + player.floor;
+    hp = (35 + player.floor * 4) * 1.5; dmg = 8 + player.floor * 2; sp = 2.8; exp = 8 + player.floor;
     scale = isBoss ? 2.0 : 0.95; skinMat = matSkelBone.clone(); armorMat = matSkelArmor.clone();
   } else { 
-    hp = 55 + player.floor * 5; dmg = 12 + player.floor * 2.5; sp = 2.2; exp = 15 + player.floor;
+    hp = (55 + player.floor * 5) * 1.5; dmg = 12 + player.floor * 2.5; sp = 2.2; exp = 15 + player.floor;
     scale = isBoss ? 2.4 : 1.15; skinMat = matOrcSkin.clone(); armorMat = matOrcArmor.clone();
   }
   if (isBoss) { hp *= 5; dmg *= 1.5; exp *= 10; sp *= 0.8; }
@@ -1956,8 +1956,14 @@ window.addEventListener('mouseup', (e) => {
 
 const joyBase = $('joyBase'), joyStick = $('joyStick');
 const turnBase = $('turnBase'), turnStick = $('turnStick');
+// 마을·게임오버·캐릭터선택 등 오버레이가 떠 있으면 게임 터치 조작을 막는다(스크롤·버튼 충돌 방지)
+function anyOverlayOpen() {
+  const ids = ['townOverlay', 'overOverlay', 'charOverlay', 'startOverlay', 'howtoOverlay', 'rewardOverlay'];
+  return ids.some(id => { const el = document.getElementById(id); return el && !el.classList.contains('hidden'); });
+}
+
 document.addEventListener('touchstart', (e) => {
-  if (!player.alive) return;
+  if (!player.alive || anyOverlayOpen()) return;
   for (let i = 0; i < e.changedTouches.length; i++) {
     const t = e.changedTouches[i];
     if (t.target.closest('.action-btns') || t.target.closest('.topbar')) continue;
@@ -1978,8 +1984,8 @@ document.addEventListener('touchstart', (e) => {
 }, {passive: false});
 
 document.addEventListener('touchmove', (e) => {
+  if (!player.alive || anyOverlayOpen()) return; // 오버레이 중엔 스크롤 허용(preventDefault 안 함)
   e.preventDefault(); 
-  if (!player.alive) return;
   for (let i = 0; i < e.changedTouches.length; i++) {
     const t = e.changedTouches[i];
     if (t.identifier === joyTouchId) {
