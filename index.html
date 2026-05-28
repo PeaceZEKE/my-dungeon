@@ -29,9 +29,10 @@
   #minimap { position:fixed; right:16px; top:80px; border:1px solid #4a5568; border-radius: 8px;
     background:rgba(10,12,19,0.9); width: 100px; height: 100px; box-shadow: 0 4px 10px rgba(0,0,0,0.8); z-index: 10; pointer-events:none; }
 
-  .overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+  .overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:safe center;
     background: radial-gradient(ellipse at center, rgba(10,12,19,0.8) 0%, rgba(0,0,0,0.95) 100%);
-    backdrop-filter: blur(4px); flex-direction:column; gap:16px; text-align:center; padding:24px; z-index:20; }
+    backdrop-filter: blur(4px); flex-direction:column; gap:16px; text-align:center; padding:24px; z-index:20;
+    overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y; }
   .overlay.hidden { display:none; }
   .hidden { display:none !important; }
   .overlay h1 { font-size: clamp(32px, 6vw, 52px); font-weight: 900; letter-spacing: 4px; margin: 0; color:#fff;
@@ -163,6 +164,7 @@
     </span>
   </div>
   <button id="startBtn">▶ START GAME</button>
+  <div style="font-size:13px; color:#8b96a8; margin-top:4px;">화면 아무 곳이나 탭하세요</div>
 </div>
 
 <div class="overlay hidden" id="charOverlay">
@@ -187,7 +189,7 @@
   <div id="howtoMobile" style="display:none; max-width:520px; line-height:1.7; font-size:16px; text-align:left; margin:10px 0;">
     <div>· <b>왼쪽 화면 드래그</b> — 이동</div>
     <div>· <b>오른쪽 패드 드래그</b> — 방향 전환(조준)</div>
-    <div>· <b>🛡️ 방어 버튼</b> — 방어(누른 채 드래그하면 회전도 가능)</div>
+    <div>· <b>🛡️ 방어 버튼</b> — 방어</div>
     <div>· <b>반지름 50% 이상 당김</b> — 일반공격 연타</div>
     <div>· <b>반지름 끝(90%)까지 당겼다 놓기</b> — 강공격</div>
   </div>
@@ -223,7 +225,18 @@
     <div style="font-size:15px; color:#ffd86b; margin:6px 0 10px;">💰 보유 골드: <b id="townGold">0</b></div>
     <div style="font-size:13px; color:#a0aec0; margin-bottom:10px;">⚒️ 영구 강화 상점 — 죽어도 유지됩니다</div>
     <div id="shopList" style="display:flex; flex-direction:column; gap:8px; width:min(540px,92vw); margin-bottom:16px;"></div>
-    <button id="enterDungeonBtn">⚔️ 던전 입장</button>
+    <button id="resumeBtn" class="hidden" style="background:rgba(95,200,150,0.25); border-color:#5fc896; color:#aef5d0;">▶ 이어하기 (<span id="resumeFloor">1</span>층)</button>
+    <button id="enterDungeonBtn">⚔️ 새 게임 (1층부터)</button>
+  </div>
+</div>
+
+<div class="hidden" id="newGameConfirm" style="position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.75); padding:24px;">
+  <div style="background:#161a24; border:1px solid #4a5568; border-radius:14px; padding:22px; max-width:340px; text-align:center;">
+    <div style="font-size:15px; color:#e2e8f0; line-height:1.5; margin-bottom:16px;">진행 중인 게임이 있습니다.<br>새로 시작하면 이어하기 기록이 사라집니다.<br>계속할까요?</div>
+    <div style="display:flex; gap:10px; justify-content:center;">
+      <button id="newGameCancel" style="background:rgba(120,130,150,0.25); border-color:#6b7280;">취소</button>
+      <button id="newGameConfirmBtn" style="background:rgba(220,90,90,0.3); border-color:#e06868; color:#ffd0d0;">새로 시작</button>
+    </div>
   </div>
 </div>
 
@@ -242,7 +255,8 @@
 const apiKey = ""; 
 
 const TILE = 5; 
-const MAP_W = 24, MAP_H = 24;
+let MAP_W = 24, MAP_H = 24; // 층에 따라 가변(generateDungeon에서 갱신)
+const MAP_MIN = 18, MAP_MAX = 40; // 맵 크기 범위
 
 const $ = id => document.getElementById(id);
 const app = $('app');
@@ -789,12 +803,30 @@ const walls = [];
 let wallGrid = null; // 시야 판정용 벽 격자(generateDungeon에서 채움)
 
 function generateDungeon() {
+  const isBossFloor = (player.floor % 10 === 0);
+  // 목표 방 개수: 3층마다 1개씩 증가(시작 3개), 보스층은 적게.
+  let targetRooms;
+  if (isBossFloor) targetRooms = 3 + Math.floor(Math.random() * 2); // 3~4개(단순)
+  else targetRooms = Math.min(12, 3 + Math.floor((player.floor - 1) / 3));
+  // 맵 크기도 3층마다 커진다(초반 작고 아담 → 후반 넓음). 보스층은 보스방을 위해 약간 여유.
+  const sizeStep = Math.floor((player.floor - 1) / 3) * 3;
+  MAP_W = MAP_H = Math.min(MAP_MAX, MAP_MIN + sizeStep + (isBossFloor ? 4 : 0));
+
   for (let attempt = 0; attempt < 30; attempt++) {
     const grid = Array.from({ length: MAP_H }, () => new Array(MAP_W).fill(0));
     const discovered = Array.from({ length: MAP_H }, () => new Array(MAP_W).fill(false));
     const rooms = [];
-    for (let i = 0; i < 20; i++) {
-      const w = 3 + Math.floor(Math.random() * 4), h = 3 + Math.floor(Math.random() * 4);
+    // 보스층이면 첫 방(시작 후 보스 등장 방)을 크게. 시도 횟수는 목표 방 개수에 여유를 둠.
+    const maxTries = targetRooms * 4;
+    for (let i = 0; i < maxTries && rooms.length < targetRooms; i++) {
+      let w, h;
+      if (isBossFloor && rooms.length === 1) {
+        // 보스 방: 크게(8~10)
+        w = 8 + Math.floor(Math.random() * 3); h = 8 + Math.floor(Math.random() * 3);
+      } else {
+        w = 3 + Math.floor(Math.random() * 4); h = 3 + Math.floor(Math.random() * 4);
+      }
+      if (w > MAP_W - 4) w = MAP_W - 4; if (h > MAP_H - 4) h = MAP_H - 4;
       const x = 1 + Math.floor(Math.random() * (MAP_W - w - 2)), y = 1 + Math.floor(Math.random() * (MAP_H - h - 2));
       const r = { x, y, w, h, cx: x + (w >> 1), cy: y + (h >> 1) };
       let overlap = false;
@@ -885,6 +917,36 @@ function updateCoins(dt) {
     // 바닥 아래로 떨어지거나 수명 다하면 제거. 마지막엔 살짝 작아지며 사라짐.
     if (c.life < 0.3) c.mesh.scale.setScalar(Math.max(0.01, c.life / 0.3));
     if (c.life <= 0 || c.mesh.position.y < -0.5) { scene.remove(c.mesh); coins.splice(i, 1); }
+  }
+}
+
+// ===== 물약 병 떠오르기 이펙트(획득 시) =====
+const potions = [];
+function spawnPotionEffect(x, y, z, colorHex) {
+  const grp = new THREE.Group();
+  const glassMat = new THREE.MeshStandardMaterial({ color: colorHex, emissive: colorHex, emissiveIntensity: 0.5, transparent: true, opacity: 0.92, flatShading: true });
+  const corkMat = new THREE.MeshStandardMaterial({ color: 0x7a5a32, flatShading: true });
+  // 병 몸통(둥근 원통)
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.28, 8), glassMat); grp.add(body);
+  // 병 목
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 0.12, 8), glassMat); neck.position.y = 0.2; grp.add(neck);
+  // 코르크 마개
+  const cork = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.08, 8), corkMat); cork.position.y = 0.3; grp.add(cork);
+  grp.position.set(x, y, z);
+  grp.scale.setScalar(1.1);
+  scene.add(grp);
+  potions.push({ mesh: grp, mats: [glassMat], life: 1.4, vy: 1.6 });
+}
+function updatePotions(dt) {
+  for (let i = potions.length - 1; i >= 0; i--) {
+    const p = potions[i];
+    p.life -= dt;
+    p.mesh.position.y += p.vy * dt;   // 천천히 위로 떠오름
+    p.vy *= (1 - dt * 1.2);           // 점점 감속
+    p.mesh.rotation.y += dt * 2;      // 살짝 회전
+    // 마지막 구간에 투명해지며 사라짐
+    if (p.life < 0.6) { const a = Math.max(0, p.life / 0.6); p.mats.forEach(m => m.opacity = a * 0.92); p.mesh.scale.setScalar(1.1 * (0.6 + a * 0.4)); }
+    if (p.life <= 0) { scene.remove(p.mesh); potions.splice(i, 1); }
   }
 }
 
@@ -1713,15 +1775,19 @@ function spawnEnemies(dgn) {
   const isBossFloor = player.floor % 10 === 0;
 
   if (isBossFloor) {
-    // 보스 + 군단(근접 + 원거리 조합)
-    const br = dgn.rooms[dgn.rooms.length - 1];
+    // 보스 + 군단(근접 + 원거리 조합). 보스는 시작 방(rooms[0])을 뺀 방 중 가장 큰 방에 배치.
+    let br = dgn.rooms[dgn.rooms.length - 1], bestArea = -1;
+    for (let i = 1; i < dgn.rooms.length; i++) {
+      const rm = dgn.rooms[i], area = rm.w * rm.h;
+      if (area > bestArea) { bestArea = area; br = rm; }
+    }
     const bx = (br.cx - MAP_W / 2) * TILE, bz = (br.cy - MAP_H / 2) * TILE;
     let btype = 'goblin'; if (player.floor === 10) btype = 'goblin'; else if (player.floor === 20) btype = 'skeleton'; else btype = 'orc';
     enemies.push(createAdvancedMonster(bx, bz, btype, true, false));
 
     // 군단: 일반 층보다 약 1.5배 많은 수
-    const base = Math.min(5, 1 + Math.floor(player.floor / 2));
-    const legion = Math.ceil(base * 1.5) + 2;
+    const base = Math.min(10, 2 + Math.floor(player.floor / 2));
+    const legion = Math.min(20, Math.ceil(base * 1.5) + 2);
     const rp = rangedPool();
     for (let k = 0; k < legion; k++) {
       const ang = Math.random() * Math.PI * 2, rad = 2 + Math.random() * 4;
@@ -1736,7 +1802,7 @@ function spawnEnemies(dgn) {
     const rp = rangedPool();
     for (let i = 1; i < dgn.rooms.length; i++) {
       const r = dgn.rooms[i];
-      const n = Math.min(5, 1 + Math.floor(player.floor / 2));
+      const n = Math.min(10, 2 + Math.floor(player.floor / 2));
       for (let k = 0; k < n; k++) {
         const safeX = r.x + 1.2 + Math.random() * (r.w - 2.4), safeY = r.y + 1.2 + Math.random() * (r.h - 2.4);
         const ex = (safeX - MAP_W / 2) * TILE, ez = (safeY - MAP_H / 2) * TILE;
@@ -1827,15 +1893,22 @@ function updateInteractables(dt) {
   if (chestMesh && !chestMesh._opened) {
     if (Math.hypot(player.obj.position.x - chestMesh.position.x, player.obj.position.z - chestMesh.position.z) < 1.6) {
       chestMesh._opened = true;
-      const k = STAT_KEYS[Math.floor(Math.random() * STAT_KEYS.length)];
-      const info = STAT_INFO[k];
-      applyStat(k, info.potion);
-      const tier = Math.ceil(player.floor / 10);
-      let cg = (12 + Math.floor(Math.random() * 8)) * tier; // 기본 12~19 × 층 배수
-      cg = Math.round(cg * (1 + upgradeLevel('gold') * 0.1));
-      meta.gold += cg; runGold += cg; saveMeta();
-      spawnCoinEffect(chestMesh.position.x, chestMesh.position.y + 0.6, chestMesh.position.z, Math.min(30, cg));
-      toast('🧪 ' + info.name + ' 물약! +' + info.potion + ' · 💰 +' + cg);
+      // 보상 풀: 물약 4종 + 골드, 그 중 하나만 랜덤 획득
+      const pool = STAT_KEYS.concat(['gold']);
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      if (pick === 'gold') {
+        const tier = Math.ceil(player.floor / 10);
+        let cg = (12 + Math.floor(Math.random() * 8)) * tier;
+        cg = Math.round(cg * (1 + upgradeLevel('gold') * 0.1));
+        meta.gold += cg; runGold += cg; saveMeta();
+        spawnCoinEffect(chestMesh.position.x, chestMesh.position.y + 0.6, chestMesh.position.z, Math.min(30, cg));
+        toast('💰 골드 +' + cg);
+      } else {
+        const info = STAT_INFO[pick];
+        applyStat(pick, info.potion);
+        spawnPotionEffect(chestMesh.position.x, chestMesh.position.y + 0.6, chestMesh.position.z, info.color || 0xff5577);
+        toast('🧪 ' + info.name + ' 물약! +' + info.potion);
+      }
       updateHUD();
       // 상자 열림 연출 후 제거
       scene.remove(chestMesh); chestMesh = null;
@@ -1959,7 +2032,7 @@ const joyBase = $('joyBase'), joyStick = $('joyStick');
 const turnBase = $('turnBase'), turnStick = $('turnStick');
 // 마을·게임오버·캐릭터선택 등 오버레이가 떠 있으면 게임 터치 조작을 막는다(스크롤·버튼 충돌 방지)
 function anyOverlayOpen() {
-  const ids = ['townOverlay', 'overOverlay', 'charOverlay', 'startOverlay', 'howtoOverlay', 'rewardOverlay'];
+  const ids = ['townOverlay', 'overOverlay', 'charOverlay', 'startOverlay', 'howtoOverlay', 'rewardOverlay', 'newGameConfirm'];
   return ids.some(id => { const el = document.getElementById(id); return el && !el.classList.contains('hidden'); });
 }
 
@@ -2038,23 +2111,13 @@ btnBlockEl.addEventListener('touchstart', (e) => {
   if (player.alive) startBlock();
 }, { passive: false });
 btnBlockEl.addEventListener('touchmove', (e) => {
-  e.preventDefault();
-  for (let i = 0; i < e.changedTouches.length; i++) {
-    const t = e.changedTouches[i];
-    if (t.identifier !== blockTouchId) continue;
-    const dx = t.clientX - blockCx, dy = t.clientY - blockCy;
-    const dist = Math.hypot(dx, dy);
-    // 버튼을 누른 채 드래그하면 그 방향으로 회전(데드존 밖일 때만)
-    if (dist > 12) { turnVec.x = dx; turnVec.y = dy; turnActive = true; }
-  }
+  e.preventDefault(); // 방어 버튼은 방어 전용(드래그 회전 없음)
 }, { passive: false });
 function endBlockTouch(e) {
   if (blockTouchId === null) return;
   for (let i = 0; i < e.changedTouches.length; i++) {
     if (e.changedTouches[i].identifier === blockTouchId) {
       blockTouchId = null; endBlock();
-      // 방어 버튼 드래그로 켠 회전은 끈다(회전 패드가 따로 잡고 있지 않으면)
-      if (turnTouchId === null) { turnActive = false; turnVec = { x: 0, y: 0 }; }
       break;
     }
   }
@@ -2113,10 +2176,10 @@ function killEnemy(e) {
 // ---------------- STAT UPGRADE SYSTEM ----------------
 // 능력치 강화 계수: 보스 드랍(큼) / 보물상자 물약(작음)
 const STAT_INFO = {
-  atk:      { name: '공격력',   icon: '⚔️', boss: 6,    potion: 3    },
-  atkSpeed: { name: '공격속도', icon: '⚡', boss: 0.18, potion: 0.09 },
-  hp:       { name: '체력',     icon: '❤️', boss: 30,   potion: 15   },
-  speed:    { name: '이동속도', icon: '👟', boss: 1.0,  potion: 0.5  }
+  atk:      { name: '공격력',   icon: '⚔️', boss: 6,    potion: 3,    color: 0xff5544 },
+  atkSpeed: { name: '공격속도', icon: '⚡', boss: 0.18, potion: 0.09, color: 0xffcc33 },
+  hp:       { name: '체력',     icon: '❤️', boss: 30,   potion: 15,   color: 0xff4488 },
+  speed:    { name: '이동속도', icon: '👟', boss: 1.0,  potion: 0.5,  color: 0x44ddff }
 };
 const STAT_KEYS = ['atk', 'atkSpeed', 'hp', 'speed'];
 
@@ -2308,6 +2371,7 @@ function update(dt) {
   swingTimer = Math.max(0, swingTimer - dt);
   updateParticles(dt);
   updateCoins(dt);
+  updatePotions(dt);
   updateParryRings(dt);
   updateSlashes(dt);
   updateFireballs(dt);
@@ -2664,6 +2728,7 @@ function startFloor() {
   player.obj.position.set(px, 0, pz); player.jumpVy = 0; player.onGround = true; player.yaw = Math.atan2(-px, -pz); player.pitch = 0.2; player.isBlocking = false; isCharging = false; SFX.chargeStop(false);
   camera.position.set(px + isoOffsetX, isoOffsetY, pz + isoOffsetZ); camera.lookAt(player.obj.position);
   updateHUD();
+  saveRun(); // 새 층 진입 시 진행 저장(이어하기용)
 }
 // ===== 점수 시스템 =====
 // 층수×100 + 처치×10 + 골드×1 + 시간 보너스 + 노히트 보너스
@@ -2719,8 +2784,32 @@ function applyMetaUpgrades() {
 }
 loadMeta();
 
+// ===== 진행 중인 판 저장(이어하기) : 죽지 않고 종료했을 때만 재개 =====
+function saveRun() {
+  if (!player.alive) return;
+  try {
+    const data = {
+      floor: player.floor, hp: player.hp, hpMax: player.hpMax,
+      lv: player.lv, exp: player.exp, expMax: player.expMax,
+      atk: player.atk, atkSpeed: player.atkSpeed, speed: player.speed,
+      sta: player.sta, staMax: player.staMax,
+      kills: player.kills, runGold: runGold, noHitFloors: player.noHitFloors,
+      elapsed: Date.now() - runStartTime,
+      defeated: Array.from(defeatedBosses),
+      chestSeen: chestSeenThisCycle
+    };
+    localStorage.setItem('dungeon_run', JSON.stringify(data));
+  } catch (e) {}
+}
+function loadRun() {
+  try { const raw = localStorage.getItem('dungeon_run'); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+}
+function clearRun() { try { localStorage.removeItem('dungeon_run'); } catch (e) {} }
+function hasSavedRun() { const r = loadRun(); return r && r.floor >= 1; }
+
 function die() {
   isCharging = false; SFX.chargeStop(false); player.alive = false;
+  clearRun(); // 죽으면 이어하기 불가
   const sc = computeScore();
   const prevBest = getBestScore();
   const isNewBest = sc.total > prevBest;
@@ -2745,6 +2834,24 @@ function die() {
   }, 800);
 }
 function resetGame() { defeatedBosses.clear(); chestSeenThisCycle = false; player.alive = true; player.lv = 1; player.exp = 0; player.expMax = 10; player.atkSpeed = 1.0; player.kills = 0; player.floor = 1; staRegenCooldown = 0; player.gold = 0; runGold = 0; player.noHitFloors = 0; player.hitThisFloor = false; applyMetaUpgrades(); runStartTime = Date.now(); $('rewardOverlay').classList.add('hidden'); rewardPaused = false; startFloor(); }
+// 저장된 진행으로 재개(이어하기). 같은 층의 새 맵에서 시작.
+function resumeGame() {
+  const r = loadRun();
+  if (!r) { resetGame(); return; }
+  defeatedBosses.clear(); chestSeenThisCycle = !!r.chestSeen;
+  if (Array.isArray(r.defeated)) r.defeated.forEach(t => defeatedBosses.add(t));
+  player.alive = true; player.atkSpeed = r.atkSpeed || 1.0;
+  player.floor = r.floor || 1;
+  player.hpMax = r.hpMax || 100; player.hp = Math.min(r.hp || player.hpMax, player.hpMax);
+  player.lv = r.lv || 1; player.exp = r.exp || 0; player.expMax = r.expMax || 10;
+  player.atk = r.atk || 12; player.speed = r.speed || 6.5;
+  player.staMax = r.staMax || 100; player.sta = r.sta || player.staMax;
+  player.kills = r.kills || 0; player.noHitFloors = r.noHitFloors || 0; player.hitThisFloor = false;
+  runGold = r.runGold || 0; staRegenCooldown = 0;
+  runStartTime = Date.now() - (r.elapsed || 0); // 경과 시간 이어가기
+  $('rewardOverlay').classList.add('hidden'); rewardPaused = false;
+  startFloor();
+}
 
 function updateHUD() {
   $('hpFill').style.width = Math.max(0, (player.hp / player.hpMax) * 100) + '%'; $('hpText').textContent = Math.max(0, Math.floor(player.hp)) + '/' + player.hpMax;
@@ -2807,6 +2914,10 @@ async function fetchOracle() {
   }
 }
 
+// 앱을 백그라운드로 보내거나 페이지를 떠날 때 최신 상태 저장(이어하기 정확도↑)
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveRun(); });
+window.addEventListener('pagehide', saveRun);
+
 window.addEventListener('resize', () => { 
   renderer.setSize(window.innerWidth, window.innerHeight); 
   lowResW = Math.max(320, Math.floor(window.innerWidth / PIXEL_SCALE));
@@ -2859,7 +2970,7 @@ function onTap(el, handler) {
 function safeResume() { try { SFX.resume(); } catch (e) { console.error(e); } }
 
 // START 누르면 캐릭터 선택창 표시
-onTap($('startBtn'), () => { safeResume(); $('startOverlay').classList.add('hidden'); $('charOverlay').classList.remove('hidden'); });
+onTap($('startOverlay'), () => { safeResume(); $('startOverlay').classList.add('hidden'); $('charOverlay').classList.remove('hidden'); });
 
 // 캐릭터 카드 선택 → 외형 적용 후 조작 안내 표시
 function beginGameWith(kind) {
@@ -2879,17 +2990,27 @@ function startActualGame() {
   $('howtoOverlay').classList.add('hidden');
   openTown(); // 던전 직행이 아니라 마을부터
 }
-// 실제 던전 진입
-function enterDungeon() {
+// 실제 던전 진입(공통 화면 전환)
+function showDungeonUI() {
   $('townOverlay').classList.add('hidden');
   $('hud').style.display = 'block'; $('minimap').style.display = 'block';
   if (isTouchDevice) $('mobileControls').style.display = 'block';
-  lockOrientation(); resetGame();
+  lockOrientation();
 }
+function enterDungeon() { showDungeonUI(); resetGame(); }   // 새 게임(1층부터)
+function resumeDungeon() { showDungeonUI(); resumeGame(); }  // 이어하기
 // 마을 화면 열기 + 상점 렌더
 function openTown() {
   $('hud').style.display = 'none'; $('minimap').style.display = 'none';
   $('mobileControls').style.display = 'none';
+  // 저장된 진행이 있으면 이어하기 버튼 표시
+  const saved = loadRun();
+  if (saved && saved.floor >= 1) {
+    $('resumeBtn').classList.remove('hidden');
+    $('resumeFloor').textContent = saved.floor;
+  } else {
+    $('resumeBtn').classList.add('hidden');
+  }
   renderShop();
   $('townOverlay').classList.remove('hidden');
 }
@@ -2932,7 +3053,18 @@ document.querySelectorAll('#charChoices .char-card').forEach(card => {
   onTap(card, () => beginGameWith(card.getAttribute('data-char')));
 });
 onTap($('howtoBtn'), () => { safeResume(); startActualGame(); });
-onTap($('enterDungeonBtn'), () => { safeResume(); enterDungeon(); });
+onTap($('enterDungeonBtn'), () => {
+  safeResume();
+  // 진행 중인 저장이 있으면 확인 모달, 없으면 바로 새 게임
+  if (hasSavedRun()) {
+    $('newGameConfirm').classList.remove('hidden');
+  } else {
+    clearRun(); enterDungeon();
+  }
+});
+onTap($('newGameCancel'), () => { $('newGameConfirm').classList.add('hidden'); });
+onTap($('newGameConfirmBtn'), () => { $('newGameConfirm').classList.add('hidden'); clearRun(); enterDungeon(); });
+onTap($('resumeBtn'), () => { safeResume(); resumeDungeon(); });
 
 onTap($('restartBtn'), () => { safeResume(); $('overOverlay').classList.add('hidden'); openTown(); });
 $('oracleBtn').addEventListener('click', (e) => { e.stopPropagation(); fetchOracle(); });
