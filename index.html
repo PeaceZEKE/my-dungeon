@@ -1629,7 +1629,11 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
     hp = (55 + player.floor * 5) * 1.5; dmg = (12 + player.floor * 2.5) * 1.5 * 0.8; sp = 2.2; exp = 15 + player.floor;
     scale = isBoss ? 2.4 : 1.15; skinMat = matOrcSkin.clone(); armorMat = matOrcArmor.clone();
   }
-  if (isBoss) { hp *= 5; dmg *= 1.5; exp *= 10; sp *= 0.8; }
+  if (isBoss) {
+    hp *= 10; dmg *= 1.5; exp *= 10;
+    // 보스는 보통 느리지만(×0.8), 고블린 보스는 민첩 컨셉이라 일반 고블린과 같은 속도 유지
+    if (type !== 'goblin') sp *= 0.8;
+  }
   // 원거리 캐스터: 체력 낮은 딜러 역할(체력 ×0.7, 공격력 근접의 1.75배 = 기본 ×0.8 → ×1.4)
   if (isRanged) { hp *= 0.7; dmg *= 1.75; exp = Math.floor(exp * 1.3); armorMat = getLowPolyMat(0x2b4c8c); }
 
@@ -1808,7 +1812,9 @@ function spawnEnemies(dgn) {
     }
     const bx = (br.cx - MAP_W / 2) * TILE, bz = (br.cy - MAP_H / 2) * TILE;
     let btype = 'goblin'; if (player.floor === 10) btype = 'goblin'; else if (player.floor === 20) btype = 'skeleton'; else btype = 'orc';
-    enemies.push(createAdvancedMonster(bx, bz, btype, true, false));
+    const boss = createAdvancedMonster(bx, bz, btype, true, false);
+    boss.awake = true; // 보스는 처음부터 활성
+    enemies.push(boss);
 
     // 군단: 일반 층보다 약 1.5배 많은 수
     const base = Math.min(10, 2 + Math.floor(player.floor / 2));
@@ -1882,6 +1888,7 @@ function spawnEnemies(dgn) {
       const ex = (rr.cx - MAP_W / 2) * TILE, ez = (rr.cy - MAP_H / 2) * TILE;
       const elite = createAdvancedMonster(ex, ez, etype, true, false);
       elite.isElite = true;
+      elite.hpMax *= 0.5; elite.hp = elite.hpMax; // 엘리트는 보스 2배 강화 제외(기존 5배 유지)
       enemies.push(elite);
       toast('⚠️ 격파한 보스가 난입했습니다! (' + etype.toUpperCase() + ')', 3000);
     }
@@ -2049,6 +2056,7 @@ function updateTrapRoom(dt) {
       const ePos = roomPointAvoidCenter(r, []);
       const elite = createAdvancedMonster(ePos.x, ePos.z, etype, true, false);
       elite.isElite = true; elite.awake = true; elite.homeRoom = r;
+      elite.hpMax *= 0.5; elite.hp = elite.hpMax; // 엘리트는 보스 2배 강화 제외(기존 5배 유지)
       enemies.push(elite); trapEnemies.push(elite);
       // 추가 일반 몬스터(방에 이미 깔린 몬스터에 더해지므로 적당히)
       const n = Math.min(5, 2 + Math.floor(player.floor / 6));
@@ -2884,8 +2892,8 @@ function update(dt) {
     if (e.isBoss && e.type === 'goblin' && e.frozen <= 0) {
       e.specialCd = Math.max(0, e.specialCd - dt);
       if (e.dashState === 'none') {
-        // 적당한 거리(3~9타일)에서 쿨다운이 차면 돌진 예비동작 시작
-        if (e.specialCd <= 0 && d > TILE * 3 && d < TILE * 9) {
+        // 적당한 거리(1.5~9타일)에서 쿨다운이 차면 돌진 예비동작 시작
+        if (e.specialCd <= 0 && d > TILE * 1.5 && d < TILE * 9) {
           e.dashState = 'telegraph'; e.dashTimer = 0.5; // 0.5초 예비동작
           e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI; // 플레이어를 향해 고정
         }
@@ -2920,7 +2928,7 @@ function update(dt) {
           e.damage = orig;
         }
         if (e.dashTimer <= 0) {
-          e.dashState = 'none'; e.specialCd = 4.0 + Math.random() * 2.0; // 다음 돌진까지 4~6초
+          e.dashState = 'none'; e.specialCd = 3.0 + Math.random() * 2.0; // 다음 돌진까지 3~5초
           e.dashVx = 0; e.dashVz = 0;
         }
         // 돌진 중엔 다리 빠르게 움직이는 연출
