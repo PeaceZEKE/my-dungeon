@@ -1005,6 +1005,22 @@ function spawnParryEffect(x, y, z, kind) {
   parryRings.push({ mesh: flash, isLight: true, life: 1.0, delay: 0, scale: 1, grow: 0 });
 }
 
+// 충격파 이펙트: 바닥에 깔려 빠르게 커지는 붉은 링(오크 보스 내려치기)
+function spawnShockwave(x, z, radius) {
+  const ringGeo = new THREE.RingGeometry(0.5, 1.0, 32);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xff7733, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false, fog: false });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.position.set(x, 0.15, z);
+  ring.rotation.x = -Math.PI / 2; // 바닥에 눕힘
+  scene.add(ring);
+  // 목표 반경까지 커지도록 grow 계산(수명 동안 radius에 도달)
+  parryRings.push({ mesh: ring, mat: ringMat, life: 1.0, delay: 0, scale: 1, grow: radius * 5.0 });
+  // 중앙 섬광
+  const flash = new THREE.PointLight(0xff6622, 6, radius * 2.5);
+  flash.position.set(x, 1.0, z); scene.add(flash);
+  parryRings.push({ mesh: flash, isLight: true, life: 1.0, delay: 0, scale: 1, grow: 0 });
+}
+
 function updateParryRings(dt) {
   for (let i = parryRings.length - 1; i >= 0; i--) {
     const r = parryRings[i];
@@ -1142,16 +1158,23 @@ function updateSlashes(dt) {
 const fireballs = [];
 const fireballGeo = new THREE.IcosahedronGeometry(0.32, 0);
 
-function spawnFireball(e) {
+function spawnFireball(e, angleOffset) {
   const ox = e.obj.position.x, oz = e.obj.position.z, oy = 1.0 * e.scale;
   const dx = player.obj.position.x - ox, dz = player.obj.position.z - oz;
   const d = Math.hypot(dx, dz) || 1;
+  let dirX = dx / d, dirZ = dz / d;
+  // 각도 오프셋이 주어지면 플레이어 방향을 그만큼 회전(부채꼴 다발 사격용)
+  if (angleOffset) {
+    const ca = Math.cos(angleOffset), sa = Math.sin(angleOffset);
+    const rx = dirX * ca - dirZ * sa, rz = dirX * sa + dirZ * ca;
+    dirX = rx; dirZ = rz;
+  }
   const speed = 11;
   const mat = new THREE.MeshBasicMaterial({ color: 0x66ccff, transparent: true, opacity: 0.95, fog: false, depthWrite: false });
   const mesh = new THREE.Mesh(fireballGeo, mat);
-  mesh.position.set(ox + (dx/d)*0.6, oy, oz + (dz/d)*0.6);
+  mesh.position.set(ox + dirX*0.6, oy, oz + dirZ*0.6);
   scene.add(mesh);
-  fireballs.push({ mesh, mat, vx: (dx/d)*speed, vz: (dz/d)*speed, damage: Math.floor(e.damage * 0.9), life: 3.0, owner: e, reflected: false });
+  fireballs.push({ mesh, mat, vx: dirX*speed, vz: dirZ*speed, damage: Math.floor(e.damage * 0.9), life: 3.0, owner: e, reflected: false });
 }
 
 function updateFireballs(dt) {
@@ -1737,7 +1760,15 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
     // 보스 전용 패턴 상태
     specialCd: 3.0,        // 특수 패턴 쿨다운(첫 발동까지 약간 여유)
     dashState: 'none',     // none / telegraph(예비동작) / dashing(돌진중)
-    dashTimer: 0, dashVx: 0, dashVz: 0, dashHit: false
+    dashTimer: 0, dashVx: 0, dashVz: 0, dashHit: false,
+    castState: 'none',     // (스켈레톤) none / telegraph(시전준비) / firing(다발사격)
+    castTimer: 0, castShots: 0, summonCount: 0,
+    // 오크 보스 패턴 상태
+    slamState: 'none',     // none / telegraph(내려치기 예비) (충격파)
+    slamTimer: 0,
+    rushState: 'none',     // none / telegraph / rushing (연속 돌진)
+    rushTimer: 0, rushVx: 0, rushVz: 0, rushCount: 0, rushHit: false,
+    enraged: false         // 분노 강화 발동 여부(체력 절반 이하 1회)
   };
   // 외부 모델 설정이 있으면 교체(없으면 도형 그대로). 원거리 캐스터는 로브가 있으니 모델 미적용.
   if (!isRanged) tryLoadModel(grp, type, (model, mixer) => { ent.mixer = mixer; ent.useModel = true; });
@@ -2896,6 +2927,141 @@ function update(dt) {
         e.phase += dt * 18; const ds = Math.sin(e.phase);
         e.limbs.legR.rotation.x = ds * 1.0; e.limbs.legL.rotation.x = -ds * 1.0;
         continue; // 돌진 중엔 일반 이동/공격 로직 건너뜀
+      }
+    }
+
+    // 스켈레톤 보스: 부채꼴 다발 사격과 잡몹 소환을 번갈아 사용. 그 외엔 거리를 두려 함.
+    if (e.isBoss && e.type === 'skeleton' && e.frozen <= 0) {
+      e.specialCd = Math.max(0, e.specialCd - dt);
+      if (e.castState === 'none') {
+        if (e.specialCd <= 0 && d < TILE * 10) {
+          // 살아있는 잡몹 수가 적으면 소환, 많으면 다발 사격
+          const minions = enemies.filter(en => !en.isDead && !en.isBoss && en.homeRoom === e.homeRoom).length;
+          if (minions < 3 && Math.random() < 0.5) {
+            // 소환 패턴: 잠깐 시전 후 주변에 스켈레톤 2~3마리 소환
+            e.castState = 'telegraph'; e.castTimer = 0.7; e.castShots = -1; // -1 = 소환 표시
+          } else {
+            // 다발 사격: 부채꼴로 5발
+            e.castState = 'telegraph'; e.castTimer = 0.6; e.castShots = 5;
+          }
+          e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
+        }
+      } else if (e.castState === 'telegraph') {
+        e.castTimer -= dt;
+        e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI; // 시전 중 플레이어 응시
+        // 시전 중 팔을 들어올리는 연출
+        const w = 1 - Math.max(0, e.castTimer) / (e.castShots === -1 ? 0.7 : 0.6);
+        e.limbs.armR.rotation.x = -w * Math.PI * 0.8;
+        if (e.castTimer <= 0) {
+          if (e.castShots === -1) {
+            // 소환 실행
+            const cnt = 2 + Math.floor(Math.random() * 2); // 2~3마리
+            for (let s = 0; s < cnt; s++) {
+              const ang = Math.random() * Math.PI * 2, rad = 2 + Math.random() * 2;
+              const sx = e.obj.position.x + Math.cos(ang) * rad, sz = e.obj.position.z + Math.sin(ang) * rad;
+              const m = createAdvancedMonster(sx, sz, 'skeleton', false, false);
+              m.awake = true; m.homeRoom = e.homeRoom;
+              enemies.push(m);
+            }
+            toast('💀 소환!');
+          } else {
+            // 부채꼴 다발 사격(±30도 범위에 5발)
+            const spread = Math.PI / 6;
+            for (let s = 0; s < e.castShots; s++) {
+              const off = -spread + (2 * spread) * (s / (e.castShots - 1));
+              spawnFireball(e, off);
+            }
+          }
+          e.castState = 'none'; e.specialCd = 3.5 + Math.random() * 2.0; // 다음 특수까지 3.5~5.5초
+          e.limbs.armR.rotation.x = 0;
+        }
+        continue; // 시전 중엔 일반 이동/공격 건너뜀
+      }
+    }
+
+    // 오크 보스: 분노 강화(체력 절반), 충격파 내려치기, 연속 돌진
+    if (e.isBoss && e.type === 'orc' && e.frozen <= 0) {
+      // 1) 분노 강화: 체력 절반 이하가 되면 1회 발동, 공격력·속도 상승
+      if (!e.enraged && e.hp <= e.hpMax * 0.5) {
+        e.enraged = true;
+        e.damage = Math.floor(e.damage * 1.3);
+        e.speed *= 1.25;
+        spawnShockwave(e.obj.position.x, e.obj.position.z, TILE * 1.5); // 포효 연출
+        hitStop = 0.1;
+        toast('💢 오크 보스가 분노한다!', 3000);
+      }
+      e.specialCd = Math.max(0, e.specialCd - dt);
+      // 2) 충격파 내려치기: 근거리에서 발동
+      if (e.slamState === 'none' && e.rushState === 'none') {
+        if (e.specialCd <= 0) {
+          if (d < TILE * 3.5) {
+            e.slamState = 'telegraph'; e.slamTimer = 0.6; // 무기 들어올리는 예비동작
+            e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
+          } else if (d < TILE * 10) {
+            // 3) 연속 돌진: 멀면 돌진으로 거리 좁힘
+            e.rushState = 'telegraph'; e.rushTimer = 0.5; e.rushCount = 3; // 3회 연속
+            e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
+          }
+        }
+      } else if (e.slamState === 'telegraph') {
+        e.slamTimer -= dt;
+        // 예비동작: 무기 팔을 높이 들어올림
+        const w = 1 - Math.max(0, e.slamTimer) / 0.6;
+        e.limbs.armR.rotation.x = w * Math.PI * 0.95;
+        if (e.slamTimer <= 0) {
+          // 내려치기: 충격파 발생, 반경 안이면 피해+넉백
+          const SHOCK_R = TILE * 3.2;
+          spawnShockwave(e.obj.position.x, e.obj.position.z, SHOCK_R);
+          hitStop = 0.08;
+          if (d < SHOCK_R) {
+            const u = d || 1;
+            const orig = e.damage; e.damage = Math.floor(orig * 1.2);
+            damagePlayer(e.damage, e); e.damage = orig;
+            player.kbX = (dx / u) * 18; player.kbZ = (dz / u) * 18; // 강한 넉백
+          }
+          e.limbs.armR.rotation.x = 0;
+          e.slamState = 'none'; e.specialCd = 4.0 + Math.random() * 2.0;
+        }
+        continue;
+      } else if (e.rushState === 'telegraph') {
+        e.rushTimer -= dt;
+        e.obj.position.y = Math.sin((0.5 - e.rushTimer) / 0.5 * Math.PI) * -0.18;
+        if (e.rushTimer <= 0) {
+          const dd = d || 1;
+          e.rushState = 'rushing'; e.rushTimer = 0.4; e.rushHit = false;
+          e.rushVx = (dx / dd) * e.speed * 6.5; e.rushVz = (dz / dd) * e.speed * 6.5;
+          e.obj.position.y = 0;
+        }
+        continue;
+      } else if (e.rushState === 'rushing') {
+        e.rushTimer -= dt;
+        const ndx = e.rushVx * dt, ndz = e.rushVz * dt;
+        let bx = false, bz = false;
+        for (const w of walls) {
+          if (!bx && Math.abs(e.obj.position.x + ndx - w.x) < w.halfW + e.radius && Math.abs(e.obj.position.z - w.z) < w.halfD + e.radius) bx = true;
+          if (!bz && Math.abs(e.obj.position.x - w.x) < w.halfW + e.radius && Math.abs(e.obj.position.z + ndz - w.z) < w.halfD + e.radius) bz = true;
+        }
+        if (!bx) e.obj.position.x += ndx; if (!bz) e.obj.position.z += ndz;
+        if (bx || bz) e.rushTimer = 0;
+        if (!e.rushHit && d < e.radius + player.radius + 0.4) {
+          e.rushHit = true;
+          const orig = e.damage; e.damage = Math.floor(orig * 1.2);
+          damagePlayer(e.damage, e); e.damage = orig;
+        }
+        e.phase += dt * 18; const rs = Math.sin(e.phase);
+        e.limbs.legR.rotation.x = rs * 1.0; e.limbs.legL.rotation.x = -rs * 1.0;
+        if (e.rushTimer <= 0) {
+          e.rushCount--;
+          if (e.rushCount > 0) {
+            // 다음 돌진: 플레이어 방향 다시 잡고 짧은 예비동작
+            e.rushState = 'telegraph'; e.rushTimer = 0.3;
+            e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
+          } else {
+            e.rushState = 'none'; e.specialCd = 4.0 + Math.random() * 2.0;
+            e.rushVx = 0; e.rushVz = 0;
+          }
+        }
+        continue;
       }
     }
 
