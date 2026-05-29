@@ -182,6 +182,7 @@
       <div class="char-desc">지팡이와 마법서의 술사<br>화염구 공격 · 마나 보호막</div>
     </div>
   </div>
+  <button id="charCancelBtn" style="display:none; padding:12px 28px; font-size:15px; background:rgba(120,130,150,0.25); border:1px solid #6b7280; border-radius:10px; color:#cbd5e0;">취소</button>
 </div>
 
 <div class="overlay hidden" id="howtoOverlay">
@@ -757,6 +758,7 @@ const TOWN_STAIR_ANGLE = 0;                  // 구덩이에서 통로를 여는
 const townAnim = { wavingFlags: null, windmills: null, smokers: null, guards: null, lampLights: null, merchants: null, time: 0 };
 let townMerchant = null; // 상인 NPC 위치/객체(상호작용용)
 let townCleric = null;   // 성직자 NPC 위치/객체(능력 강화 상점)
+let townInnkeeper = null;// 여관 주인 NPC 위치/객체(캐릭터 변경)
 let townNPCs = [];       // 대화 가능한 NPC들 [{x,z,obj,name,lines,wander,...}]
 let townActiveNPC = null;// 현재 대화 중인 NPC
 let townDialogIdx = 0;   // 현재 대사 인덱스
@@ -1456,6 +1458,32 @@ function buildTownScene() {
     return g;
   }
 
+  // 여관 주인 NPC: 앞치마 두른 평민 + 머리 위 대화 마커. 캐릭터 변경 안내.
+  function makeInnkeeper(x, z, ry) {
+    const g = new THREE.Group();
+    const skin = mat(0xe6b690), shirt = mat(0x7a4a3a), apron = mat(0xd8cbb0), pants = mat(0x4a3a2a);
+    g.add(cyl(0.1, 0.1, 0.5, 6, pants, -0.11, 0.25, 0));          // 다리
+    g.add(cyl(0.1, 0.1, 0.5, 6, pants, 0.11, 0.25, 0));
+    g.add(cyl(0.24, 0.26, 0.55, 9, shirt, 0, 0.78, 0));          // 상체
+    g.add(box(0.42, 0.5, 0.22, apron, 0, 0.72, 0.16));           // 앞치마
+    g.add(cyl(0.06, 0.06, 0.5, 7, shirt, 0.28, 0.7, 0));         // 팔
+    g.add(cyl(0.06, 0.06, 0.5, 7, shirt, -0.28, 0.7, 0));
+    g.add(ico(0.17, skin, 0, 1.18, 0));                          // 머리
+    const hair = ico(0.19, mat(0x3a2a1a), 0, 1.24, -0.02); hair.scale.set(1, 0.7, 1.05); g.add(hair); // 머리카락
+    // 머리 위 대화 마커
+    const markMat = mat(0xffe066); markMat.emissive = new THREE.Color(0xffcf3a); markMat.emissiveIntensity = 0.9;
+    const mark = box(0.3, 0.3, 0.08, markMat, 0, 1.95, 0); mark.rotation.y = Math.PI / 4;
+    g.add(mark); g.userData.mark = mark;
+    g.position.set(x, 0, z); g.rotation.y = ry;
+    g.userData.bob = Math.random() * Math.PI * 2;
+    g.userData.noCollide = true;
+    townScene.add(g);
+    townInnkeeper = { x, z, obj: g };
+    if (!townAnim.merchants) townAnim.merchants = [];
+    townAnim.merchants.push(g); // idle 애니메이션 공유
+    return g;
+  }
+
   // 걸어다니는 주민 NPC: 평민 + 다리(걷기 모션) + 머리 위 대화 마커. 마을 안을 천천히 배회.
   function makeVillager(x, z, opt) {
     opt = opt || {};
@@ -1651,6 +1679,12 @@ function buildTownScene() {
   buildings.push(makeBlacksmith(-13, 0));
   buildings.push(makeShop(13.5, 0));
   buildings.push(makeInn(12, -8));
+  // 여관 주인: 여관 앞(중심 쪽)에 세워 캐릭터 변경 안내
+  {
+    const iAng = Math.atan2(12, -8), iR = Math.hypot(12, -8) - 4.5;
+    const ixp = Math.sin(iAng) * iR, izp = Math.cos(iAng) * iR;
+    makeInnkeeper(ixp, izp, Math.atan2(-ixp, -izp));
+  }
 
   // 빽빽한 주택(타운하우스 느낌으로 키 다양화 · 장미/청록/모브 지붕)
   cottages.push(makeCottage({ x: -12, z: 7,    w: 2.9, d: 3.0, wh: 3.0, rh: 1.3, wall: C.plasterB, roof: C.tileA, chimney: true }));
@@ -1789,8 +1823,7 @@ function buildTownScene() {
   placeStallRow(0,             3, 9.0, 2.4, [C.cloth, C.tileC, C.cloth2]);
   // 동쪽 호(상점·여관 앞 빈 공간) — 2개
   placeStallRow(Math.PI / 2,   2, 9.0, 2.4, [C.cloth2, C.cloth]);
-  // 남동쪽 호(오른쪽 아래 빈 광장) — 2개
-  placeStallRow(Math.PI * 0.7, 2, 9.0, 2.4, [C.tileC, C.cloth]);
+  // (남동쪽 호 가판대는 여관 주인 앞 길목을 막아 제거)
   // 광장 북서쪽 가판대 3개: 캐릭터 위치 부근을 중심으로 호 모양 배치(논밭 앞, 위쪽으로)
   placeStallRow(Math.atan2(-10.6, -9.0), 3, 13.9, 3.0, [C.cloth, C.cloth2, C.tileC]);
   // 가판대 호의 가운데 앞(중심 쪽)에 상인 NPC 배치 — 광장 중심을 향하게
@@ -2190,13 +2223,17 @@ function generateDungeon() {
     }
     if (rooms.length < 2) continue;
     rooms.sort((a, b) => a.cx - b.cx);
+    // 복도 타일 기록: 방 영역이 아닌, 통로로 새로 깐 칸만 모은다(매복 복도 배치용).
+    const corridorTiles = [];
+    const inAnyRoom = (gx, gy) => rooms.some(rm => gx >= rm.x && gx < rm.x + rm.w && gy >= rm.y && gy < rm.y + rm.h);
+    const carve = (x, y) => { if (grid[y][x] !== 1) { /* 새 통로 */ } grid[y][x] = 1; if (!inAnyRoom(x, y)) corridorTiles.push({ x, y }); };
     for (let i = 1; i < rooms.length; i++) {
       const a = rooms[i - 1], b = rooms[i]; let x = a.cx, y = a.cy;
-      if (Math.random() < 0.5) { while (x !== b.cx) { grid[y][x] = 1; x += Math.sign(b.cx - x); } while (y !== b.cy) { grid[y][x] = 1; y += Math.sign(b.cy - y); } } 
-      else { while (y !== b.cy) { grid[y][x] = 1; y += Math.sign(b.cy - y); } while (x !== b.cx) { grid[y][x] = 1; x += Math.sign(b.cx - x); } }
-      grid[y][x] = 1;
+      if (Math.random() < 0.5) { while (x !== b.cx) { carve(x, y); x += Math.sign(b.cx - x); } while (y !== b.cy) { carve(x, y); y += Math.sign(b.cy - y); } } 
+      else { while (y !== b.cy) { carve(x, y); y += Math.sign(b.cy - y); } while (x !== b.cx) { carve(x, y); x += Math.sign(b.cx - x); } }
+      carve(x, y);
     }
-    return { grid, rooms, discovered };
+    return { grid, rooms, discovered, corridorTiles };
   }
 }
 
@@ -3099,7 +3136,16 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
     // 자루 끝 강철 스파이크
     const cap = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.16, 5), steel); cap.position.y = 1.08; wpnGrp.add(cap);
   } else { 
-    const dagger = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.6, 4), darkMetal.clone()); dagger.position.y = 0.3; dagger.castShadow = true; wpnGrp.add(dagger);
+    // 고블린 검: 짧은 단검 대신 길쭉한 검(자루+칼날+칼끝)으로 — 휘두를 때 잘 보이게.
+    const steelG = darkMetal.clone();
+    // 손잡이(자루)
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.22, 5), getLowPolyMat(0x4a3320, false)); grip.position.y = 0.11; grip.castShadow = true; wpnGrp.add(grip);
+    // 코등이(가드)
+    const cross = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.06, 0.08), steelG); cross.position.y = 0.23; cross.castShadow = true; wpnGrp.add(cross);
+    // 칼날(길게)
+    const gblade = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.8, 0.05), steelG); gblade.position.y = 0.65; gblade.castShadow = true; wpnGrp.add(gblade);
+    // 칼끝
+    const gtip = new THREE.Mesh(new THREE.ConeGeometry(0.085, 0.22, 4), steelG); gtip.position.y = 1.13; gtip.rotation.y = Math.PI / 4; gtip.castShadow = true; wpnGrp.add(gtip);
   }
   // 원거리 캐스터는 푸른 로브(망토)를 두름
   if (isRanged) {
@@ -3187,7 +3233,7 @@ function spawnEnemies(dgn) {
       const type = ranged ? pick(rp) : pick(meleePool());
       const mon = createAdvancedMonster(ex, ez, type, false, ranged);
       if (ranged) {
-        mon.surroundAngle = (bossRangedCount * (Math.PI * 2 / 6)) + (Math.random() - 0.5) * 0.4;
+        mon.surroundAngle = (bossRangedCount * (Math.PI * 2 / 12)) + (Math.random() - 0.5) * 0.4;
         bossRangedCount++;
       }
       enemies.push(mon);
@@ -3200,6 +3246,7 @@ function spawnEnemies(dgn) {
       const n = Math.min(10, 2 + Math.floor(player.floor / 2));
       const placed = []; // 이 방에 이미 배치된 위치(그리드 좌표)
       let rangedCount = 0; // 이 방의 원거리 몬스터 인덱스(둘러싸기 각도 배정용)
+      let meleeCount = 0;  // 이 방의 근접 몬스터 인덱스(둘러싸기 각도 배정용)
       // 방 크기와 몬스터 수에 맞춰 최소 간격 동적 계산.
       // 가용 면적(중앙 회피 영역 제외)을 n으로 나눈 뒤 원 반지름으로 변환.
       const innerR = Math.min(r.w, r.h) * 0.28;
@@ -3230,9 +3277,13 @@ function spawnEnemies(dgn) {
         mon.homeRoom = r;       // 소속 방
         mon.awake = false;      // 플레이어가 방에 들어오기 전엔 잠듦
         if (ranged) {
-          // 둘러싸기 각도: 같은 방의 원거리 몬스터들이 360도를 골고루 차지하도록
-          mon.surroundAngle = (rangedCount * (Math.PI * 2 / 6)) + (Math.random() - 0.5) * 0.4;
+          // 둘러싸기 각도: 같은 방의 원거리 몬스터들이 360도를 골고루 차지하도록(30도 간격)
+          mon.surroundAngle = (rangedCount * (Math.PI * 2 / 12)) + (Math.random() - 0.5) * 0.4;
           rangedCount++;
+        } else {
+          // 근접도 60도 간격으로 흩어져 사방에서 에워싸게
+          mon.surroundAngle = (meleeCount * (Math.PI * 2 / 6)) + (Math.random() - 0.5) * 0.5;
+          meleeCount++;
         }
         enemies.push(mon);
       }
@@ -3275,6 +3326,12 @@ let trapChestMesh = null;     // 함정 방의 보상 상자
 let trapBarriers = [];        // 입구를 막는 장벽 메시들
 let trapState = 'none';       // none(없음) / armed(대기) / active(전투중) / cleared(클리어)
 let trapEnemies = [];         // 함정 방에서 소환된 적들
+// ===== 매복 복도 =====
+let ambush = null;            // 이번 층의 매복 복도 {gx,gy,x,z,dirX,dirZ} (없으면 null)
+let ambushState = 'none';     // none / armed(대기) / active(전투중) / cleared
+let ambushBarriers = [];      // 복도를 막는 장벽 메시들
+let ambushEnemies = [];       // 매복으로 소환된 적들
+let ambushMarker = null;      // 바닥 경고 표식(미세한 단서)
 // 보물상자 보장: 마지막으로 상자를 '획득'한 층을 기억.
 // 마지막 획득 이후 10개 층을 지나도록 한 번도 못 먹으면 다음 층에 필수 등장.
 let lastChestFloor = 0; // 0 = 아직 한 번도 획득 안 함(시작 기준)
@@ -3345,7 +3402,7 @@ function placeInteractables(dgn) {
 }
 
 // ===== 보상 함정 방 =====
-// 일반 층(보스 층 제외)에서 10% 확률로 방 하나가 함정 방이 된다.
+// 11층 이상(첫 보스 격파 후)·보스 층 제외에서 10% 확률로 방 하나가 함정 방이 된다.
 // 진입 전엔 잠긴 2배 골드 상자만 보이고, 들어서면 입구가 막히며 엘리트+일반 몹이 깨어난다.
 // 전멸시키면 장벽이 사라지고 상자가 열린다.
 function clearTrapRoom() {
@@ -3360,7 +3417,7 @@ function placeTrapRoom(dgn) {
   clearTrapRoom();
   const isBossFloor = player.floor % 10 === 0;
   if (isBossFloor) return;                 // 보스 층엔 함정 방 없음
-  if (player.floor < 3) return;            // 너무 초반엔 없음
+  if (player.floor < 11) return;           // 10층(첫 보스)까지는 함정 방 없음
   if (Math.random() >= 0.10) return;       // 10% 확률
   // 시작 방·계단 방·상자 방·샘물 방을 피해서 후보 선정
   const cand = dgn.rooms.slice(1).filter(rm => rm !== stairsRoom);
@@ -3426,7 +3483,7 @@ function updateTrapRoom(dt) {
         const type = ranged ? pick(rp) : pick(meleePool());
         const mon = createAdvancedMonster(p.x, p.z, type, false, ranged);
         mon.awake = true; mon.homeRoom = r;
-        if (ranged) mon.surroundAngle = (k * (Math.PI * 2 / 6)) + (Math.random() - 0.5) * 0.4;
+        if (ranged) mon.surroundAngle = (k * (Math.PI * 2 / 12)) + (Math.random() - 0.5) * 0.4;
         enemies.push(mon); trapEnemies.push(mon);
       }
       toast('🚪 함정! 문이 닫혔다. 적을 모두 처치하라!', 3000);
@@ -3467,6 +3524,130 @@ function confineToTrapRoom() {
   const minZ = (r.y + 0.6 - MAP_H / 2) * TILE, maxZ = (r.y + r.h - 0.6 - MAP_H / 2) * TILE;
   player.obj.position.x = Math.max(minX, Math.min(maxX, player.obj.position.x));
   player.obj.position.z = Math.max(minZ, Math.min(maxZ, player.obj.position.z));
+}
+
+// ===== 매복 복도 =====
+// 복도 한 지점을 밟으면 앞뒤가 막히고 양쪽에서 적이 쏟아진다. 좁은 통로라 도망칠 곳이 없다.
+function clearAmbush() {
+  for (const b of ambushBarriers) scene.remove(b);
+  ambushBarriers = [];
+  if (ambushMarker) { scene.remove(ambushMarker); ambushMarker = null; }
+  ambushEnemies = [];
+  ambush = null;
+  ambushState = 'none';
+}
+function placeAmbushCorridor(dgn) {
+  clearAmbush();
+  const isBossFloor = player.floor % 10 === 0;
+  if (isBossFloor) return;            // 보스 층 제외
+  if (player.floor < 2) return;       // 너무 초반 제외
+  if (Math.random() >= 0.30) return;  // 30% 확률(복도 기믹은 함정 방보다 자주)
+  const tiles = dgn.corridorTiles || [];
+  if (tiles.length === 0) return;
+  const grid = dgn.grid;
+  // 방에서 충분히 떨어지고(주변이 통로로 둘러싸인 '진짜 복도 중간'), 직선 통로인 칸만 후보로
+  const cand = [];
+  for (const t of tiles) {
+    const { x, y } = t;
+    if (x < 1 || y < 1 || x >= MAP_W - 1 || y >= MAP_H - 1) continue;
+    const left = grid[y][x - 1] === 1, right = grid[y][x + 1] === 1;
+    const up = grid[y - 1][x] === 1, down = grid[y + 1][x] === 1;
+    // 가로 직선(좌우만 뚫림) 또는 세로 직선(상하만 뚫림)인 칸
+    const horiz = left && right && !up && !down;
+    const vert = up && down && !left && !right;
+    if (horiz) cand.push({ x, y, dirX: 1, dirZ: 0 });
+    else if (vert) cand.push({ x, y, dirX: 0, dirZ: 1 });
+  }
+  if (cand.length === 0) return;
+  const c = pick(cand);
+  ambush = {
+    gx: c.x, gy: c.y, dirX: c.dirX, dirZ: c.dirZ,
+    x: (c.x - MAP_W / 2) * TILE, z: (c.y - MAP_H / 2) * TILE
+  };
+  ambushState = 'armed';
+  // 바닥에 미세한 경고 표식(핏자국 같은 어두운 원반) — 자세히 보면 단서가 됨
+  const markMat = new THREE.MeshBasicMaterial({ color: 0x5a1a1a, transparent: true, opacity: 0.5, fog: false, depthWrite: false });
+  const mark = new THREE.Mesh(new THREE.CircleGeometry(TILE * 0.42, 16), markMat);
+  mark.rotation.x = -Math.PI / 2; mark.position.set(ambush.x, -0.18, ambush.z);
+  scene.add(mark); ambushMarker = mark;
+}
+// 매복 복도 진행: 진입 감지 → 봉쇄+양쪽 소환 → 전멸 시 개방+보상
+function updateAmbushCorridor(dt) {
+  if (ambushState === 'armed' && ambush) {
+    // 매복 지점(복도 한 칸) 중심에 충분히 들어서면 발동
+    if (Math.hypot(player.obj.position.x - ambush.x, player.obj.position.z - ambush.z) < TILE * 0.5) {
+      ambushState = 'active';
+      activateAmbushBarriers();
+      spawnAmbushEnemies();
+      if (ambushMarker) { scene.remove(ambushMarker); ambushMarker = null; }
+      toast('🚪 매복! 통로가 막혔다. 양쪽의 적을 처치하라!', 3000);
+    }
+  } else if (ambushState === 'active') {
+    confineToAmbush();
+    const alive = enemies.some(e => !e.isDead && e._ambush);
+    if (!alive) {
+      ambushState = 'cleared';
+      for (const b of ambushBarriers) scene.remove(b);
+      ambushBarriers = [];
+      // 보상: 즉시 골드 지급(상자 없이) — 위험을 무릅쓴 대가
+      const tier = Math.ceil(player.floor / 10);
+      let cg = (6 + Math.floor(Math.random() * 5)) * tier * 2;
+      cg = Math.round(cg * (1 + upgradeLevel('gold') * 0.1));
+      runGold += cg;
+      spawnCoinEffect(player.obj.position.x, player.obj.position.y + 0.8, player.obj.position.z, Math.min(36, cg));
+      toast('✨ 매복 격퇴! 골드 +' + cg, 3000);
+    }
+  }
+}
+// 매복 지점 앞뒤(복도 진행 방향)에 장벽을 세워 가둠. 한 칸 건너 양쪽을 막는다.
+function activateAmbushBarriers() {
+  const barMat = new THREE.MeshBasicMaterial({ color: 0xff5533, transparent: true, opacity: 0.32, fog: false, depthWrite: false, side: THREE.DoubleSide });
+  const h = 3.2, wThick = 0.3;
+  // 진행 방향으로 ±1.5칸 지점에 통로를 가로지르는 벽
+  const off = TILE * 1.5;
+  const mkBar = (px, pz, sx, sz) => {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(sx, h, sz), barMat);
+    b.position.set(px, h / 2, pz); scene.add(b); ambushBarriers.push(b);
+  };
+  if (ambush.dirX === 1) {
+    // 가로 복도 → 좌우를 막음(벽은 세로로 길게)
+    mkBar(ambush.x - off, ambush.z, wThick, TILE);
+    mkBar(ambush.x + off, ambush.z, wThick, TILE);
+  } else {
+    // 세로 복도 → 앞뒤를 막음(벽은 가로로 길게)
+    mkBar(ambush.x, ambush.z - off, TILE, wThick);
+    mkBar(ambush.x, ambush.z + off, TILE, wThick);
+  }
+}
+// 매복 적 소환: 양쪽 장벽 안쪽(매복 구간)에 적을 배치
+function spawnAmbushEnemies() {
+  const n = Math.min(6, 3 + Math.floor(player.floor / 5));
+  const rp = rangedPool();
+  for (let k = 0; k < n; k++) {
+    // 진행 방향으로 -1.2 ~ +1.2칸 사이, 매복 지점 양옆에 흩어 배치
+    const side = (k % 2 === 0) ? 1 : -1;
+    const along = (0.4 + Math.random() * 0.8) * side; // 칸 단위
+    const ex = ambush.x + ambush.dirX * along * TILE + (ambush.dirX ? 0 : (Math.random() - 0.5) * TILE * 0.5);
+    const ez = ambush.z + ambush.dirZ * along * TILE + (ambush.dirZ ? 0 : (Math.random() - 0.5) * TILE * 0.5);
+    const ranged = rp.length > 0 && Math.random() < 0.3;
+    const type = ranged ? pick(rp) : pick(meleePool());
+    const mon = createAdvancedMonster(ex, ez, type, false, ranged);
+    mon.awake = true; mon._ambush = true; // 매복 소속 표식(전멸 판정용)
+    if (ranged) mon.surroundAngle = (k * (Math.PI * 2 / 12)) + (Math.random() - 0.5) * 0.4;
+    enemies.push(mon); ambushEnemies.push(mon);
+  }
+}
+// 매복 전투 중 플레이어를 매복 구간(양쪽 장벽 사이)에 가둠
+function confineToAmbush() {
+  if (!ambush) return;
+  const off = TILE * 1.5 - 0.6; // 장벽 안쪽 여유
+  if (ambush.dirX === 1) {
+    const minX = ambush.x - off, maxX = ambush.x + off;
+    player.obj.position.x = Math.max(minX, Math.min(maxX, player.obj.position.x));
+  } else {
+    const minZ = ambush.z - off, maxZ = ambush.z + off;
+    player.obj.position.z = Math.max(minZ, Math.min(maxZ, player.obj.position.z));
+  }
 }
 // 방 안에서 중앙을 피하고 기존 위치와 떨어진 지점 선택(그리드→월드 좌표 반환)
 function roomPointAvoidCenter(r, placed) {
@@ -3963,6 +4144,7 @@ function update(dt) {
   updateFireballs(dt);
   updateInteractables(dt);
   updateTrapRoom(dt);
+  updateAmbushCorridor(dt);
   if (player.mixer) player.mixer.update(dt);
 
   // Shader Uniform (벽 투시를 위해 현재 플레이어 좌표 전달)
@@ -4433,10 +4615,11 @@ function update(dt) {
 
     // 이동 방향 결정: 근접은 추격, 원거리는 플레이어 주위 각도 위치를 잡고 둘러싸며 카이팅
     let moveDir = 0; // (근접용) +1 접근, -1 후퇴, 0 정지
-    const meleeStop = 1.4 * (e.scale * 0.8);
+    // 공격 사거리: 충돌 반경 합(플레이어+몬스터)보다 넉넉히 커야 작은 몬스터(고블린)도 명중한다.
+    const meleeStop = (player.radius + e.radius) + 0.6;
     let nx = 0, nz = 0; // 이동 변위(이번 프레임)
     if (e.isRanged) {
-      const KEEP = TILE * 1.7;           // 유지하려는 거리(사거리 2타일 안)
+      const KEEP = TILE * 1.3;           // 유지 거리(사거리 2타일 안에서 더 가까이 — 멀리 안 돌게)
       const KEEP_BAND = TILE * 0.4;      // 카이팅 허용 폭(이 안이면 정지)
       // 목표 지점: 플레이어 위치 + (surroundAngle 방향 × KEEP)
       const ang = (e.surroundAngle !== undefined) ? e.surroundAngle : 0;
@@ -4449,14 +4632,55 @@ function update(dt) {
         const sp = e.speed * slowMul * dt;
         nx = (tdx / tdist) * sp; nz = (tdz / tdist) * sp;
       }
-      // 시간에 따라 각도가 천천히 변하면 자연스러운 원형 카이팅(같은 방향으로 회전)
-      e.surroundAngle = ang + dt * 0.25;
+      // 각도가 더 빠르게 변하게 해서 신속하게 포위(원형 카이팅)
+      e.surroundAngle = ang + dt * 0.6;
     } else {
-      moveDir = (d < 20 && d > meleeStop) ? 1 : 0;
-      // 근접 적이 공격 모션 중이면 멈춰서 내려찍음(패링 타이밍을 잡기 쉽게)
-      if (e.swingTimer > 0) moveDir = 0;
-      nx = moveDir !== 0 ? (dx / d) * e.speed * slowMul * dt * moveDir : 0;
-      nz = moveDir !== 0 ? (dz / d) * e.speed * slowMul * dt * moveDir : 0;
+      // 근접: 멀면 직진 접근 → 가까우면 자기 각도로 파고들어 자리잡기 → 자리잡으면 멈춰 공격
+      if (e.surroundAngle === undefined) e.surroundAngle = Math.random() * Math.PI * 2;
+      // 적극성: 가끔 짧게 달려들어(런지) 거리를 좁힌다. 도망치는 플레이어를 따라잡는 용도.
+      if (e.lungeCd === undefined) e.lungeCd = 2 + Math.random() * 2;
+      e.lungeCd = Math.max(0, e.lungeCd - dt);
+      e.lungeTimer = Math.max(0, (e.lungeTimer || 0) - dt);
+      const LUNGE_FROM = TILE * 1.2, LUNGE_TO = TILE * 3.0; // 이 거리 구간에서 도망치는 표적에 런지
+      if (e.lungeTimer <= 0 && e.lungeState === 'active') { e.lungeState = 'none'; }
+      // 런지 발동 조건: 쿨다운 끝 + 적당히 떨어져 있음 + 공격 모션 아님
+      if (e.lungeState !== 'active' && !e.isBoss && e.lungeCd <= 0 && e.swingTimer <= 0 && d > LUNGE_FROM && d < LUNGE_TO && e.frozen <= 0) {
+        e.lungeState = 'active'; e.lungeTimer = 0.3;
+        const u = d || 1;
+        const lungeSpeed = e.speed * 2.6; // 평소보다 훨씬 빠르게 달려듦
+        e.lungeVx = (dx / u) * lungeSpeed; e.lungeVz = (dz / u) * lungeSpeed;
+        e.lungeCd = 2.5 + Math.random() * 2; // 다음 런지까지
+      }
+      if (e.lungeState === 'active') {
+        // 런지 중: 빠르게 이동(벽은 아래 공통 충돌 처리가 막음). 다리도 빠르게.
+        nx = e.lungeVx * slowMul * dt; nz = e.lungeVz * slowMul * dt;
+        e.phase += dt * 16; const ls = Math.sin(e.phase);
+        if (e.limbs.legR) { e.limbs.legR.rotation.x = ls * 0.9; e.limbs.legL.rotation.x = -ls * 0.9; }
+      } else
+      {
+      const SURROUND_R = Math.max(0.6, meleeStop - 0.3); // 둘러싸는 반경(공격 사거리 '안쪽')
+      const SURROUND_FROM = TILE * 2.2;                   // 이 거리 안으로 들어오면 둘러싸기 시작
+      if (e.swingTimer > 0) {
+        // 공격 모션 중엔 멈춰서 내려찍음(패링 타이밍)
+        nx = 0; nz = 0;
+      } else if (d <= meleeStop) {
+        // 사거리 안: 둘러싸기 중단하고 멈춰서 공격에 집중(플레이어가 가만히 있어도 확실히 때림)
+        nx = 0; nz = 0;
+      } else if (d > SURROUND_FROM) {
+        // 멀면 곧장 접근
+        nx = (dx / d) * e.speed * slowMul * dt;
+        nz = (dz / d) * e.speed * slowMul * dt;
+      } else {
+        // 중간 거리: 플레이어 주위 자기 위치(각도)로 파고들며 둘러쌈
+        const tx = player.obj.position.x + Math.cos(e.surroundAngle) * SURROUND_R;
+        const tz = player.obj.position.z + Math.sin(e.surroundAngle) * SURROUND_R;
+        const tdx = tx - e.obj.position.x, tdz = tz - e.obj.position.z;
+        const td = Math.hypot(tdx, tdz) || 1;
+        const sp = e.speed * slowMul * dt;
+        nx = (tdx / td) * sp; nz = (tdz / td) * sp;
+        e.surroundAngle += dt * 0.35; // 천천히 돌며 압박
+      }
+      }
     }
     const eTotalWx = nx + e.kbX * dt, eTotalWz = nz + e.kbZ * dt;
     
@@ -4534,23 +4758,24 @@ function update(dt) {
         }
       } else {
         // 근접: 사거리 안 + 쿨다운 끝나면 공격 시작(윈드업). 데미지는 내려찍는 임팩트 순간에.
-        const E_SWING = 0.7;          // 전체 공격 모션 시간(윈드업 포함, 길게 해서 예고가 보이게)
-        const E_WINDUP = 0.42;        // 이 시점까지 팔을 들어올림(윈드업)
-        const E_IMPACT = 0.52;        // 이 시점에 내려찍기 임팩트(데미지)
+        const E_SWING = 0.62;         // 전체 공격 모션 시간
+        const E_WINDUP = 0.4;         // 윈드업(예고)을 충분히 길게 — 패링 타이밍 여유
+        const E_IMPACT = 0.48;        // 이 시점에 내려찍기 임팩트(데미지)
         if (d <= meleeStop && e.attackCd <= 0 && e.swingTimer <= 0) {
-          e.attackCd = 1.5; e.swingTimer = E_SWING; e.hitPending = true;
+          e.attackCd = 1.0; e.swingTimer = E_SWING; e.hitPending = true;
         }
         if (e.swingTimer > 0) {
           const elapsed = E_SWING - e.swingTimer; // 공격 시작부터 경과
           if (elapsed < E_WINDUP) {
-            // 윈드업: 무기 든 팔을 머리 위로 번쩍 들어올림
+            // 윈드업: 무기 든 팔을 머리 위로 번쩍 들어올림(살짝 더 높이 → 위협 강조)
             const w = elapsed / E_WINDUP;
-            eArmRX = w * (Math.PI * 0.95); // +방향 → 무기가 머리 위로
+            const eo = 1 - (1 - w) * (1 - w); // ease-out: 빠르게 들어 끝에서 정지(절도)
+            eArmRX = eo * (Math.PI * 1.05);
           } else {
-            // 내려찍기: 위에서 앞아래로 빠르게 내려친다
+            // 내려찍기: 위에서 앞아래로 매섭게 내려친다(강한 가속)
             const downP = Math.min(1, (elapsed - E_WINDUP) / (E_SWING - E_WINDUP));
-            const ease = downP * downP; // 가속
-            eArmRX = (Math.PI * 0.95) - ease * (Math.PI * 0.4); // 위(0.95π) → 앞아래(0.55π)
+            const ease = downP * downP * downP; // 3제곱 → 더 급격한 가속(채찍처럼)
+            eArmRX = (Math.PI * 1.05) - ease * (Math.PI * 0.55); // 위(1.05π) → 앞아래(0.5π)
           }
           // 내려찍는 임팩트 순간에 1회 데미지(이때가 패링 타이밍)
           if (e.hitPending && elapsed >= E_IMPACT) {
@@ -4560,7 +4785,9 @@ function update(dt) {
         }
       }
       
-      e.limbs.armR.rotation.x += (eArmRX - e.limbs.armR.rotation.x) * 15 * dt; e.limbs.armL.rotation.x += (eArmLX - e.limbs.armL.rotation.x) * 15 * dt;
+      // 공격 중에는 팔 보간을 빠르게(거의 즉각) — 칼같이 휘두르는 날카로움
+      const armLerp = (e.swingTimer > 0) ? 32 : 15;
+      e.limbs.armR.rotation.x += (eArmRX - e.limbs.armR.rotation.x) * armLerp * dt; e.limbs.armL.rotation.x += (eArmLX - e.limbs.armL.rotation.x) * 15 * dt;
       e.obj.position.y = e.baseY + Math.abs(Math.sin(e.phase)) * 0.15 * e.scale;
     }
   }
@@ -4578,7 +4805,7 @@ function descend() { if (!player.hitThisFloor) player.noHitFloors++; player.hitT
 function startFloor() {
   for (const f of fireballs) scene.remove(f.mesh); fireballs.length = 0;
   for (const s of slashes) scene.remove(s.mesh); slashes.length = 0;
-  dungeon = generateDungeon(); buildDungeonMesh(dungeon); placeStairs(dungeon); placeTrapRoom(dungeon); spawnEnemies(dungeon); placeInteractables(dungeon);
+  dungeon = generateDungeon(); buildDungeonMesh(dungeon); placeStairs(dungeon); placeTrapRoom(dungeon); placeAmbushCorridor(dungeon); spawnEnemies(dungeon); placeInteractables(dungeon);
   const r = dungeon.rooms[0]; const px = (r.cx - MAP_W / 2) * TILE, pz = (r.cy - MAP_H / 2) * TILE;
   player.obj.position.set(px, 0, pz); player.jumpVy = 0; player.onGround = true; player.yaw = Math.atan2(-px, -pz); player.pitch = 0.2; player.isBlocking = false; isCharging = false; SFX.chargeStop(false);
   camera.position.set(px + isoOffsetX, isoOffsetY, pz + isoOffsetZ); camera.lookAt(player.obj.position);
@@ -4886,6 +5113,8 @@ onTap($('startOverlay'), () => {
     if ($('startResumeFloor')) $('startResumeFloor').textContent = saved.floor;
     $('startResumeChoice').classList.remove('hidden');
   } else {
+    townCharChange = false;
+    const cb = $('charCancelBtn'); if (cb) cb.style.display = 'none';
     $('charOverlay').classList.remove('hidden');
   }
 });
@@ -4908,10 +5137,22 @@ onTap($('startToTownBtn'), () => {
 });
 
 // 캐릭터 카드 선택 → 외형 적용 후 조작 안내 표시
+let townCharChange = false; // 마을 여관에서 캐릭터를 바꾸는 중인지(true면 게임 시작 흐름 대신 마을 복귀)
+function openCharChange() {
+  townCharChange = true;
+  const cb = $('charCancelBtn'); if (cb) cb.style.display = 'inline-block';
+  $('charOverlay').classList.remove('hidden');
+}
 function beginGameWith(kind) {
   selectedChar = kind;
   applyCharLook(kind);
   $('charOverlay').classList.add('hidden');
+  // 마을 여관에서 변경한 경우: 조작 안내·게임 시작 없이 마을에 그대로 남는다.
+  if (townCharChange) {
+    townCharChange = false;
+    toast(kind === 'mage' ? '마법사로 변경했습니다.' : '기사로 변경했습니다.');
+    return;
+  }
   // 조작 안내: 터치 기기와 데스크탑 중 맞는 쪽만 표시
   const ht = $('howtoOverlay'); if (ht) {
     $('howtoMobile').style.display = isTouchDevice ? 'block' : 'none';
@@ -4929,6 +5170,7 @@ function startActualGame() {
 function showDungeonUI() {
   $('hud').style.display = 'block'; $('minimap').style.display = 'block';
   if (isTouchDevice) $('mobileControls').style.display = 'block';
+  if ($('btnBlock')) $('btnBlock').style.display = ''; // 던전에선 방어 버튼 표시(기본값 복원)
   lockOrientation();
 }
 
@@ -4941,6 +5183,7 @@ function enterTownMode() {
   // UI: HUD 숨기고 모바일 컨트롤만 표시(전투 입력은 마을에서 무시)
   $('hud').style.display = 'none'; $('minimap').style.display = 'none';
   if (isTouchDevice) $('mobileControls').style.display = 'block';
+  if ($('btnBlock')) $('btnBlock').style.display = 'none'; // 마을에선 방어 버튼 숨김
   lockOrientation();
   // 플레이어 메시를 마을 씬으로 옮기고 성문 근처(남쪽)에서 시작
   townScene.add(player.obj);
@@ -5028,11 +5271,19 @@ function updateTownMode(dt) {
     if (aim.lengthSq() > 0.0001) { aim.normalize(); player.yaw = Math.atan2(-aim.x, -aim.z); }
   }
   player.obj.rotation.y = player.yaw;
-  // 걷기 애니메이션
+  // 걷기 애니메이션(팔·다리 함께 흔들기)
   if (moved) {
     player.walkPhase += 6.0 * dt * 2.5;
     const wSin = Math.sin(player.walkPhase);
     if (player.limbs.legR) { player.limbs.legR.rotation.x = wSin * 0.7; player.limbs.legL.rotation.x = -wSin * 0.7; }
+    // 팔은 다리와 반대로 젓는다(자연스러운 보행)
+    if (player.limbs.armR) { player.limbs.armR.rotation.x = -wSin * 0.5; player.limbs.armR.rotation.z = 0; }
+    if (player.limbs.armL) { player.limbs.armL.rotation.x = wSin * 0.5; player.limbs.armL.rotation.z = 0; }
+  } else {
+    // 멈추면 팔다리를 천천히 기본 자세로 복귀
+    if (player.limbs.legR) { player.limbs.legR.rotation.x *= 0.8; player.limbs.legL.rotation.x *= 0.8; }
+    if (player.limbs.armR) { player.limbs.armR.rotation.x *= 0.8; }
+    if (player.limbs.armL) { player.limbs.armL.rotation.x *= 0.8; }
   }
   // 계단 높이: 계단 폭 안에서 +Z(위)→-Z(아래)로 갈수록 바닥까지 내려감(계단을 밟고 내려가는 느낌)
   const stairTopZ = TOWN_HOLE - 0.45;   // 계단 시작(위, 지상)
@@ -5083,6 +5334,11 @@ function updateTownMerchant(dt) {
     const d = Math.hypot(px - townCleric.x, pz - townCleric.z);
     if (d < bestD) { bestD = d; best = { kind: 'cleric', name: '성직자' }; }
   }
+  // 여관 주인(캐릭터 변경)
+  if (townInnkeeper) {
+    const d = Math.hypot(px - townInnkeeper.x, pz - townInnkeeper.z);
+    if (d < bestD) { bestD = d; best = { kind: 'innkeeper', name: '여관 주인' }; }
+  }
   // 상인(아이템 시스템 준비 중 — 지금은 대화만)
   if (townMerchant) {
     const d = Math.hypot(px - townMerchant.x, pz - townMerchant.z);
@@ -5096,7 +5352,12 @@ function updateTownMerchant(dt) {
   }
   townInteractTarget = best;
   const near = !!best;
-  if (btn) { btn.style.display = near ? 'block' : 'none'; btn.textContent = (best && best.kind === 'cleric') ? '🙏 축복 받기' : '💬 말 걸기'; }
+  if (btn) {
+    btn.style.display = near ? 'block' : 'none';
+    btn.textContent = (best && best.kind === 'cleric') ? '🙏 축복 받기'
+      : (best && best.kind === 'innkeeper') ? '🛏️ 캐릭터 변경'
+      : '💬 말 걸기';
+  }
   if (hint) { hint.style.display = near ? 'block' : 'none'; hint.textContent = near ? ('💬 ' + best.name) : ''; }
 }
 let townInteractTarget = null;
@@ -5104,6 +5365,7 @@ let townInteractTarget = null;
 function townInteract() {
   if (!townInteractTarget) return;
   if (townInteractTarget.kind === 'cleric') { openTownShop(); return; }
+  if (townInteractTarget.kind === 'innkeeper') { openCharChange(); return; }
   if (townInteractTarget.kind === 'merchant') {
     // 아이템 시스템은 추후 — 지금은 안내 대화(무작위)
     const merchSets = [
@@ -5207,6 +5469,7 @@ function closeTownShop() { townShopOpen = false; $('townShop').classList.add('hi
 document.querySelectorAll('#charChoices .char-card').forEach(card => {
   onTap(card, () => beginGameWith(card.getAttribute('data-char')));
 });
+onTap($('charCancelBtn'), () => { townCharChange = false; $('charCancelBtn').style.display = 'none'; $('charOverlay').classList.add('hidden'); });
 onTap($('howtoBtn'), () => { safeResume(); startActualGame(); });
 onTap($('townShopClose'), () => { closeTownShop(); });
 onTap($('townTalkBtn'), () => { townInteract(); });
