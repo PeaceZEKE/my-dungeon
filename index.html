@@ -219,23 +219,49 @@
   <button id="restartBtn">🏘️ 마을로</button>
 </div>
 
-<div class="hidden" id="townOverlay" style="position:fixed; inset:0; z-index:20; overflow-y:scroll; -webkit-overflow-scrolling:touch; touch-action:pan-y; background:radial-gradient(ellipse at center, rgba(10,12,19,0.92) 0%, rgba(0,0,0,0.97) 100%); backdrop-filter:blur(4px);">
-  <div style="display:flex; flex-direction:column; align-items:center; padding:18px 12px 40px; width:100%; box-sizing:border-box; text-align:center;">
-    <h1 style="font-size:clamp(20px,5vw,34px); margin:0; font-weight:900; letter-spacing:3px; color:#fff;">🏘️ 마을</h1>
-    <div id="townGoldRow" style="font-size:15px; color:#ffd86b; margin:6px 0 10px;">💰 보유 골드: <b id="townGold">0</b></div>
-    <div id="shopHeader" style="font-size:13px; color:#a0aec0; margin-bottom:10px;">⚒️ 영구 강화 상점 — 죽어도 유지됩니다</div>
-    <div id="shopList" style="display:flex; flex-direction:column; gap:8px; width:min(540px,92vw); margin-bottom:16px;"></div>
-    <button id="resumeBtn" class="hidden" style="background:rgba(95,200,150,0.25); border-color:#5fc896; color:#aef5d0; padding:18px 36px; font-size:20px; margin-bottom:18px;">▶ 이어하기 (<span id="resumeFloor">1</span>층)</button>
-    <button id="enterDungeonBtn" style="padding:18px 36px; font-size:20px;">⚔️ 새 게임 (1층부터)</button>
+
+<div id="townPrompt" style="display:none; position:fixed; left:0; right:0; bottom:120px; z-index:15; text-align:center; pointer-events:none; color:#ffe9b0; font-weight:bold; font-size:18px; text-shadow:0 2px 8px rgba(0,0,0,0.9);">⬇️ 던전 입구 — 계단 아래 문 앞에 서면 입장</div>
+<div id="townLoadWrap" style="display:none; position:fixed; left:0; right:0; bottom:120px; z-index:16; text-align:center; pointer-events:none;">
+  <div id="townLoadText" style="color:#ffe9b0; font-weight:bold; font-size:16px; margin-bottom:8px; text-shadow:0 2px 8px rgba(0,0,0,0.9);">던전 입장까지 3.0초</div>
+  <div style="width:min(360px,76vw); height:14px; margin:0 auto; background:rgba(0,0,0,0.55); border:1px solid #5fb0d0; border-radius:8px; overflow:hidden;">
+    <div id="townLoadBar" style="width:0%; height:100%; background:linear-gradient(90deg,#5fb0d0,#aee3f5); transition:width 0.1s;"></div>
   </div>
 </div>
-
-<div class="hidden" id="newGameConfirm" style="position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.75); padding:24px;">
-  <div style="background:#161a24; border:1px solid #4a5568; border-radius:14px; padding:22px; max-width:340px; text-align:center;">
-    <div style="font-size:15px; color:#e2e8f0; line-height:1.5; margin-bottom:16px;">진행 중인 게임이 있습니다.<br>새로 시작하면 이어하기 기록이 사라집니다.<br>계속할까요?</div>
-    <div style="display:flex; gap:10px; justify-content:center;">
-      <button id="newGameCancel" style="background:rgba(120,130,150,0.25); border-color:#6b7280;">취소</button>
-      <button id="newGameConfirmBtn" style="background:rgba(220,90,90,0.3); border-color:#e06868; color:#ffd0d0;">새로 시작</button>
+<div id="townCoord" style="display:none; position:fixed; left:12px; top:60px; z-index:17; pointer-events:none; color:#aee3f5; font-weight:bold; font-size:15px; background:rgba(0,0,0,0.6); padding:6px 12px; border-radius:6px; font-family:monospace;">x: 0.0, z: 0.0</div>
+<!-- 3D 마을: 상인에게 말 걸면 열리는 강화 상점 -->
+<div id="townShop" class="hidden" style="position:fixed; inset:0; z-index:25; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.78); backdrop-filter:blur(4px); padding:20px;">
+  <div style="width:min(540px,94vw); max-height:88vh; overflow-y:auto; background:rgba(16,20,30,0.98); border:1px solid #5fb0d0; border-radius:14px; padding:20px; text-align:center;">
+    <h2 style="margin:0 0 4px; font-size:22px; font-weight:900; letter-spacing:2px; color:#fff;">🙏 성직자의 축복</h2>
+    <div style="font-size:12px; color:#a0aec0; margin-bottom:8px;">영구 강화 — 죽어도 유지됩니다</div>
+    <div style="font-size:15px; color:#ffd86b; margin-bottom:12px;">💰 보유 골드: <b id="townShopGold">0</b></div>
+    <div id="townShopList" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;"></div>
+    <button id="townShopClose" style="padding:12px 28px; font-size:16px;">닫기</button>
+  </div>
+</div>
+<div id="townInteract" style="display:none; position:fixed; left:0; right:0; bottom:170px; z-index:15; text-align:center; pointer-events:none; color:#aee3f5; font-weight:bold; font-size:17px; text-shadow:0 2px 8px rgba(0,0,0,0.9);">💬 상인에게 말 걸기</div>
+<button id="townTalkBtn" style="display:none; position:fixed; left:50%; transform:translateX(-50%); bottom:120px; z-index:16; padding:12px 26px; font-size:16px; background:rgba(95,176,208,0.9); border:1px solid #aee3f5; border-radius:10px; color:#04121a; font-weight:bold;">💬 말 걸기</button>
+<button id="townTimeBtn" style="display:none; position:fixed; right:12px; top:12px; z-index:16; padding:8px 14px; font-size:14px; background:rgba(0,0,0,0.55); border:1px solid #5fb0d0; border-radius:8px; color:#aee3f5; font-weight:bold;">🌙 밤</button>
+<button id="townMusicBtn" style="display:none; position:fixed; right:12px; top:54px; z-index:16; padding:8px 14px; font-size:14px; background:rgba(0,0,0,0.55); border:1px solid #5fb0d0; border-radius:8px; color:#aee3f5; font-weight:bold;">🎵 음악</button>
+<!-- 시작 시: 진행 중인 모험이 있을 때 이어하기/마을 선택 -->
+<div id="startResumeChoice" class="hidden" style="position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.85); padding:24px;">
+  <div style="width:min(440px,92vw); background:rgba(16,20,30,0.98); border:1px solid #5fb0d0; border-radius:14px; padding:24px; text-align:center;">
+    <h2 style="margin:0 0 12px; font-size:20px; font-weight:900; color:#fff;">돌아오신 걸 환영합니다</h2>
+    <div style="font-size:14px; color:#a0aec0; margin-bottom:18px;">진행 중이던 던전 탐험이 있습니다.</div>
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <button id="startResumeBtn" style="padding:14px; font-size:17px; background:rgba(95,200,150,0.25); border-color:#5fc896; color:#aef5d0;">▶ 이어하기 (<span id="startResumeFloor">1</span>층)</button>
+      <button id="startToTownBtn" style="padding:14px; font-size:17px; background:rgba(95,176,208,0.25); border-color:#5fb0d0; color:#aee3f5;">🏘️ 마을로 가기</button>
+    </div>
+  </div>
+</div>
+<!-- 시작 선택 끝 -->
+<!-- NPC 대화창 -->
+<div id="townDialog" class="hidden" style="position:fixed; left:0; right:0; bottom:0; z-index:26; display:flex; justify-content:center; padding:0 16px 28px; pointer-events:none;">
+  <div style="width:min(560px,94vw); background:rgba(16,20,30,0.97); border:1px solid #5fb0d0; border-radius:14px; padding:18px 20px; pointer-events:auto;">
+    <div id="townDialogName" style="font-weight:900; font-size:16px; color:#aee3f5; letter-spacing:1px; margin-bottom:8px;">주민</div>
+    <div id="townDialogText" style="font-size:15px; color:#e2e8f0; line-height:1.55; min-height:48px; text-align:left;">...</div>
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+      <button id="townDialogNext" style="padding:9px 20px; font-size:14px; background:rgba(95,176,208,0.25); border:1px solid #5fb0d0; color:#aee3f5;">다음 ▶</button>
+      <button id="townDialogClose" style="padding:9px 20px; font-size:14px;">닫기</button>
     </div>
   </div>
 </div>
@@ -555,7 +581,67 @@ const SFX = (() => {
     src.start(t); src.stop(t + 0.14);
   }
 
-  return { swing, hit, hurt, block, parry, chargeStart, chargeStop, release, resume: ac };
+  // ===== 마을 배경음악(부드러운 화음 패드 반복) =====
+  let musicNodes = null;     // {master, voices, lfo} 재생 중이면 객체
+  let musicTimer = null;     // 화음 진행 setInterval
+  let musicChordIdx = 0;
+  // 잔잔한 코드 진행(Am - F - C - G 느낌), 각 음은 주파수(Hz)
+  const MUSIC_CHORDS = [
+    [220.0, 261.6, 329.6],   // A C E
+    [174.6, 220.0, 261.6],   // F A C
+    [261.6, 329.6, 392.0],   // C E G
+    [196.0, 246.9, 293.7]    // G B D
+  ];
+  function playChord(c, freqs, when, dur, gainNode) {
+    freqs.forEach((f, i) => {
+      const o = c.createOscillator(); o.type = i === 0 ? 'triangle' : 'sine';
+      o.frequency.value = f;
+      const g = c.createGain();
+      // 부드러운 페이드 인/아웃
+      g.gain.setValueAtTime(0.0001, when);
+      g.gain.exponentialRampToValueAtTime(0.16 / freqs.length, when + 0.8);
+      g.gain.setValueAtTime(0.16 / freqs.length, when + dur - 1.0);
+      g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+      o.connect(g); g.connect(gainNode);
+      o.start(when); o.stop(when + dur + 0.05);
+    });
+  }
+  function musicStart() {
+    const c = ac(); if (!c) return;
+    if (musicNodes) return; // 이미 재생 중
+    const master = c.createGain(); master.gain.value = 0.0;
+    master.gain.setValueAtTime(0.0, c.currentTime);
+    master.gain.linearRampToValueAtTime(0.7, c.currentTime + 2.0); // 서서히 페이드 인
+    // 은은한 저역 패드를 위한 로우패스
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1600;
+    master.connect(lp); lp.connect(c.destination);
+    musicNodes = { master, lp };
+    musicChordIdx = 0;
+    const CHORD_DUR = 4.0; // 한 코드 길이(초)
+    const step = () => {
+      if (!musicNodes) return;
+      const cc = ac(); if (!cc) return;
+      playChord(cc, MUSIC_CHORDS[musicChordIdx % MUSIC_CHORDS.length], cc.currentTime, CHORD_DUR, master);
+      musicChordIdx++;
+    };
+    step(); // 첫 코드 즉시
+    musicTimer = setInterval(step, CHORD_DUR * 1000);
+  }
+  function musicStop() {
+    if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
+    if (musicNodes) {
+      const c = ac();
+      try {
+        musicNodes.master.gain.cancelScheduledValues(c.currentTime);
+        musicNodes.master.gain.setValueAtTime(musicNodes.master.gain.value, c.currentTime);
+        musicNodes.master.gain.linearRampToValueAtTime(0.0001, c.currentTime + 0.6); // 페이드 아웃
+      } catch (e) {}
+      const old = musicNodes; musicNodes = null;
+      setTimeout(() => { try { old.master.disconnect(); old.lp.disconnect(); } catch (e) {} }, 800);
+    }
+  }
+
+  return { swing, hit, hurt, block, parry, chargeStart, chargeStop, release, resume: ac, musicStart, musicStop };
 })();
 
 const PIXEL_SCALE = 1.5; 
@@ -657,6 +743,1278 @@ function applyAdaptiveFOV() {
   camera.updateProjectionMatrix();
 }
 applyAdaptiveFOV();
+
+// ===== TOWN MODULE START =====
+// ===== 마을 씬 모듈 (뷰어 지오메트리를 그대로 이식) =====
+let townScene = null;
+let townBuilt = false;
+let inTown = false;
+let townColliders = [];
+const TOWN_HOLE = 3.9;
+const TOWN_WALL_R = 26;
+const TOWN_ENTRY_X = 0, TOWN_ENTRY_Z = -2.6; // 던전 입장 지점(계단 다 내려간 문 앞 바닥)
+const TOWN_STAIR_ANGLE = 0;                  // 구덩이에서 통로를 여는 방향(+Z = 계단 입구)
+const townAnim = { wavingFlags: null, windmills: null, smokers: null, guards: null, lampLights: null, merchants: null, time: 0 };
+let townMerchant = null; // 상인 NPC 위치/객체(상호작용용)
+let townCleric = null;   // 성직자 NPC 위치/객체(능력 강화 상점)
+let townNPCs = [];       // 대화 가능한 NPC들 [{x,z,obj,name,lines,wander,...}]
+let townActiveNPC = null;// 현재 대화 중인 NPC
+let townDialogIdx = 0;   // 현재 대사 인덱스
+
+function buildTownScene() {
+  if (townBuilt) return townScene;
+  townScene = new THREE.Scene();
+  const nightSky = 0x141a2e;
+  townScene.background = new THREE.Color(nightSky);
+  townScene.fog = new THREE.FogExp2(nightSky, 0.013);
+  // 조명(밤 분위기: 어둡고 푸른 톤)
+  const ambient = new THREE.AmbientLight(0xffffff, 0.30); townScene.add(ambient);
+  const sun = new THREE.DirectionalLight(0x4a5a8a, 0.18); // 달빛(약한 푸른빛)
+  sun.position.set(14, 22, 10); sun.castShadow = true;
+  sun.shadow.mapSize.width = 1024; sun.shadow.mapSize.height = 1024;
+  sun.shadow.camera.near = 1; sun.shadow.camera.far = 90;
+  sun.shadow.camera.left = -42; sun.shadow.camera.right = 42; sun.shadow.camera.top = 42; sun.shadow.camera.bottom = -42;
+  townScene.add(sun);
+  const sky = new THREE.HemisphereLight(0x2a3a66, 0x1a1a28, 0.3); townScene.add(sky);
+  const fillRim = new THREE.DirectionalLight(0x6a7aaa, 0.3); fillRim.position.set(-12, 6, -10); townScene.add(fillRim);
+  // 낮/밤 전환에서 제어할 조명·하늘 참조 저장
+  townAnim.lights = { ambient, sun, sky, fillRim, scene: townScene };
+
+  // 충돌 콜라이더 헬퍼: 건물 그룹의 평면 위치/대략 반경을 등록
+  const _collide = (x, z, r) => townColliders.push({ x, z, r });
+
+  function mat(colorHex, isMetal = false, rough) {
+    return new THREE.MeshStandardMaterial({
+      color: colorHex, flatShading: true,
+      roughness: rough !== undefined ? rough : (isMetal ? 0.5 : 0.92),
+      metalness: isMetal ? 0.45 : 0.0
+    });
+  }
+
+  // 팔레트 (업로드한 배경 원화 기반 — 장밋빛/청록 지붕 + 세이지·크림 회벽 + 마력 균열)
+  const C = {
+    grass:    0x7a8358, grassD: 0x68724a,
+    dirt:     0x8a785a, dirtD:  0x6f5e44, plaza: 0xd2c8a6,
+    flag:     0xd9cfb0, flagD:  0xc8bd97, flagE: 0xe7e0c7,        // 포석(크림)
+    rubble:   0x9c8f72, rubbleD: 0x7c6f55,                        // 잔해
+    plasterA: 0xcdbf9f, plasterB: 0x9aa79b, plasterC: 0x879792,   // 크림/세이지/청록 회벽
+    timber:   0x584734, timberD: 0x43331f,
+    thatch:   0x9c8a62, thatchD: 0x88764f,
+    tileA:    0xa75852, tileB:  0x8a565c, tileC: 0x5f7d7a,        // 장미/모브/청록 지붕
+    stone:    0x8f938a, stoneD: 0x6f7369,
+    wood:     0x6e5436, woodD:  0x55401f,
+    leaf:     0x5a6e40, leafD:  0x4a5c34, leafA: 0x66794a,
+    metal:    0x6b7079, water:  0x3c6f7e,
+    glass:    0x2a3340, warm:   0xffcf7a, ember: 0xff5a1e,
+    rift:     0xff9a3c, riftCore: 0xffe9b0, riftDeep: 0x7a2a16,   // 마력 균열
+    cloth:    0xa8554a, cloth2: 0x5f7d7a, hay: 0xc2a358,
+  };
+  const M = {};
+  for (const k in C) M[k] = mat(C[k], k === 'metal');
+  // 밤에 빛나는 창문용 머티리얼(공유, emissive 토글)
+  function makeWindowMat() {
+    const m = mat(C.glass); m.emissive = new THREE.Color(C.warm); m.emissiveIntensity = 0; return m;
+  }
+  const windowMats = [];
+  const lampLights = [];   // 가로등/등불 PointLight 모음
+  let isNight = false;
+
+  // ===== 형상 헬퍼 =====
+  function box(w, h, d, material, x = 0, y = 0, z = 0) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+    m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; return m;
+  }
+  function cyl(rt, rb, h, seg, material, x = 0, y = 0, z = 0) {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), material);
+    m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; return m;
+  }
+  function ico(r, material, x = 0, y = 0, z = 0) {
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), material);
+    m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; return m;
+  }
+  // 박공 지붕(삼각 프리즘): 폭 w(X) · 마루높이 h(Y) · 길이 d(Z)
+  function gable(w, h, d, material) {
+    const s = new THREE.Shape();
+    s.moveTo(-w / 2, 0); s.lineTo(w / 2, 0); s.lineTo(0, h); s.lineTo(-w / 2, 0);
+    const g = new THREE.ExtrudeGeometry(s, { depth: d, bevelEnabled: false });
+    g.translate(0, 0, -d / 2); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, material); m.castShadow = true; m.receiveShadow = true; return m;
+  }
+  // 피라미드(원뿔 4면) 지붕
+  function pyramid(r, h, material) {
+    const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 4), material);
+    m.rotation.y = Math.PI / 4; m.castShadow = true; m.receiveShadow = true; return m;
+  }
+
+  // ===== 지면 (크림빛 포석 광장 — 중앙은 던전 입구로 뚫림) =====
+  // 8각 도넛 베이스 — 중앙이 비고, 가장자리는 보이드로 페이드
+  const ground = new THREE.Mesh(new THREE.RingGeometry(TOWN_HOLE, 33, 8, 1), mat(C.flagD));
+  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; townScene.add(ground);
+  // 포석 타일 스캐터(격자 + 지터 + 무작위 결손 = 깨진 포장 느낌)
+  const tileTones = [C.flag, C.flagD, C.flagE, C.flag, C.rubble];
+  const tileMats = tileTones.map(c => mat(c));
+  const PITCH = 1.25, RAD = 13.5;
+  for (let i = -12; i <= 12; i++) for (let j = -12; j <= 12; j++) {
+    const bx = i * PITCH, bz = j * PITCH, r = Math.hypot(bx, bz);
+    if (r > RAD || r < TOWN_HOLE + 0.4) continue;                 // 중앙 입구는 비움
+    if (Math.random() < 0.10) continue;                      // 빠진 포석
+    const near = r < TOWN_HOLE + 1.4;                              // 입구 주변은 잔해 톤
+    const tm = near ? tileMats[4] : tileMats[(i * 3 + j + 200) % 4];
+    const s = 0.95 + Math.random() * 0.22;
+    const tile = new THREE.Mesh(new THREE.BoxGeometry(s, 0.08 + Math.random() * 0.06, s), tm);
+    tile.position.set(bx + (Math.random() - 0.5) * 0.16, 0.045, bz + (Math.random() - 0.5) * 0.16);
+    tile.rotation.y = (Math.random() - 0.5) * 0.22;
+    tile.receiveShadow = true; townScene.add(tile);
+  }
+  // 흩어진 잔돌(입구 바깥)
+  for (let i = 0; i < 24; i++) {
+    const a = Math.random() * Math.PI * 2, d = TOWN_HOLE + 0.8 + Math.random() * 4.0;
+    townScene.add(box(0.3 + Math.random() * 0.4, 0.18 + Math.random() * 0.25, 0.3 + Math.random() * 0.4,
+      Math.random() < 0.5 ? mat(C.rubbleD) : M.stoneD, Math.cos(a) * d, 0.1, Math.sin(a) * d));
+  }
+  // (길 헬퍼는 남겨두되 포석 광장에선 사용하지 않음)
+  function path(angle, len, w) {
+    const p = box(w, 0.06, len, M.dirt, 0, 0.06, 0);
+    const g = new THREE.Group();
+    g.add(p); p.position.z = -(7 + len / 2);
+    g.rotation.y = angle; townScene.add(g);
+  }
+  // (방사형 흙길은 포석 광장에서 제거)
+
+  // ===== 중앙 던전 입구 — 자연 동굴 구덩이 + 설치된 직선 돌계단 + 안쪽 닫힌 문 =====
+  function makeDungeonEntrance() {
+    const g = new THREE.Group();
+    const R = TOWN_HOLE, DEPTH = 3.4;
+    const rockA = mat(C.stoneD), rockB = mat(C.stone), rockC = mat(C.rubbleD), darkMat = mat(0x141110);
+    const floorY = -DEPTH + 0.06;
+
+    // 어두운 안쪽 배경(구덩이 너머가 비치지 않도록) — 안쪽 면만 보이는 원통
+    const backing = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.02, R * 0.7, DEPTH + 0.4, 20, 1, true), darkMat);
+    backing.material.side = THREE.BackSide; backing.position.y = -DEPTH / 2; g.add(backing);
+
+    // 동굴 바닥(불규칙한 어두운 암반 + 자갈)
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(R * 0.95, 9), darkMat);
+    floor.rotation.x = -Math.PI / 2; floor.position.y = floorY; floor.receiveShadow = true; g.add(floor);
+    // 바닥 자갈 — 중앙 통로(계단↔문)는 비우고 양옆 벽 쪽으로 자연스럽게 배치
+    const floorRocks = [
+      [-1.9, -0.2], [-2.3, -1.1], [-1.6, -1.9], [-2.5, 0.4],
+      [1.9, -0.5], [2.4, -1.4], [1.7, -2.1], [2.2, 0.3],
+      [-1.4, 0.7], [1.5, 0.8],
+    ];
+    floorRocks.forEach(([fx, fz], i) => {
+      const sz = 0.22 + Math.random() * 0.34;
+      const rk = ico(sz, i % 2 ? rockC : rockA,
+        fx + (Math.random() - 0.5) * 0.3, floorY + sz * 0.6, fz + (Math.random() - 0.5) * 0.3);
+      rk.rotation.set(Math.random(), Math.random(), Math.random()); g.add(rk);
+      // 절반 확률로 옆에 작은 짝돌 하나 더 (군집 느낌)
+      if (Math.random() < 0.5) {
+        const ssz = 0.12 + Math.random() * 0.16;
+        const sr = ico(ssz, rockB, fx + (Math.random() - 0.5) * 0.7, floorY + ssz * 0.6, fz + (Math.random() - 0.5) * 0.7);
+        sr.rotation.set(Math.random(), Math.random(), Math.random()); g.add(sr);
+      }
+    });
+
+    // 자연 동굴 벽 — 바위를 여러 단으로 불규칙하게 쌓아 유기적인 림/벽 형성
+    // 앞쪽(+Z, 계단 입구)과 뒤쪽(-Z, 문)은 통로로 비워둠
+    const FRONT = Math.PI / 2, BACK = -Math.PI / 2;
+    const rows = [
+      { y: 0.18, rr: R + 0.05, n: 22, s: 0.55 },   // 지상 림
+      { y: -0.5, rr: R - 0.05, n: 20, s: 0.62 },
+      { y: -1.3, rr: R - 0.18, n: 18, s: 0.66 },
+      { y: -2.2, rr: R - 0.3,  n: 16, s: 0.62 },
+      { y: -3.0, rr: R - 0.45, n: 14, s: 0.5  },
+    ];
+    rows.forEach((row, ri) => {
+      for (let i = 0; i < row.n; i++) {
+        const a = i / row.n * Math.PI * 2 + (ri * 0.2);
+        const dFront = Math.abs(Math.atan2(Math.sin(a - FRONT), Math.cos(a - FRONT)));
+        const dBack = Math.abs(Math.atan2(Math.sin(a - BACK), Math.cos(a - BACK)));
+        const clearFront = dFront < 0.95;                   // 계단 통로: 모든 단 개방
+        const clearBack = row.y <= -1.0 && dBack < 0.8;     // 문 개구부: 문 높이 아래 단만 (위는 벽으로 채움)
+        if (clearFront || clearBack) continue;
+        const rr = row.rr + (Math.random() - 0.5) * 0.4;
+        const sz = row.s + Math.random() * 0.45;
+        const rk = ico(sz, [rockA, rockB, rockC][(i + ri) % 3],
+          Math.cos(a) * rr, row.y + (Math.random() - 0.5) * 0.3, Math.sin(a) * rr);
+        rk.rotation.set(Math.random() * 0.5, Math.random() * Math.PI, Math.random() * 0.5);
+        g.add(rk);
+      }
+    });
+
+    // 설치된 직선 돌계단 — 앞쪽(+Z) 림에서 바닥까지, 바닥 통로를 거쳐 문 앞에서 끝남
+    const n = 12, zTop = R - 0.45, zBot = -0.7;
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      const z = zTop + (zBot - zTop) * t;
+      const treadY = -0.28 - t * (DEPTH - 0.5);               // 트레드 윗면
+      const h = treadY - floorY + 0.1;                        // 바닥까지 솔리드 → 계단 옆면 형성
+      const step = box(2.0, h, 0.5, i % 2 ? rockB : rockA, 0, floorY + h / 2, z);
+      g.add(step);
+    }
+    // 계단 양옆 난간 바위(자연 벽에 계단을 낸 느낌)
+    for (let i = 0; i < 7; i++) {
+      const t = i / 6, z = zTop + (zBot - zTop) * t;
+      const y = -0.1 - t * (DEPTH - 0.7);
+      const outset = 1.35 + (1 - t) * 0.35;   // 위로 갈수록 바깥으로 벌려 입구를 넓게
+      [-outset, outset].forEach(sx => {
+        const rk = ico(0.4 + Math.random() * 0.3, i % 2 ? rockC : rockA, sx + (Math.random() - 0.5) * 0.2, y, z);
+        rk.rotation.set(Math.random(), Math.random(), Math.random()); g.add(rk);
+      });
+    }
+
+    // 동굴 입구 + 닫힌 문 — 안쪽 벽(-Z), 계단과 겹치지 않음
+    const cave = new THREE.Group(); cave.position.set(0, floorY, -(R - 0.55));
+    cave.add(box(1.8, 2.2, 0.6, darkMat, 0, 1.05, -0.2));     // 문 뒤 어두운 공간
+    // 거친 석조 아치 틀
+    cave.add(box(0.34, 2.1, 0.6, rockA, -1.0, 1.05, 0));
+    cave.add(box(0.34, 2.1, 0.6, rockB, 1.0, 1.05, 0));
+    const arch = cyl(1.0, 1.0, 0.6, 12, rockA, 0, 2.1, 0); arch.rotation.x = Math.PI / 2; cave.add(arch);
+    cave.add(box(2.5, 0.45, 0.7, rockB, 0, 2.15, 0));         // 상단 키스톤 보
+    // 닫힌 나무문 + 철 보강 (+Z 쪽, 통로를 향함)
+    const door = box(1.45, 1.9, 0.16, mat(C.woodD), 0, 0.95, 0.3); cave.add(door);
+    cave.add(box(1.47, 0.16, 0.2, M.metal, 0, 1.52, 0.33));
+    cave.add(box(1.47, 0.16, 0.2, M.metal, 0, 0.56, 0.33));
+    cave.add(box(0.12, 1.75, 0.18, M.metal, -0.58, 0.95, 0.33));
+    cave.add(box(0.12, 1.75, 0.18, M.metal, 0.58, 0.95, 0.33));
+    const ring = cyl(0.13, 0.13, 0.05, 10, M.metal, 0.0, 0.95, 0.4); ring.rotation.x = Math.PI / 2; cave.add(ring);
+    g.add(cave);
+
+    // 문 양옆 횃불(상시 발광 + 깜빡임)
+    const torches = [];
+    [-1.3, 1.3].forEach(sx => {
+      const tg = new THREE.Group();
+      tg.add(box(0.1, 0.7, 0.1, M.woodD, 0, 0, 0));
+      const fm = mat(C.warm); fm.emissive = new THREE.Color(C.ember); fm.emissiveIntensity = 1.0;
+      tg.add(ico(0.16, fm, 0, 0.45, 0));
+      const pl = new THREE.PointLight(0xff7a2e, 1.3, 7, 2.0); pl.position.set(0, 0.45, 0); tg.add(pl);
+      tg.position.set(sx, floorY + 1.4, -(R - 1.05)); g.add(tg);
+      torches.push({ light: pl, flame: fm, ph: sx });
+    });
+    g.userData.torches = torches;
+    // 바닥 보조광
+    const fill = new THREE.PointLight(0xffae66, 0.9, 9, 2.0); fill.position.set(0, floorY + 1.6, -R * 0.1); g.add(fill);
+    g.userData.fill = fill;
+    townScene.add(g); return g;
+  }
+  const dungeon = makeDungeonEntrance();
+  dungeon.userData.noCollide = true; // 던전 입구는 충돌 제외(입장 가능하게)
+
+  // ===== 우물(빌더 — 광장 한 켠으로 이동 배치) =====
+  function makeWell() {
+    const g = new THREE.Group();
+    g.add(cyl(1.15, 1.25, 1.1, 14, M.stone, 0, 0.55, 0));
+    g.add(cyl(1.18, 1.18, 0.18, 14, M.stoneD, 0, 1.12, 0));
+    // 물
+    const w = cyl(0.95, 0.95, 0.1, 14, M.water, 0, 0.95, 0);
+    w.material = mat(C.water); w.material.emissive = new THREE.Color(0x123540); w.material.emissiveIntensity = 0.4;
+    g.add(w); g.userData.water = w;
+    // 지붕 기둥 + 작은 지붕
+    g.add(box(0.16, 2.0, 0.16, M.wood, -0.9, 2.0, 0));
+    g.add(box(0.16, 2.0, 0.16, M.wood, 0.9, 2.0, 0));
+    const roof = gable(2.6, 0.9, 1.4, M.tileC); roof.position.set(0, 3.0, 0); roof.rotation.y = Math.PI / 2; g.add(roof);
+    // 양동이 + 도르래
+    g.add(cyl(0.04, 0.04, 1.8, 6, M.woodD, 0, 2.0, 0));
+    g.add(cyl(0.22, 0.18, 0.26, 8, M.woodD, 0, 1.5, 0));
+    townScene.add(g); return g;
+  }
+  const well = makeWell();
+  well.position.set(-9.5, 0, 8.5);   // 중앙 비우고 한 켠으로
+
+  // ===== 건물 빌더 =====
+  // 통나무 골조 오두막: 벽 + 박공지붕 + 문 + 창 + (옵션)굴뚝
+  function makeCottage(o) {
+    const g = new THREE.Group();
+    const w = o.w, d = o.d, wh = o.wh, rh = o.rh;
+    const wall = mat(o.wall), beam = M.timber;
+    // 벽
+    g.add(box(w, wh, d, wall, 0, wh / 2, 0));
+    // 모서리 기둥(목재 골조 느낌)
+    const cx = w / 2 - 0.12, cz = d / 2 - 0.12;
+    [[-cx, -cz], [cx, -cz], [-cx, cz], [cx, cz]].forEach(p =>
+      g.add(box(0.2, wh, 0.2, beam, p[0], wh / 2, p[1])));
+    // 가로 보
+    g.add(box(w + 0.04, 0.18, 0.18, beam, 0, wh * 0.55, -d / 2));
+    g.add(box(0.18, 0.18, d + 0.04, beam, -w / 2, wh * 0.55, 0));
+    g.add(box(0.18, 0.18, d + 0.04, beam, w / 2, wh * 0.55, 0));
+    // 지붕(처마가 벽보다 넓게)
+    const roof = gable(w + 0.9, rh, d + 0.7, mat(o.roof));
+    roof.position.y = wh; g.add(roof);
+    // 박공 끝 판
+    g.add(box(w + 0.05, rh * 0.5, 0.1, beam, 0, wh + rh * 0.25, -d / 2 - 0.02));
+    // 문(정면 -Z)
+    g.add(box(0.9, 1.5, 0.12, M.woodD, 0, 0.75, -d / 2 - 0.02));
+    g.add(box(0.1, 0.1, 0.06, M.metal, 0.28, 0.78, -d / 2 - 0.1)); // 손잡이
+    // 창문(emissive 토글) — 양 측면
+    function win(x, z, ry) {
+      const wm = makeWindowMat(); windowMats.push(wm);
+      const fr = box(0.74, 0.74, 0.1, beam, 0, 0, 0);
+      const gl = box(0.52, 0.52, 0.06, wm, 0, 0, -0.03);
+      const wg = new THREE.Group(); wg.add(fr); wg.add(gl);
+      wg.position.set(x, wh * 0.55, z); wg.rotation.y = ry; g.add(wg);
+    }
+    win(-w / 2 - 0.01, 0, Math.PI / 2);
+    win(w / 2 + 0.01, 0, Math.PI / 2);
+    win(w * 0.28, -d / 2 - 0.01, 0);
+    // 측면 문(옵션) — 카메라를 향한 면에도 문을 달아 휑하지 않게
+    if (o.sideDoor) {
+      g.add(box(0.12, 1.5, 0.9, M.woodD, w / 2 + 0.02, 0.75, 0));
+      g.add(box(0.06, 0.1, 0.1, M.metal, w / 2 + 0.1, 0.78, 0.28)); // 손잡이
+    }
+    // 굴뚝
+    if (o.chimney) {
+      const ch = box(0.55, rh + 0.9, 0.55, M.stoneD, w * 0.32, wh + rh * 0.4, d * 0.2);
+      g.add(ch);
+      g.userData.smoke = { x: w * 0.32, y: wh + rh * 0.9, z: d * 0.2 };
+    }
+    g.position.set(o.x, 0, o.z);
+    g.rotation.y = o.ry !== undefined ? o.ry : Math.atan2(o.x, o.z);
+    townScene.add(g); return g;
+  }
+
+  // 대장간: 큰 벽돌몸체 + 화로(빛) + 모루 + 굴뚝
+  function makeBlacksmith(x, z) {
+    const g = new THREE.Group();
+    g.add(box(5.2, 3.0, 4.4, M.plasterC, 0, 1.5, 0));
+    g.add(box(5.2, 0.5, 4.4, M.stoneD, 0, 0.25, 0)); // 석재 기단
+    const roof = gable(6.2, 1.6, 5.0, M.tileA); roof.position.y = 3.0; g.add(roof);
+    // 굴뚝(큰 돌)
+    g.add(box(1.0, 3.2, 1.0, M.stoneD, 1.6, 3.4, 1.2));
+    g.userData.smoke = { x: 1.6, y: 5.0, z: 1.2, dark: true };
+    // 개방형 작업장(앞면 기둥)
+    g.add(box(0.3, 2.4, 0.3, M.timber, -2.0, 1.2, -2.3));
+    g.add(box(0.3, 2.4, 0.3, M.timber, 2.0, 1.2, -2.3));
+    // 화로
+    const forge = box(1.4, 1.1, 1.2, M.stoneD, -1.2, 0.55, -1.4); g.add(forge);
+    const ember = box(0.9, 0.3, 0.8, mat(C.ember), -1.2, 1.1, -1.4);
+    ember.material.emissive = new THREE.Color(C.ember); ember.material.emissiveIntensity = 1.0; g.add(ember);
+    const forgeLight = new THREE.PointLight(0xff5a1e, 1.6, 9, 2.0);
+    forgeLight.position.set(-1.2, 1.4, -1.4); g.add(forgeLight);
+    g.userData.forge = { light: forgeLight, ember };
+    // 모루 + 망치
+    g.add(box(0.7, 0.45, 0.35, M.metal, 0.6, 0.95, -1.6));
+    g.add(cyl(0.18, 0.3, 0.5, 8, M.woodD, 0.6, 0.4, -1.6));
+    g.add(box(0.5, 0.14, 0.14, M.woodD, 1.1, 1.25, -1.6));
+    // 간판
+    g.add(box(1.3, 0.7, 0.08, M.woodD, 0, 2.4, -2.25));
+    // 측면(+X)에 문 + 창문 — 옆집처럼 꾸밈(캐릭터가 보는 면)
+    g.add(box(0.14, 1.7, 1.0, M.woodD, 2.6 + 0.02, 0.85, 0.6));        // 문
+    g.add(box(0.08, 0.12, 0.12, M.metal, 2.6 + 0.1, 0.9, 0.28));        // 손잡이
+    function bsWin(z2) {
+      const wm = makeWindowMat(); windowMats.push(wm);
+      const grp = new THREE.Group();
+      grp.add(box(0.1, 0.8, 0.8, M.timber, 0, 0, 0));
+      grp.add(box(0.06, 0.58, 0.58, wm, -0.03, 0, 0));
+      grp.position.set(2.6 + 0.01, 1.7, z2); g.add(grp);
+    }
+    bsWin(-1.0); bsWin(-2.0);                                          // 측면 창문 2개
+    // 후면(+Z)에도 창문 하나
+    const wmB = makeWindowMat(); windowMats.push(wmB);
+    const gb = new THREE.Group(); gb.add(box(0.8, 0.8, 0.1, M.timber)); gb.add(box(0.58, 0.58, 0.06, wmB, 0, 0, 0.03));
+    gb.position.set(-1.2, 1.7, 2.2 + 0.01); g.add(gb);
+    g.position.set(x, 0, z); g.rotation.y = Math.atan2(x, z); townScene.add(g); return g;
+  }
+
+  // 분할된 천 메시 깃발 — 정점을 물결치게 해 자연스럽게 펄럭임 (폴 끝(x=0)에 고정, +X로 뻗음)
+  const wavingFlags = [];
+  function makeFlag(w, h, color, opts) {
+    opts = opts || {};
+    const segW = opts.segW || 14, segH = opts.segH || 5;
+    const geo = new THREE.PlaneGeometry(w, h, segW, segH);
+    geo.translate(w / 2, 0, 0);                     // 왼쪽 끝(폴)을 원점에
+    const m = new THREE.MeshStandardMaterial({ color: color, flatShading: true, roughness: 0.95, metalness: 0, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(geo, m); mesh.castShadow = true;
+    wavingFlags.push({
+      geo, base: geo.attributes.position.array.slice(), w,
+      amp: opts.amp !== undefined ? opts.amp : 0.5,
+      speed: opts.speed !== undefined ? opts.speed : 4.0,
+      freq: opts.freq !== undefined ? opts.freq : 2.4,
+      ph: Math.random() * 10
+    });
+    return mesh;
+  }
+
+  // 여관/주점: 2층 + 큰 굴뚝 + 깃발 + 간판
+  function makeInn(x, z) {
+    const g = new THREE.Group();
+    g.add(box(5.6, 2.6, 4.6, M.plasterA, 0, 1.3, 0));         // 1층
+    g.add(box(6.0, 2.2, 5.0, M.plasterB, 0, 3.7, 0));         // 2층(돌출)
+    // 1층 목재 골조 라인
+    g.add(box(6.0, 0.16, 0.16, M.timber, 0, 2.6, -2.5));
+    // 지붕
+    const roof = gable(7.0, 1.9, 5.6, M.tileB); roof.position.y = 4.8; g.add(roof);
+    // 굴뚝
+    g.add(box(0.8, 2.6, 0.8, M.stoneD, -2.0, 5.0, 1.4)); g.userData.smoke = { x: -2.0, y: 6.6, z: 1.4 };
+    // 문 + 창
+    g.add(box(1.1, 1.8, 0.14, M.woodD, 0, 0.9, -2.32));
+    function win(x2, y2) { const wm = makeWindowMat(); windowMats.push(wm); const grp = new THREE.Group(); grp.add(box(0.8, 0.9, 0.1, M.timber)); grp.add(box(0.56, 0.66, 0.06, wm, 0, 0, -0.03)); grp.position.set(x2, y2, -2.55); g.add(grp); }
+    win(-1.7, 1.2); win(1.7, 1.2); win(-1.5, 3.7); win(0, 3.8); win(1.5, 3.7);
+    // 깃발 폴 + 펄럭이는 천 깃발
+    const pole = cyl(0.07, 0.07, 3.0, 6, M.woodD, 2.6, 5.0, -2.0); g.add(pole);
+    const flag = makeFlag(1.4, 0.85, C.cloth, { amp: 0.45, speed: 4.2, freq: 2.2 });
+    flag.position.set(2.62, 6.1, -2.0); g.add(flag);
+    // 매다는 간판
+    const arm = box(1.3, 0.1, 0.1, M.woodD, -3.0, 2.4, -2.3); g.add(arm);
+    const sign = box(0.9, 0.7, 0.08, M.woodD, -3.5, 1.9, -2.3); g.add(sign);
+    g.userData.signSwing = sign;
+    g.position.set(x, 0, z); g.rotation.y = Math.atan2(x, z); townScene.add(g); return g;
+  }
+
+  // 잡화점: 차양 + 진열대 + 통/상자
+  function makeShop(x, z) {
+    const g = new THREE.Group();
+    g.add(box(4.2, 2.6, 3.8, M.plasterB, 0, 1.3, 0));
+    const roof = pyramid(3.6, 2.0, M.tileC); roof.position.y = 3.6; g.add(roof);
+    g.add(box(1.0, 1.7, 0.12, M.woodD, 0, 0.85, -1.92));
+    // 차양(천)
+    const awn = box(3.4, 0.12, 1.5, mat(C.cloth2), 0, 2.0, -2.6); awn.rotation.x = 0.25; g.add(awn);
+    // 줄무늬 차양 효과
+    for (let i = -1; i <= 1; i++) { const s = box(0.6, 0.13, 1.5, M.plasterA, i * 1.1, 2.0, -2.6); s.rotation.x = 0.25; g.add(s); }
+    g.add(box(0.12, 1.4, 0.12, M.woodD, -1.5, 0.7, -3.2));
+    g.add(box(0.12, 1.4, 0.12, M.woodD, 1.5, 0.7, -3.2));
+    // 진열대
+    g.add(box(3.0, 0.16, 0.9, M.wood, 0, 1.0, -2.7));
+    g.add(ico(0.22, mat(0xc23b2e), -0.9, 1.25, -2.7)); // 사과더미
+    g.add(ico(0.22, mat(0xc23b2e), -0.6, 1.25, -2.55));
+    g.add(ico(0.22, mat(0xd9a23a), 0.4, 1.25, -2.7));   // 호박
+    g.add(box(0.5, 0.5, 0.5, M.woodD, 1.1, 1.25, -2.6)); // 상자
+    // 간판
+    g.add(box(1.4, 0.6, 0.08, M.woodD, 0, 2.5, -1.95));
+    g.position.set(x, 0, z); g.rotation.y = Math.atan2(x, z); townScene.add(g); return g;
+  }
+
+  // 노점(시장 가판대)
+  function makeStall(x, z, ry, clothCol) {
+    const g = new THREE.Group();
+    g.add(box(2.0, 0.16, 1.2, M.wood, 0, 1.0, 0));
+    [[-0.9, -0.5], [0.9, -0.5], [-0.9, 0.5], [0.9, 0.5]].forEach(p => g.add(box(0.1, 1.0, 0.1, M.woodD, p[0], 0.5, p[1])));
+    const top = box(2.4, 0.12, 1.5, mat(clothCol), 0, 1.7, 0); top.rotation.z = 0; g.add(top);
+    g.add(box(0.1, 0.7, 0.1, M.woodD, -0.9, 1.35, 0));
+    g.add(box(0.1, 0.7, 0.1, M.woodD, 0.9, 1.35, 0));
+    // 진열품
+    g.add(ico(0.18, mat(0x8fae4d), -0.5, 1.18, 0));
+    g.add(ico(0.18, mat(0xd9a23a), 0, 1.18, -0.2));
+    g.add(ico(0.18, mat(0xc23b2e), 0.5, 1.18, 0.1));
+    g.position.set(x, 0, z); g.rotation.y = ry; townScene.add(g); return g;
+  }
+
+  // 나무
+  function makeTree(x, z, s = 1) {
+    const g = new THREE.Group();
+    g.add(cyl(0.18 * s, 0.28 * s, 1.6 * s, 7, M.wood, 0, 0.8 * s, 0));
+    const f1 = ico(1.0 * s, M.leaf, 0, 2.0 * s, 0); f1.scale.y = 0.9; g.add(f1);
+    g.add(ico(0.7 * s, M.leafA, 0.6 * s, 1.7 * s, 0.2 * s));
+    g.add(ico(0.7 * s, M.leafD, -0.5 * s, 1.8 * s, -0.3 * s));
+    g.add(ico(0.6 * s, M.leaf, 0.1 * s, 2.6 * s, 0.1 * s));
+    g.position.set(x, 0, z); g.rotation.y = Math.random() * Math.PI; townScene.add(g);
+    g.userData.sway = Math.random() * Math.PI * 2; return g;
+  }
+  const trees = [];
+
+  // 가로등(밤에 점등)
+  function makeLamp(x, z) {
+    const g = new THREE.Group();
+    g.add(box(0.16, 2.4, 0.16, M.woodD, 0, 1.2, 0));
+    g.add(box(0.45, 0.1, 0.45, M.metal, 0, 2.4, 0));
+    const glassMat = mat(C.warm); glassMat.emissive = new THREE.Color(C.warm); glassMat.emissiveIntensity = 0;
+    const glass = ico(0.22, glassMat, 0, 2.18, 0); g.add(glass);
+    const pl = new THREE.PointLight(0xffb347, 0, 7, 2.0); pl.position.set(0, 2.2, 0); g.add(pl);
+    lampLights.push({ light: pl, glass: glassMat });
+    g.add(box(0.5, 0.16, 0.5, M.stoneD, 0, 0.08, 0));
+    g.position.set(x, 0, z); townScene.add(g); return g;
+  }
+
+  // 통/상자/건초더미 소품
+  function prop(x, z, kind) {
+    if (kind === 'barrel') townScene.add(cyl(0.32, 0.36, 0.8, 10, M.wood, x, 0.4, z));
+    else if (kind === 'crate') townScene.add(box(0.7, 0.7, 0.7, M.woodD, x, 0.35, z));
+    else if (kind === 'hay') { const h = cyl(0.55, 0.55, 0.7, 10, M.hay, x, 0.35, z); h.rotation.z = Math.PI / 2; townScene.add(h); }
+  }
+
+  // 울타리 라인
+  function fence(x1, z1, x2, z2) {
+    const g = new THREE.Group();
+    const dx = x2 - x1, dz = z2 - z1, len = Math.hypot(dx, dz), n = Math.round(len / 1.2);
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      g.add(box(0.12, 0.9, 0.12, M.woodD, x1 + dx * t, 0.45, z1 + dz * t));
+    }
+    const rail1 = box(len, 0.1, 0.08, M.wood, (x1 + x2) / 2, 0.6, (z1 + z2) / 2);
+    const rail2 = box(len, 0.1, 0.08, M.wood, (x1 + x2) / 2, 0.32, (z1 + z2) / 2);
+    rail1.rotation.y = rail2.rotation.y = -Math.atan2(dz, dx);
+    g.add(rail1); g.add(rail2); g.userData.noCollide = true; townScene.add(g);
+  }
+
+  // 짐수레
+  function makeCart(x, z, ry) {
+    const g = new THREE.Group();
+    g.add(box(2.0, 0.4, 1.1, M.wood, 0, 0.9, 0));
+    g.add(box(2.0, 0.5, 0.12, M.woodD, 0, 1.15, -0.55));
+    g.add(box(2.0, 0.5, 0.12, M.woodD, 0, 1.15, 0.55));
+    const wheel = (zz) => { const w = cyl(0.45, 0.45, 0.12, 12, M.woodD, 0.4, 0.45, zz); w.rotation.x = Math.PI / 2; g.add(w); };
+    wheel(0.6); wheel(-0.6);
+    g.add(box(1.6, 0.1, 0.1, M.woodD, -1.6, 0.8, 0)); // 손잡이
+    g.add(box(0.6, 0.6, 0.6, M.woodD, 0.2, 1.4, 0));  // 짐(상자)
+    g.position.set(x, 0, z); g.rotation.y = ry; townScene.add(g); return g;
+  }
+
+  // 교회: 본당 + 박공지붕 + 종탑 + 첨탑/십자가 + 아치창(밤 점등)
+  function makeChurch(x, z) {
+    const g = new THREE.Group();
+    const wall = M.plasterA, stone = M.stoneD, roofM = mat(0x44607e); // 슬레이트 블루
+    // 본당
+    g.add(box(4.6, 3.4, 7.2, wall, 0, 1.7, 0));
+    g.add(box(4.8, 0.5, 7.4, stone, 0, 0.25, 0));            // 석재 기단
+    const nroof = gable(5.6, 2.0, 7.6, roofM); nroof.position.y = 3.4; g.add(nroof);
+    g.add(box(4.7, 1.0, 0.12, M.timber, 0, 3.9, 3.6));        // 후면 박공 판
+    // 종탑(정면 -Z)
+    g.add(box(2.4, 6.2, 2.4, wall, 0, 3.1, -4.2));
+    g.add(box(2.5, 0.5, 2.5, stone, 0, 0.25, -4.2));
+    const spire = new THREE.Mesh(new THREE.ConeGeometry(1.6, 2.8, 4), roofM);
+    spire.rotation.y = Math.PI / 4; spire.position.set(0, 7.6, -4.2); spire.castShadow = true; g.add(spire);
+    // 십자가
+    g.add(box(0.13, 1.1, 0.13, M.metal, 0, 9.5, -4.2));
+    g.add(box(0.6, 0.13, 0.13, M.metal, 0, 9.5, -4.2));
+    // 종탑: 문 + 중간창 + 종 개구부
+    g.add(box(1.5, 2.2, 0.16, M.woodD, 0, 1.1, -5.42));
+    g.add(box(1.7, 0.2, 0.2, stone, 0, 2.3, -5.45));
+    const tw = makeWindowMat(); tw.color.set(0x3a4a6a); windowMats.push(tw);
+    g.add(box(0.7, 1.1, 0.1, tw, 0, 3.4, -5.42));
+    g.add(box(1.0, 1.1, 0.18, mat(0x20262f), 0, 4.9, -5.41)); // 종 개구부(어두움)
+    g.add(cyl(0.28, 0.34, 0.5, 8, M.metal, 0, 4.9, -5.55));    // 종
+    // 측면 아치창(밤에 빛남)
+    function archWin(px, pz, ry) {
+      const wm = makeWindowMat(); wm.color.set(0x3a4a6a); windowMats.push(wm);
+      const grp = new THREE.Group();
+      grp.add(box(0.7, 1.5, 0.1, stone));
+      grp.add(box(0.5, 1.3, 0.06, wm, 0, 0, -0.03));
+      grp.add(cyl(0.33, 0.33, 0.1, 8, stone, 0, 0.75, 0));
+      grp.position.set(px, 1.9, pz); grp.rotation.y = ry; g.add(grp);
+    }
+    [-2.0, 0, 2.0].forEach(zz => { archWin(-2.31, zz, Math.PI / 2); archWin(2.31, zz, Math.PI / 2); });
+    // 후면 장미창
+    const rose = makeWindowMat(); rose.color.set(0x6a3a4a); windowMats.push(rose);
+    g.add(cyl(0.62, 0.62, 0.12, 12, rose, 0, 3.3, 3.62));
+    g.position.set(x, 0, z); g.rotation.y = Math.atan2(x, z); townScene.add(g); return g;
+  }
+
+  // 성문: 두 개의 돌탑 + 흉벽 + 아치 + 나무 대문 + 횃불(밤 점등) + 깃발
+  function makeGate(x, z) {
+    const g = new THREE.Group();
+    const stone = M.stone, stoneD = M.stoneD;
+    function tower(sx) {
+      g.add(box(2.2, 5.2, 2.2, stone, sx, 2.6, 0));
+      g.add(box(2.4, 0.5, 2.4, stoneD, sx, 0.25, 0));
+      // 흉벽
+      for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+        if (i === 0 && j === 0) continue;
+        g.add(box(0.5, 0.6, 0.5, stoneD, sx + i * 0.75, 5.5, j * 0.75));
+      }
+      // 횃불
+      const tg = new THREE.Group();
+      const flameMat = mat(C.warm); flameMat.emissive = new THREE.Color(C.ember); flameMat.emissiveIntensity = 0;
+      tg.add(box(0.1, 0.6, 0.1, M.woodD, 0, 0, 0));
+      tg.add(ico(0.17, flameMat, 0, 0.42, 0));
+      const pl = new THREE.PointLight(0xff7a2e, 0, 6, 2.0); pl.position.set(0, 0.42, 0); tg.add(pl);
+      lampLights.push({ light: pl, glass: flameMat });
+      tg.position.set(sx + (sx < 0 ? -1.25 : 1.25), 3.4, -1.05); g.add(tg);
+    }
+    tower(-2.6); tower(2.6);
+    // 아치 상단
+    g.add(box(3.4, 1.4, 2.2, stone, 0, 4.5, 0));
+    g.add(box(3.0, 0.5, 2.4, stoneD, 0, 5.45, 0));
+    // 나무 대문(두 짝) + 금속 밴드
+    g.add(box(1.5, 3.6, 0.2, M.woodD, -0.78, 1.8, 0));
+    g.add(box(1.5, 3.6, 0.2, M.woodD, 0.78, 1.8, 0));
+    g.add(box(3.1, 0.2, 0.26, M.metal, 0, 2.7, 0.03));
+    g.add(box(3.1, 0.2, 0.26, M.metal, 0, 1.2, 0.03));
+    // 옆 성벽 일부
+    g.add(box(3.0, 3.0, 1.2, stone, -5.1, 1.5, 0));
+    g.add(box(3.0, 3.0, 1.2, stone, 5.1, 1.5, 0));
+    for (let s = -1; s <= 1; s += 2) for (let i = -1; i <= 1; i++) g.add(box(0.5, 0.5, 0.5, stoneD, 5.1 * s + i * 0.9, 3.25, -0.35));
+    // 펄럭이는 깃발(양 탑)
+    [-2.6, 2.6].forEach((sx, k) => {
+      g.add(cyl(0.05, 0.05, 1.4, 6, M.woodD, sx, 6.45, 0));
+      const f = makeFlag(1.05, 0.62, C.cloth, { amp: 0.38, speed: 4.6, freq: 2.6 });
+      f.position.set(sx, 6.72, 0); g.add(f);
+    });
+    g.position.set(x, 0, z); g.rotation.y = Math.atan2(x, z); townScene.add(g); return g;
+  }
+
+  // 방앗간: 테이퍼 탑 + 돔 모자 + 발코니 + 회전 날개(앞면)
+  function makeWindmill(x, z) {
+    const g = new THREE.Group();
+    const wall = M.plasterB, stone = M.stoneD;
+    g.add(cyl(1.3, 2.0, 5.4, 12, wall, 0, 2.7, 0));          // 탑
+    g.add(cyl(2.05, 2.15, 0.5, 12, stone, 0, 0.25, 0));      // 기단
+    g.add(cyl(1.5, 1.5, 0.16, 12, M.woodD, 0, 3.45, 0));     // 발코니
+    // 돔 모자(상단 반구)
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(1.45, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(0x6a4a2e));
+    cap.position.y = 5.4; cap.castShadow = true; cap.receiveShadow = true; g.add(cap);
+    // 문 + 창
+    g.add(box(0.9, 1.6, 0.12, M.woodD, 0, 0.8, -1.78));
+    const wm = makeWindowMat(); windowMats.push(wm);
+    g.add(box(0.55, 0.55, 0.1, wm, 0, 3.5, -1.55));
+    // 회전 날개(앞 -Z, Z축 회전)
+    const blades = new THREE.Group(); blades.position.set(0, 5.0, -1.55);
+    const hub = cyl(0.24, 0.24, 0.45, 8, M.woodD); hub.rotation.x = Math.PI / 2; blades.add(hub);
+    for (let i = 0; i < 4; i++) {
+      const arm = new THREE.Group();
+      arm.add(box(0.16, 3.8, 0.12, M.woodD, 0, 2.0, 0));            // 살대
+      arm.add(box(0.75, 3.2, 0.05, mat(C.plasterA), 0.45, 2.0, 0.05)); // 천
+      arm.rotation.z = i * Math.PI / 2; blades.add(arm);
+    }
+    g.add(blades); g.userData.blades = blades;
+    g.position.set(x, 0, z); g.rotation.y = Math.atan2(x, z);   // 날개가 마을(중심)을 향함
+    townScene.add(g); return g;
+  }
+
+  // 보초 NPC: 갑옷 + 첨모 투구 + 창 + 둥근 방패 (가벼운 idle)
+  function makeGuard(x, z, ry, talk) {
+    const g = new THREE.Group();
+    const skin = mat(0xe6b690), armor = M.metal, leather = M.timber, cloth = mat(0x42506b);
+    g.add(cyl(0.1, 0.12, 0.5, 7, leather, -0.12, 0.25, 0));   // 다리
+    g.add(cyl(0.1, 0.12, 0.5, 7, leather, 0.12, 0.25, 0));
+    g.add(cyl(0.26, 0.22, 0.58, 9, armor, 0, 0.79, 0));        // 몸통(갑옷)
+    g.add(ico(0.13, armor, -0.26, 1.0, 0));                    // 어깨
+    g.add(ico(0.13, armor, 0.26, 1.0, 0));
+    const armR = cyl(0.07, 0.07, 0.5, 7, armor, 0.3, 0.72, 0); g.add(armR); // 팔
+    g.add(cyl(0.07, 0.07, 0.5, 7, armor, -0.3, 0.72, 0));
+    g.add(ico(0.17, skin, 0, 1.22, 0));                        // 머리
+    g.add(box(0.36, 0.08, 0.36, armor, 0, 1.2, 0));            // 투구 챙
+    const helm = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.34, 8), armor); helm.position.y = 1.4; helm.castShadow = true; g.add(helm);
+    // 창(오른손)
+    const spear = new THREE.Group();
+    spear.add(cyl(0.03, 0.03, 2.3, 6, leather, 0, 0, 0));
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.32, 6), armor); tip.position.y = 1.3; tip.castShadow = true; spear.add(tip);
+    spear.position.set(0.36, 1.0, 0); g.add(spear); g.userData.spear = spear;
+    // 둥근 방패(왼팔)
+    const shield = cyl(0.27, 0.27, 0.07, 14, cloth, -0.38, 0.8, 0.08); shield.rotation.x = Math.PI / 2; g.add(shield);
+    g.add(cyl(0.07, 0.07, 0.08, 8, armor, -0.38, 0.8, 0.13));  // 방패 보스
+    g.position.set(x, 0, z); g.rotation.y = ry;
+    g.userData.bob = Math.random() * Math.PI * 2;
+    // 대화 옵션: 대사가 있으면 머리 위 마커 + 대화 NPC로 등록(제자리 = wander false)
+    if (talk) {
+      const markMat = mat(0xffe066); markMat.emissive = new THREE.Color(0xffcf3a); markMat.emissiveIntensity = 0.9;
+      const mark = box(0.28, 0.28, 0.07, markMat, 0, 2.05, 0); mark.rotation.y = Math.PI / 4; g.add(mark);
+      const sets = talk.lineSets || (talk.lines ? [talk.lines] : [['게 섰거라.']]);
+      townNPCs.push({ x, z, obj: g, name: talk.name || '보초병', lineSets: sets, lines: sets[0], mark, wander: false });
+    }
+    townScene.add(g); return g;
+  }
+
+  // 상인 NPC: 앞치마 두른 평민 + 머리 위 대화 마커(가벼운 idle). 위치를 townMerchant에 저장.
+  function makeMerchant(x, z, ry) {
+    const g = new THREE.Group();
+    const skin = mat(0xe6b690), shirt = mat(0x7a5a3a), apron = mat(0x9a8866), hairC = mat(0x3a2a1a);
+    g.add(cyl(0.11, 0.13, 0.5, 7, mat(0x4a3a2a), -0.12, 0.25, 0));  // 다리
+    g.add(cyl(0.11, 0.13, 0.5, 7, mat(0x4a3a2a), 0.12, 0.25, 0));
+    g.add(cyl(0.27, 0.23, 0.6, 9, shirt, 0, 0.8, 0));               // 몸통
+    g.add(box(0.4, 0.55, 0.12, apron, 0, 0.72, -0.2));              // 앞치마
+    g.add(cyl(0.07, 0.07, 0.5, 7, shirt, 0.3, 0.74, 0));            // 팔
+    g.add(cyl(0.07, 0.07, 0.5, 7, shirt, -0.3, 0.74, 0));
+    g.add(ico(0.18, skin, 0, 1.24, 0));                            // 머리
+    const hair = ico(0.2, hairC, 0, 1.3, 0); hair.scale.y = 0.6; g.add(hair); // 머리카락
+    // 머리 위 대화 마커(말풍선 느낌의 작은 큐브 + 발광)
+    const markMat = mat(0xffe066); markMat.emissive = new THREE.Color(0xffcf3a); markMat.emissiveIntensity = 0.9;
+    const mark = box(0.3, 0.3, 0.08, markMat, 0, 2.05, 0); mark.rotation.y = Math.PI / 4;
+    g.add(mark); g.userData.mark = mark;
+    g.position.set(x, 0, z); g.rotation.y = ry;
+    g.userData.bob = Math.random() * Math.PI * 2;
+    g.userData.noCollide = true; // 상인은 통과 가능(말 걸기 위해 접근)
+    townScene.add(g);
+    townMerchant = { x, z, obj: g };
+    if (!townAnim.merchants) townAnim.merchants = [];
+    townAnim.merchants.push(g);
+    return g;
+  }
+
+  // 성직자 NPC: 로브 + 두건 + 머리 위 대화 마커. 능력 강화(축복) 상점 담당.
+  function makeCleric(x, z, ry) {
+    const g = new THREE.Group();
+    const skin = mat(0xe6b690), robe = mat(0xdcdce6), robeTrim = mat(0xc8b860); // 흰 로브 + 금색 띠
+    g.add(cyl(0.32, 0.22, 1.0, 10, robe, 0, 0.5, 0));              // 긴 로브(원뿔형 치마)
+    g.add(cyl(0.24, 0.26, 0.5, 9, robe, 0, 1.05, 0));              // 상체
+    g.add(box(0.5, 0.12, 0.5, robeTrim, 0, 0.78, 0));              // 허리 금띠
+    g.add(cyl(0.06, 0.06, 0.52, 7, robe, 0.27, 0.95, 0));          // 팔(소매)
+    g.add(cyl(0.06, 0.06, 0.52, 7, robe, -0.27, 0.95, 0));
+    g.add(ico(0.17, skin, 0, 1.42, 0));                           // 머리
+    const hood = ico(0.22, robe, 0, 1.46, -0.02); hood.scale.set(1, 0.9, 1.05); g.add(hood); // 두건
+    // 손에 든 작은 금색 성물(십자)
+    g.add(box(0.06, 0.34, 0.06, robeTrim, 0.3, 1.0, 0.12));
+    g.add(box(0.18, 0.06, 0.06, robeTrim, 0.3, 1.06, 0.12));
+    // 머리 위 대화 마커
+    const markMat = mat(0xffe066); markMat.emissive = new THREE.Color(0xffcf3a); markMat.emissiveIntensity = 0.9;
+    const mark = box(0.3, 0.3, 0.08, markMat, 0, 2.2, 0); mark.rotation.y = Math.PI / 4;
+    g.add(mark); g.userData.mark = mark;
+    g.position.set(x, 0, z); g.rotation.y = ry;
+    g.userData.bob = Math.random() * Math.PI * 2;
+    g.userData.noCollide = true;
+    townScene.add(g);
+    townCleric = { x, z, obj: g };
+    if (!townAnim.merchants) townAnim.merchants = [];
+    townAnim.merchants.push(g); // idle 애니메이션 공유
+    return g;
+  }
+
+  // 걸어다니는 주민 NPC: 평민 + 다리(걷기 모션) + 머리 위 대화 마커. 마을 안을 천천히 배회.
+  function makeVillager(x, z, opt) {
+    opt = opt || {};
+    const g = new THREE.Group();
+    const palette = [0x8a5a4a, 0x4a6a7a, 0x6a5a8a, 0x7a6a3a, 0x5a7a5a, 0x9a6a5a];
+    const shirtC = opt.color !== undefined ? opt.color : palette[Math.floor(Math.random() * palette.length)];
+    const skin = mat([0xe6b690, 0xd9a878, 0xc89868][Math.floor(Math.random() * 3)]);
+    const shirt = mat(shirtC), pants = mat(0x4a3a2a), hairC = mat([0x3a2a1a, 0x55401f, 0x2a2a2a][Math.floor(Math.random() * 3)]);
+    // 다리(걷기 애니메이션 대상)
+    const legL = cyl(0.08, 0.1, 0.5, 6, pants, -0.11, 0.25, 0);
+    const legR = cyl(0.08, 0.1, 0.5, 6, pants, 0.11, 0.25, 0);
+    g.add(legL); g.add(legR);
+    g.add(cyl(0.25, 0.21, 0.58, 8, shirt, 0, 0.79, 0));     // 몸통
+    g.add(cyl(0.06, 0.06, 0.46, 6, shirt, 0.28, 0.74, 0));  // 팔
+    g.add(cyl(0.06, 0.06, 0.46, 6, shirt, -0.28, 0.74, 0));
+    g.add(ico(0.17, skin, 0, 1.2, 0));                      // 머리
+    const hair = ico(0.19, hairC, 0, 1.27, 0); hair.scale.y = 0.55; g.add(hair);
+    // 대화 마커
+    const markMat = mat(0xffe066); markMat.emissive = new THREE.Color(0xffcf3a); markMat.emissiveIntensity = 0.9;
+    const mark = box(0.28, 0.28, 0.07, markMat, 0, 1.95, 0); mark.rotation.y = Math.PI / 4;
+    g.add(mark);
+    g.position.set(x, 0, z); g.rotation.y = Math.random() * Math.PI * 2;
+    g.userData.noCollide = true;
+    townScene.add(g);
+    // 배회 상태: 목표 지점을 정해 천천히 이동, 도착하면 새 목표
+    const sets = opt.lineSets || (opt.lines ? [opt.lines] : [['좋은 날이네요.']]);
+    const npc = {
+      x, z, obj: g, name: opt.name || '주민', lineSets: sets, lines: sets[0],
+      mark, legL, legR, walkPhase: Math.random() * 10,
+      wander: true, tx: x, tz: z, waitT: Math.random() * 2, homeX: x, homeZ: z, speed: 1.1 + Math.random() * 0.5
+    };
+    townNPCs.push(npc);
+    return npc;
+  }
+
+  // 묘지: 어두운 잔디 + 비석/십자가 + 봉분 + 고목
+  function makeGraveyard(x, z) {
+    const g = new THREE.Group();
+    const plot = new THREE.Mesh(new THREE.CircleGeometry(3.3, 18), M.grassD);
+    plot.rotation.x = -Math.PI / 2; plot.position.y = 0.03; plot.receiveShadow = true; g.add(plot);
+    const spots = [[-1.7, -1.0], [-0.4, -1.3], [1.1, -0.9], [-1.3, 0.5], [0.4, 0.9], [1.7, 0.3]];
+    spots.forEach((s, i) => {
+      if (i % 3 === 0) {                                       // 십자가
+        g.add(box(0.16, 1.0, 0.13, M.stone, s[0], 0.5, s[1]));
+        g.add(box(0.5, 0.16, 0.13, M.stone, s[0], 0.76, s[1]));
+      } else {                                                 // 둥근 묘비
+        g.add(box(0.5, 0.62, 0.15, M.stone, s[0], 0.31, s[1]));
+        const top = cyl(0.25, 0.25, 0.15, 12, M.stone, s[0], 0.62, s[1]); top.rotation.x = Math.PI / 2; g.add(top);
+      }
+      g.add(box(0.62, 0.1, 0.95, M.dirtD, s[0], 0.06, s[1] + 0.55)); // 봉분
+    });
+    // 고목(잎 없는 죽은 나무)
+    const dead = new THREE.Group();
+    dead.add(cyl(0.13, 0.22, 1.7, 6, M.woodD, 0, 0.85, 0));
+    [[0.25, 1.5, 0.4], [-0.22, 1.6, -0.3], [0.05, 1.9, 0.2]].forEach(b => {
+      const br = cyl(0.05, 0.09, 0.8, 5, M.woodD, b[0], b[1], 0); br.rotation.z = b[2]; dead.add(br);
+    });
+    dead.position.set(2.4, 0, 2.0); g.add(dead);
+    g.position.set(x, 0, z); townScene.add(g);
+    // 낮은 철책
+    fence(x - 3.0, z - 3.0, x + 3.0, z - 3.0); fence(x - 3.0, z + 3.0, x + 3.0, z + 3.0);
+    fence(x - 3.0, z - 3.0, x - 3.0, z + 3.0); fence(x + 3.0, z - 3.0, x + 3.0, z + 3.0);
+    return g;
+  }
+
+  // 밀밭: 흙 위에 밀 줄기(원뿔) 격자 — 바람에 흔들림
+  function makeWheatField(x, z, w, d, ry) {
+    ry = ry || 0;
+    const g = new THREE.Group();
+    g.add(box(w, 0.1, d, M.dirtD, 0, 0.05, 0));
+    const wmat = mat(C.hay), wmat2 = mat(0xb89548), stalks = [];
+    const cols = Math.floor(w / 0.5), rows = Math.floor(d / 0.5);
+    for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+      const px = -w / 2 + 0.3 + i * 0.5 + (Math.random() - 0.5) * 0.12;
+      const pz = -d / 2 + 0.3 + j * 0.5 + (Math.random() - 0.5) * 0.12;
+      const h = 0.65 + Math.random() * 0.3;
+      const s = new THREE.Mesh(new THREE.ConeGeometry(0.07, h, 5), (i + j) % 3 ? wmat : wmat2);
+      s.position.set(px, h / 2 + 0.1, pz); s.castShadow = true;
+      s.userData = { ph: Math.random() * Math.PI * 2, base: px };
+      g.add(s); stalks.push(s);
+    }
+    g.userData.stalks = stalks;
+    g.userData.noCollide = true; // 밀밭 본체는 낮은 작물 — 충돌 제외(둘레 울타리가 경계)
+    g.position.set(x, 0, z); g.rotation.y = ry; townScene.add(g);
+    // 울타리(회전 반영) — 네 변을 모두 두름
+    const hw = w / 2 + 0.3, hd = d / 2 + 0.3, c = Math.cos(ry), s2 = Math.sin(ry);
+    const T = (lx, lz) => [x + lx * c + lz * s2, z - lx * s2 + lz * c];
+    const c1 = T(-hw, -hd), c2 = T(hw, -hd), c3 = T(hw, hd), c4 = T(-hw, hd);
+    fence(c1[0], c1[1], c2[0], c2[1]); fence(c2[0], c2[1], c3[0], c3[1]);
+    fence(c3[0], c3[1], c4[0], c4[1]); fence(c4[0], c4[1], c1[0], c1[1]);
+    // 밀밭 둘레(울타리 라인)를 따라 작은 콜라이더를 촘촘히 배치 — 큰 원 하나 대신 실제 경계에 맞춤
+    const edge = (a, b) => {
+      const seglen = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const steps = Math.max(1, Math.round(seglen / 1.0));
+      for (let i = 0; i <= steps; i++) {
+        const tt = i / steps;
+        _collide(a[0] + (b[0] - a[0]) * tt, a[1] + (b[1] - a[1]) * tt, 0.45);
+      }
+    };
+    edge(c1, c2); edge(c2, c3); edge(c3, c4); edge(c4, c1);
+    return g;
+  }
+
+  // 원형 성벽(흉벽 + 주기적 망루) — 게이트 각도 구간은 통로로 비움
+  function makeRampart(R, gateAngle, gapHalf) {
+    const stone = M.stone, stoneD = M.stoneD;
+    const seg = 2.1, N = Math.round(2 * Math.PI * R / seg);
+    for (let i = 0; i < N; i++) {
+      const phi = i / N * Math.PI * 2;
+      const d = Math.abs(Math.atan2(Math.sin(phi - gateAngle), Math.cos(phi - gateAngle)));
+      if (d < gapHalf) continue;                       // 게이트 개구부
+      const x = R * Math.sin(phi), z = R * Math.cos(phi);
+      const g = new THREE.Group();
+      const tower = (i % 8 === 0);
+      if (tower) {
+        const h = 4.6;
+        g.add(box(2.3, h, 2.3, stone, 0, h / 2, 0));
+        for (const mx of [-0.7, 0.7]) g.add(box(0.55, 0.6, 0.55, stoneD, mx, h + 0.3, 0.7));
+        for (const mx of [-0.7, 0.7]) g.add(box(0.55, 0.6, 0.55, stoneD, mx, h + 0.3, -0.7));
+        // 망루 화살창(어두운 슬릿)
+        g.add(box(0.18, 0.7, 0.1, mat(0x20262f), 0, 3.1, 1.16));
+      } else {
+        const h = 3.0;
+        g.add(box(seg + 0.15, h, 1.3, (i % 2) ? stone : stoneD, 0, h / 2, 0));
+        // 흉벽 톱니
+        g.add(box(0.6, 0.6, 1.0, stoneD, -0.55, h + 0.28, 0));
+        g.add(box(0.6, 0.6, 1.0, stoneD, 0.55, h + 0.28, 0));
+      }
+      g.position.set(x, 0, z); g.rotation.y = phi; townScene.add(g);
+    }
+  }
+
+  // ===== 마을 배치 (광장을 둘러싼 빽빽한 고리 — 뒤가 벽, 앞은 트임) =====
+  const cottages = [];
+  const buildings = [];
+
+  const WALL_R = TOWN_WALL_R, GATE_ANGLE = Math.PI + 0.12;      // 성벽 반경 / 게이트 방위(뒤쪽 약간 좌)
+  const gx = WALL_R * Math.sin(GATE_ANGLE), gz = WALL_R * Math.cos(GATE_ANGLE);
+
+  // 멀리 빠진 성문 + 마을을 감싸는 원형 성벽
+  const gate = makeGate(gx, gz);
+  makeRampart(WALL_R, GATE_ANGLE, 0.27);
+
+  // 성문 앞 보초 둘 + 마차(입구 느낌) — 게이트 방위에 맞춰 안쪽을 향하게 배치
+  const gIn = GATE_ANGLE;                              // 마을 중심을 향하는 방향
+  const gateGuards = [];
+  {
+    const faceIn = gIn + Math.PI;                      // 보초가 바깥(문 밖)을 응시
+    const side = 2.2;                                  // 문 좌우 간격
+    // 문 안쪽 살짝(반경 -1.5)에서 좌우로
+    [-1, 1].forEach((s, idx) => {
+      const rr = WALL_R - 1.8;
+      const ox = Math.cos(gIn) * side * s;             // 접선 방향 오프셋
+      const oz = -Math.sin(gIn) * side * s;
+      const px = rr * Math.sin(gIn) + ox;
+      const pz = rr * Math.cos(gIn) + oz;
+      const talk = idx === 0
+        ? { name: '성문 수비병', lineSets: [
+            ['어서 오게, 모험가여.', '이 성문 너머는 위험하니 함부로 나가지 말게.', '마을 안은 우리가 지키고 있으니 안심하고 쉬어가게.'],
+            ['오늘도 무사히 돌아왔군. 다행일세.', '던전은 깊이 들어갈수록 흉포해진다네.'],
+            ['성벽 밖으로는 마물이 어슬렁댄다더군.', '함부로 나서지 말고, 채비를 단단히 하게.'],
+            ['젊은 전사들이 늘었어.', '자네도 그 중 하나인가? 무운을 비네.']
+          ] }
+        : { name: '성문 수비병', lineSets: [
+            ['밤이 깊었군. 경계를 늦출 수 없지.', '요즘 던전에서 흉흉한 기운이 올라온다네.', '부디 몸 성히 돌아오게.'],
+            ['낮이든 밤이든 문은 우리가 지킨다네.'],
+            ['교회에 들러 축복을 받게.', '성직자의 가호가 큰 힘이 될 걸세.'],
+            ['저 깊은 곳에서 북소리 같은 게 들린다는 소문이...', '뜬소문이길 바랄 뿐이네.']
+          ] };
+      gateGuards.push(makeGuard(px, pz, faceIn, talk));
+    });
+    // 마차 — 성문 안쪽 한쪽(접선 방향)으로 몰아 정차 (통로 비움)
+    const tanX = Math.cos(gIn), tanZ = -Math.sin(gIn);    // 게이트 접선 방향(좌/우)
+    const offset = 3.6;                                   // 통로에서 옆으로 비킴
+    const crr = WALL_R - 4.5;
+    const baseX = crr * Math.sin(gIn) + tanX * offset;
+    const baseZ = crr * Math.cos(gIn) + tanZ * offset;
+    makeCart(baseX, baseZ, gIn + 1.2);
+    makeCart(baseX + tanX * 1.7, baseZ + tanZ * 1.7, gIn + 1.0);
+  }
+
+  // 교회 아치 랜드마크
+  const church = makeChurch(5.5, -13);
+  buildings.push(church);
+  // 교회 정문 앞에 성직자 배치(능력 강화 담당) — 중심 쪽으로 조금 나와서, 중심을 향하게
+  {
+    const cAng = Math.atan2(5.5, -13), cR = Math.hypot(5.5, -13) - 5.5;
+    const cxp = Math.sin(cAng) * cR, czp = Math.cos(cAng) * cR;
+    makeCleric(cxp, czp, Math.atan2(-cxp, -czp));
+  }
+
+  // 측면 — 대장간/상점/여관
+  buildings.push(makeBlacksmith(-13, 0));
+  buildings.push(makeShop(13.5, 0));
+  buildings.push(makeInn(12, -8));
+
+  // 빽빽한 주택(타운하우스 느낌으로 키 다양화 · 장미/청록/모브 지붕)
+  cottages.push(makeCottage({ x: -12, z: 7,    w: 2.9, d: 3.0, wh: 3.0, rh: 1.3, wall: C.plasterB, roof: C.tileA, chimney: true }));
+  cottages.push(makeCottage({ x: -6,  z: 12,   w: 3.2, d: 3.4, wh: 2.4, rh: 1.5, wall: C.plasterA, roof: C.tileC, chimney: true }));
+  cottages.push(makeCottage({ x: 8,   z: 12,   w: 3.0, d: 3.2, wh: 2.7, rh: 1.4, wall: C.plasterC, roof: C.tileB, chimney: false }));
+  cottages.push(makeCottage({ x: 12.5, z: 7,   w: 2.8, d: 3.0, wh: 3.1, rh: 1.3, wall: C.plasterA, roof: C.tileA, chimney: true }));
+  cottages.push(makeCottage({ x: -2.5, z: 14,  w: 3.0, d: 3.2, wh: 2.3, rh: 1.5, wall: C.plasterB, roof: C.thatch, chimney: true }));
+  buildings.push(...cottages);
+
+  // 방앗간 + 등록 배열
+  const windmill = makeWindmill(-17, -9);
+  const windmills = [windmill];
+  const gates = [gate];
+
+  // ===== 성벽 안쪽 초록 풀밭 + 풀포기 =====
+  const grassRing = new THREE.Mesh(new THREE.RingGeometry(15, 33, 44, 1), mat(C.grass));
+  grassRing.rotation.x = -Math.PI / 2; grassRing.position.y = 0.02; grassRing.receiveShadow = true; townScene.add(grassRing);
+  // 어두운 잔디 얼룩
+  for (let i = 0; i < 18; i++) {
+    const phi = Math.random() * Math.PI * 2, rr = 17 + Math.random() * 13;
+    const p = new THREE.Mesh(new THREE.CircleGeometry(1.4 + Math.random() * 2.4, 7), mat(C.grassD));
+    p.rotation.x = -Math.PI / 2; p.position.set(rr * Math.sin(phi), 0.03, rr * Math.cos(phi)); townScene.add(p);
+  }
+  // 무성한 풀포기(성벽 쪽으로 갈수록 촘촘) — 게이트 통로는 비움
+  const grassMats = [mat(C.leaf), mat(C.leafA), mat(C.grassD), mat(C.grass)];
+  for (let i = 0; i < 150; i++) {
+    const phi = Math.random() * Math.PI * 2, rr = 16.5 + Math.random() * 14;
+    const dg = Math.abs(Math.atan2(Math.sin(phi - GATE_ANGLE), Math.cos(phi - GATE_ANGLE)));
+    if (dg < 0.15) continue;                         // 도로 통로(게이트→마을) 전체 비움
+    const x = rr * Math.sin(phi), z = rr * Math.cos(phi);
+    const blade = new THREE.Mesh(new THREE.ConeGeometry(0.07 + Math.random() * 0.05, 0.3 + Math.random() * 0.3, 4),
+      grassMats[i % grassMats.length]);
+    blade.position.set(x, 0.18, z); blade.rotation.y = Math.random() * Math.PI; blade.castShadow = true; townScene.add(blade);
+    // 가끔 옆에 한두 포기 더(군집)
+    if (Math.random() < 0.6) {
+      const b2 = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.25 + Math.random() * 0.25, 4), grassMats[(i + 1) % grassMats.length]);
+      b2.position.set(x + (Math.random() - 0.5) * 0.6, 0.15, z + (Math.random() - 0.5) * 0.6); townScene.add(b2);
+    }
+  }
+
+  // ===== 성벽 안쪽 둘레에 촘촘한 나무 ===== (게이트 통로 + 논밭 구역 제외)
+  const FARM_ANGLE = -2.55;                            // 풍차~마차 사이 논밭 부채꼴 중심
+  for (let i = 0; i < 48; i++) {
+    const phi = i / 48 * Math.PI * 2 + Math.random() * 0.06;
+    const dg = Math.abs(Math.atan2(Math.sin(phi - GATE_ANGLE), Math.cos(phi - GATE_ANGLE)));
+    const dfarm = Math.abs(Math.atan2(Math.sin(phi - FARM_ANGLE), Math.cos(phi - FARM_ANGLE)));
+    if (dg < 0.34) continue;                           // 게이트 앞은 비워 진입로 확보
+    if (dfarm < 0.42) continue;                        // 논밭 구역은 나무 비움
+    const rr = 21.5 + Math.random() * 2.4 - (i % 2 ? 1.3 : 0);
+    const x = rr * Math.sin(phi) + (Math.random() - 0.5) * 1.2;
+    const z = rr * Math.cos(phi) + (Math.random() - 0.5) * 1.2;
+    trees.push(makeTree(x, z, 0.8 + Math.random() * 0.7));
+  }
+
+  // ===== 입구 → 마을로 이어지는 포장도로 (게이트에서 중앙 광장까지) =====
+  {
+    const roadMats = [mat(C.flag), mat(C.flagD), mat(C.flagE), mat(C.rubble)];
+    const start = 12.5, end = WALL_R - 0.4;             // 중앙 포석 근처 → 성벽 직전
+    const dirX = Math.sin(GATE_ANGLE), dirZ = Math.cos(GATE_ANGLE);
+    const perpX = Math.cos(GATE_ANGLE), perpZ = -Math.sin(GATE_ANGLE); // 도로 폭 방향
+    const step = 0.9;
+    for (let r = start; r <= end; r += step) {
+      const t = (r - start) / (end - start);
+      // 살짝 휘는 곡선(전체 길이에 0.6 라디안 변동)
+      const ang = GATE_ANGLE + Math.sin(t * Math.PI) * 0.04;
+      const cx = r * Math.sin(ang), cz = r * Math.cos(ang);
+      // 폭 방향으로 3~4 타일 배치(중앙 진하게, 가장자리 흐리게)
+      for (let w = -1.4; w <= 1.4; w += 0.7) {
+        const px = cx + perpX * w + (Math.random() - 0.5) * 0.12;
+        const pz = cz + perpZ * w + (Math.random() - 0.5) * 0.12;
+        const tm = (Math.abs(w) < 0.8) ? roadMats[0] : (Math.random() < 0.4 ? roadMats[3] : roadMats[1]);
+        const s = 0.7 + Math.random() * 0.18;
+        const tile = new THREE.Mesh(new THREE.BoxGeometry(s, 0.08 + Math.random() * 0.05, s), tm);
+        tile.position.set(px, 0.07, pz); tile.rotation.y = (Math.random() - 0.5) * 0.25;
+        tile.receiveShadow = true; townScene.add(tile);
+      }
+    }
+  }
+
+  // 광장 사람들: 보초 둘(뒤쪽 응시) + 시장 가판대 + 마차
+  const guards = [
+    makeGuard(1.6, -7.2, Math.PI, { name: '광장 보초병', lineSets: [
+      ['광장은 평화롭군.', '교회 앞 성직자에게 가면 축복(영구 강화)을 받을 수 있네.', '던전 입구는 광장 한가운데 있네. 조심히 내려가게.'],
+      ['오늘은 장이 제법 북적이는군.'],
+      ['대장간은 아직 새 단장 중이라네.', '곧 좋은 장비를 다룬다 하니 기대해 보게.'],
+      ['던전에서 모은 골드는 잘 간수하게.', '성직자의 축복에 쓰면 두고두고 도움이 되지.']
+    ] }),
+    makeGuard(-2.2, -6.6, Math.PI, { name: '광장 보초병', lineSets: [
+      ['수상한 자는 없는지 늘 살피고 있지.'],
+      ['축복을 받으려면 교회 쪽으로 가 보게.', '흰 옷을 입은 성직자가 있을 걸세.'],
+      ['밤엔 등불을 밝혀 두니 길 잃을 일은 없을 거야.'],
+      ['무리하지 말고, 위험하면 마을로 돌아오게.']
+    ] })
+  ];
+  // 걸어다니는 주민들 — 광장 곳곳에 배치(자유롭게 배회), 말 걸 때마다 다른 대사
+  makeVillager(6, 4, { name: '마을 아낙', lineSets: [
+    ['오늘 장이 열려서 북적이네요.', '우물물이 참 시원하답니다.'],
+    ['빨래를 널어야 하는데 또 흐리네요.'],
+    ['모험가님은 몇 층까지 가 보셨어요?', '저는 무서워서 근처도 못 간답니다.'],
+    ['따뜻한 빵 냄새 안 나요? 저 집 화덕이지요.']
+  ] });
+  makeVillager(-4, 5, { name: '노인', lineSets: [
+    ['예전엔 이 마을도 더 컸다네...', '던전이 생기고부터 모험가들이 모여들었지.', '젊은이, 무리하지 말게나.'],
+    ['이 늙은이도 한때는 검을 잡았더랬지.', '허허, 다 옛날 이야기일세.'],
+    ['땅속 깊은 곳엔 오래된 것들이 잠들어 있다네.', '괜히 깨우지 않는 게 좋아.'],
+    ['무릎이 쑤시는 걸 보니 비가 오려나...']
+  ] });
+  makeVillager(8, -2, { name: '상인의 조수', lineSets: [
+    ['주인님 심부름 가는 길이에요.', '대장간 화로는 밤새 꺼지지 않죠.'],
+    ['언젠가 저도 멋진 장비를 만들 거예요.'],
+    ['물건 보는 눈은 제가 좀 있답니다, 헤헤.'],
+    ['주인님이 곧 새 물건을 들인대요. 기대돼요!']
+  ] });
+  makeVillager(-7, 2, { name: '아이', lineSets: [
+    ['형아(누나)도 모험가야?', '나도 크면 던전에 들어갈 거야!'],
+    ['우와, 진짜 칼이다! 만져봐도 돼?'],
+    ['숨바꼭질하자! ...아, 일하는 중이구나.'],
+    ['엄마가 우물 근처 가지 말랬는데 히히.']
+  ] });
+  makeVillager(3, 7, { name: '여행자', lineSets: [
+    ['먼 곳에서 소문을 듣고 왔습니다.', '이 던전의 보물이 그렇게 대단하다죠?'],
+    ['여관이 문을 열면 하룻밤 묵고 싶군요.'],
+    ['지도를 그리는 게 제 취미랍니다.', '이 마을도 한 장 남겨야겠어요.'],
+    ['길에서 별을 보며 자는 것도 운치 있지요.']
+  ] });
+  // 던전 입구를 둘러싼 세 곳에 가판대를 호(arc)로 정렬 — 각 가판대는 통로(중심) 쪽을 봄
+  function placeStallRow(centerAngle, count, radius, gap, cols) {
+    for (let i = 0; i < count; i++) {
+      const t = (i - (count - 1) / 2) * (gap / radius);  // 호를 따라 균등 분배
+      const phi = centerAngle + t;
+      const x = Math.sin(phi) * radius, z = Math.cos(phi) * radius;
+      makeStall(x, z, phi, cols[i % cols.length]);       // 접선 방향으로 정렬
+    }
+  }
+  // 북쪽 호(던전과 뒤쪽 건물 사이) — 3개
+  placeStallRow(0,             3, 9.0, 2.4, [C.cloth, C.tileC, C.cloth2]);
+  // 동쪽 호(상점·여관 앞 빈 공간) — 2개
+  placeStallRow(Math.PI / 2,   2, 9.0, 2.4, [C.cloth2, C.cloth]);
+  // 남동쪽 호(오른쪽 아래 빈 광장) — 2개
+  placeStallRow(Math.PI * 0.7, 2, 9.0, 2.4, [C.tileC, C.cloth]);
+  // 광장 북서쪽 가판대 3개: 캐릭터 위치 부근을 중심으로 호 모양 배치(논밭 앞, 위쪽으로)
+  placeStallRow(Math.atan2(-10.6, -9.0), 3, 13.9, 3.0, [C.cloth, C.cloth2, C.tileC]);
+  // 가판대 호의 가운데 앞(중심 쪽)에 상인 NPC 배치 — 광장 중심을 향하게
+  {
+    const mAng = Math.atan2(-10.6, -9.0), mR = 13.9 - 1.8;
+    const mxp = Math.sin(mAng) * mR, mzp = Math.cos(mAng) * mR;
+    makeMerchant(mxp, mzp, Math.atan2(-mxp, -mzp)); // 중심(0,0)을 바라봄
+  }
+  makeCart(-2.6, 8.5, 0.3);
+  makeCart(9.0, -3.0, -1.1);
+
+  // 교회 뒤 묘지 · 방앗간 옆 밀밭
+  makeGraveyard(10, -16.5);
+  const fields = [
+    makeWheatField(-18, 2, 5, 4),                  // 풍차 왼쪽(원래, 유지)
+    makeWheatField(-11.5, -14, 9, 5.5, 0.55),      // 풍차 오른쪽 — 큰 논밭 하나
+  ];
+
+  // 깃대(긴 장대) + 아래로 늘어진 펄럭이는 현수막
+  function bannerPole(x, z, h, col) {
+    townScene.add(cyl(0.07, 0.1, h, 6, M.woodD, x, h / 2, z));
+    townScene.add(cyl(0.04, 0.04, 0.95, 6, M.woodD, x, h - 0.05, z + 0.45));  // 크로스바
+    const banner = makeFlag(1.6, 0.78, col, { amp: 0.32, speed: 3.4, freq: 2.0, segW: 5, segH: 12 });
+    banner.rotation.z = -Math.PI / 2;                  // 위 고정 → 아래로 늘어짐
+    banner.position.set(x, h - 0.05, z + 0.5); townScene.add(banner);
+  }
+  bannerPole(1.9, -9.0, 5.0, C.cloth);
+  bannerPole(1.15, -15.0, 5.4, C.tileC);
+  bannerPole(0.4, -21.0, 4.6, C.cloth2);
+
+  // 가로등(광장 안쪽 고리)
+  [[5.5, 1.5], [-5.5, 1.5], [1, 6], [-1, -5], [4, -4.5], [-4.5, -3]].forEach(p => makeLamp(p[0], p[1]));
+
+  // 소품(상점/대장간/시장 주변)
+  prop(11.6, -2.2, 'barrel'); prop(12.2, -2.9, 'crate');
+  prop(-11.2, 2.2, 'barrel'); prop(-11.8, 2.8, 'barrel');
+  prop(5.5, 7.2, 'crate'); prop(-5.6, 8.4, 'hay'); prop(-6.3, 8.0, 'hay');
+
+  // ===== 굴뚝 연기 시스템 =====
+  const smokers = [];
+  function buildSmoke() {
+    const all = [well, ...buildings];
+    for (const b of all) {
+      const s = b.userData.smoke; if (!s) continue;
+      const puffs = [];
+      const col = s.dark ? 0x3a3a3a : 0xd7d2c8;
+      for (let i = 0; i < 7; i++) {
+        const pm = new THREE.MeshStandardMaterial({ color: col, flatShading: true, transparent: true, opacity: 0, roughness: 1 });
+        const p = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), pm);
+        p.castShadow = false;
+        // 월드 좌표로 배치(건물 회전 보정)
+        const local = new THREE.Vector3(s.x, s.y, s.z);
+        local.applyAxisAngle(new THREE.Vector3(0, 1, 0), b.rotation.y);
+        local.add(b.position);
+        p.userData.base = local.clone();
+        p.userData.t = i / 7;
+        p.position.copy(local);
+        townScene.add(p); puffs.push(p);
+      }
+      smokers.push({ puffs });
+    }
+  }
+  buildSmoke();
+
+
+  // 애니메이션 대상들을 townAnim에 연결(updateTown에서 사용)
+  townAnim.wavingFlags = (typeof wavingFlags !== 'undefined') ? wavingFlags : [];
+  townAnim.windmills = (typeof windmills !== 'undefined') ? windmills : [];
+  townAnim.smokers = (typeof smokers !== 'undefined') ? smokers : [];
+  townAnim.guards = (typeof guards !== 'undefined') ? guards : [];
+  townAnim.lampLights = (typeof lampLights !== 'undefined') ? lampLights : [];
+  townAnim.windowMats = (typeof windowMats !== 'undefined') ? windowMats : [];
+
+  // 모든 오브젝트 충돌: townScene 최상위 자식 중 지면/장식 평면을 뺀 메시·그룹에 콜라이더 등록.
+  // 바운딩 박스 XZ 크기로 반경을 추정한다.
+  const _bb = new THREE.Box3(), _sz = new THREE.Vector3(), _ct = new THREE.Vector3();
+  for (const child of townScene.children) {
+    if (child.isLight) continue;
+    if (child.userData && child.userData.noCollide) continue; // 던전 입구 그룹 자체는 아래에서 따로 처리
+    _bb.setFromObject(child); _bb.getSize(_sz); _bb.getCenter(_ct);
+    if (_sz.y < 0.5) continue;           // 납작한 바닥/타일/풀 제외
+    const r = Math.max(_sz.x, _sz.z) * 0.42; // XZ 외접 반경 근사
+    if (r < 0.2) continue;
+    townColliders.push({ x: _ct.x, z: _ct.z, r });
+  }
+  // 던전 입구 구덩이: 둘레를 따라 충돌 벽(작은 콜라이더 링)을 둘러 플레이어가 구덩이에 빠지지 않게.
+  // 통로는 계단 입구(+Z) 한 구간만 열고, 문 쪽(-Z)과 좌우는 모두 막는다. 계단으로만 내려가게.
+  {
+    const ringR = TOWN_HOLE + 0.35;       // 구덩이 가장자리 반경
+    const N = 28;
+    const stairAng = TOWN_STAIR_ANGLE;    // 계단 입구 방향(+Z)
+    for (let i = 0; i < N; i++) {
+      const a = i / N * Math.PI * 2;
+      // 계단 입구 방향 ±0.45rad 구간만 통로로 비움(계단 폭 정도)
+      const da = Math.abs(Math.atan2(Math.sin(a - stairAng), Math.cos(a - stairAng)));
+      if (da < 0.45) continue;
+      townColliders.push({ x: Math.sin(a) * ringR, z: Math.cos(a) * ringR, r: 0.7 });
+    }
+  }
+
+  townBuilt = true;
+  return townScene;
+}
+
+// 마을 시간대 전환: 'night'(밤) / 'day'(낮). 하늘·안개·조명·창문/등불을 함께 바꾼다.
+let townTimeOfDay = 'night';
+let townMusicOn = true; // 마을 배경음악 on/off
+let townTimeAuto = true; // true면 실제 시각에 따라 낮/밤 자동 전환, false면 버튼으로 수동 고정
+// 실제 기기 시각으로 낮/밤 판단: 6시~18시는 낮, 그 외는 밤
+function timeOfDayNow() {
+  const h = new Date().getHours();
+  return (h >= 6 && h < 18) ? 'day' : 'night';
+}
+// 시간 버튼 라벨: 현재 낮/밤 + 자동/수동 표시
+function updateTimeBtnLabel() {
+  const b = $('townTimeBtn'); if (!b) return;
+  const icon = (townTimeOfDay === 'day') ? '☀️ 낮' : '🌙 밤';
+  b.textContent = icon + (townTimeAuto ? ' (자동)' : '');
+}
+function setTownTimeOfDay(mode) {
+  townTimeOfDay = mode;
+  const L = townAnim.lights;
+  if (!L) return;
+  const isDay = (mode === 'day');
+  const skyHex = isDay ? 0x9fc4e8 : 0x141a2e;            // 낮: 맑은 하늘 / 밤: 짙은 남색
+  if (L.scene) {
+    if (L.scene.background) L.scene.background.setHex(skyHex);
+    if (L.scene.fog) { L.scene.fog.color.setHex(skyHex); L.scene.fog.density = isDay ? 0.006 : 0.013; }
+  }
+  // 햇빛/달빛
+  L.sun.color.setHex(isDay ? 0xfff2d6 : 0x4a5a8a);
+  L.sun.intensity = isDay ? 0.55 : 0.12;
+  L.sun.position.set(isDay ? 20 : 14, isDay ? 30 : 22, isDay ? 14 : 10);
+  // 환경광/반구광/필
+  L.ambient.intensity = isDay ? 0.32 : 0.22;
+  L.sky.color.setHex(isDay ? 0x9fc4e8 : 0x2a3a66);
+  L.sky.groundColor.setHex(isDay ? 0x6a7a55 : 0x1a1a28);
+  L.sky.intensity = isDay ? 0.38 : 0.22;
+  L.fillRim.color.setHex(isDay ? 0xfff0d0 : 0x6a7aaa);
+  L.fillRim.intensity = isDay ? 0.25 : 0.30;
+  // 창문 발광: 낮엔 끄고 밤엔 켠다
+  if (townAnim.windowMats) for (const wm of townAnim.windowMats) wm.emissiveIntensity = isDay ? 0.0 : 1.0;
+  // 가로등/횃불: 낮엔 약하게(또는 끔), 밤엔 환하게
+  if (townAnim.lampLights) for (const l of townAnim.lampLights) {
+    l.light.intensity = isDay ? 0.0 : 1.5;
+    l.glass.emissiveIntensity = isDay ? 0.15 : 1.2;
+  }
+}
+
+// 마을 애니메이션 갱신(깃발/풍차/연기/보초/등불)
+function updateTown(dt) {
+  townAnim.time += dt;
+  const t = townAnim.time;
+  if (townAnim.wavingFlags) for (const f of townAnim.wavingFlags) {
+    const pos = f.geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const bx = f.base[i * 3], by = f.base[i * 3 + 1];
+      const wave = Math.sin(bx * f.freq - t * f.speed + f.ph) * f.amp * (Math.abs(bx) / f.w);
+      pos.setZ(i, wave); pos.setY(i, by + wave * 0.12);
+    }
+    pos.needsUpdate = true; f.geo.computeVertexNormals();
+  }
+  if (townAnim.windmills) for (const w of townAnim.windmills) { if (w.userData && w.userData.blades) w.userData.blades.rotation.z += dt * 0.6; }
+  if (townAnim.guards) for (const g of townAnim.guards) { if (g.userData) { g.userData.bob = (g.userData.bob || 0) + dt; g.position.y = Math.sin(g.userData.bob * 1.5) * 0.03; } }
+  // 상인: 가벼운 idle + 머리 위 대화 마커 둥실/회전
+  if (townAnim.merchants) for (const m of townAnim.merchants) {
+    if (!m.userData) continue;
+    m.userData.bob = (m.userData.bob || 0) + dt;
+    m.position.y = Math.sin(m.userData.bob * 1.5) * 0.03;
+    if (m.userData.mark) { m.userData.mark.rotation.y += dt * 1.5; m.userData.mark.position.y = 2.05 + Math.sin(m.userData.bob * 2.0) * 0.08; }
+  }
+  // 대화 NPC들: 마커 회전 + 주민은 마을 안 배회(대화 중이면 정지)
+  for (const npc of townNPCs) {
+    if (npc.mark) { npc.mark.rotation.y += dt * 1.5; npc.mark.position.y = (npc.wander ? 1.95 : 2.05) + Math.sin(townAnim.time * 2 + npc.x) * 0.07; }
+    if (!npc.wander) continue;                       // 보초는 제자리
+    if (townActiveNPC === npc) {                      // 대화 중이면 멈춰서 플레이어를 바라봄
+      const dx = player.obj.position.x - npc.obj.position.x, dz = player.obj.position.z - npc.obj.position.z;
+      npc.obj.rotation.y = Math.atan2(dx, dz);
+      continue;
+    }
+    // 목표까지 이동, 도착/대기 시 새 목표 선정
+    const dx = npc.tx - npc.obj.position.x, dz = npc.tz - npc.obj.position.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.3) {
+      npc.waitT -= dt;
+      npc.legL.rotation.x *= 0.8; npc.legR.rotation.x *= 0.8; // 멈추면 다리 정지
+      if (npc.waitT <= 0) {
+        // 집 주변(home) 반경 6 안에서 새 목표(광장 안, 던전 구덩이 회피)
+        for (let tries = 0; tries < 8; tries++) {
+          const a = Math.random() * Math.PI * 2, r = 2 + Math.random() * 5;
+          const nx = npc.homeX + Math.cos(a) * r, nz = npc.homeZ + Math.sin(a) * r;
+          const rc = Math.hypot(nx, nz);
+          if (rc > TOWN_HOLE + 2.5 && rc < TOWN_WALL_R - 3) { npc.tx = nx; npc.tz = nz; break; }
+        }
+        npc.waitT = 1 + Math.random() * 3;
+      }
+    } else {
+      const sp = npc.speed * dt;
+      npc.obj.position.x += (dx / dist) * sp;
+      npc.obj.position.z += (dz / dist) * sp;
+      npc.obj.rotation.y = Math.atan2(dx, dz);
+      npc.x = npc.obj.position.x; npc.z = npc.obj.position.z;
+      // 걷기 다리 모션
+      npc.walkPhase += sp * 5;
+      const wSin = Math.sin(npc.walkPhase);
+      npc.legL.rotation.x = wSin * 0.6; npc.legR.rotation.x = -wSin * 0.6;
+    }
+  }
+  // 굴뚝 연기: 위로 떠오르며 팽창·소멸
+  if (townAnim.smokers) for (const sm of townAnim.smokers) {
+    for (const p of sm.puffs) {
+      p.userData.t += dt * 0.25;
+      if (p.userData.t > 1) { p.userData.t -= 1; }
+      const tt = p.userData.t;
+      p.position.y = p.userData.base.y + tt * 2.2;
+      p.position.x = p.userData.base.x + Math.sin(tt * 6 + p.userData.base.z) * 0.25;
+      p.position.z = p.userData.base.z + Math.cos(tt * 5) * 0.2;
+      const sc = 0.4 + tt * 1.1; p.scale.setScalar(sc);
+      p.material.opacity = Math.sin(tt * Math.PI) * 0.5;
+    }
+  }
+}
+
+// ===== TOWN MODULE END =====
 
 // --- LIGHTING (그라데이션 및 FOV) ---
 const ambientLight = new THREE.AmbientLight(0x0a101a, 0.6); 
@@ -2278,7 +3636,7 @@ const joyBase = $('joyBase'), joyStick = $('joyStick');
 const turnBase = $('turnBase'), turnStick = $('turnStick');
 // 마을·게임오버·캐릭터선택 등 오버레이가 떠 있으면 게임 터치 조작을 막는다(스크롤·버튼 충돌 방지)
 function anyOverlayOpen() {
-  const ids = ['townOverlay', 'overOverlay', 'charOverlay', 'startOverlay', 'howtoOverlay', 'rewardOverlay', 'newGameConfirm'];
+  const ids = ['overOverlay', 'charOverlay', 'startOverlay', 'howtoOverlay', 'rewardOverlay'];
   return ids.some(id => { const el = document.getElementById(id); return el && !el.classList.contains('hidden'); });
 }
 
@@ -3244,6 +4602,17 @@ function computeScore() {
 function getBestScore() {
   try { return parseInt(localStorage.getItem('dungeon_best_score') || '0', 10) || 0; } catch (e) { return 0; }
 }
+// 저장된 진행(loadRun 데이터)으로 점수 계산 — 게임이 메모리에 로드되기 전 정산용
+function computeScoreFromSave(r) {
+  const floor = r.floor || 1, kills = r.kills || 0, noHit = r.noHitFloors || 0;
+  const floorPts = floor * 100, killPts = kills * 10;
+  const elapsedSec = Math.max(1, (r.elapsed || 0) / 1000);
+  const parSec = floor * 45;
+  const timeBonus = Math.max(0, Math.round((parSec - elapsedSec) * 2));
+  const noHitBonus = noHit * 50;
+  const total = floorPts + killPts + timeBonus + noHitBonus;
+  return { total, floorPts, killPts, timeBonus, noHitBonus, elapsedSec: Math.round(elapsedSec) };
+}
 function saveBestScore(s) {
   try { localStorage.setItem('dungeon_best_score', String(s)); } catch (e) {}
 }
@@ -3300,7 +4669,8 @@ function saveRun() {
       elapsed: Date.now() - runStartTime,
       defeated: Array.from(defeatedBosses),
       chestFloor: lastChestFloor,
-      metaGold: meta.gold // 층 진입 시점의 영구 골드(이어하기 시 이 값으로 되돌림)
+      metaGold: meta.gold, // 층 진입 시점의 영구 골드(이어하기 시 이 값으로 되돌림)
+      char: selectedChar   // 진행 중 캐릭터(이어하기 시 외형 복원)
     };
     localStorage.setItem('dungeon_run', JSON.stringify(data));
   } catch (e) {}
@@ -3315,16 +4685,28 @@ function die() {
   if (!player.alive) return; // 이미 사망 처리됨(같은 프레임 다중 피격 시 골드 중복 적립 방지)
   isCharging = false; SFX.chargeStop(false); player.alive = false;
   clearRun(); // 죽으면 이어하기 불가
-  const sc = computeScore();
+  // 결과 정산(사망): 현재 진행 상태로 점수·골드 화면 표시
+  showRunResult({
+    floor: player.floor, kills: player.kills, lv: player.lv,
+    score: computeScore(), runGoldVal: runGold, died: true
+  });
+}
+// 결과 화면 표시 + 골드 적립(사망/귀환 공용). data: {floor,kills,lv,score,runGoldVal,died}
+function showRunResult(data) {
+  const sc = data.score;
   const prevBest = getBestScore();
   const isNewBest = sc.total > prevBest;
   if (isNewBest) saveBestScore(sc.total);
-  // 회차 종료 정산: 이번 판에서 모은 골드(runGold)를 영구 골드로 적립.
-  meta.gold += runGold; saveMeta();
+  // 회차 종료 정산: 이번 판에서 모은 골드를 영구 골드로 적립.
+  meta.gold += data.runGoldVal; saveMeta();
   setTimeout(() => {
-    $('overFloor').textContent = player.floor;
-    $('overKills').textContent = player.kills;
-    $('overLv').textContent = player.lv;
+    // 사망/귀환에 따라 제목·문구 변경
+    const h1 = $('overOverlay').querySelector('h1');
+    const p = $('overOverlay').querySelector('p');
+    if (h1) h1.textContent = data.died ? 'YOU DIED' : '마을로 귀환';
+    if (p) p.innerHTML = data.died
+      ? `당신은 <b id="overFloor">${data.floor}</b>층에서 쓰러졌고,<br><b id="overKills">${data.kills}</b>마리의 몬스터를 물리쳤습니다.<br>최종 레벨: <b id="overLv">${data.lv}</b>`
+      : `<b id="overFloor">${data.floor}</b>층까지 탐험하고 무사히 귀환했습니다.<br><b id="overKills">${data.kills}</b>마리의 몬스터를 물리쳤습니다.<br>최종 레벨: <b id="overLv">${data.lv}</b>`;
     if ($('overScore')) $('overScore').textContent = sc.total.toLocaleString();
     if ($('overScoreBreak')) {
       const mm = Math.floor(sc.elapsedSec / 60), ss = sc.elapsedSec % 60;
@@ -3333,16 +4715,17 @@ function die() {
     }
     if ($('overBest')) $('overBest').textContent = Math.max(prevBest, sc.total).toLocaleString();
     if ($('overNewBest')) $('overNewBest').style.display = isNewBest ? 'block' : 'none';
-    if ($('overGold')) $('overGold').textContent = '+' + runGold.toLocaleString();
+    if ($('overGold')) $('overGold').textContent = '+' + data.runGoldVal.toLocaleString();
     if ($('overTotalGold')) $('overTotalGold').textContent = meta.gold.toLocaleString();
     $('overOverlay').classList.remove('hidden');
-  }, 800);
+  }, data.died ? 800 : 0);
 }
 function resetGame() { defeatedBosses.clear(); lastChestFloor = 0; player.alive = true; player.lv = 1; player.exp = 0; player.expMax = 10; player.atkSpeed = 1.0; player.kills = 0; player.floor = 1; staRegenCooldown = 0; player.gold = 0; runGold = 0; player.noHitFloors = 0; player.hitThisFloor = false; applyMetaUpgrades(); runStartTime = Date.now(); $('rewardOverlay').classList.add('hidden'); rewardPaused = false; startFloor(); }
 // 저장된 진행으로 재개(이어하기). 같은 층의 새 맵에서 시작.
 function resumeGame() {
   const r = loadRun();
   if (!r) { resetGame(); return; }
+  if (r.char && r.char !== selectedChar) { selectedChar = r.char; applyCharLook(r.char); }
   defeatedBosses.clear(); lastChestFloor = r.chestFloor || 0;
   if (Array.isArray(r.defeated)) r.defeated.forEach(t => defeatedBosses.add(t));
   player.alive = true; player.atkSpeed = r.atkSpeed || 1.0;
@@ -3463,10 +4846,17 @@ function tick(now) {
   let dt = Math.min(0.05, clock.getDelta());
   // 패링 히트스톱: 짧은 슬로우모션으로 타격감 강조
   if (hitStop > 0) { hitStop -= dt; dt *= 0.18; }
-  if (player.alive && !rewardPaused) update(dt);
-  renderer.setRenderTarget(rt); renderer.clear(); renderer.render(scene, camera); 
-  renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
-  drawMinimap();
+  if (inTown) {
+    // 마을 모드: 마을 씬을 같은 픽셀화 파이프라인으로 렌더
+    updateTownMode(dt);
+    renderer.setRenderTarget(rt); renderer.clear(); renderer.render(townScene, camera);
+    renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
+  } else {
+    if (player.alive && !rewardPaused) update(dt);
+    renderer.setRenderTarget(rt); renderer.clear(); renderer.render(scene, camera);
+    renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
+    drawMinimap();
+  }
 }
 
 async function lockOrientation() { if (screen.orientation && screen.orientation.lock) try { await screen.orientation.lock('landscape'); } catch(e){} }
@@ -3486,7 +4876,36 @@ function onTap(el, handler) {
 function safeResume() { try { SFX.resume(); } catch (e) { console.error(e); } }
 
 // START 누르면 캐릭터 선택창 표시
-onTap($('startOverlay'), () => { safeResume(); $('startOverlay').classList.add('hidden'); $('charOverlay').classList.remove('hidden'); });
+onTap($('startOverlay'), () => {
+  safeResume();
+  $('startOverlay').classList.add('hidden');
+  const saved = loadRun();
+  if (saved && saved.floor >= 1) {
+    // 진행 중인 던전이 있으면 이어하기/마을 선택(캐릭터 선택 건너뜀)
+    if (saved.char) { selectedChar = saved.char; applyCharLook(saved.char); }
+    if ($('startResumeFloor')) $('startResumeFloor').textContent = saved.floor;
+    $('startResumeChoice').classList.remove('hidden');
+  } else {
+    $('charOverlay').classList.remove('hidden');
+  }
+});
+onTap($('startResumeBtn'), () => { safeResume(); $('startResumeChoice').classList.add('hidden'); showDungeonUI(); resumeGame(); });
+onTap($('startToTownBtn'), () => {
+  safeResume();
+  $('startResumeChoice').classList.add('hidden');
+  const r = loadRun();
+  if (r && r.floor >= 1) {
+    // 탐험을 마치고 마을로 귀환 — 그동안의 점수·골드 정산 화면 표시
+    if (r.char) { selectedChar = r.char; applyCharLook(r.char); }
+    clearRun(); // 귀환했으니 진행 정리(다음엔 1층부터)
+    showRunResult({
+      floor: r.floor, kills: r.kills || 0, lv: r.lv || 1,
+      score: computeScoreFromSave(r), runGoldVal: r.runGold || 0, died: false
+    });
+  } else {
+    enterTownMode();
+  }
+});
 
 // 캐릭터 카드 선택 → 외형 적용 후 조작 안내 표시
 function beginGameWith(kind) {
@@ -3504,44 +4923,252 @@ function beginGameWith(kind) {
 }
 function startActualGame() {
   $('howtoOverlay').classList.add('hidden');
-  openTown(); // 던전 직행이 아니라 마을부터
+  enterTownMode(); // 메뉴 대신 3D 마을에서 시작
 }
 // 실제 던전 진입(공통 화면 전환)
 function showDungeonUI() {
-  $('townOverlay').classList.add('hidden');
   $('hud').style.display = 'block'; $('minimap').style.display = 'block';
   if (isTouchDevice) $('mobileControls').style.display = 'block';
   lockOrientation();
 }
-function enterDungeon() { showDungeonUI(); resetGame(); }   // 새 게임(1층부터)
-function resumeDungeon() { showDungeonUI(); resumeGame(); }  // 이어하기
-// 마을 화면 열기 + 상점 렌더
-function openTown() {
+
+// ===== 마을 3D 모드 (1단계: 걸어다니기 + 던전 입구 진입) =====
+function enterTownMode() {
+  buildTownScene();
+  clearRun();          // 마을로 돌아오면 던전 진행은 정리 — 마을에서 입장 시 항상 1층부터
+  inTown = true;
+  player.alive = true; // 마을에서는 항상 활동 가능(사망 후 복귀 대비)
+  // UI: HUD 숨기고 모바일 컨트롤만 표시(전투 입력은 마을에서 무시)
   $('hud').style.display = 'none'; $('minimap').style.display = 'none';
-  $('mobileControls').style.display = 'none';
-  // 저장된 진행이 있으면 이어하기 버튼 표시 + 상점 영역 숨김
-  const saved = loadRun();
-  const canResume = !!(saved && saved.floor >= 1);
-  if (canResume) {
-    $('resumeBtn').classList.remove('hidden');
-    $('resumeFloor').textContent = saved.floor;
-  } else {
-    $('resumeBtn').classList.add('hidden');
+  if (isTouchDevice) $('mobileControls').style.display = 'block';
+  lockOrientation();
+  // 플레이어 메시를 마을 씬으로 옮기고 성문 근처(남쪽)에서 시작
+  townScene.add(player.obj);
+  const startA = Math.PI + 0.12;            // 성문 방위
+  const sr = TOWN_WALL_R - 4;
+  player.obj.position.set(sr * Math.sin(startA), 0, sr * Math.cos(startA));
+  player.yaw = startA + Math.PI;            // 마을 중심을 바라봄
+  player.obj.rotation.y = player.yaw;
+  camera.position.set(player.obj.position.x + isoOffsetX, isoOffsetY, player.obj.position.z + isoOffsetZ);
+  camera.lookAt(player.obj.position);
+  if (townTimeAuto) townTimeOfDay = timeOfDayNow(); // 자동: 실제 시각에 맞춰 낮/밤 결정
+  setTownTimeOfDay(townTimeOfDay); // 시간대(밤/낮) 적용
+  if (townMusicOn && SFX && SFX.musicStart) SFX.musicStart(); // 마을 배경음악(음소거 아니면)
+  if ($('townTimeBtn')) {
+    $('townTimeBtn').style.display = 'block';
+    updateTimeBtnLabel();
   }
-  // 이어하기 가능 상태에서는 상점(골드 표시·안내·항목 목록)을 모두 숨긴다.
-  // 새 게임/사망 후처럼 처음부터 시작해야 하는 상황에서만 상점이 보이게 함.
-  const showShop = !canResume;
-  $('townGoldRow').style.display = showShop ? 'block' : 'none';
-  $('shopHeader').style.display = showShop ? 'block' : 'none';
-  $('shopList').style.display = showShop ? 'flex' : 'none';
-  if (showShop) renderShop();
-  // 새 게임 버튼 텍스트: 이어하기 가능하면 '마을로 돌아가기'(진행 삭제+상점 표시), 아니면 '새 게임'
-  $('enterDungeonBtn').textContent = canResume ? '🏠 마을로 돌아가기' : '⚔️ 새 게임 (1층부터)';
-  $('townOverlay').classList.remove('hidden');
+  if ($('townMusicBtn')) {
+    $('townMusicBtn').style.display = 'block';
+    $('townMusicBtn').textContent = townMusicOn ? '🎵 음악' : '🔇 음악';
+  }
 }
-function renderShop() {
-  $('townGold').textContent = meta.gold.toLocaleString();
-  const list = $('shopList'); list.innerHTML = '';
+function exitTownToDungeon() {
+  // 던전 입구 도달: 마을에서 들어가면 항상 처음부터(1층). 이어하기는 게임 시작 시점에만.
+  enterDungeonFromTown(false);
+}
+// 마을 → 던전 실제 진입. resume=true면 이어하기, 아니면 1층부터.
+function enterDungeonFromTown(resume) {
+  inTown = false; townEnterHold = 0;
+  if ($('townLoadWrap')) $('townLoadWrap').style.display = 'none';
+  if ($('townPrompt')) $('townPrompt').style.display = 'none';
+  if ($('townCoord')) $('townCoord').style.display = 'none';
+  if ($('townTalkBtn')) $('townTalkBtn').style.display = 'none';
+  if ($('townInteract')) $('townInteract').style.display = 'none';
+  if ($('townTimeBtn')) $('townTimeBtn').style.display = 'none';
+  if ($('townMusicBtn')) $('townMusicBtn').style.display = 'none';
+  if (SFX && SFX.musicStop) SFX.musicStop(); // 마을 음악 끄기
+  closeTownShop();
+  townDialogClose(); townInteractTarget = null;
+  scene.add(player.obj);
+  if (resume) { showDungeonUI(); resumeGame(); }
+  else { clearRun(); showDungeonUI(); resetGame(); }
+}
+// 마을 모드 매 프레임: 이동(조이스틱/키보드) + 회전 패드 + 충돌 + 카메라 추적 + 던전 입구 감지
+function updateTownMode(dt) {
+  updateTown(dt);
+  // 카메라 기준 방향(던전과 동일)
+  const camFwd = new THREE.Vector3(); camera.getWorldDirection(camFwd); camFwd.y = 0; camFwd.normalize();
+  const camRight = new THREE.Vector3().crossVectors(camFwd, new THREE.Vector3(0, 1, 0)).normalize();
+  // 입력: 모바일 조이스틱(joyVec) 또는 키보드(keys)
+  let mx = 0, mz = 0;
+  if (isTouchDevice) { mx = joyVec.x; mz = joyVec.y; }
+  else {
+    if (keys.has('KeyW') || keys.has('ArrowUp')) mz -= 1;
+    if (keys.has('KeyS') || keys.has('ArrowDown')) mz += 1;
+    if (keys.has('KeyA') || keys.has('ArrowLeft')) mx -= 1;
+    if (keys.has('KeyD') || keys.has('ArrowRight')) mx += 1;
+  }
+  const mag = Math.hypot(mx, mz);
+  let moved = false;
+  if (mag > 0.05) {
+    // 카메라 기준 월드 이동 방향
+    const mv = new THREE.Vector3().addScaledVector(camFwd, -mz).addScaledVector(camRight, mx);
+    if (mv.lengthSq() > 0.0001) {
+      mv.normalize();
+      const spd = 6.0 * Math.min(1, mag) * dt;
+      let nx = player.obj.position.x + mv.x * spd;
+      let nz = player.obj.position.z + mv.z * spd;
+      // 건물 콜라이더 충돌(원형)
+      for (const c of townColliders) {
+        const ddx = nx - c.x, ddz = nz - c.z, dd = Math.hypot(ddx, ddz);
+        const minD = c.r + player.radius;
+        if (dd < minD && dd > 0.0001) { nx = c.x + (ddx / dd) * minD; nz = c.z + (ddz / dd) * minD; }
+      }
+      // 성벽 경계
+      const rFromC = Math.hypot(nx, nz);
+      if (rFromC > TOWN_WALL_R - 1.5) { const u = rFromC || 1; nx = nx / u * (TOWN_WALL_R - 1.5); nz = nz / u * (TOWN_WALL_R - 1.5); }
+      player.obj.position.x = nx; player.obj.position.z = nz;
+      moved = true;
+    }
+  }
+  // 방향(회전): 회전 패드(모바일)로만 돌린다. 이동은 방향을 바꾸지 않음(던전과 동일).
+  if (isTouchDevice && turnActive) {
+    const aim = new THREE.Vector3().addScaledVector(camFwd, -turnVec.y).addScaledVector(camRight, turnVec.x);
+    if (aim.lengthSq() > 0.0001) { aim.normalize(); player.yaw = Math.atan2(-aim.x, -aim.z); }
+  }
+  player.obj.rotation.y = player.yaw;
+  // 걷기 애니메이션
+  if (moved) {
+    player.walkPhase += 6.0 * dt * 2.5;
+    const wSin = Math.sin(player.walkPhase);
+    if (player.limbs.legR) { player.limbs.legR.rotation.x = wSin * 0.7; player.limbs.legL.rotation.x = -wSin * 0.7; }
+  }
+  // 계단 높이: 계단 폭 안에서 +Z(위)→-Z(아래)로 갈수록 바닥까지 내려감(계단을 밟고 내려가는 느낌)
+  const stairTopZ = TOWN_HOLE - 0.45;   // 계단 시작(위, 지상)
+  const stairBotZ = -0.7;               // 계단 끝(아래, 바닥)
+  const pitFloorY = -3.4 + 0.06;        // 구덩이 바닥 높이
+  let groundY = 0;
+  const ppx = player.obj.position.x, ppz = player.obj.position.z;
+  if (Math.abs(ppx) < 1.5 && ppz < stairTopZ + 0.3 && ppz > -3.4) {
+    if (ppz >= stairBotZ) {
+      const tt = Math.max(0, Math.min(1, (stairTopZ - ppz) / (stairTopZ - stairBotZ)));
+      groundY = tt * pitFloorY;          // 위(0)에서 바닥(pitFloorY)으로 보간
+    } else {
+      groundY = pitFloorY;               // 계단 아래 평평한 바닥
+    }
+  }
+  player.obj.position.y = groundY;
+  // 카메라 부드럽게 추적(플레이어가 계단 내려가면 카메라도 함께 내려감)
+  const tx = player.obj.position.x + isoOffsetX, ty = isoOffsetY + groundY, tz = player.obj.position.z + isoOffsetZ;
+  camera.position.x += (tx - camera.position.x) * Math.min(1, dt * 8);
+  camera.position.y += (ty - camera.position.y) * Math.min(1, dt * 8);
+  camera.position.z += (tz - camera.position.z) * Math.min(1, dt * 8);
+  camera.lookAt(player.obj.position);
+  // 자동 모드: 마을에 머무는 동안 실제 시각 경계(낮↔밤)를 넘으면 전환(5초마다 확인)
+  if (townTimeAuto) {
+    townTimeCheck = (townTimeCheck || 0) + dt;
+    if (townTimeCheck >= 5) {
+      townTimeCheck = 0;
+      const now = timeOfDayNow();
+      if (now !== townTimeOfDay) { setTownTimeOfDay(now); updateTimeBtnLabel(); }
+    }
+  }
+  updateTownEntrance(dt);
+  updateTownMerchant(dt);
+}
+let townTimeCheck = 0;
+// 가장 가까운 상호작용 대상(상인/대화NPC)을 찾아 말걸기 버튼·안내 표시.
+function updateTownMerchant(dt) {
+  const btn = $('townTalkBtn'), hint = $('townInteract');
+  if (townShopOpen || (townActiveNPC && !$('townDialog').classList.contains('hidden'))) {
+    if (btn) btn.style.display = 'none';
+    if (hint) hint.style.display = 'none';
+    return;
+  }
+  const px = player.obj.position.x, pz = player.obj.position.z;
+  let best = null, bestD = 2.8;
+  // 성직자(능력 강화 상점)
+  if (townCleric) {
+    const d = Math.hypot(px - townCleric.x, pz - townCleric.z);
+    if (d < bestD) { bestD = d; best = { kind: 'cleric', name: '성직자' }; }
+  }
+  // 상인(아이템 시스템 준비 중 — 지금은 대화만)
+  if (townMerchant) {
+    const d = Math.hypot(px - townMerchant.x, pz - townMerchant.z);
+    if (d < bestD) { bestD = d; best = { kind: 'merchant', name: '대장장이 상인' }; }
+  }
+  // 대화 NPC(보초·주민) — 주민은 현재 위치(obj) 기준
+  for (const npc of townNPCs) {
+    const nx = npc.obj.position.x, nz = npc.obj.position.z;
+    const d = Math.hypot(px - nx, pz - nz);
+    if (d < bestD) { bestD = d; best = { kind: 'npc', npc, name: npc.name }; }
+  }
+  townInteractTarget = best;
+  const near = !!best;
+  if (btn) { btn.style.display = near ? 'block' : 'none'; btn.textContent = (best && best.kind === 'cleric') ? '🙏 축복 받기' : '💬 말 걸기'; }
+  if (hint) { hint.style.display = near ? 'block' : 'none'; hint.textContent = near ? ('💬 ' + best.name) : ''; }
+}
+let townInteractTarget = null;
+// 말걸기 버튼 동작: 성직자면 강화 상점, 상인은 준비중 대화, NPC면 대화창
+function townInteract() {
+  if (!townInteractTarget) return;
+  if (townInteractTarget.kind === 'cleric') { openTownShop(); return; }
+  if (townInteractTarget.kind === 'merchant') {
+    // 아이템 시스템은 추후 — 지금은 안내 대화(무작위)
+    const merchSets = [
+      ['장비 제작은 아직 준비 중이라네.', '조금만 기다려 주게. 곧 좋은 물건을 다룰 참이니.'],
+      ['화로는 달궈 뒀네만, 재료가 아직 부족해.', '머지않아 무기와 방어구를 손볼 수 있을 걸세.'],
+      ['능력을 키우려거든 교회 성직자를 찾아가게.', '나는 장비를 맡을 테니, 역할이 다르지.'],
+      ['좋은 쇠와 좋은 망치, 그리고 시간이 필요하지.', '곧 다시 오게.']
+    ];
+    townActiveNPC = { name: '대장장이 상인', lines: merchSets[Math.floor(Math.random() * merchSets.length)] };
+    townDialogIdx = 0;
+    $('townDialogName').textContent = townActiveNPC.name;
+    $('townDialogText').textContent = townActiveNPC.lines[0];
+    $('townDialogNext').style.display = townActiveNPC.lines.length > 1 ? 'inline-block' : 'none';
+    $('townDialog').classList.remove('hidden');
+    return;
+  }
+  const npc = townInteractTarget.npc;
+  townActiveNPC = npc; townDialogIdx = 0;
+  // 여러 대사 묶음(lineSets)이 있으면 말 걸 때마다 무작위로 하나 고른다(매번 다른 대화)
+  if (npc.lineSets && npc.lineSets.length) {
+    npc.lines = npc.lineSets[Math.floor(Math.random() * npc.lineSets.length)];
+  }
+  $('townDialogName').textContent = npc.name;
+  $('townDialogText').textContent = npc.lines[0];
+  $('townDialogNext').style.display = npc.lines.length > 1 ? 'inline-block' : 'none';
+  $('townDialog').classList.remove('hidden');
+}
+function townDialogAdvance() {
+  if (!townActiveNPC) return;
+  townDialogIdx++;
+  if (townDialogIdx >= townActiveNPC.lines.length) { townDialogClose(); return; }
+  $('townDialogText').textContent = townActiveNPC.lines[townDialogIdx];
+  $('townDialogNext').style.display = (townDialogIdx < townActiveNPC.lines.length - 1) ? 'inline-block' : 'none';
+}
+function townDialogClose() {
+  townActiveNPC = null;
+  $('townDialog').classList.add('hidden');
+}
+let townEnterHold = 0;
+// 던전 입장 감지: 계단 입구(구덩이 +Z 가장자리)의 좁은 지점에 서서 3초 머물면 입장.
+function updateTownEntrance(dt) {
+  const entryX = TOWN_ENTRY_X, entryZ = TOWN_ENTRY_Z; // 계단 아래 문 앞
+  const dEntry = Math.hypot(player.obj.position.x - entryX, player.obj.position.z - entryZ);
+  const onSpot = dEntry < 1.3;
+  const bar = $('townLoadBar'), wrap = $('townLoadWrap'), prompt = $('townPrompt');
+  if (onSpot) {
+    if (prompt) prompt.style.display = 'none';
+    townEnterHold += dt;
+    const ratio = Math.min(1, townEnterHold / 3.0);
+    if (wrap) wrap.style.display = 'block';
+    if (bar) bar.style.width = Math.round(ratio * 100) + '%';
+    if ($('townLoadText')) $('townLoadText').textContent = '던전 입장까지 ' + Math.max(0, (3.0 - townEnterHold)).toFixed(1) + '초';
+    if (townEnterHold >= 3.0) { townEnterHold = 0; if (wrap) wrap.style.display = 'none'; exitTownToDungeon(); }
+  } else {
+    townEnterHold = 0;
+    if (wrap) wrap.style.display = 'none';
+    // 입장 지점(문 앞) 근처로 다가오면 안내 표시
+    if (prompt) prompt.style.display = (dEntry < 5.0) ? 'block' : 'none';
+  }
+}
+
+// 3D 마을 상점: townShopList에 같은 강화 항목을 렌더(상인 대화용)
+function renderTownShop() {
+  $('townShopGold').textContent = meta.gold.toLocaleString();
+  const list = $('townShopList'); list.innerHTML = '';
   UPGRADE_DEFS.forEach(def => {
     const lv = upgradeLevel(def.key);
     const maxed = lv >= def.max;
@@ -3555,13 +5182,13 @@ function renderShop() {
          <div style="font-weight:bold; color:#e2e8f0; font-size:14px;">${def.name} <span style="color:#8b96a8; font-size:11px;">Lv.${lv}/${def.max}</span></div>
          <div style="font-size:11px; color:#a0aec0;">${def.desc}</div>
        </div>
-       <button class="shop-buy" data-key="${def.key}" ${maxed||!afford?'disabled':''}
+       <button class="town-shop-buy" data-key="${def.key}" ${maxed||!afford?'disabled':''}
          style="pointer-events:auto; padding:7px 12px; border-radius:8px; font-weight:bold; font-size:13px; border:1px solid ${maxed?'#4a5568':(afford?'#5fb0d0':'#4a5568')}; background:${maxed?'rgba(80,80,90,0.4)':(afford?'rgba(95,176,208,0.25)':'rgba(80,80,90,0.4)')}; color:${maxed?'#888':(afford?'#aee3f5':'#888')};">
          ${maxed ? 'MAX' : '💰 ' + cost.toLocaleString()}
        </button>`;
     list.appendChild(row);
   });
-  list.querySelectorAll('.shop-buy').forEach(btn => {
+  list.querySelectorAll('.town-shop-buy').forEach(btn => {
     onTap(btn, () => {
       const key = btn.getAttribute('data-key');
       const def = UPGRADE_DEFS.find(d => d.key === key);
@@ -3570,28 +5197,35 @@ function renderShop() {
       const cost = upgradeCost(def);
       if (meta.gold < cost) { toast('골드 부족'); return; }
       meta.gold -= cost; meta.upgrades[key] = lv + 1; saveMeta();
-      safeResume(); renderShop();
+      renderTownShop();
     });
   });
 }
+let townShopOpen = false;
+function openTownShop() { townShopOpen = true; renderTownShop(); $('townShop').classList.remove('hidden'); }
+function closeTownShop() { townShopOpen = false; $('townShop').classList.add('hidden'); }
 document.querySelectorAll('#charChoices .char-card').forEach(card => {
   onTap(card, () => beginGameWith(card.getAttribute('data-char')));
 });
 onTap($('howtoBtn'), () => { safeResume(); startActualGame(); });
-onTap($('enterDungeonBtn'), () => {
-  safeResume();
-  // 진행 중인 저장이 있으면 확인 모달, 없으면 바로 새 게임
-  if (hasSavedRun()) {
-    $('newGameConfirm').classList.remove('hidden');
-  } else {
-    clearRun(); enterDungeon();
-  }
+onTap($('townShopClose'), () => { closeTownShop(); });
+onTap($('townTalkBtn'), () => { townInteract(); });
+onTap($('townTimeBtn'), () => {
+  // 자동 → 수동 낮 → 수동 밤 → 자동 순환
+  if (townTimeAuto) { townTimeAuto = false; setTownTimeOfDay('day'); }
+  else if (townTimeOfDay === 'day') { setTownTimeOfDay('night'); }
+  else { townTimeAuto = true; setTownTimeOfDay(timeOfDayNow()); }
+  updateTimeBtnLabel();
 });
-onTap($('newGameCancel'), () => { $('newGameConfirm').classList.add('hidden'); });
-onTap($('newGameConfirmBtn'), () => { $('newGameConfirm').classList.add('hidden'); clearRun(); openTown(); });
-onTap($('resumeBtn'), () => { safeResume(); resumeDungeon(); });
-
-onTap($('restartBtn'), () => { safeResume(); $('overOverlay').classList.add('hidden'); openTown(); });
+onTap($('townMusicBtn'), () => {
+  townMusicOn = !townMusicOn;
+  if (townMusicOn) { if (SFX && SFX.musicStart) SFX.musicStart(); }
+  else { if (SFX && SFX.musicStop) SFX.musicStop(); }
+  $('townMusicBtn').textContent = townMusicOn ? '🎵 음악' : '🔇 음악';
+});
+onTap($('townDialogNext'), () => { townDialogAdvance(); });
+onTap($('townDialogClose'), () => { townDialogClose(); });
+onTap($('restartBtn'), () => { safeResume(); $('overOverlay').classList.add('hidden'); enterTownMode(); });
 $('oracleBtn').addEventListener('click', (e) => { e.stopPropagation(); fetchOracle(); });
 
 dungeon = generateDungeon(); buildDungeonMesh(dungeon); const _r0 = dungeon.rooms[0]; player.obj.position.set((_r0.cx - MAP_W / 2) * TILE, 0, (_r0.cy - MAP_H / 2) * TILE); 
