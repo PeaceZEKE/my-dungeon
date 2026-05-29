@@ -1733,7 +1733,11 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
   const ent = { 
     obj: grp, limbs, baseY: 0, hp, hpMax: hp, damage: dmg, speed: sp, radius: 0.5 * scale, attackCd: 0, exp, 
     phase: Math.random() * 10, kbX: 0, kbZ: 0, isDead: false, deathTimer: 0, swingTimer: 0, scale, isBoss,
-    isRanged: !!isRanged, type, mixer: null, useModel: false
+    isRanged: !!isRanged, type, mixer: null, useModel: false,
+    // 보스 전용 패턴 상태
+    specialCd: 3.0,        // 특수 패턴 쿨다운(첫 발동까지 약간 여유)
+    dashState: 'none',     // none / telegraph(예비동작) / dashing(돌진중)
+    dashTimer: 0, dashVx: 0, dashVz: 0, dashHit: false
   };
   // 외부 모델 설정이 있으면 교체(없으면 도형 그대로). 원거리 캐스터는 로브가 있으니 모델 미적용.
   if (!isRanged) tryLoadModel(grp, type, (model, mixer) => { ent.mixer = mixer; ent.useModel = true; });
@@ -2841,6 +2845,57 @@ function update(dt) {
       if (e.awake === false) { // 아직 잠들어 있으면 이동/공격 안 함
         e.attackCd = Math.max(0, e.attackCd - dt);
         continue;
+      }
+    }
+
+    // ===== 보스 특수 패턴 =====
+    // 고블린 보스: 일정 거리에서 예비동작 후 플레이어를 향해 빠르게 돌진(대시).
+    if (e.isBoss && e.type === 'goblin' && e.frozen <= 0) {
+      e.specialCd = Math.max(0, e.specialCd - dt);
+      if (e.dashState === 'none') {
+        // 적당한 거리(3~9타일)에서 쿨다운이 차면 돌진 예비동작 시작
+        if (e.specialCd <= 0 && d > TILE * 3 && d < TILE * 9) {
+          e.dashState = 'telegraph'; e.dashTimer = 0.5; // 0.5초 예비동작
+          e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI; // 플레이어를 향해 고정
+        }
+      } else if (e.dashState === 'telegraph') {
+        e.dashTimer -= dt;
+        // 예비동작: 살짝 뒤로 웅크리는 느낌으로 몸을 낮춤(경고)
+        e.obj.position.y = Math.sin((0.5 - e.dashTimer) / 0.5 * Math.PI) * -0.15;
+        if (e.dashTimer <= 0) {
+          // 돌진 시작: 현재 플레이어 방향으로 속도 고정(돌진 중엔 방향 안 바뀜)
+          const dd = d || 1;
+          e.dashState = 'dashing'; e.dashTimer = 0.45; e.dashHit = false;
+          e.dashVx = (dx / dd) * e.speed * 6.0; // 평소 속도의 6배로 돌진
+          e.dashVz = (dz / dd) * e.speed * 6.0;
+          e.obj.position.y = 0;
+        }
+      } else if (e.dashState === 'dashing') {
+        e.dashTimer -= dt;
+        // 돌진 이동(벽에 막히면 멈춤)
+        const ndx = e.dashVx * dt, ndz = e.dashVz * dt;
+        let bx = false, bz = false;
+        for (const w of walls) {
+          if (!bx && Math.abs(e.obj.position.x + ndx - w.x) < w.halfW + e.radius && Math.abs(e.obj.position.z - w.z) < w.halfD + e.radius) bx = true;
+          if (!bz && Math.abs(e.obj.position.x - w.x) < w.halfW + e.radius && Math.abs(e.obj.position.z + ndz - w.z) < w.halfD + e.radius) bz = true;
+        }
+        if (!bx) e.obj.position.x += ndx; if (!bz) e.obj.position.z += ndz;
+        if (bx || bz) e.dashTimer = 0; // 벽에 부딪치면 즉시 종료
+        // 돌진 중 플레이어와 충돌하면 1회 강한 데미지(평소의 1.3배)
+        if (!e.dashHit && d < e.radius + player.radius + 0.4) {
+          e.dashHit = true;
+          const orig = e.damage; e.damage = Math.floor(orig * 1.3);
+          damagePlayer(e.damage, e);
+          e.damage = orig;
+        }
+        if (e.dashTimer <= 0) {
+          e.dashState = 'none'; e.specialCd = 4.0 + Math.random() * 2.0; // 다음 돌진까지 4~6초
+          e.dashVx = 0; e.dashVz = 0;
+        }
+        // 돌진 중엔 다리 빠르게 움직이는 연출
+        e.phase += dt * 18; const ds = Math.sin(e.phase);
+        e.limbs.legR.rotation.x = ds * 1.0; e.limbs.legL.rotation.x = -ds * 1.0;
+        continue; // 돌진 중엔 일반 이동/공격 로직 건너뜀
       }
     }
 
