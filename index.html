@@ -244,11 +244,7 @@
 <div id="townShop" class="hidden" style="position:fixed; inset:0; z-index:25; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.78); backdrop-filter:blur(4px); padding:20px;">
   <div style="width:min(540px,94vw); max-height:88vh; overflow-y:auto; background:rgba(16,20,30,0.98); border:1px solid #5fb0d0; border-radius:14px; padding:20px; text-align:center;">
     <h2 style="margin:0 0 4px; font-size:22px; font-weight:900; letter-spacing:2px; color:#fff;">🙏 성직자의 축복</h2>
-<<<<<<< HEAD
     <div style="font-size:12px; color:#a0aec0; margin-bottom:8px;">영구 강화 · <b id="townShopChar" style="color:#aee3f5;">기사</b> 전용 — 죽어도 유지됩니다</div>
-=======
-    <div style="font-size:12px; color:#a0aec0; margin-bottom:8px;">영구 강화 — 죽어도 유지됩니다</div>
->>>>>>> 40b3d195a53a53cc0dc2f0c145ee2b04e54ae9ad
     <div style="font-size:15px; color:#ffd86b; margin-bottom:12px;">💰 보유 골드: <b id="townShopGold">0</b></div>
     <div id="townShopList" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;"></div>
     <button id="townShopClose" style="padding:12px 28px; font-size:16px;">닫기</button>
@@ -3031,7 +3027,6 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
   let hp, dmg, sp, exp, scale, skinMat, armorMat;
 
   if (type === 'goblin') {
-<<<<<<< HEAD
     hp = (20 + player.floor * 3) * 1.5; dmg = (5 + player.floor * 1.5) * 1.5 * 0.8; sp = 4.5; exp = 4 + player.floor;
     scale = isBoss ? 1.8 : 0.8; skinMat = matGobSkin.clone(); armorMat = matGobCloth.clone();
   } else if (type === 'skeleton') {
@@ -3039,15 +3034,6 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
     scale = isBoss ? 2.0 : 0.95; skinMat = matSkelBone.clone(); armorMat = matSkelArmor.clone();
   } else { 
     hp = (55 + player.floor * 5) * 1.5; dmg = (12 + player.floor * 2.5) * 1.5 * 0.8; sp = 3.2; exp = 15 + player.floor;
-=======
-    hp = (20 + player.floor * 3) * 1.5; dmg = (5 + player.floor * 1.5) * 1.5 * 0.8; sp = 3.5; exp = 4 + player.floor;
-    scale = isBoss ? 1.8 : 0.8; skinMat = matGobSkin.clone(); armorMat = matGobCloth.clone();
-  } else if (type === 'skeleton') {
-    hp = (35 + player.floor * 4) * 1.5; dmg = (8 + player.floor * 2) * 1.5 * 0.8; sp = 2.8; exp = 8 + player.floor;
-    scale = isBoss ? 2.0 : 0.95; skinMat = matSkelBone.clone(); armorMat = matSkelArmor.clone();
-  } else { 
-    hp = (55 + player.floor * 5) * 1.5; dmg = (12 + player.floor * 2.5) * 1.5 * 0.8; sp = 2.2; exp = 15 + player.floor;
->>>>>>> 40b3d195a53a53cc0dc2f0c145ee2b04e54ae9ad
     scale = isBoss ? 2.4 : 1.15; skinMat = matOrcSkin.clone(); armorMat = matOrcArmor.clone();
   }
   if (isBoss) {
@@ -3056,11 +3042,7 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
     if (type !== 'goblin') sp *= 0.8;
   }
   // 원거리 캐스터: 체력 낮은 딜러 역할(체력 ×0.7, 공격력 근접의 1.75배 = 기본 ×0.8 → ×1.4)
-<<<<<<< HEAD
   if (isRanged) { hp *= 0.7; dmg *= 1.75; exp = Math.floor(exp * 1.3); sp *= 0.82; armorMat = getLowPolyMat(0x2b4c8c); } // 원거리는 약간 느리게(카이팅 균형)
-=======
-  if (isRanged) { hp *= 0.7; dmg *= 1.75; exp = Math.floor(exp * 1.3); armorMat = getLowPolyMat(0x2b4c8c); }
->>>>>>> 40b3d195a53a53cc0dc2f0c145ee2b04e54ae9ad
 
   const grp = new THREE.Group();
   const bodyGrp = new THREE.Group(); const headGrp = new THREE.Group(); const limbs = {};
@@ -3362,13 +3344,10 @@ let ambushState = 'none';     // none / armed(대기) / active(전투중) / clea
 let ambushBarriers = [];      // 복도를 막는 장벽 메시들
 let ambushEnemies = [];       // 매복으로 소환된 적들
 let ambushMarker = null;      // 바닥 경고 표식(미세한 단서)
-<<<<<<< HEAD
 // ===== 가시 함정 복도 =====
 // 복도 직선 구간의 여러 칸 바닥에서 가시가 주기적으로 솟는다. 솟아 있을 때 밟으면 피해.
 let spikeTraps = [];          // [{x,z,spikes:[mesh...],phase,gx,gy}] 칸별 가시 그룹
 let spikeHurtCd = 0;          // 가시 피해 쿨다운(연타 방지)
-=======
->>>>>>> 40b3d195a53a53cc0dc2f0c145ee2b04e54ae9ad
 // 보물상자 보장: 마지막으로 상자를 '획득'한 층을 기억.
 // 마지막 획득 이후 10개 층을 지나도록 한 번도 못 먹으면 다음 층에 필수 등장.
 let lastChestFloor = 0; // 0 = 아직 한 번도 획득 안 함(시작 기준)
@@ -3577,16 +3556,11 @@ function placeAmbushCorridor(dgn) {
   clearAmbush();
   const isBossFloor = player.floor % 10 === 0;
   if (isBossFloor) return;            // 보스 층 제외
-<<<<<<< HEAD
   if (player.floor < 5) return;       // 5층부터 등장
-=======
-  if (player.floor < 2) return;       // 너무 초반 제외
->>>>>>> 40b3d195a53a53cc0dc2f0c145ee2b04e54ae9ad
   if (Math.random() >= 0.30) return;  // 30% 확률(복도 기믹은 함정 방보다 자주)
   const tiles = dgn.corridorTiles || [];
   if (tiles.length === 0) return;
   const grid = dgn.grid;
-<<<<<<< HEAD
   const ckey = (gx, gy) => gx + ',' + gy;
   const corrSet = new Set(tiles.map(t => ckey(t.x, t.y))); // 복도 타일만(방 제외)
   const isCorr = (gx, gy) => corrSet.has(ckey(gx, gy));
@@ -3603,20 +3577,6 @@ function placeAmbushCorridor(dgn) {
     // 가로면 좌우 2칸씩, 세로면 상하 2칸씩 모두 '복도 타일'이어야 진짜 중간
     if (horiz && isCorr(x - 1, y) && isCorr(x + 1, y) && isCorr(x - 2, y) && isCorr(x + 2, y)) cand.push({ x, y, dirX: 1, dirZ: 0 });
     else if (vert && isCorr(x, y - 1) && isCorr(x, y + 1) && isCorr(x, y - 2) && isCorr(x, y + 2)) cand.push({ x, y, dirX: 0, dirZ: 1 });
-=======
-  // 방에서 충분히 떨어지고(주변이 통로로 둘러싸인 '진짜 복도 중간'), 직선 통로인 칸만 후보로
-  const cand = [];
-  for (const t of tiles) {
-    const { x, y } = t;
-    if (x < 1 || y < 1 || x >= MAP_W - 1 || y >= MAP_H - 1) continue;
-    const left = grid[y][x - 1] === 1, right = grid[y][x + 1] === 1;
-    const up = grid[y - 1][x] === 1, down = grid[y + 1][x] === 1;
-    // 가로 직선(좌우만 뚫림) 또는 세로 직선(상하만 뚫림)인 칸
-    const horiz = left && right && !up && !down;
-    const vert = up && down && !left && !right;
-    if (horiz) cand.push({ x, y, dirX: 1, dirZ: 0 });
-    else if (vert) cand.push({ x, y, dirX: 0, dirZ: 1 });
->>>>>>> 40b3d195a53a53cc0dc2f0c145ee2b04e54ae9ad
   }
   if (cand.length === 0) return;
   const c = pick(cand);
@@ -3709,7 +3669,6 @@ function confineToAmbush() {
     player.obj.position.z = Math.max(minZ, Math.min(maxZ, player.obj.position.z));
   }
 }
-<<<<<<< HEAD
 
 // ===== 가시 함정 복도 =====
 function clearSpikeTraps() {
@@ -3798,8 +3757,6 @@ function updateSpikeTraps(dt) {
     }
   }
 }
-=======
->>>>>>> 40b3d195a53a53cc0dc2f0c145ee2b04e54ae9ad
 // 방 안에서 중앙을 피하고 기존 위치와 떨어진 지점 선택(그리드→월드 좌표 반환)
 function roomPointAvoidCenter(r, placed) {
   let best = null, bestDist = -1;
@@ -4092,7 +4049,9 @@ function dealSwingDamage(multiplier) {
 
 function killEnemy(e) {
   if (e.isDead) return; // 이미 죽은 적(같은 프레임 다중 타격 시 골드/경험치/보상 중복 방지)
-  e.isDead = true; e.deathTimer = 1.5; 
+  e.isDead = true; e.deathTimer = 1.5;
+  // 보스 테스트 모드: 보상/기록/정산 없이 처치만(패턴 관찰용). 다시 소환 버튼으로 부른다.
+  if (bossTestMode) { toast('💀 처치 — 다시 소환할 수 있습니다', 1500); return; }
   // 보스(또는 난입 보스) 격파 시 종류를 기록 → 이후 일반 층에 난입 가능
   if ((e.isBoss || e.isElite) && e.type) defeatedBosses.add(e.type);
   player.exp += e.exp; player.kills++;
@@ -4309,10 +4268,7 @@ function update(dt) {
   updateInteractables(dt);
   updateTrapRoom(dt);
   updateAmbushCorridor(dt);
-<<<<<<< HEAD
   updateSpikeTraps(dt);
-=======
->>>>>>> 40b3d195a53a53cc0dc2f0c145ee2b04e54ae9ad
   if (player.mixer) player.mixer.update(dt);
 
   // Shader Uniform (벽 투시를 위해 현재 플레이어 좌표 전달)
@@ -4566,12 +4522,9 @@ function update(dt) {
       if (e.awake === false || distToPlayer > TILE * 5) continue;
       // 시야 밖에서도 행동하기 위해 그대로 진행. visible은 false라 화면엔 안 보임.
     }
-<<<<<<< HEAD
 
-    // 보스 테스트(무적) 모드: 적 체력을 계속 최대로 되돌려 죽지 않게 함(패턴 반복 관찰용)
-    if (bossTestMode) { e.hp = e.hpMax; e.frozen = 0; }
-=======
->>>>>>> 40b3d195a53a53cc0dc2f0c145ee2b04e54ae9ad
+    // 보스 테스트 모드: 적은 정상 피해를 받되, 관찰 편의를 위해 빙결은 면제(선택)
+    // (플레이어만 무적, 보스는 죽일 수 있음)
 
     // 빙결 상태: 타이머가 있으면 이동/공격 속도를 크게 늦춤
     e.frozen = Math.max(0, (e.frozen || 0) - dt);
@@ -4608,16 +4561,11 @@ function update(dt) {
       if (e.dashState === 'none') {
         // 적당한 거리(1.5~9타일)에서 쿨다운이 차면 돌진 예비동작 시작
         if (e.specialCd <= 0 && d > TILE * 1.5 && d < TILE * 9) {
-<<<<<<< HEAD
           e.dashState = 'telegraph'; e.dashTimer = 0.8; // 0.8초 예비동작(경고를 충분히)
-=======
-          e.dashState = 'telegraph'; e.dashTimer = 0.5; // 0.5초 예비동작
->>>>>>> 40b3d195a53a53cc0dc2f0c145ee2b04e54ae9ad
           e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI; // 플레이어를 향해 고정
         }
       } else if (e.dashState === 'telegraph') {
         e.dashTimer -= dt;
-<<<<<<< HEAD
         const tp = (0.8 - e.dashTimer) / 0.8; // 0→1 진행도
         // 예비동작: 플레이어를 계속 노려보며, 뒤로 웅크렸다가 솟구칠 듯 몸을 낮춘다(큰 경고).
         e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI; // 표적 향해 고정
@@ -4632,24 +4580,15 @@ function update(dt) {
         if (e.limbs.armL) e.limbs.armL.rotation.x = armBack;
         // 다리도 웅크려 굽힘
         if (e.limbs.legR) { e.limbs.legR.rotation.x = Math.sin(tp * Math.PI) * 0.4; e.limbs.legL.rotation.x = Math.sin(tp * Math.PI) * 0.4; }
-=======
-        // 예비동작: 살짝 뒤로 웅크리는 느낌으로 몸을 낮춤(경고)
-        e.obj.position.y = Math.sin((0.5 - e.dashTimer) / 0.5 * Math.PI) * -0.15;
->>>>>>> 40b3d195a53a53cc0dc2f0c145ee2b04e54ae9ad
         if (e.dashTimer <= 0) {
           // 돌진 시작: 현재 플레이어 방향으로 속도 고정(돌진 중엔 방향 안 바뀜)
           const dd = d || 1;
           e.dashState = 'dashing'; e.dashTimer = 0.45; e.dashHit = false;
           e.dashVx = (dx / dd) * e.speed * 6.0; // 평소 속도의 6배로 돌진
           e.dashVz = (dz / dd) * e.speed * 6.0;
-<<<<<<< HEAD
           e.obj.position.y = e.baseY;
         }
         continue; // 예비동작 중엔 일반 이동/공격 로직이 위치·팔다리를 덮어쓰지 않게 건너뜀
-=======
-          e.obj.position.y = 0;
-        }
->>>>>>> 40b3d195a53a53cc0dc2f0c145ee2b04e54ae9ad
       } else if (e.dashState === 'dashing') {
         e.dashTimer -= dt;
         // 돌진 이동(벽에 막히면 멈춤)
@@ -4842,7 +4781,6 @@ function update(dt) {
       if (e.lungeCd === undefined) e.lungeCd = 2 + Math.random() * 2;
       e.lungeCd = Math.max(0, e.lungeCd - dt);
       e.lungeTimer = Math.max(0, (e.lungeTimer || 0) - dt);
-<<<<<<< HEAD
       const LUNGE_FROM = TILE * 1.2, LUNGE_TO = TILE * 3.6; // 이 거리 구간에서 도망치는 표적에 런지(상한 늘림)
       if (e.lungeTimer <= 0 && e.lungeState === 'active') { e.lungeState = 'none'; }
       // 런지 발동 조건: 쿨다운 끝 + 적당히 떨어져 있음 + 공격 모션 아님
@@ -4852,15 +4790,6 @@ function update(dt) {
         e.lungeState = 'active'; e.lungeTimer = 0.3 * sizeBoost;
         const u = d || 1;
         const lungeSpeed = e.speed * 2.6 * sizeBoost; // 평소보다 훨씬 빠르게, 큰 몸일수록 더
-=======
-      const LUNGE_FROM = TILE * 1.2, LUNGE_TO = TILE * 3.0; // 이 거리 구간에서 도망치는 표적에 런지
-      if (e.lungeTimer <= 0 && e.lungeState === 'active') { e.lungeState = 'none'; }
-      // 런지 발동 조건: 쿨다운 끝 + 적당히 떨어져 있음 + 공격 모션 아님
-      if (e.lungeState !== 'active' && !e.isBoss && e.lungeCd <= 0 && e.swingTimer <= 0 && d > LUNGE_FROM && d < LUNGE_TO && e.frozen <= 0) {
-        e.lungeState = 'active'; e.lungeTimer = 0.3;
-        const u = d || 1;
-        const lungeSpeed = e.speed * 2.6; // 평소보다 훨씬 빠르게 달려듦
->>>>>>> 40b3d195a53a53cc0dc2f0c145ee2b04e54ae9ad
         e.lungeVx = (dx / u) * lungeSpeed; e.lungeVz = (dz / u) * lungeSpeed;
         e.lungeCd = 2.5 + Math.random() * 2; // 다음 런지까지
       }
@@ -5018,11 +4947,7 @@ function descend() { if (!player.hitThisFloor) player.noHitFloors++; player.hitT
 function startFloor() {
   for (const f of fireballs) scene.remove(f.mesh); fireballs.length = 0;
   for (const s of slashes) scene.remove(s.mesh); slashes.length = 0;
-<<<<<<< HEAD
   dungeon = generateDungeon(); buildDungeonMesh(dungeon); placeStairs(dungeon); placeTrapRoom(dungeon); placeAmbushCorridor(dungeon); placeSpikeTraps(dungeon); spawnEnemies(dungeon); placeInteractables(dungeon);
-=======
-  dungeon = generateDungeon(); buildDungeonMesh(dungeon); placeStairs(dungeon); placeTrapRoom(dungeon); placeAmbushCorridor(dungeon); spawnEnemies(dungeon); placeInteractables(dungeon);
->>>>>>> 40b3d195a53a53cc0dc2f0c145ee2b04e54ae9ad
   const r = dungeon.rooms[0]; const px = (r.cx - MAP_W / 2) * TILE, pz = (r.cy - MAP_H / 2) * TILE;
   player.obj.position.set(px, 0, pz); player.jumpVy = 0; player.onGround = true; player.yaw = Math.atan2(-px, -pz); player.pitch = 0.2; player.isBlocking = false; isCharging = false; SFX.chargeStop(false);
   camera.position.set(px + isoOffsetX, isoOffsetY, pz + isoOffsetZ); camera.lookAt(player.obj.position);
@@ -5353,7 +5278,6 @@ onTap($('startOverlay'), () => {
   }
 });
 onTap($('startResumeBtn'), () => { safeResume(); $('startResumeChoice').classList.add('hidden'); showDungeonUI(); resumeGame(); });
-<<<<<<< HEAD
 // 보스 테스트 진입(시작 화면 버튼). 전체 화면 탭 핸들러로 전파되지 않게 막는다.
 onTap($('bossTestBtn'), (e) => { if (e) e.stopPropagation(); safeResume(); enterBossTest(); });
 // 보스 룸 안 소환·퇴장 버튼
@@ -5361,8 +5285,6 @@ document.querySelectorAll('.boss-spawn').forEach(btn => {
   onTap(btn, () => spawnTestBoss(btn.getAttribute('data-boss')));
 });
 onTap($('bossTestExit'), () => exitBossTest());
-=======
->>>>>>> 40b3d195a53a53cc0dc2f0c145ee2b04e54ae9ad
 onTap($('startToTownBtn'), () => {
   safeResume();
   $('startResumeChoice').classList.add('hidden');
@@ -5734,10 +5656,7 @@ function updateTownEntrance(dt) {
 // 3D 마을 상점: townShopList에 같은 강화 항목을 렌더(상인 대화용)
 function renderTownShop() {
   $('townShopGold').textContent = meta.gold.toLocaleString();
-<<<<<<< HEAD
   if ($('townShopChar')) $('townShopChar').textContent = (selectedChar === 'mage') ? '마법사' : '기사';
-=======
->>>>>>> 40b3d195a53a53cc0dc2f0c145ee2b04e54ae9ad
   const list = $('townShopList'); list.innerHTML = '';
   UPGRADE_DEFS.forEach(def => {
     const lv = upgradeLevel(def.key);
@@ -5766,11 +5685,7 @@ function renderTownShop() {
       if (lv >= def.max) return;
       const cost = upgradeCost(def);
       if (meta.gold < cost) { toast('골드 부족'); return; }
-<<<<<<< HEAD
       meta.gold -= cost; charUpgrades()[key] = lv + 1; saveMeta();
-=======
-      meta.gold -= cost; meta.upgrades[key] = lv + 1; saveMeta();
->>>>>>> 40b3d195a53a53cc0dc2f0c145ee2b04e54ae9ad
       renderTownShop();
     });
   });
