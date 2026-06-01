@@ -207,11 +207,7 @@
     <div class="char-card" data-char="archer">
       <div class="char-emoji">🏹</div>
       <div class="char-name">궁수</div>
-<<<<<<< HEAD
       <div class="char-desc">활과 화살의 원거리 사수<br>회피 · 완벽 회피로 살아남기</div>
-=======
-      <div class="char-desc">활과 화살의 원거리 사수<br>(전투는 준비 중)</div>
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
     </div>
   </div>
   <button id="charCancelBtn" style="display:none; padding:12px 28px; font-size:15px; background:rgba(120,130,150,0.25); border:1px solid #6b7280; border-radius:10px; color:#cbd5e0;">취소</button>
@@ -2590,7 +2586,6 @@ function buildDungeonMesh(dgn) {
   walls.length = 0;
   // 이끼 동굴 장식 애니메이션 대상 초기화(층마다 새로)
   cavernShrooms.length = 0; cavernWaters.length = 0; cavernShafts.length = 0;
-<<<<<<< HEAD
   castleTorches.length = 0;
   // 막(Act)별 분위기 전환: 1막=이끼 동굴 / 2막=무너진 성
   if (currentAct() === 2) {
@@ -2614,8 +2609,6 @@ function buildDungeonMesh(dgn) {
     castleMoon.visible = false; castleHemi.visible = false;
     updateCastleDust(false);  // 1막(동굴)에선 먼지 숨김
   }
-=======
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
 
   // 이끼 동굴 바닥: 어두운 흙갈 + 변형색, 이끼 얼룩·자갈
   const floorMat = getLowPolyMat(0x2a2417), floorMat2 = getLowPolyMat(0x322b1a);
@@ -2937,7 +2930,7 @@ function spawnParryEffect(x, y, z, kind) {
 // 던전 광원 컬링: 모바일 GPU 셰이더 유니폼 한도(동시 PointLight 수) 초과로 인한
 // 렌더 실패(흰 화면)를 막기 위해, 카메라에서 가까운 MAX_DYN_LIGHTS개의 PointLight만 켜고 나머지는 끈다.
 // 보스 방처럼 광원이 밀집한 구역에서 특히 중요. emissive 발광 재질은 광원이 아니라 영향 없음.
-const MAX_DYN_LIGHTS = 8;
+const MAX_DYN_LIGHTS = 6;
 let _lightCullList = [];   // 재사용 버퍼
 function cullSceneLights(cam) {
   _lightCullList.length = 0;
@@ -2992,63 +2985,99 @@ function spawnEnemySlash(x, z, yaw, color) {
   parryRings.push({ mesh, mat, life: 0.7, delay: 0, scale: 1, grow: 0, slashVx: dirX * 9, slashVz: dirZ * 9 });
 }
 
-// 대지 가르기 균열: (x,z)에서 (dirX,dirZ) 방향으로 length만큼 뻗는 마그마 균열을 순차 점화.
+// 돌진 공기막: 둥근 반원(반쪽 링)을 보스 앞에 만들어 돌진 내내 따라다니게 한다. 메시를 반환해 호출부가 위치를 갱신.
+function spawnRushTear(x, z, yaw) {
+  const grp = new THREE.Group();
+  // 두 겹 입체 반구(돔) — 외곽으로 갈수록 투명해지는 그라데이션(가운데 진하고 가장자리 사라짐)
+  [{ r: 2.0, c: 0xff5522, o: 0.55 }, { r: 1.5, c: 0xffcc44, o: 0.7 }].forEach(p => {
+    // thetaLength=π/2 → 위쪽으로 볼록한 돔(밑면 테두리 y≈0, 꼭대기 y≈r)
+    const geo = new THREE.SphereGeometry(p.r, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+    // 정점 알파: 높이(y/r) 비율로 — 꼭대기(중심) 불투명, 밑면 테두리 투명. vertexColors로 보간.
+    const base = new THREE.Color(p.c);
+    const pos = geo.attributes.position;
+    const colors = new Float32Array(pos.count * 4);  // RGBA
+    for (let i = 0; i < pos.count; i++) {
+      const yRatio = Math.max(0, Math.min(1, pos.getY(i) / p.r));  // 0(테두리)~1(꼭대기)
+      const a = Math.pow(yRatio, 0.8);  // 가장자리로 갈수록 빠르게 투명
+      colors[i * 4] = base.r; colors[i * 4 + 1] = base.g; colors[i * 4 + 2] = base.b; colors[i * 4 + 3] = a;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 4));  // alpha 포함(itemSize 4)
+    geo.rotateX(Math.PI / 2);   // 위로 볼록 → 앞(진행 방향)으로 세움
+    geo.scale(1, 1, 0.6);       // 진행 방향으로 납작하게(막 느낌)
+    const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: p.o, side: THREE.DoubleSide, fog: false, depthWrite: false });
+    grp.add(new THREE.Mesh(geo, mat));
+  });
+  scene.add(grp);
+  return grp;  // 호출부에서 매 프레임 보스 앞으로 위치/방향 갱신
+}
+
+// 그룹(반구 돔)을 보스 앞쪽 dist 거리에 배치하고 볼록한 면이 진행 방향을 향하게 회전
+function placeRushTear(grp, x, z, yaw, dist) {
+  const dirX = -Math.sin(yaw), dirZ = -Math.cos(yaw);
+  grp.position.set(x + dirX * dist, 1.7, z + dirZ * dist);  // 보스 앞쪽(높이 올림)
+  grp.rotation.set(0, yaw + Math.PI, 0);  // Y축 180도 — 볼록면이 진행 방향 앞을 향하게
+}
 // 시각 연출만 담당(피해 판정은 호출부에서 선분 거리로 처리). 폐허 성 바닥이 쩍 갈라지는 느낌.
 function spawnGroundRift(x, z, dirX, dirZ, length, width) {
   const u = Math.hypot(dirX, dirZ) || 1; dirX /= u; dirZ /= u;
   const yaw = Math.atan2(dirX, dirZ);
   const perpX = -dirZ, perpZ = dirX;                     // 진행 방향에 수직(양옆)
-  const segN = Math.max(12, Math.floor(length / (TILE * 0.28)));  // 촘촘하게(세그먼트 많이)
+  const segN = Math.max(12, Math.floor(length / (TILE * 0.28)));  // 파편 줄 수(촘촘)
   const baseRockMat = getLowPolyMat(0x4a4038, false);    // 어두운 돌 파편(복제용 원본)
   const baseEdgeMat = getLowPolyMat(0x6b5d4f, false);    // 밝은 돌 모서리(복제용 원본)
-  for (let i = 0; i < segN; i++) {
-    const t = (i + 0.5) / segN;
+
+  // ===== 빨간 바닥: 통짜 균열 메시 하나 (세그먼트로 안 쪼갬 → 깜빡임/끊김 없음) =====
+  // 평면의 한쪽 끝(보스 발밑)을 원점에 두고, scale.z로 0→1 자라나게 한다. 기준 길이만큼 미리 만들어 둠.
+  const makeRiftStrip = (w, col, yy, opa) => {
+    const geo = new THREE.PlaneGeometry(w, length);
+    geo.rotateX(-Math.PI / 2);              // 바닥에 눕힘
+    geo.translate(0, 0, length / 2);        // 한쪽 끝이 원점(보스 발밑)에 오도록 이동
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: opa, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+    m.position.set(x, yy, z); m.rotation.y = yaw;
+    m.scale.z = 0.001;                      // 처음엔 길이 0(발밑에서 시작)
+    scene.add(m);
+    return m;
+  };
+  const seam = makeRiftStrip(width * 0.38, 0xff5522, 0.05, 0.95);  // 겉(주황) — 얇게
+  const core = makeRiftStrip(width * 0.16, 0xffd060, 0.06, 1.0);   // 안(밝은 용암) — 얇게
+  // grow로 길이가 자라나고(growLen초에 끝까지), hold 동안 유지 후 fade로 사라짐
+  parryRings.push({ mesh: seam, mat: seam.material, life: 1.0, delay: 0, scale: 1, grow: 0, riftGrow: true, growLen: 0.67, hold: 0.78, fade: 1.4 });
+  parryRings.push({ mesh: core, mat: core.material, life: 1.0, delay: 0, scale: 1, grow: 0, riftGrow: true, growLen: 0.61, hold: 0.78, fade: 1.4 });
+
+  // ===== 돌 파편: 빨간 바닥 외곽선(균열 폭 가장자리)을 따라 양옆으로 솟아오름 =====
+  const segN2 = Math.max(18, Math.floor(length / (TILE * 0.18)));  // 더 촘촘(파편 많이)
+  const halfW = width * 0.55 * 0.5;                                // 파편 솟는 위치(이전 그대로 — 빨간 바닥 두께와 별개)
+  for (let i = 0; i < segN2; i++) {
+    const t = (i + 0.5) / segN2;
     const px = x + dirX * length * t, pz = z + dirZ * length * t;
-    const delay = t * 1.0;                               // 끝으로 갈수록 늦게 솟음(파편·균열선 함께 뻗어나감)
-    const seamDelay = t * 0.35;                          // 빨간 바닥은 거의 한꺼번에 빠르게 쭉 깔림(끊김 방지)
-    const taper = 1 - t * 0.55;                          // 끝으로 갈수록 작아짐
-
-    // 가운데 마그마 균열선(한 줄 틈 — 파편이 여기서 솟음). 파편보다 조금 빠르게 뻗고 사라짐.
-    const seam = new THREE.Mesh(
-      new THREE.BoxGeometry(width * 0.5 * taper, 0.06, (length / segN) * 1.05),
-      new THREE.MeshBasicMaterial({ color: 0xff5522, transparent: true, opacity: 0.95, depthWrite: false, fog: false })
-    );
-    seam.position.set(px, 0.05, pz); seam.rotation.y = yaw; scene.add(seam);
-    parryRings.push({ mesh: seam, mat: seam.material, life: 1.0, delay: seamDelay, scale: 1, grow: 0, fade: 0.7 });
-    // 균열선 안 밝은 용암 핵
-    const core = new THREE.Mesh(
-      new THREE.BoxGeometry(width * 0.22 * taper, 0.08, (length / segN) * 0.9),
-      new THREE.MeshBasicMaterial({ color: 0xffd060, transparent: true, opacity: 1.0, depthWrite: false, fog: false })
-    );
-    core.position.set(px, 0.06, pz); core.rotation.y = yaw; scene.add(core);
-    parryRings.push({ mesh: core, mat: core.material, life: 0.95, delay: seamDelay, scale: 1, grow: 0, fade: 0.7 });
-
-    // 양옆으로 갈라지며 솟아오르는 뾰족한 돌 파편(좌·우 한 쌍)
+    const delay = t * 0.67;                               // 빨간 바닥(growLen 0.6초)과 동일 속도로 솟음
+    const taper = 1 - t * 0.55;
     [-1, 1].forEach(side => {
-      const size = (0.7 + Math.random() * 0.45) * taper;    // 파편 크기(더 크게)
-      const offset = width * (0.12 + Math.random() * 0.2);   // 중심선에서 좌우로 적당히 넓게(갈라져 보이진 않게)
-      const fx = px + perpX * side * offset;
-      const fz = pz + perpZ * side * offset;
-      const shardMat = baseRockMat.clone(); shardMat.transparent = true;
-      const shard = new THREE.Mesh(new THREE.ConeGeometry(size * 0.55, size * 2.6, 5), shardMat);
-      jitterGeometry(shard.geometry, size * 0.16);
-      // 바깥쪽으로 비스듬히 기울어 솟음(중심선에서 멀어지는 방향으로 + 진행축 따라 살짝 누움)
-      shard.rotation.z = side * (0.35 + Math.random() * 0.3);
-      shard.rotation.y = yaw + (Math.random() - 0.5) * 0.6;
-      shard.rotation.x = (Math.random() - 0.5) * 0.25;
-      const targetY = 0.15 + size * 1.1;                     // 솟아오른 최종 높이(더 높이)
-      shard.position.set(fx, targetY - 1.4, fz);             // 처음엔 땅속 깊이서 시작(솟는 거리 큼)
-      scene.add(shard);
-      // 밝은 모서리(파편 끝에 작은 조각)
-      const tipMat = baseEdgeMat.clone(); tipMat.transparent = true;
-      const tip = new THREE.Mesh(new THREE.TetrahedronGeometry(size * 0.45, 0), tipMat);
-      tip.position.copy(shard.position); tip.position.y += size * 1.2; scene.add(tip);
-      // rise: 천천히 솟아오른 뒤(riseSpeed 느리게) 오래 머물다 사라짐(fade 느리게)
-      parryRings.push({ mesh: shard, mat: shardMat, life: 1.1, delay, scale: 1, grow: 0, riseFrom: targetY - 1.4, riseTo: targetY, riseT: 0, fade: 0.7, riseSpeed: 1.8 });
-      parryRings.push({ mesh: tip, mat: tipMat, life: 1.1, delay, scale: 1, grow: 0, riseFrom: targetY - 1.4 + size * 1.2, riseTo: targetY + size * 1.2, riseT: 0, fade: 0.7, riseSpeed: 1.8 });
+      // 한 쪽당 두 개씩(외곽선 위 + 살짝 바깥) — 파편 수 2배
+      for (let k = 0; k < 2; k++) {
+        const size = (0.6 + Math.random() * 0.4) * taper;
+        // 외곽선(halfW) 근처에서 솟게: 안쪽 파편은 외곽선 살짝 안, 바깥 파편은 외곽선 살짝 밖
+        const offset = halfW + (k === 0 ? -0.1 : 0.25) + (Math.random() - 0.5) * 0.15;
+        const fx = px + perpX * side * offset;
+        const fz = pz + perpZ * side * offset;
+        const shardMat = baseRockMat.clone(); shardMat.transparent = true;
+        const shard = new THREE.Mesh(new THREE.ConeGeometry(size * 0.55, size * 2.6, 5), shardMat);
+        jitterGeometry(shard.geometry, size * 0.16);
+        shard.rotation.z = side * (0.4 + Math.random() * 0.35);   // 바깥으로 비스듬히(외곽선에서 튀는 느낌)
+        shard.rotation.y = yaw + (Math.random() - 0.5) * 0.6;
+        shard.rotation.x = (Math.random() - 0.5) * 0.25;
+        const targetY = 0.15 + size * 1.1;
+        shard.position.set(fx, targetY - 1.4, fz);
+        scene.add(shard);
+        const tipMat = baseEdgeMat.clone(); tipMat.transparent = true;
+        const tip = new THREE.Mesh(new THREE.TetrahedronGeometry(size * 0.45, 0), tipMat);
+        tip.position.copy(shard.position); tip.position.y += size * 1.2; scene.add(tip);
+        parryRings.push({ mesh: shard, mat: shardMat, life: 1.1, delay, scale: 1, grow: 0, riseFrom: targetY - 1.4, riseTo: targetY, riseT: 0, fade: 0.7, riseSpeed: 2.2 });
+        parryRings.push({ mesh: tip, mat: tipMat, life: 1.1, delay, scale: 1, grow: 0, riseFrom: targetY - 1.4 + size * 1.2, riseTo: targetY + size * 1.2, riseT: 0, fade: 0.7, riseSpeed: 2.2 });
+      }
     });
   }
-  // 시작점 섬광(은은하게 — 화면이 번쩍하지 않도록 작고 짧게)
+  // 시작점 섬광(은은하게)
   const flash = new THREE.PointLight(0xff7733, 2.0, 7);
   flash.position.set(x, 0.6, z); scene.add(flash);
   parryRings.push({ mesh: flash, isLight: true, life: 0.3, delay: 0, scale: 1, grow: 0 });
@@ -3079,6 +3108,27 @@ function updateParryRings(dt) {
       continue;
     }
     if (r.mesh.visible === false) r.mesh.visible = true;
+
+    // 통짜 빨간 균열: 길이로 자라남 → 유지 → 페이드 (한 메시라 깜빡임 없음)
+    if (r.riftGrow) {
+      r.gt = (r.gt || 0) + dt;                       // 경과 시간
+      if (r.gt <= r.growLen) {
+        // 자라나는 단계: scale.z 0→1 (ease-out)
+        const p = r.gt / r.growLen;
+        r.mesh.scale.z = Math.max(0.001, p);   // 선형으로 자람(파편 delay와 동일 진행 → 매 순간 같은 위치)
+        r.mat.opacity = r.opaBase || (r.opaBase = r.mat.opacity);
+      } else if (r.gt <= r.growLen + r.hold) {
+        // 유지 단계: 길이 가득, 불투명 유지
+        r.mesh.scale.z = 1;
+      } else {
+        // 페이드 단계
+        r.mesh.scale.z = 1;
+        r.mat.opacity -= dt * r.fade;
+        if (r.mat.opacity <= 0) { scene.remove(r.mesh); parryRings.splice(i, 1); continue; }
+      }
+      continue;
+    }
+
     r.life -= dt * (r.fade || 5.0); // 기본 빠르게, fade 지정 시 그 속도로(대지가르기는 느리게)
     if (r.life <= 0) { scene.remove(r.mesh); parryRings.splice(i, 1); continue; }
     if (r.isLight) { r.mesh.intensity = r.life * 7; }
@@ -3190,19 +3240,11 @@ const arrowTipGeo = new THREE.ConeGeometry(0.07, 0.18, 5); arrowTipGeo.rotateX(-
 // 축 4방향 긴 스파이크(십자) + 대각 4방향 짧은 스파이크 = 8각 반짝임. 단일 메쉬.
 const _glintGeo = (() => {
   const shape = new THREE.Shape();
-<<<<<<< HEAD
   const tips = 8, rIn = 0.07;
   for (let i = 0; i <= tips * 2; i++) {
     const ang = (i / (tips * 2)) * Math.PI * 2 - Math.PI / 2;
     let r;
     if (i % 2 === 0) r = (((i / 2) % 2) === 0) ? 1.5 : 0.4; // 축(긴 십자) / 대각(짧은) 교대 — 스파이크 길게
-=======
-  const tips = 8, rIn = 0.085;
-  for (let i = 0; i <= tips * 2; i++) {
-    const ang = (i / (tips * 2)) * Math.PI * 2 - Math.PI / 2;
-    let r;
-    if (i % 2 === 0) r = (((i / 2) % 2) === 0) ? 1.0 : 0.34; // 축(긴 십자) / 대각(짧은) 교대
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
     else r = rIn;
     const x = Math.cos(ang) * r, y = Math.sin(ang) * r;
     (i === 0) ? shape.moveTo(x, y) : shape.lineTo(x, y);
@@ -3210,27 +3252,18 @@ const _glintGeo = (() => {
   return new THREE.ShapeGeometry(shape);
 })();
 function spawnGlint(x, y, z) {
-<<<<<<< HEAD
   const mat = new THREE.MeshBasicMaterial({ color: 0x4db4ff, transparent: true, opacity: 1.0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
-=======
-  const mat = new THREE.MeshBasicMaterial({ color: 0xaae6ff, transparent: true, opacity: 1.0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
   const mesh = new THREE.Mesh(_glintGeo, mat);
   mesh.position.set(x, y, z);
   mesh.lookAt(camera.position); // 카메라를 향하게(쿼터뷰에서 또렷)
   scene.add(mesh);
   // parryRings에 얹으면 자동으로 살짝 커지며 빠르게(~0.2초) 사라짐 = "번쩍"
-<<<<<<< HEAD
   parryRings.push({ mesh, mat, life: 1.0, delay: 0, scale: 1.2, grow: 3.0 });
-=======
-  parryRings.push({ mesh, mat, life: 1.0, delay: 0, scale: 0.8, grow: 2.4 });
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
 }
 
 function spawnArrow(multiplier) {
   const combo = dodgeComboShot; dodgeComboShot = false; // 회피후 공격 → 발사 지점 글린트
   const t = Math.min(1, Math.max(0, multiplier - 1.0)); // 0(약공격)~1(최대 차지)
-<<<<<<< HEAD
   let count = 1 + Math.round(t * 4);              // 1발 → 최대 5발
   let totalAngle = t * (Math.PI / 3);             // 부채꼴 최대 60도
   if (combo) {                                    // 회피 공격: 항상 최소 3발 보장(+보기 좋은 부채각)
@@ -3245,17 +3278,6 @@ function spawnArrow(multiplier) {
     const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
     spawnGlint(player.obj.position.x + fx * 0.9, player.obj.position.y + 1.1, player.obj.position.z + fz * 0.9);
     SFX.glint();
-=======
-  const count = 1 + Math.round(t * 4);            // 1발 → 최대 5발
-  const totalAngle = t * (Math.PI / 3);           // 부채꼴 최대 60도
-  const baseDmg = Math.floor(player.atk + 4);     // 발당 데미지(차지 이득은 '발 수/각도')
-  const range = TILE * (3 + t * 1.5);
-  const speed = 26;
-  if (combo) {
-    // 쏘는 순간, 발사 지점에 파란 십자 섬광 한 번
-    const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
-    spawnGlint(player.obj.position.x + fx * 0.9, player.obj.position.y + 1.1, player.obj.position.z + fz * 0.9);
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
   }
   for (let i = 0; i < count; i++) {
     const off = (count === 1) ? 0 : (i / (count - 1) - 0.5) * totalAngle;
@@ -3271,16 +3293,11 @@ function spawnArrow(multiplier) {
     slashes.push({
       mesh: grp, mat, vx: dirX * speed, vz: dirZ * speed, dirX, dirZ,
       traveled: 0, range, damage: baseDmg,
-<<<<<<< HEAD
       radius: 0.45, hitSet: new Set(), life: 1.0, power: multiplier, screenCull: true
-=======
-      radius: 0.45, hitSet: new Set(), life: 1.0, power: multiplier
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
     });
   }
 }
 
-<<<<<<< HEAD
 // 피격 시 같은 방의 잠든 몬스터를 한꺼번에 깨움(소속 방이 없으면 맞은 적만)
 function alertRoom(hit) {
   hit.awake = true;
@@ -3291,8 +3308,6 @@ function alertRoom(hit) {
   }
 }
 
-=======
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
 function updateSlashes(dt) {
   const _ndc = new THREE.Vector3();
   for (let i = slashes.length - 1; i >= 0; i--) {
@@ -3541,11 +3556,7 @@ const player = {
   obj: new THREE.Group(), yaw: 0, pitch: 0, hp: 100, hpMax: 100, lv: 1, exp: 0, expMax: 10, atk: 12, kills: 0, floor: 1,
   alive: true, isBlocking: false, attackCooldown: 0, hurtCooldown: 0, jumpVy: 0, onGround: true, radius: 0.5, speed: 6.5,
   walkPhase: 0, limbs: {}, kbX: 0, kbZ: 0, atkSpeed: 1.0,
-<<<<<<< HEAD
   dodgeT: 0, dodgeCd: 0, dodgeVx: 0, dodgeVz: 0, dodgeAtkWindow: 0, dodgeBoostT: 0, dodgePerfectShown: false,  // 궁수 회피(대시) + 회피후 공격 버퍼 + 완벽 회피 이속 버스트
-=======
-  dodgeT: 0, dodgeCd: 0, dodgeVx: 0, dodgeVz: 0, dodgeAtkWindow: 0,  // 궁수 회피(대시) + 회피후 공격 버퍼
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
   sta: 100, staMax: 100,  // 스태미나(방어 유지·강공격·스킬에 소모, 자동 회복)
   gold: 0,                // 골드(메타 진행용, 추후 연결)
   noHitFloors: 0,         // 한 번도 안 맞고 넘긴 층 수(노히트 보너스)
@@ -3958,7 +3969,6 @@ function buildArcherRig() {
   const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.04), eyeMat); eyeL.position.set(-0.13, 0.0, -0.32); aHead.add(eyeL);
   const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.04), eyeMat); eyeR.position.set(0.13, 0.0, -0.32); aHead.add(eyeR);
 
-<<<<<<< HEAD
   // ---- 포니테일 (부드러운 곡선: 묶음 살짝 훅 → 뒤로 불룩 → 아래로 흐르다 끝 반대로 꺾임. 7단 체인 + 스핀들 굵기) ----
   const ponyGrp = new THREE.Group(); ponyGrp.position.set(0, 0.27, 0.13); ponyGrp.rotation.x = -1.75; aHead.add(ponyGrp);
   const ponyTie = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.06, 10), strapMat)); jitterGeometry(ponyTie.geometry, 0.005); ponyGrp.add(ponyTie);
@@ -3981,8 +3991,6 @@ function buildArcherRig() {
   const ponySegs = [ponyGrp, ps1, ps2, ps3, ps4, ps5, ps6, ps7];
   const ponyBase = [-1.75, 0.00, 0.45, 0.45, 0.40, 0.35, 0.25, -0.35];
 
-=======
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
   // ---- 활 (오른손 handGrp에 부착) ----
   const bowGrp = new THREE.Group();
   function bowLimb(s) {
@@ -4031,11 +4039,7 @@ function buildArcherRig() {
 
   bodyGrp.add(root);
   player.archerRig = root;
-<<<<<<< HEAD
   player.archerLimbs = { armR, armL, legR, legL, arrowGrp, ponySegs, ponyBase };
-=======
-  player.archerLimbs = { armR, armL, legR, legL, arrowGrp };
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
 }
 
 function applyArcherLook() {
@@ -4061,7 +4065,6 @@ function updateArcherAnim(dt, moveSpeed) {
   const lp = (o, key, tgt) => { o[key] += (tgt - o[key]) * k; };
   const arrow = L.arrowGrp;
 
-<<<<<<< HEAD
   // ── 포니테일 흔들림 (걷기/회피/대기 공통) : 끝으로 갈수록 크게, 위상 지연으로 채찍처럼 따라옴 ──
   if (L.ponySegs) {
     const segs = L.ponySegs, base = L.ponyBase, n = segs.length;
@@ -4083,33 +4086,37 @@ function updateArcherAnim(dt, moveSpeed) {
     }
   }
 
-  // ── 회피(대시) 자세: 무릎 굽혀 낮게 ── (마을에서는 표시 안 함)
+  // ── 회피(대시): 활 조준 자세를 유지한 채 낮게 굴러 피함 ── (마을에서는 표시 안 함)
   if (!inTown && !inRest && player.dodgeT > 0) {
-=======
-  // ── 회피(대시) 자세: 무릎 굽혀 낮게 ── (마을에서는 표시 안 함)
-  if (!inTown && player.dodgeT > 0) {
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
+    // 다리: 무릎 굽혀 낮은 자세
     lp(L.legR.kneeGrp.rotation, 'x', -0.6); lp(L.legL.kneeGrp.rotation, 'x', -0.6);
     lp(L.legR.legGrp.rotation, 'x', 0.2); lp(L.legL.legGrp.rotation, 'x', 0.2);
-    lp(L.armR.armGrp.rotation, 'x', 0.3); lp(L.armR.armGrp.rotation, 'z', 0.16);
-    lp(L.armL.armGrp.rotation, 'x', 0.3); lp(L.armL.armGrp.rotation, 'z', -0.16);
-    lp(L.armR.elbowGrp.rotation, 'x', 0.5); lp(L.armL.elbowGrp.rotation, 'x', 0.5);
-    if (arrow) arrow.visible = false;
+    // 팔: 활 든 오른팔 정면으로 + 왼손 시위 당김(조준 유지)
+    lp(L.armR.armGrp.rotation, 'x', 1.5); lp(L.armR.armGrp.rotation, 'z', 0);
+    lp(L.armR.elbowGrp.rotation, 'x', 0.1);
+    lp(L.armL.armGrp.rotation, 'x', 1.3); lp(L.armL.armGrp.rotation, 'z', 0.5);
+    lp(L.armL.elbowGrp.rotation, 'x', 1.0);
+    // 메긴 화살 표시(활 앞)
+    if (arrow) { arrow.visible = true; arrow.position.set(0.16, 1.12, -0.42); arrow.rotation.set(0, 0, 0); }
     return;
   }
 
   // ── 활쏘기(차지=시위 당김 / 발사=릴리스) ── (마을에서는 표시 안 함)
-<<<<<<< HEAD
   if (!inTown && !inRest && (isCharging || swingTimer > 0)) {
-=======
-  if (!inTown && (isCharging || swingTimer > 0)) {
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
     // 오른팔: 활을 앞으로 듦
     lp(L.armR.armGrp.rotation, 'x', 1.5); lp(L.armR.armGrp.rotation, 'z', 0);
     lp(L.armR.elbowGrp.rotation, 'x', 0.1);
-    // 다리는 선 자세
-    lp(L.legR.legGrp.rotation, 'x', 0); lp(L.legL.legGrp.rotation, 'x', 0);
-    lp(L.legR.kneeGrp.rotation, 'x', 0); lp(L.legL.kneeGrp.rotation, 'x', 0);
+    // 다리: 이동 중이면 걷기 유지(발 안 멈춤), 정지 중이면 선 자세
+    if (moveSpeed > 0.1) {
+      const ws = Math.sin(player.walkPhase);
+      lp(L.legR.legGrp.rotation, 'x', ws * 0.55);
+      lp(L.legL.legGrp.rotation, 'x', -ws * 0.55);
+      lp(L.legR.kneeGrp.rotation, 'x', -Math.max(0, -ws) * 0.7);
+      lp(L.legL.kneeGrp.rotation, 'x', -Math.max(0, ws) * 0.7);
+    } else {
+      lp(L.legR.legGrp.rotation, 'x', 0); lp(L.legL.legGrp.rotation, 'x', 0);
+      lp(L.legR.kneeGrp.rotation, 'x', 0); lp(L.legL.kneeGrp.rotation, 'x', 0);
+    }
     if (isCharging) {
       // 시위 당김: 차지할수록 왼손을 더 뒤로, 화살 표시
       const w = Math.min(1, chargeTime / 1.0);
@@ -4447,9 +4454,8 @@ function buildDarkKnightBody(grp, bodyGrp, headGrp, limbs) {
   const dkStrap    = getLowPolyMat(0x2a1c16, false);
   const dkBlade    = getLowPolyMat(0x4a5260, true);
   const dkGold     = getLowPolyMat(0xb89048, true);
-  const magmaMat   = new THREE.MeshStandardMaterial({ color: 0xff5522, emissive: 0xff3300, emissiveIntensity: 1.6, roughness: 0.5 });
-  const magmaCore  = new THREE.MeshStandardMaterial({ color: 0xffcc55, emissive: 0xff8822, emissiveIntensity: 2.2, roughness: 0.4 });
-  const dkEye      = new THREE.MeshStandardMaterial({ color: 0xff6633, emissive: 0xff2200, emissiveIntensity: 2.0, roughness: 0.4 });
+  const magmaMat   = new THREE.MeshStandardMaterial({ color: 0xff5522, emissive: 0xff3300, emissiveIntensity: 0.6, roughness: 0.5 });
+  const magmaCore  = new THREE.MeshStandardMaterial({ color: 0xffcc55, emissive: 0xff8822, emissiveIntensity: 0.9, roughness: 0.4 });
 
   const sh = (o) => { o.castShadow = true; o.receiveShadow = true; return o; };
   function makeRag(w, h, mat, jit = 0.04) {
@@ -4565,7 +4571,7 @@ function buildDarkKnightBody(grp, bodyGrp, headGrp, limbs) {
     coreSeg.position.set(x, y, z - 0.045); coreSeg.rotation.set(0, yaw, roll); visorGrp.add(coreSeg);
     if (i % 2 === 0) { const drip = new THREE.Mesh(new THREE.IcosahedronGeometry(0.018, 0), magmaCore); drip.position.set(x, y - 0.02, z - 0.05); visorGrp.add(drip); }
   }
-  // (눈 발광은 dkEye emissive 재질로 처리 — 던전 보스 방 광원 수 한도 초과를 막기 위해 PointLight 미사용)
+  // (눈 발광은 곡선 마그마 바이저가 대신함 — 보스 방 광원 수 한도 초과를 막기 위해 PointLight 미사용)
   limbs.head = headGrp;
 
   // ---------- 팔(가시 폴드론 + 굵은 팔 + 가시 너클) ----------
@@ -4645,7 +4651,7 @@ function buildDarkKnightBody(grp, bodyGrp, headGrp, limbs) {
   limbs.legR = legR.legGrp; limbs.legL = legL.legGrp;
   limbs.armR = armR.armGrp; limbs.armL = armL.armGrp;
   limbs.bodyGrp = bodyGrp;
-  limbs._dkEye = dkEye;
+  limbs._dkMagma = magmaMat; limbs._dkMagmaCore = magmaCore;  // 분노 시 발광 강화용
   limbs._dkSword = swordGrp;                 // 횡베기 등에서 검 각도 조정용
   limbs._dkSwordBaseRX = swordGrp.rotation.x; // 검 기본 회전(복원용, = -π/2)
 
@@ -4661,12 +4667,11 @@ function buildDarkKnightBody(grp, bodyGrp, headGrp, limbs) {
     }
     cpos.needsUpdate = true; lpos.needsUpdate = true;
     capeGeo.computeVertexNormals(); capeLineGeo.computeVertexNormals();
-    const throb = 1.5 + Math.sin(t * 1.6) * 0.5 + Math.sin(t * 3.7) * 0.25;
-    magmaMat.emissiveIntensity = Math.max(0.8, throb);
-    magmaCore.emissiveIntensity = Math.max(1.2, throb * 1.4);
+    const gm = limbs._gkGlowMul || 1;   // 분노 시 발광 배율(기본 1, 분노 약 2.7배)
+    const throb = 0.5 + Math.sin(t * 1.6) * 0.18 + Math.sin(t * 3.7) * 0.09;  // 기본은 은은
+    magmaMat.emissiveIntensity = Math.max(0.3, throb) * gm;
+    magmaCore.emissiveIntensity = Math.max(0.45, throb * 1.4) * gm;
     magmaCoreMesh.scale.set(0.7 + Math.sin(t * 1.6) * 0.05, 1.3 + Math.sin(t * 1.6) * 0.08, 0.5);
-    const flick = 1.4 + Math.sin(t * 4.0) * 0.3 + Math.sin(t * 1.7) * 0.2;
-    dkEye.emissiveIntensity = Math.max(0.8, flick);
   };
 }
 
@@ -4910,7 +4915,6 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
   wpnGrp.position.set(0, -0.3, 0); wpnGrp.rotation.x = -Math.PI/2; limbs.armR.add(wpnGrp);
   limbs.weapon = wpnGrp; // 무기 참조(스켈레톤 보스 투척 시 숨김/복귀용)
 
-<<<<<<< HEAD
   } // end of non-wraith build
 
   if (isWraith) {
@@ -4919,9 +4923,6 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
   } else {
     grp.traverse(o => { if (o.isMesh) o.receiveShadow = true; }); // 벽 그림자를 받아 벽 뒤에선 어두워지도록
   }
-=======
-  grp.traverse(o => { if (o.isMesh) o.receiveShadow = true; }); // 벽 그림자를 받아 벽 뒤에선 어두워지도록
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
   grp.scale.setScalar(scale * (isBoss ? 1 : 1.10)); grp.position.set(x, 0, z); scene.add(grp);
 
   const ent = { 
@@ -4944,6 +4945,7 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
     sweepState: 'none', sweepTimer: 0, sweepHit: false, sweepBaseYaw: 0, sweepDir: 1, // (흑기사) 횡베기 가로베기
     riftState: 'none', riftTimer: 0, riftDirX: 0, riftDirZ: 0, // (흑기사) 대지 가르기(직선 균열)
     recoverState: 'none', recoverTimer: 0, recoverArmX: 0, recoverArmZ: 0, // (흑기사) 패턴 후 묵직한 복귀 동작
+    roarState: 'none', roarTimer: 0,   // (흑기사) 분노 포효 모션
     enraged: false         // 분노 강화 발동 여부(체력 절반 이하 1회)
   };
   // 외부 모델 설정이 있으면 교체(없으면 도형 그대로). 원거리 캐스터는 로브가 있으니 모델 미적용.
@@ -5589,7 +5591,6 @@ function updateSpikeTraps(dt) {
 }
 // 이끼 동굴 장식 애니메이션: 발광 버섯 맥동, 물웅덩이 잔물결, 빛줄기 먼지
 function updateCavernDecor(dt) {
-<<<<<<< HEAD
   if (cavernShrooms.length === 0 && cavernWaters.length === 0 && cavernShafts.length === 0 && castleTorches.length === 0 && !castleDust.visible) return;
   const t = performance.now() / 1000;
   // 2막 떠다니는 먼지: 위로 상승 + 좌우 흔들림(천장 닿으면 바닥에서 재생성)
@@ -5609,10 +5610,6 @@ function updateCavernDecor(dt) {
     tc.flame.scale.set(0.9 + Math.sin(t * 13 + tc.ph) * 0.12, f, 0.9 + Math.cos(t * 11 + tc.ph) * 0.12);
     tc.flame.rotation.y = Math.sin(t * 7 + tc.ph) * 0.15;
   }
-=======
-  if (cavernShrooms.length === 0 && cavernWaters.length === 0 && cavernShafts.length === 0) return;
-  const t = performance.now() / 1000;
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
   for (const sh of cavernShrooms) {
     const f = 1.0 + Math.sin(t * 2.0 + sh.ph) * 0.3 + Math.sin(t * 5 + sh.ph) * 0.1;
     sh.light.intensity = sh.base * f;
@@ -5729,13 +5726,9 @@ window.addEventListener('mousemove', e => {
 });
 
 // ===== 회피(궁수 전용 대시) =====
-<<<<<<< HEAD
 const DODGE_DUR = 0.3, DODGE_CD = 0.6, DODGE_SPEED = 20, DODGE_STA = 30;
 const PERFECT_DODGE_DUR = 1.0;    // 완벽 회피(타이밍 회피) 후 이속 버스트 지속(초)
 const PERFECT_DODGE_SPEED = 1.8;  // 완벽 회피 순간 최대 이속 배수(서서히 원래대로)
-=======
-const DODGE_DUR = 0.3, DODGE_CD = 0.6, DODGE_SPEED = 20, DODGE_STA = 22;
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
 const DODGE_ATK_WINDOW = 1.0;   // 회피 후 이 시간 안에 공격하면 강공격 중간단계로 발사
 // 화면 방향(오른쪽=+x, 아래=+y) → 카메라 기준 월드 방향(화면 위=전방). 정규화 벡터 또는 null.
 function screenToWorldDir(sx, sy) {
@@ -5745,10 +5738,7 @@ function screenToWorldDir(sx, sy) {
   v.y = 0; if (v.lengthSq() < 1e-6) return null; v.normalize(); return v;
 }
 function startDodge(dirX, dirZ) {
-<<<<<<< HEAD
   if (inTown || inRest) return;
-=======
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
   if (selectedChar !== 'archer' || !player.alive) return;
   if (player.dodgeT > 0 || player.dodgeCd > 0) return;     // 회피 중이거나 쿨다운이면 무시
   if (!useStamina(DODGE_STA)) { toast('스태미나 부족'); return; }
@@ -5756,17 +5746,11 @@ function startDodge(dirX, dirZ) {
   player.dodgeVx = (dirX / d) * DODGE_SPEED; player.dodgeVz = (dirZ / d) * DODGE_SPEED;
   player.dodgeT = DODGE_DUR; player.dodgeCd = DODGE_CD;   // 회피 지속 + 쿨다운 시작(무적은 dodgeT 동안)
   player.dodgeAtkWindow = DODGE_ATK_WINDOW;               // 회피 직후 공격은 강공격 중간단계
-<<<<<<< HEAD
   player.dodgePerfectShown = false;                       // 이번 회피의 완벽 회피 연출은 1회만
 }
 
 function startBlock() {
   if (inTown || inRest) return;
-=======
-}
-
-function startBlock() {
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
   if (selectedChar === 'archer') return; // 1단계: 궁수 방어 없음(추후 회피로 대체)
   if (!player.alive || player.isBlocking) return;
   if (player.sta < 8) { toast('스태미나 부족'); return; } // 최소치 없으면 사용 불가
@@ -6005,6 +5989,12 @@ function killEnemy(e) {
     return;
   }
   e.isDead = true; e.deathTimer = 1.5;
+  // 돌진 중 사망 시 따라다니던 반구 제거(안 사라지는 버그 방지)
+  if (e.rushTear) {
+    scene.remove(e.rushTear);
+    e.rushTear.traverse(o => { if (o.material) o.material.dispose(); if (o.geometry) o.geometry.dispose(); });
+    e.rushTear = null;
+  }
   // 보스 테스트 모드: 보상/기록/정산 없이 처치만(패턴 관찰용). 다시 소환 버튼으로 부른다.
   if (bossTestMode) { toast('💀 처치 — 다시 소환할 수 있습니다', 1500); return; }
   // 보스(또는 난입 보스) 격파 시 종류를 기록 → 이후 일반 층에 난입 가능
@@ -6059,7 +6049,6 @@ function openBossReward() {
 
 function damagePlayer(amount, enemyObj) {
   if (player.hurtCooldown > 0 || !player.alive) return;
-<<<<<<< HEAD
   if (player.dodgeT > 0) {
     // 궁수: 적 공격 타이밍에 맞춘 회피 = 완벽 회피 → 순간 이속 버스트(기사 패링에 대응)
     if (selectedChar === 'archer') {
@@ -6072,9 +6061,6 @@ function damagePlayer(amount, enemyObj) {
     }
     return; // 회피(대시) 중 무적
   }
-=======
-  if (player.dodgeT > 0) return; // 회피(대시) 중 무적
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
   // 마법사 마나 보호막: 켜져 있는 동안 방향과 무관하게 전방위 피해 차단
   if (selectedChar === 'mage' && player.isBlocking) {
     // 빙결 패링: 보호막을 막 펼친 순간(윈도우 내)에 피격하면 주변 적을 얼림
@@ -6136,11 +6122,7 @@ function damagePlayer(amount, enemyObj) {
   player.kbX = (dx / d) * 15; player.kbZ = (dz / d) * 15; flashObj(player.obj);
   SFX.hurt(); // 피격음
   player.hp -= amount; player.hurtCooldown = 0.5; player.hitThisFloor = true; $('hurt').style.opacity = '1'; setTimeout(() => { $('hurt').style.opacity = '0'; }, 150);
-<<<<<<< HEAD
   if ((bossTestMode || godMode) && player.hp <= 0) player.hp = 1; // 테스트/만렙 모드: 죽지 않음
-=======
-  if (bossTestMode && player.hp <= 0) player.hp = 1; // 테스트 모드: 죽지 않음
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
   updateHUD(); if (player.hp <= 0) die();
 }
 
@@ -6151,11 +6133,7 @@ function hurtPlayerEnv(amount) {
   SFX.hurt();
   player.hp -= amount; player.hurtCooldown = 0.5; player.hitThisFloor = true;
   $('hurt').style.opacity = '1'; setTimeout(() => { $('hurt').style.opacity = '0'; }, 150);
-<<<<<<< HEAD
   if ((bossTestMode || godMode) && player.hp <= 0) player.hp = 1; // 테스트/만렙 모드: 죽지 않음
-=======
-  if (bossTestMode && player.hp <= 0) player.hp = 1; // 테스트 모드: 죽지 않음
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
   updateHUD(); if (player.hp <= 0) die();
 }
 
@@ -6378,10 +6356,7 @@ function update(dt) {
   const moveVec = new THREE.Vector3().addScaledVector(camFwd, -mz).addScaledVector(camRight, mx).normalize().multiplyScalar(curSpeed * mag * dt);
   // 회피(대시): 쿨다운/지속 감소 + 감속 대시 속도 합산
   if (player.dodgeCd > 0) player.dodgeCd = Math.max(0, player.dodgeCd - dt);
-<<<<<<< HEAD
   if (player.dodgeBoostT > 0) player.dodgeBoostT = Math.max(0, player.dodgeBoostT - dt);
-=======
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
   if (player.dodgeAtkWindow > 0) player.dodgeAtkWindow = Math.max(0, player.dodgeAtkWindow - dt);
   let dodgeWx = 0, dodgeWz = 0;
   if (player.dodgeT > 0) {
@@ -6613,6 +6588,12 @@ function update(dt) {
     // 빙결 상태: 타이머가 있으면 이동/공격 속도를 크게 늦춤
     e.frozen = Math.max(0, (e.frozen || 0) - dt);
     thawEnemyVisual(e); // 빙결 끝나면 푸른빛 제거
+    // 돌진 반구 안전 정리: 돌진 중이 아니거나, 빙결로 돌진이 멈췄으면 반구 제거(패링/빙결 등으로 중단)
+    if (e.rushTear && (e.rushState !== 'rushing' || e.frozen > 0)) {
+      scene.remove(e.rushTear);
+      e.rushTear.traverse(o => { if (o.material) o.material.dispose(); if (o.geometry) o.geometry.dispose(); });
+      e.rushTear = null;
+    }
     const slowMul = e.frozen > 0 ? 0.3 : 1.0; // 빙결 시 30% 속도
     e.attackCd = Math.max(0, e.attackCd - dt * slowMul); e.swingTimer = Math.max(0, e.swingTimer - dt * slowMul);
     if (e.mixer) e.mixer.update(dt);
@@ -6878,11 +6859,46 @@ function update(dt) {
       // 분노: 체력 절반 이하 1회 — 공격력·속도 상승, 마그마 격화
       if (!e.enraged && e.hp <= e.hpMax * 0.5) {
         e.enraged = true; e.damage = Math.floor(e.damage * 1.25); e.speed *= 1.2;
-        spawnShockwave(e.obj.position.x, e.obj.position.z, TILE * 1.6); hitStop = 0.1;
-        toast('💢 흑기사가 분노한다!', 3000);
+        if (e.limbs) e.limbs._gkGlowMul = 4.0;   // 분노: 마그마/눈 발광 4배로 격렬하게(맥동에 곱해짐)
+        // 포효 모션 시작(몸 젖히고 팔 벌림) — 충격파는 포효 절정에 터진다
+        e.roarState = 'roar'; e.roarTimer = 0.8; e.roarBoom = false;
+        e.sweepState = 'none'; e.riftState = 'none'; e.rushState = 'none'; e.recoverState = 'none';
+        toast('💢 흑기사가 포효한다!', 3000);
       }
       e.specialCd = Math.max(0, e.specialCd - dt);
       const hpRatio = e.hp / e.hpMax;
+
+      // --- 포효(분노 연출): 몸을 젖히고 팔을 벌렸다가, 절정에 충격파를 터뜨린다 ---
+      if (e.roarState === 'roar') {
+        e.roarTimer -= dt;
+        const rp = 1 - Math.max(0, e.roarTimer) / 0.8;   // 0→1
+        // 0~0.4: 웅크렸다 뒤로 젖힘, 0.4(절정): 포효+충격파, 이후 복귀
+        const lean = Math.sin(Math.min(1, rp / 0.5) * Math.PI) * 0.5;  // 몸 젖힘(절정에 최대)
+        e.limbs.bodyGrp.rotation.x = -lean * 0.6;        // 상체 뒤로 젖힘(포효)
+        e.limbs.armR.rotation.x = -lean * 1.4;           // 양팔 위로 벌림
+        e.limbs.armL.rotation.x = -lean * 1.4;
+        e.limbs.armR.rotation.z = -lean * 0.5;
+        e.limbs.armL.rotation.z = lean * 0.5;
+        if (e.limbs.head) e.limbs.head.rotation.x = -lean * 0.5; // 고개 젖힘
+        // 절정(rp~0.5)에 충격파 두 겹 터뜨림
+        if (!e.roarBoom && rp >= 0.45) {
+          e.roarBoom = true;
+          spawnShockwave(e.obj.position.x, e.obj.position.z, TILE * 2.6);
+          const ring2Mat = new THREE.MeshBasicMaterial({ color: 0xffaa44, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false, fog: false });
+          const ring2 = new THREE.Mesh(new THREE.RingGeometry(0.5, 1.0, 32), ring2Mat);
+          ring2.position.set(e.obj.position.x, 0.16, e.obj.position.z); ring2.rotation.x = -Math.PI / 2; scene.add(ring2);
+          parryRings.push({ mesh: ring2, mat: ring2Mat, life: 1.0, delay: 0.12, scale: 1, grow: TILE * 1.8 * 5.0 });
+          hitStop = 0.18;
+        }
+        if (e.roarTimer <= 0) {
+          // 자세 원위치
+          e.limbs.bodyGrp.rotation.x = 0; e.limbs.armR.rotation.x = 0; e.limbs.armL.rotation.x = 0;
+          e.limbs.armR.rotation.z = 0; e.limbs.armL.rotation.z = 0;
+          if (e.limbs.head) e.limbs.head.rotation.x = 0;
+          e.roarState = 'none'; e.specialCd = 0.3;
+        }
+        continue;
+      }
 
       // --- 후딜(복귀): 패턴 직후 천천히 기본 자세로 돌아오며 묵직한 텀 ---
       if (e.recoverState === 'recovering') {
@@ -6902,19 +6918,32 @@ function update(dt) {
       // --- 패턴 선택 (대기 상태에서만) ---
       if (e.sweepState === 'none' && e.rushState === 'none' && e.riftState === 'none') {
         if (e.specialCd <= 0) {
-          const SWEEP_R = TILE * 1.4;   // 횡베기 사거리(실제 검이 닿는 거리에 맞춤 — 헛휘두름 방지)
-          // 특수: 체력 70% 이하부터 대지 가르기를 섞는다. 거리에 상관없이(붙어있어도) 50% 확률로 발동.
+          const SWEEP_R = TILE * 1.4;   // 횡베기 사거리(실제 검이 닿는 거리)
           const canRift = (hpRatio <= 0.7);
-          if (canRift && d < TILE * 12 && Math.random() < 0.5) {
-            e.riftState = 'telegraph'; e.riftTimer = 0.75;     // 검을 치켜드는 긴 예고
+          if (d < SWEEP_R) {
+            // 근접: 기본은 횡베기, 대지 가르기도 가끔(40%) 섞음
+            if (canRift && Math.random() < 0.4) {
+              e.riftState = 'telegraph'; e.riftTimer = 0.83;
+              e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
+            } else {
+              e.sweepState = 'telegraph'; e.sweepTimer = 0.5; e.sweepDir = Math.random() < 0.5 ? 1 : -1;
+              e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
+            }
+          } else if (d >= TILE * 2) {
+            // 2타일 이상 멀어지면: 돌진으로 바짝 따라붙어 거리를 좁힌다(가끔 대지 가르기로 견제).
+            if (canRift && Math.random() < 0.3) {
+              e.riftState = 'telegraph'; e.riftTimer = 0.83;
+            } else {
+              e.rushState = 'telegraph'; e.rushTimer = 0.5; e.rushCount = 1;  // 돌진 1회만(긴 거리)
+            }
             e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
-          } else if (d < SWEEP_R) {
-            // 기본 공격: 횡베기(좌→우 또는 우→좌 무작위)
-            e.sweepState = 'telegraph'; e.sweepTimer = 0.5; e.sweepDir = Math.random() < 0.5 ? 1 : -1;
+          } else if (canRift) {
+            // 중간 거리(1.4~2타일): 대지 가르기로 견제
+            e.riftState = 'telegraph'; e.riftTimer = 0.83;
             e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
-          } else if (d < TILE * 13) {
-            // 멀면 돌진으로 거리 좁힘(분노 시 2회 연속)
-            e.rushState = 'telegraph'; e.rushTimer = 0.5; e.rushCount = e.enraged ? 2 : 1;
+          } else {
+            // 중간 거리인데 대지 가르기 못 쓰면 돌진으로 붙음
+            e.rushState = 'telegraph'; e.rushTimer = 0.5; e.rushCount = 1;  // 돌진 1회만(긴 거리)
             e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
           }
         }
@@ -6965,7 +6994,7 @@ function update(dt) {
               const u = sd || 1;
               const ddx = player.obj.position.x - e.obj.position.x, ddz = player.obj.position.z - e.obj.position.z;
               damagePlayer(e.damage, e);
-              player.kbX = (ddx / u) * 11; player.kbZ = (ddz / u) * 11; // 옆으로 쳐냄
+              player.kbX = (ddx / u) * 40.5; player.kbZ = (ddz / u) * 40.5; // 옆으로 강하게 쳐냄
             }
           }
         }
@@ -6992,13 +7021,13 @@ function update(dt) {
           spawnGroundRift(e.obj.position.x, e.obj.position.z, e.riftDirX, e.riftDirZ, RIFT_LEN, RIFT_W);
           hitStop = 0.08;
           e.limbs.armR.rotation.x = 0;
-          e.riftState = 'active'; e.riftTimer = 1.8;      // 균열이 끝까지 뻗으며 판정 지속(2배 빠르게)
+          e.riftState = 'active'; e.riftTimer = 2.0;      // 균열이 끝까지 뻗으며 판정 지속(2배 빠르게)
           e.riftHit = false;
         }
         continue;
       }
       else if (e.riftState === 'active') {
-        const RIFT_DUR = 1.8;
+        const RIFT_DUR = 2.0;
         const elapsed = RIFT_DUR - e.riftTimer;          // active 시작 후 경과
         e.riftTimer -= dt;
         // 직선 균열 피해: 균열 끝이 플레이어 위치까지 '뻗어 도달'한 순간에만 1회 명중(발동 즉시 전체판정 X)
@@ -7008,7 +7037,7 @@ function update(dt) {
           const perp = Math.abs(relx * (-e.riftDirZ) + relz * e.riftDirX); // 균열 중심선에서 옆으로 벗어난 거리
           const RIFT_LEN = TILE * 9, HALF_W = TILE * 0.55 + player.radius;
           // 균열이 뻗어나간 현재 거리(파편 delay와 동일 속도: 약 RIFT_LEN을 0.9초에 걸쳐). 그 지점을 지났을 때 판정.
-          const reached = (elapsed / 0.55) * RIFT_LEN;     // 0.55초에 끝까지 뻗는 속도
+          const reached = (elapsed / 0.67) * RIFT_LEN;      // 빨간 바닥 자라는 속도(0.6초)에 맞춤
           if (along > -0.5 && along < RIFT_LEN && perp < HALF_W && along <= reached) {
             e.riftHit = true;
             const orig = e.damage; e.damage = Math.floor(orig * 1.3); damagePlayer(e.damage, e); e.damage = orig;
@@ -7018,7 +7047,7 @@ function update(dt) {
         }
         if (e.riftTimer <= 0) {
           e.riftState = 'none';
-          startRecover(e, e.limbs.armR.rotation.x, e.limbs.armR.rotation.z, 0.4, (e.enraged ? 1.2 : 1.6));
+          startRecover(e, e.limbs.armR.rotation.x, e.limbs.armR.rotation.z, (e.enraged ? 0.2 : 0.4), (e.enraged ? 0.7 : 1.5));
         }
         continue;
       }
@@ -7030,14 +7059,17 @@ function update(dt) {
         e.limbs.armR.rotation.x = 0.3;  // 검을 뒤로 끌듯
         if (e.rushTimer <= 0) {
           const dd = d || 1;
-          e.rushState = 'rushing'; e.rushTimer = 0.5; e.rushHit = false;
-          e.rushVx = (dx / dd) * e.speed * 7.5; e.rushVz = (dz / dd) * e.speed * 7.5;
+          e.rushState = 'rushing'; e.rushTimer = 0.9; e.rushHit = false;  // 길게 → 한 번에 먼 거리 이동
+          e.rushVx = (dx / dd) * e.speed * 12; e.rushVz = (dz / dd) * e.speed * 12; // 빠르게(거리 좁힘)
           e.obj.position.y = 0;
+          spawnRushTear && (e.rushTear = spawnRushTear(e.obj.position.x, e.obj.position.z, e.obj.rotation.y)); // 앞쪽 둥근 반원(따라다님)
         }
         continue;
       }
       else if (e.rushState === 'rushing') {
         e.rushTimer -= dt;
+        // 둥근 반원이 보스 앞에 붙어 같이 따라감
+        if (e.rushTear) placeRushTear(e.rushTear, e.obj.position.x, e.obj.position.z, e.obj.rotation.y, e.radius + 0.5);
         const ndx = e.rushVx * dt, ndz = e.rushVz * dt;
         const blocked = moveEntityXZ(e, ndx, ndz);
         if (blocked) e.rushTimer = 0;
@@ -7045,17 +7077,20 @@ function update(dt) {
         if (!e.rushHit && nd < e.radius + player.radius + 0.4) {
           e.rushHit = true;
           const orig = e.damage; e.damage = Math.floor(orig * 1.15); damagePlayer(e.damage, e); e.damage = orig;
+          e.rushTimer = Math.min(e.rushTimer, 0.05); // 플레이어에 닿으면 거기서 멈춤(파고들지 않게 바짝 붙음)
         }
         e.phase += dt * 18; const rs = Math.sin(e.phase);
         e.limbs.legR.rotation.x = rs * 1.0; e.limbs.legL.rotation.x = -rs * 1.0;
         if (e.rushTimer <= 0) {
           e.rushCount--;
           e.limbs.legR.rotation.x = 0; e.limbs.legL.rotation.x = 0; e.limbs.armR.rotation.x = 0;
+          // 따라다니던 반원 정리
+          if (e.rushTear) { scene.remove(e.rushTear); e.rushTear.traverse(o => { if (o.material) o.material.dispose(); if (o.geometry) o.geometry.dispose(); }); e.rushTear = null; }
           if (e.rushCount > 0) {
             e.rushState = 'telegraph'; e.rushTimer = 0.3; e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
           } else {
             e.rushState = 'none'; e.rushVx = 0; e.rushVz = 0;
-            startRecover(e, 0, 0, 0.4, (e.enraged ? 1.5 : 3.2));
+            startRecover(e, 0, 0, 0.3, (e.enraged ? 2.7 : 3.0));
           }
         }
         continue;
@@ -7922,11 +7957,8 @@ function spawnTestBoss(type) {
   boss.awake = true;
   // 테스트용: 체력을 적당히 낮춰 패턴을 보면서도 잡을 수 있게(30층 원래 체력은 너무 높음)
   boss.hpMax = 300; boss.hp = 300;
-<<<<<<< HEAD
   // 흑기사는 대지 가르기(체력 70%↓ 특수)를 처음부터 보도록 60%에서 시작
   if (type === 'darkknight') boss.hp = Math.floor(boss.hpMax * 0.6);
-=======
->>>>>>> e704d60a5d072a0a8387c8a3cee8c5e826b421d8
   enemies.push(boss);
   const name = type === 'goblin' ? '고블린' : type === 'skeleton' ? '스켈레톤' : type === 'ghoul' ? '구울' : type === 'wraith' ? '혼령' : type === 'ghostknight' ? '유령 기사' : type === 'darkknight' ? '흑기사' : '오크';
   toast(name + ' 보스 소환', 1500);
