@@ -112,6 +112,7 @@
     <button class="boss-spawn" data-boss="ghoul" style="pointer-events:auto; padding:8px 12px; font-size:13px; border-radius:8px; border:1px solid #8fa87f; background:rgba(120,150,100,0.2); color:#d8e8c8;">구울</button>
     <button class="boss-spawn" data-boss="ghostknight" style="pointer-events:auto; padding:8px 12px; font-size:13px; border-radius:8px; border:1px solid #6fae9f; background:rgba(90,180,150,0.2); color:#c0f0e0;">유령 기사</button>
     <button class="boss-spawn" data-boss="darkknight" style="pointer-events:auto; padding:8px 12px; font-size:13px; border-radius:8px; border:1px solid #c06868; background:rgba(200,90,70,0.2); color:#f0c0b0;">흑기사</button>
+    <button class="boss-spawn" data-boss="servantwraith" style="pointer-events:auto; padding:8px 12px; font-size:13px; border-radius:8px; border:1px solid #5fae9f; background:rgba(80,200,180,0.2); color:#c0f0e8;">시종장</button>
   </div>
   <button id="bossTestExit" style="pointer-events:auto; padding:6px 16px; font-size:12px; border-radius:8px; border:1px solid #6b7280; background:rgba(120,130,150,0.22); color:#cbd5e0;">🚪 나가기</button>
 </div>
@@ -246,8 +247,8 @@
 </div>
 <div id="townCoord" style="display:none; position:fixed; left:12px; top:60px; z-index:17; pointer-events:none; color:#aee3f5; font-weight:bold; font-size:15px; background:rgba(0,0,0,0.6); padding:6px 12px; border-radius:6px; font-family:monospace;">x: 0.0, z: 0.0</div>
 <!-- 3D 마을: 상인에게 말 걸면 열리는 강화 상점 -->
-<div id="townShop" class="hidden" style="position:fixed; inset:0; z-index:25; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.78); backdrop-filter:blur(4px); padding:20px;">
-  <div style="width:min(540px,94vw); max-height:88vh; overflow-y:auto; background:rgba(16,20,30,0.98); border:1px solid #5fb0d0; border-radius:14px; padding:20px; text-align:center;">
+<div id="townShop" class="hidden" style="position:fixed; inset:0; z-index:25; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.78); backdrop-filter:blur(4px); padding:20px; overflow-y:auto;">
+  <div style="width:min(540px,94vw); max-height:88vh; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; background:rgba(16,20,30,0.98); border:1px solid #5fb0d0; border-radius:14px; padding:20px; text-align:center;">
     <h2 style="margin:0 0 4px; font-size:22px; font-weight:900; letter-spacing:2px; color:#fff;">🙏 성직자의 축복</h2>
     <div style="font-size:12px; color:#a0aec0; margin-bottom:8px;">영구 강화 · <b id="townShopChar" style="color:#aee3f5;">기사</b> 전용 — 죽어도 유지됩니다</div>
     <div style="font-size:15px; color:#ffd86b; margin-bottom:12px;">💰 보유 골드: <b id="townShopGold">0</b></div>
@@ -3098,6 +3099,28 @@ function spawnShockwave(x, z, radius) {
   parryRings.push({ mesh: flash, isLight: true, life: 1.0, delay: 0, scale: 1, grow: 0 });
 }
 
+// 청록 순간이동 이펙트: 위로 피어오르는 안개 입자 + 세로 빛기둥(폭발과 형태가 완전히 다름).
+function spawnBlinkFx(x, z) {
+  // 세로 청록 빛기둥(가늘고 길게 위로) — 수평으로 퍼지는 폭발과 대비
+  const pillarMat = new THREE.MeshBasicMaterial({ color: 0x9ffff0, transparent: true, opacity: 0.55, side: THREE.DoubleSide, fog: false, depthWrite: false });
+  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, 3.2, 10, 1, true), pillarMat);
+  pillar.position.set(x, 1.6, z); scene.add(pillar);
+  parryRings.push({ mesh: pillar, mat: pillarMat, life: 0.55, delay: 0, scale: 1, grow: 0, swirl: true });
+  // 위로 피어오르는 안개 입자(소용돌이치듯 모임)
+  for (let k = 0; k < 12; k++) {
+    const a = (k / 12) * Math.PI * 2;
+    const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16 + Math.random() * 0.1, 0), new THREE.MeshBasicMaterial({ color: k % 2 ? 0x3fd4c4 : 0x9ffff0, transparent: true, opacity: 0.75, fog: false, depthWrite: false }));
+    const r0 = 0.6 + Math.random() * 0.4;
+    puff.position.set(x + Math.cos(a) * r0, 0.2 + Math.random() * 0.3, z + Math.sin(a) * r0);
+    scene.add(puff);
+    // 위로 떠오르며(riseTo 높게) 중심으로 살짝 모이게(slashV는 안쪽 방향)
+    parryRings.push({ mesh: puff, mat: puff.material, life: 0.5 + Math.random() * 0.15, delay: 0, scale: 1, grow: 0, riseFrom: 0.2, riseTo: 2.4, riseT: 0, riseSpeed: 3.4, slashVx: -Math.cos(a) * 1.6, slashVz: -Math.sin(a) * 1.6 });
+  }
+  // 청록 섬광(빛)
+  const glow = new THREE.PointLight(0x3fd4c4, 4, TILE * 2.0); glow.position.set(x, 1.2, z); scene.add(glow);
+  parryRings.push({ mesh: glow, isLight: true, life: 0.5, delay: 0, scale: 1, grow: 0 });
+}
+
 function updateParryRings(dt) {
   for (let i = parryRings.length - 1; i >= 0; i--) {
     const r = parryRings[i];
@@ -3373,7 +3396,7 @@ function spawnFireball(e, angleOffset) {
     dirX = rx; dirZ = rz;
   }
   const speed = 11;
-  const projColor = (e.type === 'wraith') ? 0xff8a40 : 0x66ccff; // 혼령은 주황 영혼불
+  const projColor = (e.type === 'wraith') ? 0xff8a40 : (e.type === 'servantwraith') ? 0x3fd4c4 : 0x66ccff; // 혼령 주황 / 시종장 청록 / 그 외 파랑
   const mat = new THREE.MeshBasicMaterial({ color: projColor, transparent: true, opacity: 0.95, fog: false, depthWrite: false });
   const mesh = new THREE.Mesh(fireballGeo, mat);
   mesh.position.set(ox + dirX*0.6, oy, oz + dirZ*0.6);
@@ -4271,6 +4294,174 @@ function buildWraithBody(grp, bodyGrp, headGrp, limbs) {
 //  limbs: legR/legL(=다리 Group), armR/armL(=팔 Group, 오른손에 검), head(=머리 Group)
 //  grp 기준 발바닥이 y≈0에 오도록 배치(게임이 grp.scale로 크기 조절, 발을 바닥에 맞춤).
 // ============================================================
+// ===== 시종장의 망령(servantwraith) 전용 외형: 촛대 든 신사형 영체 보스 =====
+// 뷰어(servant_wraith_viewer v17)를 게임 규약(limbs.*.rotation.x 구동)에 맞춰 이식.
+function buildServantWraithBody(grp, bodyGrp, headGrp, limbs) {
+  const sh = (o) => { o.castShadow = true; o.receiveShadow = true; return o; };
+  const noShadow = (o) => { o.traverse(c => { if (c.isMesh) { c.castShadow = false; c.receiveShadow = false; } }); return o; };
+  const addSeam = (parent, from, to, w, mat) => {
+    const a = new THREE.Vector3(...from), b = new THREE.Vector3(...to);
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(w, a.distanceTo(b), w * 0.8), mat);
+    seg.position.copy(a).add(b).multiplyScalar(0.5);
+    seg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+    parent.add(seg);
+  };
+  // 영체/정장/뼈/불꽃 재질
+  const ectoBright = wraithGhostMat(0xcfece6, 0.55), ectoMid = wraithGhostMat(0x9fcfc8, 0.45), ectoFade = wraithGhostMat(0x8fc4c0, 0.22);
+  const boneMat = getLowPolyMat(0xe2e8f0), boneDk = getLowPolyMat(0xb6c0cc);
+  const coatMat = getLowPolyMat(0x39434e), coatDk = getLowPolyMat(0x272e37), vestMat = getLowPolyMat(0x707b76);
+  const lapelMat = getLowPolyMat(0x47525d), cravatMat = getLowPolyMat(0x8a948c), hairMat = wraithGhostMat(0xd6dacd, 0.72);
+  const candMat = getLowPolyMat(0xb8923c, true);
+  const flameMatC = new THREE.MeshBasicMaterial({ color: 0xd4fff2, fog: false });
+  const flameMatO = new THREE.MeshBasicMaterial({ color: 0x3fd4c4, transparent: true, opacity: 0.6, fog: false });
+  const ragHelper = (w, h, mat, jit) => {
+    const g2 = new THREE.Group();
+    const pg = new THREE.PlaneGeometry(w, h, 3, 2); jitterGeometry(pg, jit || 0.04);
+    const m = new THREE.Mesh(pg, mat); m.material.side = THREE.DoubleSide; g2.add(m);
+    const n = Math.max(3, Math.round(w / 0.12));
+    for (let i = 0; i < n; i++) {
+      const tw = w / n, tx = -w / 2 + tw * (i + 0.5), th = tw * (1 + Math.random() * 1.4);
+      const t = new THREE.Mesh(new THREE.ConeGeometry(tw * 0.55, th, 3), mat); t.material.side = THREE.DoubleSide;
+      t.position.set(tx, -h / 2 - th / 2 + 0.02, 0); t.rotation.x = Math.PI; t.rotation.z = (Math.random() - 0.5) * 0.4; g2.add(t);
+    }
+    return g2;
+  };
+
+  // ---------- 상체(좁고 긴 마른 몸통) ----------
+  const torsoGrp = new THREE.Group(); torsoGrp.position.set(0, 1.05, 0); torsoGrp.rotation.x = 0.06; bodyGrp.add(torsoGrp);
+  const torsoCore = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.16, 0.66, 8), ectoMid); torsoCore.position.y = -0.06; jitterGeometry(torsoCore.geometry, 0.03); torsoGrp.add(torsoCore);
+  const coatBody = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.22, 0.62, 9), coatMat); coatBody.position.set(0, -0.04, 0); jitterGeometry(coatBody.geometry, 0.022); torsoGrp.add(coatBody);
+  [-1, 1].forEach(s => { const shoulder = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.26), coatMat); shoulder.position.set(s * 0.24, 0.26, 0); shoulder.rotation.z = -s * 0.18; jitterGeometry(shoulder.geometry, 0.02); torsoGrp.add(shoulder); });
+  const vest = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.5, 0.1), vestMat); vest.position.set(0, -0.02, -0.22); vest.rotation.x = 0.05; jitterGeometry(vest.geometry, 0.015); torsoGrp.add(vest);
+  [-1, 1].forEach(s => { const lapel = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.4, 0.06), lapelMat); lapel.position.set(s * 0.12, 0.12, -0.24); lapel.rotation.set(0.08, 0, s * 0.34); jitterGeometry(lapel.geometry, 0.012); torsoGrp.add(lapel); });
+  const placket = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.46, 0.07), coatDk); placket.position.set(0, -0.06, -0.26); torsoGrp.add(placket);
+  for (let i = 0; i < 4; i++) { const btn = new THREE.Mesh(new THREE.IcosahedronGeometry(0.018, 0), candMat); btn.position.set(0, 0.08 - i * 0.14, -0.29); torsoGrp.add(btn); }
+
+  // ---------- 목 + 크라바트 + 높은 칼라 ----------
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 0.2, 7), ectoBright); neck.position.set(0, 0.34, -0.02); torsoGrp.add(neck);
+  const cravat = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 0), cravatMat); cravat.scale.set(1.1, 1.3, 0.7); cravat.position.set(0, 0.3, -0.16); jitterGeometry(cravat.geometry, 0.02); torsoGrp.add(cravat);
+  const cravatTail = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.2, 4), cravatMat); cravatTail.position.set(0, 0.16, -0.2); cravatTail.rotation.x = 0.2; torsoGrp.add(cravatTail);
+  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.12, 0.32, 10, 1, true, Math.PI * 0.18, Math.PI * 1.64), coatMat); collar.material.side = THREE.DoubleSide; collar.position.set(0, 0.48, 0.03); collar.rotation.x = -0.16; jitterGeometry(collar.geometry, 0.018); torsoGrp.add(collar);
+  const collarIn = new THREE.Mesh(new THREE.CylinderGeometry(0.145, 0.11, 0.3, 10, 1, true, Math.PI * 0.22, Math.PI * 1.56), lapelMat); collarIn.material.side = THREE.DoubleSide; collarIn.position.set(0, 0.47, 0.04); collarIn.rotation.x = -0.16; torsoGrp.add(collarIn);
+  [-1, 1].forEach(s => { const wing = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.26, 4), coatMat); wing.position.set(s * 0.13, 0.54, -0.14); wing.rotation.set(0.5, 0, -s * 0.32); jitterGeometry(wing.geometry, 0.012); torsoGrp.add(wing); });
+
+  // ---------- 머리(길쭉한 해골) — headGrp(grp 직속, 게임 규약) ----------
+  headGrp.position.set(0, 1.62, -0.04); headGrp.rotation.x = 0.12; headGrp.scale.set(1, 0.85, 1);
+  const skull = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 1), boneMat); skull.scale.set(0.86, 1.28, 0.95); jitterGeometry(skull.geometry, 0.032); headGrp.add(skull);
+  const brow = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.07, 0.12), boneDk); brow.position.set(0, 0.04, -0.22); brow.rotation.x = 0.25; jitterGeometry(brow.geometry, 0.02); headGrp.add(brow);
+  [-1, 1].forEach(s => { const bw = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.1), boneDk); bw.position.set(s * 0.11, 0.05, -0.24); bw.rotation.z = s * 0.4; bw.rotation.x = 0.2; headGrp.add(bw); });
+  [-1, 1].forEach(s => {
+    const cheek = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 0), boneMat); cheek.scale.set(0.9, 0.7, 0.6); cheek.position.set(s * 0.17, -0.08, -0.16); jitterGeometry(cheek.geometry, 0.02); headGrp.add(cheek);
+    const hollow = new THREE.Mesh(new THREE.IcosahedronGeometry(0.08, 0), boneDk); hollow.scale.set(0.8, 1.1, 0.4); hollow.position.set(s * 0.13, -0.18, -0.22); headGrp.add(hollow);
+  });
+  const face = new THREE.Mesh(new THREE.IcosahedronGeometry(0.2, 1), boneMat); face.scale.set(0.72, 1.0, 0.7); face.position.set(0, -0.16, -0.18); jitterGeometry(face.geometry, 0.02); headGrp.add(face);
+  const jaw = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12, 0), boneDk); jaw.scale.set(0.78, 0.78, 0.85); jaw.position.set(0, -0.38, -0.155); jitterGeometry(jaw.geometry, 0.025); headGrp.add(jaw);
+  addSeam(headGrp, [0, 0.12, -0.26], [0, 0.0, -0.3], 0.012, boneDk);
+  addSeam(headGrp, [-0.04, 0.1, -0.27], [0.04, 0.1, -0.27], 0.01, boneDk);
+  const eyeSockMat = new THREE.MeshStandardMaterial({ color: 0x070d0c, roughness: 0.95 });
+  const eyeGlowMat = new THREE.MeshStandardMaterial({ color: 0xc4f0e4, emissive: 0x7fe8d4, emissiveIntensity: 1.8, roughness: 0.4, transparent: true, opacity: 0.95 });
+  [-1, 1].forEach(s => {
+    const socket = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 0), eyeSockMat); socket.scale.set(1.3, 0.9, 0.7); socket.position.set(s * 0.12, -0.02, -0.24); socket.rotation.z = s * 0.5; headGrp.add(socket);
+    const glow = new THREE.Mesh(new THREE.IcosahedronGeometry(0.022, 0), eyeGlowMat); glow.position.set(s * 0.11, -0.02, -0.29); headGrp.add(glow);
+  });
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.14, 3), eyeSockMat); nose.position.set(0, -0.15, -0.28); nose.rotation.x = Math.PI; nose.scale.set(0.7, 1, 0.7); headGrp.add(nose);
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.09, 0.06), eyeSockMat); mouth.position.set(0, -0.29, -0.23); mouth.rotation.z = 0.06; headGrp.add(mouth);
+  for (let i = -3; i <= 3; i++) { const len = 0.05 + (Math.abs(i) === 2 ? 0.06 : Math.random() * 0.02); const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.016, len, 4), boneMat); tooth.position.set(i * 0.028, -0.27 - len / 2 + 0.02, -0.26); tooth.rotation.x = Math.PI; headGrp.add(tooth); }
+  for (let i = -2; i <= 2; i++) { const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.045, 4), boneMat); tooth.position.set(i * 0.03, -0.34, -0.24); headGrp.add(tooth); }
+  const hairTop = new THREE.Mesh(new THREE.IcosahedronGeometry(0.26, 1), hairMat); hairTop.scale.set(1.05, 0.8, 1.05); hairTop.position.set(0, 0.18, 0.04); jitterGeometry(hairTop.geometry, 0.05); headGrp.add(hairTop);
+  for (let i = 0; i < 5; i++) { const a = (i - 2) * 0.5; const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.26, 4), hairMat); tuft.position.set(Math.sin(a) * 0.16, 0.28, 0.08 + Math.cos(a) * 0.04); tuft.rotation.set(-0.8, a, Math.sin(a) * 0.3); jitterGeometry(tuft.geometry, 0.02); headGrp.add(tuft); }
+  // 머리 뒤 영기
+  const wispGrp = new THREE.Group(); headGrp.add(wispGrp);
+  const mkWisp = (x, baseY, h, curl) => { const g2 = new THREE.Group(); let py = baseY, pz = 0.1; for (let i = 0; i < 5; i++) { const r = 0.06 * (1 - i / 5) + 0.012; const part = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), ectoFade); part.scale.set(1, 1.3, 1); part.position.set(x + Math.sin(i * curl) * 0.1, py, pz); g2.add(part); py += h / 5; pz += 0.025 + i * 0.01; } return g2; };
+  wispGrp.add(mkWisp(-0.14, 0.18, 0.4, 0.8)); wispGrp.add(mkWisp(0.14, 0.2, 0.44, -0.7)); wispGrp.add(mkWisp(0.0, 0.22, 0.36, 0.5));
+
+  // ---------- 머리 양옆 영혼불 ----------
+  const fireballs = [];
+  [-1, 1].forEach(s => {
+    const fb = new THREE.Group(); fb.position.set(s * 0.46, 1.66, -0.02);
+    const outer = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 0), flameMatO); outer.scale.set(1, 1.3, 1); fb.add(outer);
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.06, 0), flameMatC); fb.add(core);
+    const tongue = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.14, 4), flameMatO); tongue.position.y = 0.14; fb.add(tongue);
+    fb.userData = { side: s, core, outer, tongue }; bodyGrp.add(fb); fireballs.push(fb);
+  });
+
+  // ---------- 팔(가늘고 긴 영체 팔) — 게임 규약: armGrp/elbowGrp/handGrp ----------
+  const mkArm = (isRight) => {
+    const armGrp = new THREE.Group(); const sign = isRight ? 1 : -1;
+    const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.06, 0.4, 7), coatMat); sleeve.position.y = -0.2; jitterGeometry(sleeve.geometry, 0.02); armGrp.add(sleeve);
+    const elbowGrp = new THREE.Group(); elbowGrp.position.y = -0.4; armGrp.add(elbowGrp);
+    const elbow = new THREE.Mesh(new THREE.IcosahedronGeometry(0.06, 0), coatDk); elbowGrp.add(elbow);
+    const fore = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.045, 0.36, 7), coatMat); fore.position.y = -0.19; jitterGeometry(fore.geometry, 0.015); elbowGrp.add(fore);
+    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.058, 0.05, 7), vestMat); cuff.position.y = -0.36; elbowGrp.add(cuff);
+    const handGrp = new THREE.Group(); handGrp.position.y = -0.4; elbowGrp.add(handGrp);
+    const palm = new THREE.Mesh(new THREE.IcosahedronGeometry(0.05, 0), ectoBright); palm.scale.set(1, 0.9, 0.8); handGrp.add(palm);
+    for (let k = 0; k < 4; k++) { const ang = (k - 1.5) * 0.22; const finger = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.008, 0.16, 4), ectoBright); finger.position.set(Math.sin(ang) * 0.05, -0.1, Math.cos(ang) * 0.02); finger.rotation.x = 0.2; finger.rotation.z = -ang * 0.4; handGrp.add(finger); }
+    const thumb = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.008, 0.1, 4), ectoBright); thumb.position.set(sign * 0.05, -0.04, 0); thumb.rotation.z = sign * 1.1; handGrp.add(thumb);
+    armGrp.position.set(sign * 0.26, 1.28, -0.02); bodyGrp.add(armGrp);
+    return { armGrp, elbowGrp, handGrp, sign };
+  };
+  const armR = mkArm(true), armL = mkArm(false);
+  armR.armGrp.rotation.x = 0.3; armR.elbowGrp.rotation.x = 0.6;
+  armL.armGrp.rotation.x = 0.1; armL.armGrp.rotation.z = -0.12; armL.elbowGrp.rotation.x = 0.25;
+
+  // ---------- 촛대(candelabra) — 오른손 ----------
+  const candelabra = new THREE.Group();
+  const candleFlames = [];
+  const candHandle = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.028, 0.28, 6), candMat); candHandle.position.y = -0.14; candelabra.add(candHandle);
+  const candKnob = new THREE.Mesh(new THREE.IcosahedronGeometry(0.045, 0), candMat); candKnob.position.y = -0.28; candelabra.add(candKnob);
+  const candStem = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.022, 0.32, 6), candMat); candStem.position.y = 0.12; candelabra.add(candStem);
+  const candBall = new THREE.Mesh(new THREE.IcosahedronGeometry(0.04, 0), candMat); candBall.position.y = 0.0; candelabra.add(candBall);
+  const mkCandle = (x, y, z) => {
+    const g2 = new THREE.Group(); g2.position.set(x, y, z);
+    const wax = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.022, 0.1, 6), vestMat); wax.position.y = 0.05; g2.add(wax);
+    const holder = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.028, 0.03, 6), candMat); g2.add(holder);
+    const flameO = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.17, 5), flameMatO); flameO.position.y = 0.18; g2.add(flameO);
+    const flameC = new THREE.Mesh(new THREE.ConeGeometry(0.024, 0.11, 5), flameMatC); flameC.position.y = 0.17; g2.add(flameC);
+    g2.userData = { flameO, flameC }; candleFlames.push(g2); return g2;
+  };
+  candelabra.add(mkCandle(0, 0.3, 0));
+  [-1, 1].forEach(s => {
+    const arm1 = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.016, 0.18, 5), candMat); arm1.position.set(s * 0.09, 0.06, 0); arm1.rotation.z = s * 1.1; candelabra.add(arm1);
+    const arm2 = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.014, 0.14, 5), candMat); arm2.position.set(s * 0.17, 0.16, 0); arm2.rotation.z = s * 0.3; candelabra.add(arm2);
+    candelabra.add(mkCandle(s * 0.19, 0.25, 0));
+    const arm3 = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.013, 0.14, 5), candMat); arm3.position.set(s * 0.14, 0.0, 0); arm3.rotation.z = s * 1.3; candelabra.add(arm3);
+    candelabra.add(mkCandle(s * 0.27, 0.1, 0));
+  });
+  candelabra.position.set(0, 0.04, -0.12); candelabra.rotation.set(-0.9, 0, 0);
+  armR.handGrp.add(candelabra);
+
+  // ---------- 하체: 긴 코트 자락 → 연기 ----------
+  const coatFront = ragHelper(0.4, 0.38, coatMat, 0.05); coatFront.position.set(0, -0.53, -0.18); coatFront.rotation.x = 0.04; torsoGrp.add(coatFront);
+  [-1, 1].forEach(s => { const tail = ragHelper(0.22, 0.85, coatMat, 0.05); tail.position.set(s * 0.12, -0.7, 0.2); tail.rotation.x = -0.06; torsoGrp.add(tail); });
+  [-1, 1].forEach(s => { const side = ragHelper(0.2, 0.6, coatDk, 0.05); side.position.set(s * 0.24, -0.64, 0.0); side.rotation.set(0, s * Math.PI / 2, s * 0.1); torsoGrp.add(side); });
+  const mistGrp = new THREE.Group(); mistGrp.position.set(0, 0.28, 0); bodyGrp.add(mistGrp);
+  const mistPuffs = [];
+  const mkMist = (x, y, z, s2, seed) => { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(s2, 1), ectoFade); m.scale.set(1.2, 0.9, 1.2); jitterGeometry(m.geometry, s2 * 0.4); m.position.set(x, y, z); m.userData = { seed, baseY: y, baseX: x }; mistGrp.add(m); mistPuffs.push(m); return m; };
+  mkMist(0, 0.0, 0, 0.26, 0); mkMist(-0.16, -0.05, 0.04, 0.2, 1.1); mkMist(0.16, -0.04, -0.03, 0.21, 2.2);
+  mkMist(-0.06, -0.22, -0.05, 0.17, 3.0); mkMist(0.1, -0.24, 0.05, 0.16, 4.1);
+  mkMist(-0.2, -0.3, 0.02, 0.13, 5.0); mkMist(0.2, -0.32, -0.04, 0.12, 0.6);
+  mkMist(-0.04, -0.46, 0.0, 0.11, 2.5); mkMist(0.12, -0.5, 0.03, 0.1, 3.7); mkMist(0.0, -0.64, 0.0, 0.08, 1.8);
+  const mistFloor = new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 1), ectoFade); mistFloor.scale.set(1.4, 0.4, 1.4); mistFloor.position.set(0, -0.72, 0); jitterGeometry(mistFloor.geometry, 0.06); mistGrp.add(mistFloor);
+
+  // ---------- limbs 매핑(게임 규약) ----------
+  limbs.armR = armR.armGrp; limbs.armL = armL.armGrp;
+  limbs._swElbowR = armR.elbowGrp; limbs._swElbowL = armL.elbowGrp;
+  limbs.legR = new THREE.Group(); limbs.legL = new THREE.Group(); grp.add(limbs.legR); grp.add(limbs.legL); // 다리 없음(연기) — 더미
+  grp.add(bodyGrp);
+  grp.add(headGrp); limbs.head = headGrp;
+  limbs.bodyGrp = bodyGrp;
+  limbs._swCandle = candelabra; limbs._swCandleFlames = candleFlames; limbs._swFireballs = fireballs;
+  limbs._swMist = mistPuffs; limbs._swWisp = wispGrp;
+  noShadow(bodyGrp); noShadow(headGrp);
+
+  // 자체 연출 콜백(떠다니는 영혼불·연기 일렁임)
+  limbs._swUpdate = function (t, dt) {
+    for (const fb of fireballs) { const ph = t * 3 + (fb.userData.side > 0 ? 0 : 1.6); fb.position.y = 1.66 + Math.sin(ph) * 0.05; if (fb.userData.core) fb.userData.core.scale.setScalar(0.9 + Math.sin(ph * 2) * 0.15); }
+    for (const cf of candleFlames) { const f = cf.userData; if (f.flameO) { const s2 = 0.9 + Math.sin(t * 8 + cf.position.x * 5) * 0.12; f.flameO.scale.set(s2, 1 + (1 - s2) * 0.5, s2); } }
+    for (const m of mistPuffs) { const u = m.userData; m.position.y = u.baseY + Math.sin(t * 1.5 + u.seed) * 0.02; m.position.x = u.baseX + Math.sin(t * 0.9 + u.seed) * 0.015; }
+  };
+}
+
 function buildGhostKnightBody(grp, bodyGrp, headGrp, limbs) {
   // --- 전용 팔레트(풍화된 청록·회녹 갑옷). 빌더 내부에서만 생성 ---
   const gkArmor    = getLowPolyMat(0x8a958c, true);
@@ -4703,6 +4894,10 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
     hp = (30 + player.floor * 3) * 1.5; dmg = (10 + player.floor * 2) * 1.5 * 0.8; sp = 3.0; exp = 11 + player.floor;
     scale = isBoss ? 2.0 : 1.05; skinMat = getLowPolyMat(0xcfece6).clone(); armorMat = getLowPolyMat(0x9fcfc8).clone();
     isRanged = true; // 혼령은 원거리 딜러로 분류(원거리 슬롯에서 스폰)
+  } else if (type === 'servantwraith') {
+    // 2막 1번 보스: 시종장의 망령(촛대 든 신사형 영체). 마법형 — 원거리 견제 + 혼령 소환 멀티태스킹.
+    hp = (60 + player.floor * 4.5) * 1.5; dmg = (11 + player.floor * 2) * 1.5 * 0.8; sp = 2.8; exp = 24 + player.floor;
+    scale = 2.0; skinMat = getLowPolyMat(0xcfece6).clone(); armorMat = getLowPolyMat(0x39434e).clone();
   } else if (type === 'darkknight') {
     // 50층 보스: 흑기사. 마그마 코어 결정 갑옷의 거대 기사. 보스 배수까지 받아 매우 강력.
     hp = (90 + player.floor * 6) * 1.5; dmg = (15 + player.floor * 2.5) * 1.5 * 0.8; sp = 3.2; exp = 30 + player.floor;
@@ -4738,11 +4933,14 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
   const bodyGrp = new THREE.Group(); const headGrp = new THREE.Group(); const limbs = {};
   const isOrc = (type === 'orc');
   const isWraith = (type === 'wraith');
+  const isServantWraith = (type === 'servantwraith');
   const isGhostKnight = (type === 'ghostknight');
   const isDarkKnight = (type === 'darkknight');
 
   if (isWraith) {
     buildWraithBody(grp, bodyGrp, headGrp, limbs);
+  } else if (isServantWraith) {
+    buildServantWraithBody(grp, bodyGrp, headGrp, limbs);
   } else if (isGhostKnight) {
     buildGhostKnightBody(grp, bodyGrp, headGrp, limbs);
   } else if (isDarkKnight) {
@@ -4946,6 +5144,8 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
     riftState: 'none', riftTimer: 0, riftDirX: 0, riftDirZ: 0, // (흑기사) 대지 가르기(직선 균열)
     recoverState: 'none', recoverTimer: 0, recoverArmX: 0, recoverArmZ: 0, // (흑기사) 패턴 후 묵직한 복귀 동작
     roarState: 'none', roarTimer: 0,   // (흑기사) 분노 포효 모션
+    swState: 'none', swTimer: 0, swCd: 1.2, swBlinkX: 0, swBlinkZ: 0, swShots: 0, swShotTimer: 0,   // (시종장) 촛불 투사체·순간이동
+    swMinions: [], swSummonCd: 5.0,   // (시종장) 소환한 혼령 추적 + 소환 쿨다운
     enraged: false         // 분노 강화 발동 여부(체력 절반 이하 1회)
   };
   // 외부 모델 설정이 있으면 교체(없으면 도형 그대로). 원거리 캐스터는 로브가 있으니 모델 미적용.
@@ -5003,7 +5203,7 @@ function spawnEnemies(dgn) {
     const rMinZ = (br.y + 1 - MAP_H / 2) * TILE, rMaxZ = (br.y + br.h - 1 - MAP_H / 2) * TILE;
     let btype;
     if (player.floor === 50) { btype = 'darkknight'; }  // 50층 보스 — 흑기사(마그마 코어 결정 갑옷)
-    else if (player.floor >= 31) { btype = 'ghoul'; }    // 2막 일반 보스(무너진 성) — 거대 구울
+    else if (player.floor >= 31) { btype = 'servantwraith'; } // 2막 보스 — 시종장의 망령(마법형)
     else if (player.floor === 10) btype = 'goblin';
     else if (player.floor === 20) btype = 'skeleton';
     else btype = 'orc';
@@ -5836,7 +6036,7 @@ const joyBase = $('joyBase'), joyStick = $('joyStick');
 const turnBase = $('turnBase'), turnStick = $('turnStick');
 // 마을·게임오버·캐릭터선택 등 오버레이가 떠 있으면 게임 터치 조작을 막는다(스크롤·버튼 충돌 방지)
 function anyOverlayOpen() {
-  const ids = ['overOverlay', 'charOverlay', 'startOverlay', 'howtoOverlay', 'rewardOverlay'];
+  const ids = ['overOverlay', 'charOverlay', 'startOverlay', 'howtoOverlay', 'rewardOverlay', 'townShop', 'townDialog', 'startResumeChoice'];
   return ids.some(id => { const el = document.getElementById(id); return el && !el.classList.contains('hidden'); });
 }
 
@@ -6573,6 +6773,7 @@ function update(dt) {
 
     // 흑기사 등 자체 연출(망토 펄럭임·마그마 맥동·눈 명멸)이 있는 적은 매 프레임 콜백 구동
     if (e.limbs && typeof e.limbs._gkUpdate === 'function') e.limbs._gkUpdate(performance.now() * 0.001, dt);
+    if (e.limbs && typeof e.limbs._swUpdate === 'function') e.limbs._swUpdate(performance.now() * 0.001, dt);
 
     if (!e.obj.visible) {
       // 시야 밖이라도 깨어있고(이미 발견된 상태) 충분히 가까우면 행동은 계속한다.
@@ -6595,6 +6796,45 @@ function update(dt) {
       e.rushTear = null;
     }
     const slowMul = e.frozen > 0 ? 0.3 : 1.0; // 빙결 시 30% 속도
+    // 시종장이 소환한 혼령: 수명이 다하면 폭발(광역 피해) 후 사라진다
+    if (e.summonLife !== undefined && !e.isDead) {
+      e.summonLife -= dt;
+      // 폭발 직전 깜빡임(0.8초 전부터)
+      if (e.summonLife <= 0.8 && e.limbs && e.limbs.bodyGrp) {
+        const blink = 0.5 + Math.sin(performance.now() * 0.02) * 0.5;
+        e.obj.scale.setScalar((e.baseScale || 1) * (1 + blink * 0.2));
+      }
+      if (e.summonLife <= 0) {
+        // 청록 폭발(순간이동과 구분되는 전용 이펙트): 청록 이중 링 + 청록 섬광 + 솟구치는 불꽃
+        const ex = e.obj.position.x, ez = e.obj.position.z;
+        const R = TILE * 1.8;
+        // 바깥 청록 링
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0x3fd4c4, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false, fog: false });
+        const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 1.0, 32), ringMat);
+        ring.position.set(ex, 0.16, ez); ring.rotation.x = -Math.PI / 2; scene.add(ring);
+        parryRings.push({ mesh: ring, mat: ringMat, life: 0.9, delay: 0, scale: 1, grow: R * 5.0 });
+        // 안쪽 밝은 청백 링(조금 늦게)
+        const ring2Mat = new THREE.MeshBasicMaterial({ color: 0xd4fff2, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false, fog: false });
+        const ring2 = new THREE.Mesh(new THREE.RingGeometry(0.4, 0.8, 28), ring2Mat);
+        ring2.position.set(ex, 0.18, ez); ring2.rotation.x = -Math.PI / 2; scene.add(ring2);
+        parryRings.push({ mesh: ring2, mat: ring2Mat, life: 0.8, delay: 0.08, scale: 1, grow: R * 3.5 });
+        // 청록 섬광(빛)
+        const flash = new THREE.PointLight(0x3fd4c4, 5, R * 2.5); flash.position.set(ex, 1.0, ez); scene.add(flash);
+        parryRings.push({ mesh: flash, isLight: true, life: 0.7, delay: 0, scale: 1, grow: 0 });
+        // 솟구치는 청록 불꽃 파편(폭발 느낌)
+        for (let k = 0; k < 10; k++) {
+          const a = (k / 10) * Math.PI * 2;
+          const shard = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.5, 4), new THREE.MeshBasicMaterial({ color: k % 2 ? 0x3fd4c4 : 0xd4fff2, transparent: true, opacity: 0.9, fog: false, depthWrite: false }));
+          shard.position.set(ex + Math.cos(a) * 0.3, 0.4, ez + Math.sin(a) * 0.3);
+          scene.add(shard);
+          parryRings.push({ mesh: shard, mat: shard.material, life: 0.6, delay: 0, scale: 1, grow: 0, riseFrom: 0.3, riseTo: 1.6, riseT: 0, riseSpeed: 3.0, slashVx: Math.cos(a) * 4, slashVz: Math.sin(a) * 4 });
+        }
+        const pd = Math.hypot(player.obj.position.x - ex, player.obj.position.z - ez);
+        if (pd < R + player.radius) { damagePlayer(Math.floor(e.damage * 0.9), e); }
+        killEnemy(e);
+        continue;
+      }
+    }
     e.attackCd = Math.max(0, e.attackCd - dt * slowMul); e.swingTimer = Math.max(0, e.swingTimer - dt * slowMul);
     if (e.mixer) e.mixer.update(dt);
     const dx = player.obj.position.x - e.obj.position.x, dz = player.obj.position.z - e.obj.position.z;
@@ -6855,6 +7095,160 @@ function update(dt) {
     }
 
     // ===== 흑기사(darkknight) 보스: 횡베기(기본·좌우 가로베기) · 대지 가르기(특수, HP70%↓) · 돌진(갭클로저) =====
+    // ===== 시종장의 망령(servantwraith) — 마법형 기본 패턴: 촛불 투사체 + 순간이동 =====
+    if (e.isBoss && e.type === 'servantwraith' && e.frozen <= 0) {
+      const dx = player.obj.position.x - e.obj.position.x, dz = player.obj.position.z - e.obj.position.z;
+      const d = Math.hypot(dx, dz) || 1;
+      e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI; // 항상 플레이어를 향함
+      e.swCd = Math.max(0, e.swCd - dt);
+      e.swSummonCd = Math.max(0, e.swSummonCd - dt);
+      // 소환한 혼령 목록 정리: 죽었으면 배열에서 제거
+      if (e.swMinions && e.swMinions.length) {
+        e.swMinions = e.swMinions.filter(m => m && !m.isDead && enemies.indexOf(m) !== -1);
+      }
+
+      // --- 순간이동(blink): 안개로 흩어졌다가 멀리 재출현 ---
+      if (e.swState === 'blinkOut') {
+        e.swTimer -= dt;
+        // 흩어지는 연출: 몸을 점점 투명·축소
+        const p = 1 - Math.max(0, e.swTimer) / 0.5; // 0→1
+        if (e.limbs.bodyGrp) e.limbs.bodyGrp.scale.setScalar(Math.max(0.01, 1 - p));
+        if (e.limbs.head) e.limbs.head.scale.setScalar(Math.max(0.01, (1 - p)));
+        if (e.swTimer <= 0) {
+          // 플레이어에게서 떨어진 위치로 순간이동(예고 위치)
+          e.obj.position.x = e.swBlinkX; e.obj.position.z = e.swBlinkZ;
+          e.swState = 'blinkIn'; e.swTimer = 0.35;
+          // 재출현 위치에 청록 섬광
+          spawnBlinkFx(e.swBlinkX, e.swBlinkZ);
+        }
+        continue;
+      }
+      if (e.swState === 'blinkIn') {
+        e.swTimer -= dt;
+        const p = 1 - Math.max(0, e.swTimer) / 0.35;
+        if (e.limbs.bodyGrp) e.limbs.bodyGrp.scale.setScalar(Math.min(1, p));
+        if (e.limbs.head) e.limbs.head.scale.setScalar(Math.min(1, p));
+        if (e.swTimer <= 0) {
+          if (e.limbs.bodyGrp) e.limbs.bodyGrp.scale.setScalar(1);
+          if (e.limbs.head) e.limbs.head.scale.setScalar(1);
+          e.swState = 'none'; e.swCd = 0.8;
+        }
+        continue;
+      }
+
+      // --- 촛불 투사체(cast): 1발 직선 또는 3발 부채꼴 ---
+      if (e.swState === 'cast') {
+        e.swTimer -= dt;
+        e.swShotTimer -= dt;
+        // 촛대 든 오른팔 살짝 들어 시전 모션
+        e.limbs.armR.rotation.x += (0.9 - e.limbs.armR.rotation.x) * Math.min(1, dt * 10);
+        if (e.swShots > 0 && e.swShotTimer <= 0) {
+          // 한 번에 발사(단발 또는 3발 부채꼴)
+          if (e.swVolley >= 3) { spawnFireball(e, 0); spawnFireball(e, 0.28); spawnFireball(e, -0.28); }
+          else { spawnFireball(e, 0); }
+          e.swShots--; e.swShotTimer = 0.3;
+        }
+        if (e.swTimer <= 0 && e.swShots <= 0) {
+          e.swState = 'none'; e.swCd = 1.0 + Math.random() * 0.8;
+        }
+        continue;
+      }
+
+      // --- 혼령 소환(summon): 잠깐 시전 후 보스 주변에 혼령 1~2마리 생성 ---
+      if (e.swState === 'summon') {
+        e.swTimer -= dt;
+        // 양팔 들어 소환 시전 모션
+        e.limbs.armR.rotation.x += (1.2 - e.limbs.armR.rotation.x) * Math.min(1, dt * 8);
+        e.limbs.armL.rotation.x += (1.2 - e.limbs.armL.rotation.x) * Math.min(1, dt * 8);
+        if (!e.swSummoned && e.swTimer <= 0.2) {
+          e.swSummoned = true;
+          const count = 1 + (Math.random() < 0.5 ? 1 : 0); // 1~2마리
+          const G = dungeon && dungeon.grid;
+          const onFloor = (tx, tz) => { if (!G) return true; const gx = Math.round(tx / TILE + MAP_W / 2), gy = Math.round(tz / TILE + MAP_H / 2); return gx >= 0 && gy >= 0 && gx < MAP_W && gy < MAP_H && G[gy] && G[gy][gx] === 1; };
+          for (let i = 0; i < count; i++) {
+            // 보스 주변 유효 바닥에 배치
+            let sx = e.obj.position.x, sz = e.obj.position.z, placed = false;
+            for (let t = 0; t < 8 && !placed; t++) {
+              const a = Math.random() * Math.PI * 2, r = TILE * (1.2 + Math.random() * 1.0);
+              const tx = e.obj.position.x + Math.cos(a) * r, tz = e.obj.position.z + Math.sin(a) * r;
+              if (onFloor(tx, tz)) { sx = tx; sz = tz; placed = true; }
+            }
+            const minion = createAdvancedMonster(sx, sz, 'wraith', false, true);
+            minion.awake = true; minion.summonLife = 9.0; minion._summonedBy = e; // 9초 후 폭발
+            enemies.push(minion); e.swMinions.push(minion);
+            // 소환 섬광(간소): 작은 청록 빛 점멸만 — 폭발(퍼지는 링)과 구분
+            const sglow = new THREE.PointLight(0x3fd4c4, 3, TILE * 1.5);
+            sglow.position.set(sx, 1.0, sz); scene.add(sglow);
+            parryRings.push({ mesh: sglow, isLight: true, life: 0.4, delay: 0, scale: 1, grow: 0 });
+          }
+          toast('👻 시종장이 혼령을 불러낸다!', 1500);
+        }
+        if (e.swTimer <= 0) {
+          e.swState = 'none'; e.swCd = 1.2; e.swSummonCd = 7.0 + Math.random() * 2; // 다음 소환까지 길게
+        }
+        continue;
+      }
+
+      // --- 행동 선택(쿨다운 끝났을 때) ---
+      if (e.swCd <= 0) {
+        const SW_NEAR = TILE * 2.0; // 이 거리 안이면 순간이동으로 거리 벌림
+        if (d < SW_NEAR) {
+          // 플레이어가 붙음 → 순간이동 위치 탐색: 벽/방 밖을 피해 유효한 바닥을 고른다.
+          const baseAng = Math.atan2(-dz, -dx) + (Math.random() - 0.5) * 1.2; // 보스 반대편 기준 + 랜덤
+          const rad = e.radius + 0.4;
+          const G = dungeon && dungeon.grid;
+          const clearAt = (tx, tz) => { // 통행 가능한 바닥(grid===1)이고, 벽과 안 겹쳐야 true
+            // 1) grid 바닥 타일 확인(방 밖·벽 차단). 목적지 + 네 모서리(반경)까지 모두 바닥이어야.
+            if (G) {
+              for (const [ox, oz] of [[0, 0], [rad, 0], [-rad, 0], [0, rad], [0, -rad]]) {
+                const gx = Math.round((tx + ox) / TILE + MAP_W / 2);
+                const gy = Math.round((tz + oz) / TILE + MAP_H / 2);
+                if (gx < 0 || gy < 0 || gx >= MAP_W || gy >= MAP_H || !G[gy] || G[gy][gx] !== 1) return false;
+              }
+            }
+            // 2) 벽 박스와 겹치지 않아야
+            for (const w of walls) { if (Math.abs(tx - w.x) < w.halfW + rad && Math.abs(tz - w.z) < w.halfD + rad) return false; }
+            return true;
+          };
+          let found = null;
+          // 거리(3→2타일) × 각도(반대편 중심으로 퍼지게) 여러 후보 시도
+          for (const dist of [TILE * 3.0, TILE * 2.4, TILE * 2.0, TILE * 1.6]) {
+            for (let a = 0; a < 12 && !found; a++) {
+              const off = (a % 2 === 0 ? 1 : -1) * Math.ceil(a / 2) * 0.5; // 0, ±0.5, ±1.0, ±1.5 …
+              const ang = baseAng + off;
+              const tx = player.obj.position.x + Math.cos(ang) * dist;
+              const tz = player.obj.position.z + Math.sin(ang) * dist;
+              if (clearAt(tx, tz)) found = { x: tx, z: tz };
+            }
+            if (found) break;
+          }
+          if (found) {
+            e.swBlinkX = found.x; e.swBlinkZ = found.z;
+            e.swState = 'blinkOut'; e.swTimer = 0.5;
+            spawnBlinkFx(e.obj.position.x, e.obj.position.z);
+            toast('🌫️ 시종장이 안개로 흩어진다…', 1200);
+          } else {
+            // 유효한 자리를 못 찾으면 순간이동 포기하고 촛불 사격으로 대체
+            e.swState = 'cast'; e.swTimer = 0.6; e.swVolley = 1; e.swShots = 1; e.swShotTimer = 0.25;
+          }
+        } else {
+          // 원거리: 소환 쿨이 찼고 부하가 적으면 혼령 소환, 아니면 촛불 투사체
+          if (e.swSummonCd <= 0 && e.swMinions.length < 2) {
+            e.swState = 'summon'; e.swTimer = 0.7; e.swSummoned = false;
+          } else {
+            e.swState = 'cast'; e.swTimer = 0.6;
+            e.swVolley = (Math.random() < 0.5) ? 3 : 1;
+            e.swShots = 1; e.swShotTimer = 0.25;
+          }
+        }
+        continue;
+      }
+
+      // 대기: 촛대 팔 자연스럽게 복귀
+      e.limbs.armR.rotation.x += (0.3 - e.limbs.armR.rotation.x) * Math.min(1, dt * 6);
+      continue;
+    }
+
     if (e.isBoss && e.type === 'darkknight' && e.frozen <= 0) {
       // 분노: 체력 절반 이하 1회 — 공격력·속도 상승, 마그마 격화
       if (!e.enraged && e.hp <= e.hpMax * 0.5) {
@@ -7960,7 +8354,7 @@ function spawnTestBoss(type) {
   // 흑기사는 대지 가르기(체력 70%↓ 특수)를 처음부터 보도록 60%에서 시작
   if (type === 'darkknight') boss.hp = Math.floor(boss.hpMax * 0.6);
   enemies.push(boss);
-  const name = type === 'goblin' ? '고블린' : type === 'skeleton' ? '스켈레톤' : type === 'ghoul' ? '구울' : type === 'wraith' ? '혼령' : type === 'ghostknight' ? '유령 기사' : type === 'darkknight' ? '흑기사' : '오크';
+  const name = type === 'goblin' ? '고블린' : type === 'skeleton' ? '스켈레톤' : type === 'ghoul' ? '구울' : type === 'wraith' ? '혼령' : type === 'servantwraith' ? '시종장의 망령' : type === 'ghostknight' ? '유령 기사' : type === 'darkknight' ? '흑기사' : '오크';
   toast(name + ' 보스 소환', 1500);
 }
 function exitBossTest() {
