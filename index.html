@@ -103,6 +103,10 @@
 <div id="portrait-warning">기기를 가로로 회전해주세요.<br>Please rotate your device to landscape mode.<br><br><span style="font-size:13px;opacity:0.7;">(화면을 탭하면 그대로 진행됩니다)</span></div>
 <div id="app"></div>
 
+<!-- 디버그 오버레이: GPU 상태 실시간 표시(컨텍스트 손실 추적). 우상단 DBG 탭으로 표시/숨김. -->
+<div id="dbgPanel" style="position:fixed; top:4px; left:4px; z-index:99999; background:rgba(0,0,0,0.78); color:#7fffaa; font:11px/1.4 monospace; padding:6px 8px; border-radius:6px; white-space:pre; pointer-events:none; max-width:62vw;">dbg…</div>
+<div id="dbgToggle" style="position:fixed; top:4px; right:4px; z-index:99999; background:rgba(0,0,0,0.7); color:#fff; font:11px monospace; padding:4px 8px; border-radius:6px; pointer-events:auto;" onclick="window.__dbgOn=!window.__dbgOn; document.getElementById('dbgPanel').style.display=window.__dbgOn?'block':'none';">DBG</div>
+
 <div id="bossTestPanel" style="display:none; position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:18; display:none; flex-direction:column; align-items:center; gap:6px; background:rgba(10,12,19,0.78); padding:10px 14px; border:1px solid #c06868; border-radius:12px;">
   <div style="font-size:12px; color:#f5b0b0; font-weight:bold;">🐲 보스 테스트 · 무적 모드</div>
   <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center; max-width:340px;">
@@ -730,6 +734,28 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 renderer.autoClear = false;
 app.appendChild(renderer.domElement);
+
+// === 컨텍스트 손실 디버깅: 튕기는 순간의 GPU 상태를 기록 ===
+renderer.domElement.addEventListener('webglcontextlost', (ev) => {
+  ev.preventDefault(); // 기본 동작 막아 복구 가능성 열기
+  try {
+    const info = renderer.info;
+    const msg = '⚠️ CONTEXT LOST | geom:' + info.memory.geometries + ' tex:' + info.memory.textures +
+      ' calls:' + info.render.calls + ' tris:' + info.render.triangles +
+      ' | floor:' + (typeof player !== 'undefined' ? player.floor : '?') +
+      ' enemies:' + (typeof enemies !== 'undefined' ? enemies.length : '?') +
+      ' lights(scene):' + (typeof scene !== 'undefined' ? scene.children.filter(o => o.isLight).length : '?');
+    console.error(msg);
+    if (typeof toast === 'function') toast('⚠️ 컨텍스트 손실! geom:' + info.memory.geometries + ' tex:' + info.memory.textures + ' calls:' + info.render.calls, 6000);
+    // 디버그 패널에도 마지막 손실 정보 표시
+    if (typeof __dbgLastLost !== 'undefined') window.__dbgLastLost = msg;
+    window.__dbgLastLost = msg;
+  } catch (e) { console.error('contextlost handler error', e); }
+}, false);
+renderer.domElement.addEventListener('webglcontextrestored', () => {
+  console.warn('✅ context restored');
+  if (typeof toast === 'function') toast('컨텍스트 복구됨', 3000);
+}, false);
 
 const rt = new THREE.WebGLRenderTarget(lowResW, lowResH, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
 // 툰셰이더용 외곽선: 깊이 텍스처를 함께 렌더링해 경계(엣지)를 검출
@@ -2584,8 +2610,25 @@ function generateDungeon() {
 }
 
 function buildDungeonMesh(dgn) {
-  while(floorGroup.children.length > 0) floorGroup.remove(floorGroup.children[0]);
-  while(wallGroup.children.length > 0) wallGroup.remove(wallGroup.children[0]);
+  // 이전 층 던전 메시를 GPU에서 해제(dispose)하며 비운다. remove만 하면 벽·바닥 수천 개가 누적 → 컨텍스트 손실.
+  // 단, 전역 공유 지오메트리/머티리얼(모든 층이 재사용)은 dispose 제외(해제하면 다음 층에서 깨짐).
+  const _sharedGeos = new Set(floorGeos);
+  const _sharedMats = new Set([casMatPillar, casMatPillarD]);
+  const _disposeGroup = (grp) => {
+    while (grp.children.length > 0) {
+      const c = grp.children[0];
+      c.traverse(o => {
+        if (o.geometry && !_sharedGeos.has(o.geometry)) o.geometry.dispose();
+        if (o.material) {
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          mats.forEach(m => { if (m && m.dispose && !_sharedMats.has(m)) m.dispose(); });
+        }
+      });
+      grp.remove(c);
+    }
+  };
+  _disposeGroup(floorGroup);
+  _disposeGroup(wallGroup);
   walls.length = 0;
   // 이끼 동굴 장식 애니메이션 대상 초기화(층마다 새로)
   cavernShrooms.length = 0; cavernWaters.length = 0; cavernShafts.length = 0;
@@ -2660,6 +2703,98 @@ function buildDungeonMesh(dgn) {
   }
   // 이끼 동굴 장식 배치(방·복도 기준)
   buildCavernDecor(dgn);
+  // 골렘 층(45~): 골렘과 닮은 위장 바위 더미를 깔아 플레이어를 헷갈리게
+  if (player.floor >= 45) buildGolemDecoys(dgn);
+}
+
+// 골렘 위장용 바위 더미: 휴면 골렘과 비슷한 둥근 회백색 바위 무더기(발광·약점 없음).
+// 멀리선 휴면 골렘과 헷갈리지만, 코어 발광이 없어 자세히 보면 구분 가능.
+function buildGolemDecoys(dgn) {
+  const rMat = [getLowPolyMat(0xb8b8a8), getLowPolyMat(0x9a9d88), getLowPolyMat(0x6e7560)];
+  const mMat = getLowPolyMat(0x6f8350);
+  // 공유 정점 묶음 jitter(골렘과 동일 질감 — 면 안 갈라짐)
+  const jit = (geo, amt) => {
+    const pos = geo.attributes.position; const off = new Map();
+    const key = (x, y, z) => x.toFixed(3) + ',' + y.toFixed(3) + ',' + z.toFixed(3);
+    for (let i = 0; i < pos.count; i++) { const k = key(pos.getX(i), pos.getY(i), pos.getZ(i)); let o = off.get(k); if (!o) { o = [(Math.random() - 0.5) * amt, (Math.random() - 0.5) * amt, (Math.random() - 0.5) * amt]; off.set(k, o); } pos.setXYZ(i, pos.getX(i) + o[0], pos.getY(i) + o[1], pos.getZ(i) + o[2]); }
+    geo.computeVertexNormals();
+  };
+  const blob = (r, mat) => { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), mat); jit(m.geometry, r * 0.2); m.castShadow = true; m.receiveShadow = true; return m; };
+
+  // 정교한 위장: 휴면 골렘 형태를 거의 복제(발광 없음 — 가까이 가야 진짜와 구분). 정적 장식.
+  const makeFakeGolem = () => {
+    const rock = (r, mat, detail) => { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, detail === undefined ? 0 : detail), mat); jit(m.geometry, r * 0.18); m.castShadow = true; m.receiveShadow = true; return m; };
+    const g = new THREE.Group(); const bg = new THREE.Group(); g.add(bg);
+    const leg = (sign) => {
+      const lg = new THREE.Group();
+      const thigh = rock(0.32, rMat[1]); thigh.scale.set(1, 1.1, 1); thigh.position.y = -0.28; lg.add(thigh);
+      const kg = new THREE.Group(); kg.position.y = -0.54; lg.add(kg); kg.add(rock(0.24, rMat[2], 0));
+      const shin = rock(0.28, rMat[1]); shin.position.y = -0.3; kg.add(shin);
+      const foot = rock(0.26, rMat[2], 0); foot.scale.set(1.2, 0.7, 1.5); foot.position.set(0, -0.56, 0.1); kg.add(foot);
+      lg.position.set(sign * 0.32, 0.92, 0); bg.add(lg); kg.rotation.x = -2.7; lg.rotation.x = 1.6; return lg;
+    };
+    leg(1); leg(-1);
+    const tg = new THREE.Group(); tg.position.set(0, 1.18, 0); bg.add(tg);
+    const chestMain = rock(0.62, rMat[0], 1); chestMain.scale.set(1.15, 1, 0.95); chestMain.position.set(0, 0.16, 0.04); tg.add(chestMain);
+    const chestLow = rock(0.5, rMat[1]); chestLow.scale.set(1.1, 0.9, 1); chestLow.position.set(0, -0.3, 0.02); tg.add(chestLow);
+    const belly = rock(0.44, rMat[1]); belly.scale.set(1.05, 0.95, 1); belly.position.set(0, -0.66, 0.06); tg.add(belly);
+    // 등 자리(발광 없는 일반 바위 — 위장이라 빛 안 남)
+    const back1 = rock(0.4, rMat[2]); back1.position.set(0, 0.3, -0.34); tg.add(back1);
+    const back2 = rock(0.3, rMat[2]); back2.position.set(-0.18, 0.5, -0.28); tg.add(back2);
+    const back3 = rock(0.26, rMat[1]); back3.position.set(0.2, 0.46, -0.26); tg.add(back3);
+    if (Math.random() < 0.8) { const mo = new THREE.Mesh(new THREE.IcosahedronGeometry(0.26, 0), mMat); mo.scale.set(1.2, 0.5, 1.2); mo.position.set(0.15, 0.55, 0); jit(mo.geometry, 0.08); mo.receiveShadow = true; tg.add(mo); }
+    const hg = new THREE.Group(); hg.position.set(0, 0.5, 0.5); tg.add(hg);
+    const head = rock(0.26, rMat[1], 1); head.scale.set(1, 0.95, 1); hg.add(head);
+    const arm = (sign) => {
+      const ag = new THREE.Group();
+      const pa = rock(0.36, rMat[0], 1); pa.scale.set(1.1, 1, 1); ag.add(pa);
+      const up = rock(0.28, rMat[1]); up.scale.set(1, 1.15, 1); up.position.y = -0.4; ag.add(up);
+      const eg = new THREE.Group(); eg.position.y = -0.66; ag.add(eg); eg.add(rock(0.22, rMat[2], 0));
+      const fore = rock(0.27, rMat[1]); fore.position.y = -0.36; eg.add(fore);
+      const fist = rock(0.34, rMat[0], 1); fist.scale.set(1.1, 1, 1.1); fist.position.y = -0.66; eg.add(fist);
+      ag.position.set(sign * 0.74, 1.46, 0); bg.add(ag); ag.position.x = sign * 0.4; ag.rotation.x = -2.1; ag.rotation.z = sign * -0.4; eg.rotation.x = 2.3; return ag;
+    };
+    arm(1); arm(-1);
+    tg.rotation.x = 0.5; bg.rotation.x = 0.785; bg.position.y = -0.72;
+    g.scale.setScalar(1.5); g.position.y = 0.56;
+    return g;
+  };
+
+  // 일반 위장: 골렘스러운 바위 무더기 + 팔·머리 암시 덩이
+  const makePlainDecoy = () => {
+    const grp = new THREE.Group();
+    const main = blob(0.95, rMat[0]); main.scale.set(1.2, 0.95, 1.1); main.position.y = 0.95; grp.add(main);
+    const lower = blob(0.85, rMat[1]); lower.scale.set(1.35, 0.85, 1.25); lower.position.y = 0.45; grp.add(lower);
+    for (const sgn of [-1, 1]) {
+      const sh = blob(0.5 + Math.random() * 0.15, rMat[2]); sh.position.set(sgn * (0.85 + Math.random() * 0.2), 0.95 + Math.random() * 0.2, (Math.random() - 0.5) * 0.3); grp.add(sh);
+      if (Math.random() < 0.7) { const fa = blob(0.36 + Math.random() * 0.12, rMat[1]); fa.position.set(sgn * (0.95 + Math.random() * 0.2), 0.4 + Math.random() * 0.25, (Math.random() - 0.5) * 0.3); grp.add(fa); }
+    }
+    const head = blob(0.32 + Math.random() * 0.1, rMat[1]); head.position.set((Math.random() - 0.5) * 0.25, 1.5 + Math.random() * 0.2, 0.1 + Math.random() * 0.2); grp.add(head);
+    const lobeN = 2 + Math.floor(Math.random() * 2);
+    for (let j = 0; j < lobeN; j++) { const ang = Math.random() * Math.PI * 2, rad = 0.4 + Math.random() * 0.4; const b = blob(0.3 + Math.random() * 0.25, rMat[j % 2]); b.position.set(Math.cos(ang) * rad, 0.5 + Math.random() * 0.7, Math.sin(ang) * rad); grp.add(b); }
+    for (let m2 = 0; m2 < 2; m2++) { if (Math.random() < 0.7) { const mo = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), mMat); mo.scale.set(1.3, 0.4, 1.3); mo.position.set((Math.random() - 0.5) * 0.9, 0.6 + Math.random() * 0.6, (Math.random() - 0.5) * 0.9); jit(mo.geometry, 0.1); mo.receiveShadow = true; grp.add(mo); } }
+    grp.rotation.y = Math.random() * Math.PI * 2;
+    grp.scale.setScalar((1.0 + Math.random() * 0.2) * 1.5);
+    return grp;
+  };
+
+  const rooms = dgn.rooms || [];
+  for (let ri = 1; ri < rooms.length; ri++) {
+    const room = rooms[ri];
+    const n = Math.random() < 0.55 ? (Math.random() < 0.5 ? 1 : 2) : 0;
+    for (let k = 0; k < n; k++) {
+      const gx = room.x + 1 + Math.floor(Math.random() * Math.max(1, room.w - 2));
+      const gy = room.y + 1 + Math.floor(Math.random() * Math.max(1, room.h - 2));
+      if (!dgn.grid[gy] || dgn.grid[gy][gx] !== 1) continue;
+      const wx = (gx - MAP_W / 2) * TILE, wz = (gy - MAP_H / 2) * TILE;
+      // 70% 정교한 위장(골렘 복제), 30% 일반 위장
+      const grp = (Math.random() < 0.7) ? makeFakeGolem() : makePlainDecoy();
+      grp.position.x = wx + (Math.random() - 0.5) * TILE * 0.3;
+      grp.position.z = wz + (Math.random() - 0.5) * TILE * 0.3;
+      grp.rotation.y = Math.random() * Math.PI * 2;
+      floorGroup.add(grp);
+    }
+  }
 }
 
 // ===== 이끼 동굴 장식 =====
@@ -3719,10 +3854,11 @@ function spawnArrow(multiplier) {
 
 // 피격 시 같은 방의 잠든 몬스터를 한꺼번에 깨움(소속 방이 없으면 맞은 적만)
 function alertRoom(hit) {
-  hit.awake = true;
+  // 골렘은 주변 전투 소리에 깨지 않음(오직 플레이어 근접으로만 각성). 직접 맞은 경우만 예외 처리는 호출부에서.
+  if (hit.type !== 'golem') hit.awake = true;
   if (hit.homeRoom) {
     for (const e of enemies) {
-      if (!e.isDead && e.homeRoom === hit.homeRoom) e.awake = true;
+      if (!e.isDead && e.homeRoom === hit.homeRoom && e.type !== 'golem') e.awake = true;
     }
   }
 }
@@ -3743,6 +3879,32 @@ function updateSlashes(dt) {
       const dx = e.obj.position.x - s.mesh.position.x, dz = e.obj.position.z - s.mesh.position.z;
       if (Math.hypot(dx, dz) < s.radius + e.radius) {
         s.hitSet.add(e);
+        // 골렘: 정면 무적(바위 갑옷). 등 뒤만 약점. 검기도 동일 적용.
+        if (e.type === 'golem') {
+          if (!e.golemAwake) {
+            // 휴면 중엔 검기 무효(아직 안 깨어남)
+            spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale, e.obj.position.z, 0.4);
+            continue;
+          }
+          const fwdX = Math.sin(e.obj.rotation.y), fwdZ = Math.cos(e.obj.rotation.y);
+          const toPX = player.obj.position.x - e.obj.position.x, toPZ = player.obj.position.z - e.obj.position.z;
+          const toPLen = Math.hypot(toPX, toPZ) || 1;
+          const dotG = (fwdX * toPX + fwdZ * toPZ) / toPLen; // +1=플레이어 정면, -1=등 뒤
+          if (dotG > -0.6) {  // 등 뒤로 좁힘(옆은 막힘)
+            // 정면~측면 = 막힘
+            spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale * 1.2, e.obj.position.z, 0.5); flashObj(e.obj);
+            if (!e._golemGuardMsg || performance.now() - e._golemGuardMsg > 1500) { toast('🪨 정면은 바위 갑옷에 막힌다 — 등의 약점(푸른 코어)을 노려라!', 1400); e._golemGuardMsg = performance.now(); }
+            continue;
+          }
+          // 등 뒤 = 약점(1.5배) + 등 코어 번쩍
+          e.hp -= Math.floor(s.damage * 1.5); alertRoom(e);
+          const dd = Math.hypot(dx, dz) || 1; e.kbX = (dx / dd) * 14; e.kbZ = (dz / dd) * 14;
+          spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale, e.obj.position.z, 1.3); flashObj(e.obj);
+          if (e.limbs && e.limbs._glWeakMat) e.limbs._glWeakMat.emissiveIntensity = 3.0;
+          SFX.hit(s.power || 1.0);
+          if (e.hp <= 0) killEnemy(e);
+          continue;
+        }
         e.hp -= s.damage;
         alertRoom(e); // 피격 시 같은 방 몬스터 전체 어그로(멀리서 쏴도 방 전체가 눈치챔)
         const d = Math.hypot(dx, dz) || 1;
@@ -3947,9 +4109,9 @@ function updateFireballs(dt) {
 
 function flashObj(grpObj) {
   if (grpObj.flashTimeout) clearTimeout(grpObj.flashTimeout);
-  grpObj.traverse(c => { if (c.isMesh && c.material && c.material.emissive) c.material.emissive.setHex(0xaaaaaa); });
+  grpObj.traverse(c => { if (c.isMesh && c.material && c.material.emissive && !c.material._glowMat) c.material.emissive.setHex(0xaaaaaa); });
   grpObj.flashTimeout = setTimeout(() => {
-    grpObj.traverse(c => { if (c.isMesh && c.material && c.material.emissive) c.material.emissive.setHex(0x000000); });
+    grpObj.traverse(c => { if (c.isMesh && c.material && c.material.emissive && !c.material._glowMat) c.material.emissive.setHex(0x000000); });
   }, 100);
 }
 
@@ -3959,13 +4121,13 @@ function freezeEnemy(e, duration) {
   e.frozen = Math.max(e.frozen || 0, duration);
   if (!e._frozenTint) {
     e._frozenTint = true;
-    e.obj.traverse(c => { if (c.isMesh && c.material && c.material.emissive) c.material.emissive.setHex(0x2a6cc0); });
+    e.obj.traverse(c => { if (c.isMesh && c.material && c.material.emissive && !c.material._glowMat) c.material.emissive.setHex(0x2a6cc0); });
   }
 }
 function thawEnemyVisual(e) {
   if (e._frozenTint && (!e.frozen || e.frozen <= 0)) {
     e._frozenTint = false;
-    e.obj.traverse(c => { if (c.isMesh && c.material && c.material.emissive) c.material.emissive.setHex(0x000000); });
+    e.obj.traverse(c => { if (c.isMesh && c.material && c.material.emissive && !c.material._glowMat) c.material.emissive.setHex(0x000000); });
   }
 }
 
@@ -5477,7 +5639,20 @@ function buildGolemBody(grp, bodyGrp, headGrp, limbs, seed) {
     seg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
     parent.add(seg);
   };
-  // 시드 난수: 생성 동안만 Math.random 교체(개체별 바위 모양). 끝나면 복원.
+  // 골렘 전용 jitter: 같은 좌표의 정점들을 같은 오프셋으로 흔들어 면이 갈라지지 않게(매끈한 저폴리).
+  // (전역 jitterGeometry는 정점을 독립적으로 흔들어 면이 분리됨 — 다른 적/던전이 공유하므로 골렘만 별도 사용)
+  const jitterGeoShared = (geometry, amount) => {
+    const pos = geometry.attributes.position;
+    const offsets = new Map();
+    const key = (x, y, z) => x.toFixed(3) + ',' + y.toFixed(3) + ',' + z.toFixed(3);
+    for (let i = 0; i < pos.count; i++) {
+      const k = key(pos.getX(i), pos.getY(i), pos.getZ(i));
+      let off = offsets.get(k);
+      if (!off) { off = [(Math.random() - 0.5) * amount, (Math.random() - 0.5) * amount, (Math.random() - 0.5) * amount]; offsets.set(k, off); }
+      pos.setXYZ(i, pos.getX(i) + off[0], pos.getY(i) + off[1], pos.getZ(i) + off[2]);
+    }
+    geometry.computeVertexNormals(); return geometry;
+  };
   const makeSeededRandom = (s0) => { let s = s0 >>> 0; return function () { s |= 0; s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
   const _origRandom = Math.random;
   Math.random = makeSeededRandom((seed >>> 0) || 0x9e3779b9);
@@ -5488,9 +5663,10 @@ function buildGolemBody(grp, bodyGrp, headGrp, limbs, seed) {
   const crackMat = new THREE.MeshStandardMaterial({ color: 0x2e3026, roughness: 0.95 });
   const coreMat = new THREE.MeshStandardMaterial({ color: 0xffb060, emissive: 0xff7020, emissiveIntensity: 1.4, roughness: 0.4 });
   const weakMat = getLowPolyMat(0x7a8a82); weakMat.emissive = new THREE.Color(0x2878c0); weakMat.emissiveIntensity = 0.0; // 등 약점(각성 시 발광)
+  coreMat._glowMat = true; weakMat._glowMat = true; // 피격 플래시·빙결이 발광색을 덮어쓰지 않도록 표시
 
-  const rock = (r, mat, detail) => { const m = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(r, detail === undefined ? 0 : detail), mat)); jitterGeometry(m.geometry, r * 0.26); return m; };
-  const mossPatch = (parent, x, y, z, s) => { const mm = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), Math.random() > 0.5 ? mossMat : mossDk)); mm.scale.set(1.2, 0.5, 1.2); mm.position.set(x, y, z); jitterGeometry(mm.geometry, s * 0.3); parent.add(mm); };
+  const rock = (r, mat, detail) => { const m = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(r, detail === undefined ? 0 : detail), mat)); jitterGeoShared(m.geometry, r * 0.18); return m; };
+  const mossPatch = (parent, x, y, z, s) => { const mm = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), Math.random() > 0.5 ? mossMat : mossDk)); mm.scale.set(1.2, 0.5, 1.2); mm.position.set(x, y, z); jitterGeoShared(mm.geometry, s * 0.3); parent.add(mm); };
   const crackLine = (parent, a, b, w, withCore) => { addSeam(parent, a, b, w, crackMat); if (withCore) { const c = new THREE.Mesh(new THREE.IcosahedronGeometry(w * 1.2, 0), coreMat); c.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2 - 0.02); parent.add(c); } };
 
   // ---------- 다리(짧고 굵은 바위 기둥, 무릎 분리) ----------
@@ -5520,16 +5696,17 @@ function buildGolemBody(grp, bodyGrp, headGrp, limbs, seed) {
   // 가슴 작은 바위 알갱이(경량화: 5→3개)
   [[0.32, -0.1, 0.3, 0.2], [-0.15, -0.5, 0.3, 0.16], [0.0, 0.5, 0.18, 0.24]].forEach(p => { const r = rock(p[3], Math.random() > 0.5 ? rockMat : rockMid, 0); r.position.set(p[0], p[1], p[2]); torsoGrp.add(r); });
   mossPatch(torsoGrp, 0.15, 0.55, 0.0, 0.26);
-  const dirt = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), dirtMat)); dirt.scale.set(1.3, 0.5, 1.2); dirt.position.set(0.1, 0.62, -0.05); jitterGeometry(dirt.geometry, 0.08); torsoGrp.add(dirt);
+  const dirt = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), dirtMat)); dirt.scale.set(1.3, 0.5, 1.2); dirt.position.set(0.1, 0.62, -0.05); jitterGeoShared(dirt.geometry, 0.08); torsoGrp.add(dirt);
   mossPatch(torsoGrp, 0.34, -0.15, 0.28, 0.16);
-  crackLine(torsoGrp, [0.0, 0.3, 0.42], [0.06, -0.1, 0.44], 0.03, true);
-  crackLine(torsoGrp, [0.06, -0.1, 0.44], [-0.04, -0.4, 0.42], 0.028, true);
-  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 0), coreMat); core.position.set(0.02, 0.0, 0.46); torsoGrp.add(core);
+  crackLine(torsoGrp, [0.0, 0.3, 0.42], [0.06, -0.1, 0.44], 0.03, false);
+  crackLine(torsoGrp, [0.06, -0.1, 0.44], [-0.04, -0.4, 0.42], 0.028, false);
+  // (정면 코어 제거: 약점 발광은 등 weakMat 하나로 통일)
   const coreLight = { intensity: 0 }; // 라이트 제거(컨텍스트 부담↓) — emissive 발광만 사용
 
   // ---------- 작은 머리(어깨 사이) ----------
-  // headGrp는 grp 직속(게임 규약)이지만 골렘은 머리가 상체에 붙어 움직이므로 torsoGrp에 둠.
-  headGrp.position.set(0, 1.68, 0.5);  // torsoGrp(1.18) + 0.5 높이에 해당하는 절대 위치
+  // 머리: torsoGrp 자식으로 부착(상체 회전·웅크림에 함께 따라감). torsoGrp(y=1.18) 기준 로컬 좌표.
+  headGrp.position.set(0, 0.5, 0.5);  // 절대 y≈1.68, z=0.5에 해당하는 torsoGrp 로컬 위치
+  torsoGrp.add(headGrp);
   const headRock = rock(0.26, rockMid, 1); headRock.scale.set(1.0, 0.95, 1.0); headGrp.add(headRock);
   mossPatch(headGrp, 0.05, 0.16, -0.05, 0.16);
 
@@ -5550,7 +5727,7 @@ function buildGolemBody(grp, bodyGrp, headGrp, limbs, seed) {
   const armR = createArm(true); const armL = createArm(false);
 
   grp.add(bodyGrp);
-  grp.add(headGrp);
+  // headGrp는 torsoGrp에 부착 — 휴면/각성 시 상체와 함께 움직임(아래 head 위치는 torsoGrp 로컬 기준)
 
   Math.random = _origRandom; // 난수 복원(게임 다른 시스템 영향 없음)
 
@@ -5569,9 +5746,19 @@ function buildGolemBody(grp, bodyGrp, headGrp, limbs, seed) {
     coreMat.emissiveIntensity = awake ? Math.max(1.4, flick * 1.5) : 0.2;   // 라이트 없이도 또렷하게(↑)
     coreLight.intensity = awake ? 0.7 + Math.max(0, flick - 1) * 0.5 : 0.05;
     const weakPulse = 0.7 + Math.sin(t * 2.0) * 0.25;
-    weakMat.emissiveIntensity = awake ? weakPulse : 0.0;                     // 등 약점 발광(↑)
-    weakLight.intensity = awake ? 0.25 + Math.max(0, Math.sin(t * 2.0)) * 0.3 : 0.0;
+    weakMat.emissiveIntensity = awake ? weakPulse : 0.0;                     // 등 푸른 발광(시각 디테일)
+    weakLight.intensity = 0.0;
   };
+
+  // 스폰 초기 자세 = 휴면(웅크린 바위 더미). 각성 시 적 루프가 펴는 자세로 보간.
+  legR.kneeGrp.rotation.x = -2.7; legL.kneeGrp.rotation.x = -2.7;
+  legR.legGrp.rotation.x = 1.6; legL.legGrp.rotation.x = 1.6;
+  armR.armGrp.position.x = 0.4; armL.armGrp.position.x = -0.4;
+  armR.armGrp.rotation.x = -2.1; armL.armGrp.rotation.x = -2.1;
+  armR.armGrp.rotation.z = -0.4; armL.armGrp.rotation.z = 0.4;
+  armR.elbowGrp.rotation.x = 2.3; armL.elbowGrp.rotation.x = 2.3;
+  torsoGrp.rotation.x = 0.5;
+  bodyGrp.rotation.x = 0.785; bodyGrp.position.y = -0.72;
 }
 
 
@@ -5618,7 +5805,7 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
   } else if (type === 'golem') {
     // 45층~ 휴면형 근접 거인: 돌 골렘. 매우 단단하고 한 방이 묵직. 평상시 휴면, 근접 시 각성. 등 약점(정면 무적).
     hp = (85 + player.floor * 5.5) * 1.5; dmg = (16 + player.floor * 2.4) * 1.5 * 0.8; sp = 2.2; exp = 22 + player.floor;
-    scale = isBoss ? 1.7 : 1.15; skinMat = getLowPolyMat(0xb8b8a8).clone(); armorMat = getLowPolyMat(0x9a9d88).clone();
+    scale = isBoss ? 1.7 : 1.36; skinMat = getLowPolyMat(0xb8b8a8).clone(); armorMat = getLowPolyMat(0x9a9d88).clone(); // 1.36×1.10 ≈ 플레이어 1.5배
   } else if (type === 'ghostknight') {
     // 41층~ 2막 근접 탱커딜러: 거대 브로드소드 유령 기사. 매우 단단하고 한 방이 묵직. 죽어도 1회 부활.
     hp = (70 + player.floor * 5) * 1.5; dmg = (13 + player.floor * 2.2) * 1.5 * 0.8; sp = 3.0; exp = 18 + player.floor;
@@ -6965,6 +7152,35 @@ function dealSwingDamage(multiplier) {
     if (d > 4.5 * (e.scale * 0.7) || (dx * dirX + dz * dirZ) / (d || 1) < 0.2) continue; 
     
     const damage = Math.floor((player.atk + Math.random() * 4) * multiplier);
+    // 골렘: 정면 무적. 플레이어가 등 뒤에서 쳐야만 피해(바위 갑옷이 정면/측면을 막음).
+    if (e.type === 'golem') {
+      if (!e.golemAwake) { /* 휴면 중엔 피해 없음(멀리서/접근 전) */ 
+        spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale, e.obj.position.z, 0.4);
+        didHit = true; continue;
+      }
+      // 골렘 정면 벡터(모델 정면 +z, rotation.y로 회전 → +sin,+cos). 정면 막힘, 등(반대편)이 약점.
+      const fwdX = Math.sin(e.obj.rotation.y), fwdZ = Math.cos(e.obj.rotation.y);
+      // 골렘→플레이어 방향
+      const toPX = player.obj.position.x - e.obj.position.x, toPZ = player.obj.position.z - e.obj.position.z;
+      const toPLen = Math.hypot(toPX, toPZ) || 1;
+      const dot = (fwdX * toPX + fwdZ * toPZ) / toPLen; // +1=플레이어가 정면, -1=등 뒤
+      if (dot > -0.6) {  // 등 뒤로 좁힘(옆은 막힘)
+        // 정면~측면 = 막힘(피해 없음). 쟁그랑 이펙트 + 가드 토스트.
+        spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale * 1.2, e.obj.position.z, 0.5);
+        flashObj(e.obj);
+        if (!e._golemGuardMsg || performance.now() - e._golemGuardMsg > 1500) { toast('🪨 정면은 바위 갑옷에 막힌다 — 등의 약점(푸른 코어)을 노려라!', 1400); e._golemGuardMsg = performance.now(); }
+        e.kbX = (dx / d) * 4 * multiplier; e.kbZ = (dz / d) * 4 * multiplier; // 살짝만 밀림
+        didHit = true; continue;
+      }
+      // 등 뒤 명중 = 약점! 추가 피해(1.5배) + 약점 번쩍
+      const backDmg = Math.floor(damage * 1.5);
+      e.hp -= backDmg; alertRoom(e); e.kbX = (dx / d) * 20 * multiplier; e.kbZ = (dz / d) * 20 * multiplier;
+      spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale, e.obj.position.z, multiplier * 1.3); flashObj(e.obj);
+      if (e.limbs && e.limbs._glWeakMat) { e.limbs._glWeakMat.emissiveIntensity = 3.0; } // 등 약점(푸른 코어) 강하게 번쩍
+      didHit = true;
+      if (e.hp <= 0) killEnemy(e);
+      continue;
+    }
     e.hp -= damage; alertRoom(e); e.kbX = (dx / d) * 20 * multiplier; e.kbZ = (dz / d) * 20 * multiplier;
     
     spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale, e.obj.position.z, multiplier); flashObj(e.obj);
@@ -7575,6 +7791,51 @@ function update(dt) {
     if (e.limbs && typeof e.limbs._cmUpdate === 'function') e.limbs._cmUpdate(performance.now() * 0.001, dt);
     if (e.limbs && typeof e.limbs._glUpdate === 'function') e.limbs._glUpdate(performance.now() * 0.001, dt, !!e.golemAwake);
 
+    // ===== 골렘 휴면↔각성 자세 보간 =====
+    // e.awake(플레이어 인지)가 켜지면 golemAwake도 켜져 '일어서는' 자세로 보간. 그 전엔 웅크린 바위 더미.
+    if (e.type === 'golem' && e.limbs) {
+      if (e.awake && !e.golemAwake) { e.golemAwake = true; e.golemRiseT = 0; } // 각성 시작
+      const gAwake = !!e.golemAwake;
+      const L = e.limbs;
+      const sp = 6; // 보간 속도
+      const gl = (obj, key, tgt) => { if (obj) obj[key] += (tgt - obj[key]) * Math.min(1, dt * sp); };
+      // 각성 완료(rise>=0.5) 후엔 다리/무릎/팔은 걷기 애니가 관리 → 자세 보간에서 제외(충돌 방지).
+      const limbsByWalk = gAwake && (e.golemRiseT || 0) >= 0.5;
+      if (!limbsByWalk) {
+        // 다리: 휴면=무릎 접고 허벅지 몸 밑으로 / 일어서는 중=폄
+        gl(L._glKneeR && L._glKneeR.rotation, 'x', gAwake ? 0 : -2.7);
+        gl(L._glKneeL && L._glKneeL.rotation, 'x', gAwake ? 0 : -2.7);
+        gl(L.legR && L.legR.rotation, 'x', gAwake ? 0 : 1.6);
+        gl(L.legL && L.legL.rotation, 'x', gAwake ? 0 : 1.6);
+        // 팔: 휴면=얼굴 앞에서 감쌈 / 각성=내림
+        gl(L.armR && L.armR.position, 'x', gAwake ? 0.74 : 0.4);
+        gl(L.armL && L.armL.position, 'x', gAwake ? -0.74 : -0.4);
+        gl(L.armR && L.armR.rotation, 'x', gAwake ? 0.1 : -2.1);
+        gl(L.armL && L.armL.rotation, 'x', gAwake ? 0.1 : -2.1);
+        gl(L.armR && L.armR.rotation, 'z', gAwake ? 0 : -0.4);
+        gl(L.armL && L.armL.rotation, 'z', gAwake ? 0 : 0.4);
+        gl(L._glElbowR && L._glElbowR.rotation, 'x', gAwake ? 0 : 2.3);
+        gl(L._glElbowL && L._glElbowL.rotation, 'x', gAwake ? 0 : 2.3);
+      } else {
+        // 걷기 중에도 어깨 위치/팔꿈치 펴짐은 유지(걷기 애니는 rotation.x만 흔듦)
+        gl(L.armR && L.armR.position, 'x', 0.74); gl(L.armL && L.armL.position, 'x', -0.74);
+        gl(L.armR && L.armR.rotation, 'z', 0); gl(L.armL && L.armL.rotation, 'z', 0);
+        gl(L._glElbowR && L._glElbowR.rotation, 'x', 0); gl(L._glElbowL && L._glElbowL.rotation, 'x', 0);
+      }
+      // 상체: 휴면=숙여 웅크림 / 각성=세움 (항상 보간)
+      gl(L.torsoGrp && L.torsoGrp.rotation, 'x', gAwake ? 0.05 : 0.5);
+      // 전체: 휴면=앞으로 숙이고 낮게 / 각성=일어섬 (걷기 중 상하 들썩임은 걷기 애니가 position.y로 덧댐)
+      if (L.bodyGrp) {
+        gl(L.bodyGrp.rotation, 'x', gAwake ? 0 : 0.785);
+        if (!limbsByWalk) { const tgtY = gAwake ? 0.362 : -0.72; L.bodyGrp.position.y += (tgtY - L.bodyGrp.position.y) * Math.min(1, dt * sp); }
+      }
+      // 일어서는 동안(각성 직후 0.5초)은 행동 안 함(무방비)
+      if (gAwake && e.golemRiseT !== undefined) {
+        e.golemRiseT += dt;
+        if (e.golemRiseT < 0.5) { e.attackCd = Math.max(e.attackCd, 0.3); }
+      }
+    }
+
     if (!e.obj.visible) {
       // 시야 밖이라도 깨어있고(이미 발견된 상태) 충분히 가까우면 행동은 계속한다.
       // 보이지만 않을 뿐 등 뒤에서 다가오거나 공격할 수 있어 긴장감 유지.
@@ -7642,7 +7903,10 @@ function update(dt) {
 
     // 발견 로직: 소속 방이 있는 일반 몬스터는 플레이어가 그 방에 들어와야 깨어남(한 번 깨면 계속 추격).
     if (e.awake === false) {
-      if (e.homeRoom) {
+      if (e.type === 'golem') {
+        // 골렘: 배치(방/복도) 상관없이 플레이어가 코앞(1.6타일)에 와야만 각성. 방 입장만으론 안 깨어남.
+        if (d < TILE * 1.6) e.awake = true;
+      } else if (e.homeRoom) {
         const r = e.homeRoom;
         if (r === bossRoom) {
           // 보스 방: 플레이어가 방 중앙쯤(2.5타일 이내)까지 들어와야 깨어남
@@ -8664,6 +8928,74 @@ function update(dt) {
     
     const ACT_RANGE = e.isRanged ? 40 : 20; // 원거리는 더 멀리서도 회전/발사 동작 수행
     if (d < ACT_RANGE) {
+      if (e.type === 'golem') {
+        // 골렘: 느리게 플레이어를 향함(등 뒤를 노릴 틈). 각성 후엔 무겁게 걷는 모션.
+        if (e.golemAwake) {
+          const tYaw = Math.atan2(dx, dz); // 골렘 모델 정면이 +z → +PI 보정 없이 플레이어를 정면으로 향함
+          let dY = tYaw - e.obj.rotation.y; dY = Math.atan2(Math.sin(dY), Math.cos(dY));
+          const gTurnSpd = (e.swingTimer > 0) ? 0.35 : 1.1; // 공격 준비~끝까지는 느리게 돎(등 잡을 틈)
+          e.obj.rotation.y += dY * Math.min(1, dt * gTurnSpd);
+          // 일어선 뒤(rise 완료)엔 걷기 모션: 이동 속도에 따라 다리/팔 흔듦
+          if ((e.golemRiseT || 0) >= 0.5) {
+            const moveSpd = Math.hypot(eTotalWx, eTotalWz) / dt;
+            const attacking = (e.swingTimer > 0); // 공격 중엔 걷기(다리 흔들기) 정지
+            if (!attacking) {
+              if (moveSpd > 0.1) e.phase += e.speed * dt * 2.2; else e.phase *= 0.85;
+              const gs = Math.sin(e.phase);
+              // 무겁고 느린 걸음(진폭 약간 작게).
+              e.limbs.legR.rotation.x = gs * 0.5; e.limbs.legL.rotation.x = -gs * 0.5;
+              e.limbs._glKneeR.rotation.x = -Math.max(0, -gs) * 0.5; e.limbs._glKneeL.rotation.x = -Math.max(0, gs) * 0.5;
+              e.limbs.armR.rotation.x = 0.1 - gs * 0.3; e.limbs.armL.rotation.x = 0.1 + gs * 0.3;
+              e.obj.position.y = e.baseY + Math.abs(gs) * 0.06 * e.scale;
+            } else {
+              // 공격 중: 발은 바닥에 단단히 고정(구르기 멈춤)
+              e.limbs.legR.rotation.x = 0; e.limbs.legL.rotation.x = 0;
+              e.limbs._glKneeR.rotation.x = 0; e.limbs._glKneeL.rotation.x = 0;
+              e.obj.position.y = e.baseY;
+            }
+            e.limbs.bodyGrp.position.y = 0.362; // 발이 바닥에 닿게 몸 높이 유지
+
+            // ===== 골렘 공격: 두 팔을 높이 번쩍 들어올렸다가 손을 모아 내려찍기 =====
+            const G_SWING = 1.0, G_WINDUP = 0.6; // 윈드업(들어올림) 0.6초, 내려찍기 0.4초(더 빠름)
+            const G_RAISE = -Math.PI * 0.85;      // 팔을 머리 위로 높이 번쩍(음수=앞, 골렘은 +PI 회전 없음)
+            const G_STRIKE = Math.PI * 0.18;      // 내려찍은 끝(앞 아래로 내리꽂음)
+            const G_CLAMP = 0.5;                  // 내려찍을 때 양손 모으는 정도(z 안쪽 회전, rad)
+            const gMeleeStop = (meleeStop || (TILE * 0.9)) + 0.5 * e.scale;
+            if (d <= gMeleeStop && e.attackCd <= 0 && e.swingTimer <= 0) {
+              e.attackCd = 1.8; e.swingTimer = G_SWING; e.hitPending = true;
+            }
+            if (e.swingTimer > 0) {
+              const el = G_SWING - e.swingTimer;
+              let aRX, clamp;
+              if (el < G_WINDUP) {
+                // 윈드업: 높이 들어올리면서 동시에 양손을 가운데로 모음(최고점에 다 모임)
+                const w = el / G_WINDUP, eo = 1 - (1 - w) * (1 - w);
+                aRX = eo * G_RAISE;
+                clamp = G_CLAMP * eo; // 들어올리며 점점 모음 → 최고점에 최대
+              } else {
+                // 내려찍기: 짧은 시간에 급가속(올릴 때보다 훨씬 빠르게). 손은 모은 상태 유지.
+                const dp = Math.min(1, (el - G_WINDUP) / (G_SWING - G_WINDUP));
+                const ease = dp * dp; // 가속
+                aRX = G_RAISE + (G_STRIKE - G_RAISE) * ease;
+                clamp = G_CLAMP; // 이미 모은 채로 내려찍음
+              }
+              e.limbs.armR.rotation.x = aRX; e.limbs.armL.rotation.x = aRX;
+              // 손 모으기: 오른팔은 안쪽(-z), 왼팔은 안쪽(+z)으로 회전 → 가운데로 합쳐짐
+              e.limbs.armR.rotation.z = -clamp; e.limbs.armL.rotation.z = clamp;
+              // 임팩트: 내려찍기 시작 직후 빠르게. 이때 데미지 + 발밑 충격파.
+              if (e.hitPending && el >= G_WINDUP + 0.18) {
+                e.hitPending = false;
+                if (typeof spawnShockwave === 'function') spawnShockwave(e.obj.position.x, e.obj.position.z, TILE * 1.2);
+                if (d <= gMeleeStop + 0.6) damagePlayer(e.damage, e);
+              }
+            }
+          } else {
+            e.obj.position.y = e.baseY;
+          }
+        } else {
+          e.obj.position.y = e.baseY;
+        }
+      } else {
       e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI; 
       const moveSpd = Math.hypot(eTotalWx, eTotalWz) / dt;
       if (moveSpd > 0.1) e.phase += e.speed * dt * 2.5; else e.phase *= 0.8;
@@ -8716,6 +9048,7 @@ function update(dt) {
       const armLerp = (e.swingTimer > 0) ? 32 : 15;
       e.limbs.armR.rotation.x += (eArmRX - e.limbs.armR.rotation.x) * armLerp * dt; e.limbs.armL.rotation.x += (eArmLX - e.limbs.armL.rotation.x) * 15 * dt;
       e.obj.position.y = e.baseY + Math.abs(Math.sin(e.phase)) * 0.15 * e.scale;
+      } // end of non-golem melee anim
     }
   }
 
@@ -9054,6 +9387,10 @@ updateOrientationWarning();
 
 const TARGET_FPS = 60, FRAME_MIN = 1000 / TARGET_FPS;
 let lastFrameT = 0;
+// 디버그 패널 상태(GPU 추적)
+let __dbgFrames = 0, __dbgFps = 0, __dbgFpsT = 0, __dbgPeakGeom = 0, __dbgPeakTex = 0;
+if (window.__dbgOn === undefined) window.__dbgOn = true;
+
 function tick(now) {
   requestAnimationFrame(tick);
   if (now === undefined) now = performance.now();
@@ -9080,6 +9417,37 @@ function tick(now) {
     renderer.setRenderTarget(rt); renderer.clear(); renderer.render(scene, camera);
     renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
     drawMinimap();
+  }
+
+  // === 디버그 패널 갱신(렌더 직후 info 읽기) ===
+  if (window.__dbgOn !== false) {
+    __dbgFrames++;
+    const elapsed = now - __dbgFpsT;
+    if (elapsed >= 500) { __dbgFps = Math.round(__dbgFrames * 1000 / elapsed); __dbgFrames = 0; __dbgFpsT = now; }
+    if (__dbgFrames % 1 === 0) {
+      try {
+        const info = renderer.info;
+        const g = info.memory.geometries, tx = info.memory.textures, calls = info.render.calls, tris = info.render.triangles;
+        if (g > __dbgPeakGeom) __dbgPeakGeom = g;
+        if (tx > __dbgPeakTex) __dbgPeakTex = tx;
+        const sceneLights = scene.children.filter(o => o.isLight).length;
+        const mode = inTown ? 'town' : inRest ? 'rest' : 'dungeon';
+        const enemyCount = (typeof enemies !== 'undefined') ? enemies.length : 0;
+        const golems = (typeof enemies !== 'undefined') ? enemies.filter(e => e.type === 'golem').length : 0;
+        const wraiths = (typeof enemies !== 'undefined') ? enemies.filter(e => e.type === 'wraith').length : 0;
+        const panel = document.getElementById('dbgPanel');
+        if (panel && window.__dbgOn) {
+          panel.textContent =
+            'FPS ' + __dbgFps + '  [' + mode + '] floor ' + (player.floor || '?') + '\n' +
+            'geom ' + g + ' (peak ' + __dbgPeakGeom + ')\n' +
+            'tex ' + tx + ' (peak ' + __dbgPeakTex + ')\n' +
+            'calls ' + calls + '  tris ' + (tris > 1000 ? (tris / 1000).toFixed(0) + 'k' : tris) + '\n' +
+            'enemies ' + enemyCount + ' (golem ' + golems + ' wraith ' + wraiths + ')\n' +
+            'lights(scene) ' + sceneLights + '  proj ' + (typeof fireballs !== 'undefined' ? fireballs.length : 0) +
+            (window.__dbgLastLost ? ('\n' + window.__dbgLastLost) : '');
+        }
+      } catch (e) {}
+    }
   }
 }
 
