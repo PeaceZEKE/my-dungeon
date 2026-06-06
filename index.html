@@ -10830,6 +10830,10 @@ function showDungeonUI() {
   $('hud').style.display = 'block'; $('minimap').style.display = 'block';
   if (isTouchDevice) $('mobileControls').style.display = 'block';
   if ($('btnBlock')) $('btnBlock').style.display = ''; // 던전에선 방어 버튼 표시(기본값 복원)
+  // 마을/쉼터 전용 NPC 말걸기 UI는 던전에서 숨김(전환 시 남는 버그 방지)
+  if ($('townTalkBtn')) $('townTalkBtn').style.display = 'none';
+  if ($('townInteract')) $('townInteract').style.display = 'none';
+  townInteractTarget = null; if (typeof restInteractTarget !== 'undefined') restInteractTarget = null;
   lockOrientation();
 }
 
