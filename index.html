@@ -285,8 +285,8 @@
 <div id="townInteract" style="display:none; position:fixed; left:0; right:0; bottom:170px; z-index:15; text-align:center; pointer-events:none; color:#aee3f5; font-weight:bold; font-size:17px; text-shadow:0 2px 8px rgba(0,0,0,0.9);">💬 상인에게 말 걸기</div>
 
 <!-- 대장간(인벤토리식): 보유 재료 + 장착 슬롯 + 제작 가능 장비 -->
-<div id="smithOverlay" class="hidden" style="position:fixed; inset:0; z-index:26; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.8); backdrop-filter:blur(4px); padding:16px; overflow-y:auto;">
-  <div style="width:min(620px,96vw); max-height:90vh; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; background:rgba(18,16,14,0.985); border:1px solid #c08a4a; border-radius:14px; padding:18px;">
+<div id="smithOverlay" class="hidden" style="position:fixed; inset:0; z-index:26; display:flex; align-items:flex-start; justify-content:center; background:rgba(0,0,0,0.8); backdrop-filter:blur(4px); padding:16px; overflow-y:auto; -webkit-overflow-scrolling:touch;">
+  <div style="width:min(620px,96vw); margin:auto; background:rgba(18,16,14,0.985); border:1px solid #c08a4a; border-radius:14px; padding:18px;">
     <div style="text-align:center;">
       <h2 style="margin:0 0 2px; font-size:21px; font-weight:900; letter-spacing:2px; color:#ffd9a0;">⚒️ 대장간</h2>
       <div style="font-size:12px; color:#b0a08a; margin-bottom:10px;">보스 재료로 장비를 제작하고 강화 · <span style="color:#ffd86b;">💰 <b id="smithGold">0</b></span></div>
@@ -7803,7 +7803,7 @@ const joyBase = $('joyBase'), joyStick = $('joyStick');
 const turnBase = $('turnBase'), turnStick = $('turnStick');
 // 마을·게임오버·캐릭터선택 등 오버레이가 떠 있으면 게임 터치 조작을 막는다(스크롤·버튼 충돌 방지)
 function anyOverlayOpen() {
-  const ids = ['overOverlay', 'charOverlay', 'startOverlay', 'howtoOverlay', 'rewardOverlay', 'townShop', 'townDialog', 'startResumeChoice'];
+  const ids = ['overOverlay', 'charOverlay', 'startOverlay', 'howtoOverlay', 'rewardOverlay', 'townShop', 'smithOverlay', 'townDialog', 'startResumeChoice'];
   return ids.some(id => { const el = document.getElementById(id); return el && !el.classList.contains('hidden'); });
 }
 
