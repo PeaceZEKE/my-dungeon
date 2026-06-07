@@ -105,6 +105,17 @@
   #btnBlock { width: 92px; height: 92px; font-size: 38px; background: rgba(80,140,220,0.28); border-color: rgba(120,180,255,0.55); }
   .act-btn { width: 84px; height: 84px; border-radius: 50%; background: rgba(10,12,19,0.78); border: 2px solid rgba(255,255,255,0.2); color: #fff; font-weight: bold; font-size: 18px; display: flex; align-items: center; justify-content: center; pointer-events: auto; touch-action: none; transition: background 0.1s; }
   .act-btn:active { background: rgba(255,255,255,0.2); }
+  .skill-btn { width: 64px; height: 64px; font-size: 26px; background: rgba(120,90,180,0.32); border-color: rgba(180,150,255,0.55); position: relative; align-self: flex-end; }
+  .skill-btn .skill-icon { font-size: 28px; line-height: 1; }
+  .skill-btn.cooling { background: rgba(40,40,55,0.7); border-color: rgba(120,120,140,0.4); }
+  .skill-btn.aiming { background: rgba(180,150,255,0.5); border-color: #d0b8ff; transform: scale(1.08); }
+  .skill-btn.empty { opacity: 0.3; }
+  .skill-btn .skill-cd { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.9); }
+  .potion-btn { position: absolute; left: 56px; bottom: 172px; width: 60px; height: 60px; background: rgba(60,160,90,0.32); border-color: rgba(120,255,160,0.55); }
+  .potion-btn .potion-icon { font-size: 26px; line-height: 1; }
+  .potion-btn .potion-count { position: absolute; right: -2px; bottom: -2px; min-width: 22px; height: 22px; padding: 0 4px; border-radius: 11px; background: rgba(20,60,30,0.95); border: 1px solid rgba(120,255,160,0.7); color: #cfffd8; font-size: 13px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+  .potion-btn.empty { opacity: 0.4; }
+  .potion-btn.empty .potion-count { background: rgba(60,30,30,0.95); border-color: rgba(200,120,120,0.6); color: #ffcaca; }
   .btn-atk { width: 104px; height: 104px; font-size: 28px; background: rgba(229,62,62,0.3); border-color: rgba(229,62,62,0.6); margin-bottom: 20px; }
 
   @media (pointer: coarse) {
@@ -157,6 +168,7 @@
     <button class="floor-goto" data-f="30" style="pointer-events:auto; padding:6px 10px; font-size:12px; border-radius:8px; border:1px solid #c0a060; background:rgba(200,160,90,0.18); color:#f0e0b0;">30층</button>
     <button class="floor-goto" data-f="31" style="pointer-events:auto; padding:6px 10px; font-size:12px; border-radius:8px; border:1px solid #c06868; background:rgba(180,90,90,0.18); color:#f5b0b0;">31층</button>
   </div>
+  <button id="invulnToggle" style="pointer-events:auto; margin-top:2px; padding:7px 16px; font-size:13px; border-radius:8px; border:1px solid #9fb0c8; background:rgba(160,176,200,0.18); color:#dde8ff; font-weight:bold;">🛡️ 무적: 꺼짐</button>
 </div>
 
 <div class="hud" id="hud" style="display:none">
@@ -195,7 +207,10 @@
 <div class="mobile-controls" id="mobileControls" style="display:none">
   <div class="joy-base" id="joyBase"><div class="joy-stick" id="joyStick"></div></div>
   <div class="turn-base" id="turnBase"><div class="turn-stick" id="turnStick"></div></div>
+  <div class="act-btn potion-btn" id="btnPotion"><span class="potion-icon">🧪</span><span class="potion-count" id="potionCount">1</span></div>
   <div class="action-btns">
+    <div class="act-btn skill-btn" id="btnSkill1" style="display:none;"><span class="skill-icon">✦</span><span class="skill-cd" id="skill1Cd"></span></div>
+    <div class="act-btn skill-btn" id="btnSkill2" style="display:none;"><span class="skill-icon">✦</span><span class="skill-cd" id="skill2Cd"></span></div>
     <div class="act-btn" id="btnBlock">🛡️</div>
   </div>
 </div>
@@ -214,7 +229,7 @@
   <button id="startBtn">▶ START GAME</button>
   <div style="font-size:13px; color:#8b96a8; margin-top:4px;">화면 아무 곳이나 탭하세요</div>
   <button id="bossTestBtn" style="margin-top:18px; padding:10px 22px; font-size:14px; background:rgba(180,90,90,0.22); border:1px solid #c06868; border-radius:10px; color:#f5b0b0;">🐲 보스 테스트 (무적)</button>
-  <button id="maxLevelBtn" style="margin-top:10px; padding:10px 22px; font-size:14px; background:rgba(240,200,90,0.18); border:1px solid #d8b24a; border-radius:10px; color:#ffe08a;">⭐ 만렙 캐릭터 (무적 · 탐험용)</button>
+  <button id="maxLevelBtn" style="margin-top:10px; padding:10px 22px; font-size:14px; background:rgba(240,200,90,0.18); border:1px solid #d8b24a; border-radius:10px; color:#ffe08a;">⭐ 테스트 캐릭터 (체력·재료·골드 무한)</button>
 </div>
 
 <div class="overlay hidden" id="charOverlay">
@@ -259,6 +274,10 @@
     <div style="font-size:13px; color:#a0aec0; margin-top:8px;">최고 기록: <b id="overBest" style="color:#e2e8f0;">0</b></div>
     <div id="overNewBest" style="display:none; margin-top:6px; font-size:15px; font-weight:bold; color:#5fe39a;">🏆 신기록 달성!</div>
     <div style="margin-top:10px; font-size:15px; color:#ffd86b;">💰 획득 골드 <b id="overGold">+0</b> <span style="color:#8b96a8; font-size:12px;">(보유 <span id="overTotalGold">0</span>)</span></div>
+    <div id="overMaterials" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid rgba(192,138,74,0.3);">
+      <div style="font-size:12px; color:#d8c0a0; margin-bottom:6px;">⚒️ 획득한 보스 재료</div>
+      <div id="overMaterialsList" style="display:flex; flex-wrap:wrap; gap:6px; justify-content:center;"></div>
+    </div>
   </div>
   <button id="restartBtn">🏘️ 마을로</button>
 </div>
@@ -301,6 +320,21 @@
     <div style="font-size:13px; color:#d8c0a0; font-weight:bold; margin:4px 0 6px;">🔨 장비 목록</div>
     <div id="smithItems" style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;"></div>
     <div style="text-align:center;"><button id="smithClose" style="padding:12px 28px; font-size:16px;">닫기</button></div>
+  </div>
+</div>
+
+<!-- 스킬 상점(인벤토리식): 장착 슬롯 2개 + 직업 스킬 목록(구매/장착) -->
+<div id="skillOverlay" class="hidden" style="position:fixed; inset:0; z-index:26; display:flex; align-items:flex-start; justify-content:center; background:rgba(0,0,0,0.8); backdrop-filter:blur(4px); padding:16px; overflow-y:auto; -webkit-overflow-scrolling:touch;">
+  <div style="width:min(620px,96vw); margin:auto; background:rgba(16,14,24,0.985); border:1px solid #8a6ad0; border-radius:14px; padding:18px;">
+    <div style="text-align:center;">
+      <h2 style="margin:0 0 2px; font-size:21px; font-weight:900; letter-spacing:2px; color:#d0b8ff;">✦ 스킬 교관</h2>
+      <div style="font-size:12px; color:#a89cc0; margin-bottom:10px;">스킬을 배우고 장착 · <span style="color:#ffd86b;">💰 <b id="skillGold">0</b></span> · <span id="skillCharName" style="color:#c0a8ff;">기사</span></div>
+    </div>
+    <div style="font-size:13px; color:#c8b8e8; font-weight:bold; margin:4px 0 6px;">🎯 장착 중 (2슬롯)</div>
+    <div id="skillSlots" style="display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-bottom:14px;"></div>
+    <div style="font-size:13px; color:#c8b8e8; font-weight:bold; margin:4px 0 6px;">📖 배울 수 있는 스킬</div>
+    <div id="skillItems" style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;"></div>
+    <div style="text-align:center;"><button id="skillClose" style="padding:12px 28px; font-size:16px;">닫기</button></div>
   </div>
 </div>
 <button id="townTalkBtn" style="display:none; position:fixed; left:50%; transform:translateX(-50%); bottom:120px; z-index:16; padding:12px 26px; font-size:16px; background:rgba(95,176,208,0.9); border:1px solid #aee3f5; border-radius:10px; color:#04121a; font-weight:bold;">💬 말 걸기</button>
@@ -897,6 +931,7 @@ const townAnim = { wavingFlags: null, windmills: null, smokers: null, guards: nu
 let townMerchant = null; // 상인 NPC 위치/객체(상호작용용)
 let townCleric = null;   // 성직자 NPC 위치/객체(능력 강화 상점)
 let townInnkeeper = null;// 여관 주인 NPC 위치/객체(캐릭터 변경)
+let townTrainer = null;  // 스킬 교관 NPC 위치/객체(스킬 상점)
 let townNPCs = [];       // 대화 가능한 NPC들 [{x,z,obj,name,lines,wander,...}]
 let townActiveNPC = null;// 현재 대화 중인 NPC
 let townDialogIdx = 0;   // 현재 대사 인덱스
@@ -1568,7 +1603,32 @@ function buildTownScene() {
     return g;
   }
 
-  // 성직자 NPC: 로브 + 두건 + 머리 위 대화 마커. 능력 강화(축복) 상점 담당.
+  // 스킬 교관 NPC: 짙은 자주색 로브 + 후드 + 지팡이(끝에 발광 보석). 스킬 상점 담당. 위치를 townTrainer에 저장.
+  function makeTrainer(x, z, ry) {
+    const g = new THREE.Group();
+    const robe = mat(0x4a3a6a), robeDark = mat(0x382a52), skin = mat(0xe6b690), staffW = mat(0x6a4a2a);
+    g.add(cyl(0.28, 0.34, 0.95, 9, robe, 0, 0.5, 0));              // 로브 몸통(아래로 퍼짐)
+    g.add(cyl(0.07, 0.07, 0.5, 7, robeDark, 0.3, 0.74, 0));        // 팔
+    g.add(cyl(0.07, 0.07, 0.5, 7, robeDark, -0.3, 0.74, 0));
+    g.add(ico(0.17, skin, 0, 1.2, 0));                            // 머리
+    const hood = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.42, 8), robeDark); hood.position.y = 1.32; g.add(hood); // 후드
+    // 지팡이(오른손 옆) + 끝 발광 보석
+    const staff = cyl(0.03, 0.03, 1.4, 6, staffW, 0.36, 0.7, 0.05); g.add(staff);
+    const gemMat = mat(0x7fd8ff); gemMat.emissive = new THREE.Color(0x5fc8ff); gemMat.emissiveIntensity = 1.2;
+    const gem = ico(0.1, gemMat, 0.36, 1.42, 0.05); g.add(gem); g.userData.gem = gem;
+    // 머리 위 대화 마커
+    const markMat = mat(0xffe066); markMat.emissive = new THREE.Color(0xffcf3a); markMat.emissiveIntensity = 0.9;
+    const mark = box(0.3, 0.3, 0.08, markMat, 0, 2.05, 0); mark.rotation.y = Math.PI / 4;
+    g.add(mark); g.userData.mark = mark;
+    g.position.set(x, 0, z); g.rotation.y = ry;
+    g.userData.bob = Math.random() * Math.PI * 2;
+    g.userData.noCollide = true;
+    townScene.add(g);
+    townTrainer = { x, z, obj: g };
+    if (!townAnim.trainers) townAnim.trainers = [];
+    townAnim.trainers.push(g);
+    return g;
+  }
   function makeCleric(x, z, ry) {
     const g = new THREE.Group();
     const skin = mat(0xe6b690), robe = mat(0xdcdce6), robeTrim = mat(0xc8b860); // 흰 로브 + 금색 띠
@@ -1970,6 +2030,12 @@ function buildTownScene() {
     const mxp = Math.sin(mAng) * mR, mzp = Math.cos(mAng) * mR;
     makeMerchant(mxp, mzp, Math.atan2(-mxp, -mzp)); // 중심(0,0)을 바라봄
   }
+  // 스킬 교관 배치(던전 입구 앞 북쪽 가판대 자리, 중심을 향하게)
+  {
+    const tAng = 0, tR = 9.0 - 1.8;  // 북쪽 호 가판대(반경 9.0) 앞쪽
+    const txp = Math.sin(tAng) * tR, tzp = Math.cos(tAng) * tR;
+    makeTrainer(txp, tzp, Math.atan2(-txp, -tzp));
+  }
   makeCart(-2.6, 8.5, 0.3);
   makeCart(9.0, -3.0, -1.1);
 
@@ -2132,6 +2198,13 @@ function updateTown(dt) {
     m.userData.bob = (m.userData.bob || 0) + dt;
     m.position.y = Math.sin(m.userData.bob * 1.5) * 0.03;
     if (m.userData.mark) { m.userData.mark.rotation.y += dt * 1.5; m.userData.mark.position.y = 2.05 + Math.sin(m.userData.bob * 2.0) * 0.08; }
+  }
+  if (townAnim.trainers) for (const m of townAnim.trainers) {
+    if (!m.userData) continue;
+    m.userData.bob = (m.userData.bob || 0) + dt;
+    m.position.y = Math.sin(m.userData.bob * 1.5) * 0.03;
+    if (m.userData.mark) { m.userData.mark.rotation.y += dt * 1.5; m.userData.mark.position.y = 2.05 + Math.sin(m.userData.bob * 2.0) * 0.08; }
+    if (m.userData.gem) { m.userData.gem.rotation.y += dt * 2.0; } // 지팡이 보석 회전
   }
   // 대화 NPC들: 마커 회전 + 주민은 마을 안 배회(대화 중이면 정지)
   for (const npc of townNPCs) {
@@ -3100,6 +3173,7 @@ function updateParticles(dt) {
 const parryRings = [];
 const firePools = []; // 시종장 페이즈2: 청록 화염 장판(텔레그래프 후 활성, 위에 있으면 피해)
 const iceZones = [];  // 얼음 여왕: 서리 장판(밟으면 둔화). 안전지대를 좁히는 영역 압박
+const arrowRains = []; // 궁수 스킬 화살 비: 지정 지역에 화살이 쏟아지는 지속 장판(적에게 주기 피해)
 const icePillars = []; // 얼음 여왕: 빙결 가두기(플레이어 위치에 얼음 기둥 → 짧게 포박 + 고드름 연계)
 
 // ===== 무너지는 바닥 함정(2막) =====
@@ -4125,8 +4199,16 @@ function updateParryRings(dt) {
     }
 
     r.life -= dt * (r.fade || 5.0); // 기본 빠르게, fade 지정 시 그 속도로(대지가르기는 느리게)
-    if (r.life <= 0) { scene.remove(r.mesh); parryRings.splice(i, 1); continue; }
+    if (r.life <= 0) {
+      if (r.isLightning) { r.mesh.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
+      scene.remove(r.mesh); parryRings.splice(i, 1); continue;
+    }
     if (r.isLight) { r.mesh.intensity = r.life * 7; }
+    else if (r.isLightning) {
+      // 번개 아크: 그룹 내 모든 분절(바깥+코어)을 함께 페이드, 스케일은 고정
+      const op = Math.min(1, r.life / 0.32);
+      r.mesh.traverse(o => { if (o.material) o.material.opacity = op; });
+    }
     else if (r.slashVx !== undefined) {
       // 검기: 비대칭 scale 유지, 앞으로 미끄러지며 페이드아웃
       r.mesh.position.x += r.slashVx * dt;
@@ -4191,7 +4273,7 @@ function spawnSlash(multiplier) {
   slashes.push({
     mesh, mat, vx: dirX * speed, vz: dirZ * speed, dirX, dirZ,
     traveled: 0, range, damage: Math.floor((player.atk + 4) * multiplier),
-    radius: (1.0 + widthScale * 0.6), hitSet: new Set(), life: 1.0, power: multiplier
+    radius: (1.0 + widthScale * 0.6), hitSet: new Set(), life: 1.0, power: multiplier, pierce: true
   });
 }
 
@@ -4224,8 +4306,28 @@ function spawnMageFireball(multiplier) {
     mesh, mat, vx: dirX * speed, vz: dirZ * speed, dirX, dirZ,
     traveled: 0, range, damage: Math.floor((player.atk + 4) * multiplier),
     radius: (0.3 + sizeScale * 0.35), hitSet: new Set(), life: 1.0, power: multiplier,
-    isFire: true, spin: (Math.random() * 2 - 1) * 4
+    isFire: true, spin: (Math.random() * 2 - 1) * 4,
+    explodeRadius: t > 0.05 ? TILE * (0.4 + t * 0.6) : 0  // 강공격: 착탄 시 폭발(차지할수록 0.4~1.0타일), 일반은 폭발 없음
   });
+}
+// 화염구 강공격 착탄 폭발: 지점 주변 광역 피해 + 시각 효과
+function fireballExplode(x, z, radius, damage, sourceSlash) {
+  if (typeof spawnShockwave === 'function') spawnShockwave(x, z, radius);
+  spawnHitEffect(x, 0.8, z, 1.8);
+  for (const e of enemies) {
+    if (e.isDead || !e.obj.visible) continue;
+    // 시종장/여왕 순간이동 중 무적
+    if ((e.type === 'servantwraith' || e.type === 'icequeen') && (e.swState === 'blinkOut' || e.swState === 'blinkIn')) continue;
+    const dd = Math.hypot(e.obj.position.x - x, e.obj.position.z - z);
+    if (dd < radius + e.radius) {
+      // 폭발 중심에 직격으로 이미 맞은 적은 중복 피해 제외(hitSet)
+      if (sourceSlash && sourceSlash.hitSet && sourceSlash.hitSet.has(e)) continue;
+      // 골렘은 폭발도 등 뒤만(정면 바위 갑옷) — 광역이라 절반만 적용
+      if (e.type === 'golem' && !e.golemAwake) continue;
+      e.hp -= Math.floor(damage * 0.4); flashObj(e.obj); alertRoom(e);
+      if (e.hp <= 0) killEnemy(e);
+    }
+  }
 }
 
 // 궁수 화살: 빠르고 곧게 날아가는 원거리 투사체(마법사 화염구와 같은 slashes 시스템 사용).
@@ -4317,6 +4419,7 @@ function updateSlashes(dt) {
     s.mesh.position.z += s.vz * dt;
     s.traveled += step;
     if (s.isFire) { s.mesh.rotation.x += s.spin * dt; s.mesh.rotation.y += s.spin * dt; }
+    if (s.trail) { spawnPierceTrail(s.mesh.position.x, s.trailY, s.mesh.position.z, s.dirX, s.dirZ); }
 
     // 적 충돌 판정 (한 검기당 적은 1회만 타격)
     for (const e of enemies) {
@@ -4350,6 +4453,7 @@ function updateSlashes(dt) {
           if (e.limbs && e.limbs._glWeakMat) e.limbs._glWeakMat.emissiveIntensity = 3.0;
           SFX.hit(s.power || 1.0);
           if (e.hp <= 0) killEnemy(e);
+          if (!s.pierce) { s.hitWallDie = true; break; } // 비관통 소멸
           continue;
         }
         e.hp -= s.damage;
@@ -4359,6 +4463,7 @@ function updateSlashes(dt) {
         spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale, e.obj.position.z, 1.0); flashObj(e.obj);
         SFX.hit(s.power || 1.0); // 검기 타격음(위력에 비례)
         if (e.hp <= 0) killEnemy(e);
+        if (!s.pierce) { s.hitWallDie = true; break; } // 비관통: 첫 적 타격 시 소멸(검기 등 pierce만 관통)
       }
     }
 
@@ -4376,8 +4481,16 @@ function updateSlashes(dt) {
       }
     }
 
+    // 비관통 투사체가 적을 맞혔으면 즉시 소멸
+    if (s.hitWallDie) {
+      if (s.explodeRadius > 0) fireballExplode(s.mesh.position.x, s.mesh.position.z, s.explodeRadius, s.damage, s); // 강공격 화염구 착탄 폭발
+      scene.remove(s.mesh); slashes.splice(i, 1); continue;
+    }
+
     // 사거리 끝/벽에서 페이드아웃
     if (s.traveled >= s.range || hitWall) {
+      // 강공격 화염구: 착탄(사거리 끝/벽) 시 폭발(1회만)
+      if (s.explodeRadius > 0 && !s._exploded) { s._exploded = true; fireballExplode(s.mesh.position.x, s.mesh.position.z, s.explodeRadius, s.damage, s); }
       s.life -= dt * 6;
       s.mat.opacity = Math.max(0, s.life * 0.9);
       if (s.life <= 0) { scene.remove(s.mesh); slashes.splice(i, 1); }
@@ -4675,9 +4788,11 @@ const player = {
   obj: new THREE.Group(), yaw: 0, pitch: 0, hp: 100, hpMax: 100, lv: 1, exp: 0, expMax: 10, atk: 12, kills: 0, floor: 1,
   alive: true, isBlocking: false, attackCooldown: 0, hurtCooldown: 0, jumpVy: 0, onGround: true, radius: 0.5, speed: 6.5,
   iceSlow: 0, rooted: 0,  // 얼음 여왕: 빙결 둔화(강설 폭풍)·포박 타이머
+  potions: 1,  // 체력 회복 물약 개수(회차 시작 1개, 막 클리어마다 +1)
   iceSliding: 0, iceVx: 0, iceVz: 0,  // 서리 장판: 미끄러짐(빙판 관성) 타이머 + 관성 속도
   walkPhase: 0, limbs: {}, kbX: 0, kbZ: 0, atkSpeed: 1.0,
   dodgeT: 0, dodgeCd: 0, dodgeVx: 0, dodgeVz: 0, dodgeAtkWindow: 0, dodgeBoostT: 0, dodgePerfectShown: false,  // 궁수 회피(대시) + 회피후 공격 버퍼 + 완벽 회피 이속 버스트
+  skillCd: [0, 0],  // 장착 스킬 2슬롯의 쿨다운 잔여(초)
   sta: 100, staMax: 100,  // 스태미나(방어 유지·강공격·스킬에 소모, 자동 회복)
   gold: 0,                // 골드(메타 진행용, 추후 연결)
   noHitFloors: 0,         // 한 번도 안 맞고 넘긴 층 수(노히트 보너스)
@@ -4685,6 +4800,7 @@ const player = {
 };
 let runStartTime = 0;     // 이번 판 시작 시각(ms) — 시간 보너스용
 let runGold = 0;          // 이번 판에 던전에서 번 골드(게임오버 표시용)
+let runMaterials = {};    // 이번 판에 획득한 보스 재료(게임오버 표시용) { 재료id: 개수 }
 scene.add(player.obj);
 let selectedChar = 'knight'; // 선택된 캐릭터(기본: 기사)
 // 스태미나: 방어 유지·강공격·스킬에 소모, 시간이 지나면 자동 회복
@@ -4698,7 +4814,7 @@ const STA_PARRY_COST = 18;   // 패링 성공 시 소모(기사·마법사 공�
 const STA_MAGE_BLOCK_START = 20; // 마법사 방어(마나 보호막) 시작 시 즉시 소모
 let staRegenCooldown = 0;    // 회복 지연 타이머
 function useStamina(amount) {
-  if (bossTestMode || godMode) return true; // 테스트/만렙 모드: 스태미나 무한
+  if (bossTestMode) return true; // 보스 테스트 모드만 스태미나 무한(만렙 모드는 일반 난이도)
   if (player.sta < amount) return false;
   player.sta -= amount; staRegenCooldown = STA_REGEN_DELAY; return true;
 }
@@ -6813,6 +6929,7 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
     // 보스 전용 패턴 상태
     specialCd: 3.0,        // 특수 패턴 쿨다운(첫 발동까지 약간 여유)
     dashState: 'none',     // none / telegraph(예비동작) / dashing(돌진중)
+    orcLeap: 'none', orcLeapTimer: 0, orcLeapVx: 0, orcLeapVz: 0, orcLeapDone: false, // 일반 오크 발견 시 점프 도약(갭클로저)
     dashTimer: 0, dashVx: 0, dashVz: 0, dashHit: false,
     castState: 'none',     // (스켈레톤) none / telegraph(시전준비) / firing(다발사격)
     castTimer: 0, castShots: 0, summonCount: 0,
@@ -6900,6 +7017,15 @@ function spawnEnemies(dgn) {
   firePools.length = 0;
   for (const z of iceZones) { scene.remove(z.grp); z.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
   iceZones.length = 0;
+  for (const r of arrowRains) { scene.remove(r.grp); r.grp.traverse(o => { if (o.geometry && o.geometry !== arrowShaftGeo && o.geometry !== arrowTipGeo) o.geometry.dispose(); }); }
+  arrowRains.length = 0;
+  for (const b of burnEffects) { if (b.grp.parent) b.grp.parent.remove(b.grp); b.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+  burnEffects.length = 0;
+  for (const p of frostReadyParticles) { scene.remove(p.mesh); if (p.mesh.geometry) p.mesh.geometry.dispose(); }
+  frostReadyParticles.length = 0;
+  skillAimActive = false; if (skillAimRing) { scene.remove(skillAimRing.grp); skillAimRing.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); }); skillAimRing = null; }
+  for (const p of pierceTrails) { scene.remove(p.mesh); if (p.mesh.geometry) p.mesh.geometry.dispose(); }
+  pierceTrails.length = 0;
   for (const p of icePillars) { scene.remove(p.grp); p.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
   icePillars.length = 0;
   for (const a of azTelegraphs) { if (a.grp.parent) a.grp.parent.remove(a.grp); a.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
@@ -7663,7 +7789,7 @@ let turnDragDist = 0;               // 현재 회전 패드 당김 거리(px)
 let turnStillTime = 0;              // [실험] 회전 패드를 데드존 안에서 가만히 누르고 있은 시간
 let turnBlockActive = false;        // [실험] 패드 정지로 방어가 켜진 상태인지
 const TURN_RADIUS = 85;             // 회전 패드 반지름(px)
-const ATTACK_DRAG = 48;             // 이 거리 넘으면 일반공격 연타 시작(반경 85의 약 56%)
+const ATTACK_DRAG = 45;             // 이 거리 넘으면 일반공격 연타 시작
 const CHARGE_DRAG = 75;             // 이 거리 넘으면 강공격 차지 시작(반경 85의 약 88%)
 let turnCx = 0, turnCy = 0; // 회전 패드가 생성된 중심(클릭 위치)
 const mousePos = new THREE.Vector2();
@@ -7777,6 +7903,12 @@ function releaseCharge() {
 
 window.addEventListener('keydown', e => {
   keys.add(e.code);
+  // 스킬 발동(PC): Q=슬롯1, E=슬롯2 — 게임 중(던전)에만
+  if (!isTouchDevice && player.alive && typeof inTown !== 'undefined' && !inTown && (typeof inRest === 'undefined' || !inRest)) {
+    if (e.code === 'KeyQ') useSkill(0);
+    if (e.code === 'KeyE') useSkill(1);
+    if (e.code === 'KeyR') usePotion();
+  }
 });
 window.addEventListener('keyup', e => keys.delete(e.code));
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
@@ -7803,7 +7935,7 @@ const joyBase = $('joyBase'), joyStick = $('joyStick');
 const turnBase = $('turnBase'), turnStick = $('turnStick');
 // 마을·게임오버·캐릭터선택 등 오버레이가 떠 있으면 게임 터치 조작을 막는다(스크롤·버튼 충돌 방지)
 function anyOverlayOpen() {
-  const ids = ['overOverlay', 'charOverlay', 'startOverlay', 'howtoOverlay', 'rewardOverlay', 'townShop', 'smithOverlay', 'townDialog', 'startResumeChoice'];
+  const ids = ['overOverlay', 'charOverlay', 'startOverlay', 'howtoOverlay', 'rewardOverlay', 'townShop', 'smithOverlay', 'skillOverlay', 'townDialog', 'startResumeChoice'];
   return ids.some(id => { const el = document.getElementById(id); return el && !el.classList.contains('hidden'); });
 }
 
@@ -7849,7 +7981,7 @@ document.addEventListener('touchmove', (e) => {
       let vdx = dx, vdy = dy;
       if (dist > TURN_RADIUS) { dx = (dx / dist) * TURN_RADIUS; dy = (dy / dist) * TURN_RADIUS; }
       turnStick.style.transform = `translate(${dx}px, ${dy}px)`;
-      if (dist > 10) { turnVec.x = vdx; turnVec.y = vdy; turnActive = true; } // 데드존 밖일 때만 방향 반영
+      if (dist > 5) { turnVec.x = vdx; turnVec.y = vdy; turnActive = true; } // 데드존 밖일 때만 방향 반영
       else turnActive = false;
       // 최대치 근처(CHARGE_DRAG)까지 당기면 강공격 차지 시작
       if (dist >= CHARGE_DRAG && !turnCharging && !player.isBlocking) {
@@ -7914,6 +8046,85 @@ function endBlockTouch(e) {
 }
 btnBlockEl.addEventListener('touchend', endBlockTouch, { passive: false });
 btnBlockEl.addEventListener('touchcancel', endBlockTouch, { passive: false });
+// 스킬 버튼(터치) — 누른 채 드래그해서 조준. 화살 비처럼 지점 타겟이면 드래그 위치에 착탄(미리보기 링), 그 외엔 방향 조준. 짧게 탭하면 기본값.
+function equippedSkillDef(idx) {
+  const eq = (meta.skills && meta.skills.equipped && meta.skills.equipped[selectedChar]) || [null, null];
+  const id = eq[idx]; return id ? SKILL_DEFS[id] : null;
+}
+// 화면 드래그(ddx,ddy) → 카메라 기준 월드 방향 + 거리. 지점 타겟의 착탄 좌표 계산에 사용.
+function dragToWorld(ddx, ddy, maxRangeTiles) {
+  const camFwd = new THREE.Vector3(); camera.getWorldDirection(camFwd); camFwd.y = 0; camFwd.normalize();
+  const camRight = new THREE.Vector3().crossVectors(camFwd, new THREE.Vector3(0, 1, 0)).normalize();
+  const dist = Math.hypot(ddx, ddy);
+  if (dist < 0.001) return null;
+  const nx = ddx / dist, ny = ddy / dist;
+  const dir = new THREE.Vector3().addScaledVector(camFwd, -ny).addScaledVector(camRight, nx);
+  if (dir.lengthSq() < 0.0001) return null;
+  dir.normalize();
+  // 화면 드래그 픽셀(20~150)을 월드 거리(1타일~maxRange)로 매핑
+  const maxR = TILE * (maxRangeTiles || 6.5);
+  const tt = Math.max(0, Math.min(1, (dist - 20) / 130));
+  const worldDist = TILE * 1.0 + tt * (maxR - TILE * 1.0);
+  return { dir, worldDist, yaw: Math.atan2(-dir.x, -dir.z) };
+}
+['btnSkill1', 'btnSkill2'].forEach((bid, idx) => {
+  const el = document.getElementById(bid);
+  if (!el) return;
+  let dragId = null, sx = 0, sy = 0, ddx = 0, ddy = 0;
+  el.addEventListener('touchstart', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const t = e.changedTouches[0];
+    dragId = t.identifier; sx = t.clientX; sy = t.clientY; ddx = 0; ddy = 0;
+    el.classList.add('aiming');
+  }, { passive: false });
+  el.addEventListener('touchmove', (e) => {
+    if (dragId === null) return;
+    e.preventDefault(); e.stopPropagation();
+    for (const t of e.changedTouches) {
+      if (t.identifier === dragId) { ddx = t.clientX - sx; ddy = t.clientY - sy; }
+    }
+    // 지점 타겟이면 드래그하는 동안 착탄 미리보기 링 표시
+    const def = equippedSkillDef(idx);
+    if (def && def.aimPoint && Math.hypot(ddx, ddy) > 18) {
+      const w = dragToWorld(ddx, ddy, def.maxRange);
+      if (w) { const tx = player.obj.position.x + w.dir.x * w.worldDist, tz = player.obj.position.z + w.dir.z * w.worldDist; showAimRing(tx, tz, TILE * 1.8); }
+    }
+  }, { passive: false });
+  const finish = (e) => {
+    if (dragId === null) return;
+    let ended = false;
+    for (const t of e.changedTouches) { if (t.identifier === dragId) ended = true; }
+    if (!ended) return;
+    e.preventDefault(); e.stopPropagation();
+    dragId = null; el.classList.remove('aiming');
+    const def = equippedSkillDef(idx);
+    const dist = Math.hypot(ddx, ddy);
+    skillAimActive = false; hideAimRing();
+    if (def && def.aimPoint) {
+      // 지점 타겟: 드래그 위치에 착탄(드래그 없으면 기본 전방)
+      if (dist > 18) {
+        const w = dragToWorld(ddx, ddy, def.maxRange);
+        if (w) { skillAimX = player.obj.position.x + w.dir.x * w.worldDist; skillAimZ = player.obj.position.z + w.dir.z * w.worldDist; skillAimActive = true; player.yaw = w.yaw; }
+      }
+      useSkill(idx);
+      skillAimActive = false;
+    } else {
+      // 방향 타겟: 드래그 방향으로 조준
+      if (dist > 18) {
+        const w = dragToWorld(ddx, ddy, 1);
+        if (w) player.yaw = w.yaw;
+      }
+      useSkill(idx);
+    }
+  };
+  el.addEventListener('touchend', finish, { passive: false });
+  el.addEventListener('touchcancel', finish, { passive: false });
+});
+// 물약 버튼(터치)
+{
+  const pe = document.getElementById('btnPotion');
+  if (pe) pe.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); usePotion(); }, { passive: false });
+}
 
 function executeSwing(multiplier) {
   // 들어올림(고정) + 내려침(일반/강공격에 따라 다름)
@@ -7940,17 +8151,122 @@ function smithKillBurst(x, z) {
   }
   toast('💠 망령의 폭발!', 1000);
 }
-// 마그마 핵: 피격 시 thorns 비율로 주변 적에게 화염 반격
+// 마그마 핵: 피격 시 thorns 비율로 주변 적에게 화염 반격(적이 잠시 불타오름)
 function smithThorns(srcEnemy) {
   const r = (typeof smithBonus === 'function') ? smithBonus('thorns') : 0;
   if (r <= 0) return;
   const x = player.obj.position.x, z = player.obj.position.z, R = TILE * 1.6;
   const dmg = Math.max(2, Math.floor((player.atk || 12) * r));
-  if (typeof spawnShockwave === 'function') spawnShockwave(x, z, R);
   for (const e of enemies) {
     if (e.isDead || !e.obj.visible) continue;
     const dd = Math.hypot(e.obj.position.x - x, e.obj.position.z - z);
-    if (dd < R) { e.hp -= dmg; flashObj(e.obj); alertRoom(e); if (e.hp <= 0) killEnemy(e); }
+    if (dd < R) {
+      e.hp -= dmg; flashObj(e.obj); alertRoom(e);
+      igniteEnemy(e); // 폭발 대신 적이 불타오르는 이펙트
+      if (e.hp <= 0) killEnemy(e);
+    }
+  }
+}
+// 적 화염 이펙트: 적 몸을 감싸며 일렁이는 작은 불꽃 여러 개(잠시 지속 후 사라짐). 적 obj에 붙어 따라다님.
+const burnEffects = [];
+function igniteEnemy(e) {
+  if (!e || !e.obj) return;
+  // 이미 불타는 중이면 지속시간만 갱신
+  for (const b of burnEffects) { if (b.enemy === e) { b.life = b.maxLife; if (e._burnTint) e._burnTintT = 0.5; return; } }
+  const sc = e.scale || 1;
+  const grp = new THREE.Group();
+  const flames = [];
+  const N = 12; // 불꽃 수 증가
+  for (let i = 0; i < N; i++) {
+    // 위로 갈수록 노랑→주황→빨강, 아래는 밝은 노랑
+    const hot = Math.random();
+    const col = hot > 0.6 ? 0xffe06a : (hot > 0.3 ? 0xff8a2a : 0xff3a10);
+    const m = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.95, depthWrite: false, fog: false });
+    const cone = new THREE.Mesh(new THREE.ConeGeometry((0.18 + Math.random() * 0.1) * sc, (0.6 + Math.random() * 0.5) * sc, 5), m);
+    const a = (i / N) * Math.PI * 2 + Math.random() * 0.5;
+    const rr = (0.15 + Math.random() * 0.5) * sc;
+    cone.position.set(Math.cos(a) * rr, (0.15 + Math.random() * 0.7) * sc, Math.sin(a) * rr);
+    grp.add(cone);
+    flames.push({ mesh: cone, mat: m, baseY: cone.position.y, phase: Math.random() * Math.PI * 2, sway: 0.4 + Math.random() * 0.6 });
+  }
+  // 바닥에 붉은 발광 디스크(불길에 휩싸인 바닥 느낌)
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0xff5020, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false, fog: false });
+  const glow = new THREE.Mesh(new THREE.CircleGeometry(0.85 * sc, 16), glowMat);
+  glow.rotation.x = -Math.PI / 2; glow.position.y = 0.08; grp.add(glow);
+  // 위로 튀는 불씨 입자
+  const sparks = [];
+  for (let i = 0; i < 8; i++) {
+    const sm = new THREE.MeshBasicMaterial({ color: 0xffc040, transparent: true, opacity: 0.9, depthWrite: false, fog: false });
+    const sp = new THREE.Mesh(new THREE.IcosahedronGeometry(0.06 * sc, 0), sm);
+    sp.position.set((Math.random() - 0.5) * 0.7 * sc, (0.3 + Math.random() * 0.6) * sc, (Math.random() - 0.5) * 0.7 * sc);
+    grp.add(sp);
+    sparks.push({ mesh: sp, mat: sm, vy: (1.5 + Math.random() * 1.5) * sc, baseX: sp.position.x, baseZ: sp.position.z, phase: Math.random() * Math.PI * 2 });
+  }
+  e.obj.add(grp);
+  burnEffects.push({ enemy: e, grp, flames, glow, glowMat, sparks, life: 1.4, maxLife: 1.4 });
+  // 적을 붉게 틴트(불타는 동안)
+  applyBurnTint(e);
+}
+// 적을 붉게 물들임(emissive). 원래 emissive를 저장해 복원.
+function applyBurnTint(e) {
+  if (!e._burnTint) {
+    e._burnTint = [];
+    e.obj.traverse(c => {
+      if (c.isMesh && c.material && c.material.emissive && !c.material._glowMat && !c.material._glMat) {
+        e._burnTint.push({ mat: c.material, orig: c.material.emissive.getHex() });
+      }
+    });
+  }
+  e._burnTintT = 0.5; // 강한 붉은빛 지속(이후 불꽃 지속 동안 약하게 깜빡)
+}
+function updateBurnEffects(dt) {
+  for (let i = burnEffects.length - 1; i >= 0; i--) {
+    const b = burnEffects[i];
+    b.life -= dt;
+    const e = b.enemy;
+    // 적이 죽었거나 사라지면 제거(틴트 복원)
+    if (b.life <= 0 || e.isDead || !e.obj || !e.obj.visible) {
+      if (b.grp.parent) b.grp.parent.remove(b.grp);
+      b.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+      restoreBurnTint(e);
+      burnEffects.splice(i, 1);
+      continue;
+    }
+    const t = b.life / b.maxLife; // 1→0 (페이드)
+    const now = performance.now() * 0.001;
+    for (const f of b.flames) {
+      // 위아래로 일렁이고 크기가 펄럭임(더 강하게)
+      const flick = 0.6 + Math.abs(Math.sin(now * (5 + f.sway * 5) + f.phase)) * 0.7;
+      f.mesh.scale.set(1, flick, 1);
+      f.mesh.position.y = f.baseY + Math.sin(now * 4 + f.phase) * 0.08;
+      f.mesh.rotation.y += dt * 4;
+      f.mat.opacity = (0.6 + Math.random() * 0.4) * Math.min(1, t * 1.6);
+    }
+    // 바닥 발광 맥동
+    if (b.glowMat) b.glowMat.opacity = (0.35 + Math.abs(Math.sin(now * 6)) * 0.25) * Math.min(1, t * 1.6);
+    // 불씨: 위로 솟구치며 페이드, 일정 높이 넘으면 리셋
+    for (const s of b.sparks) {
+      s.mesh.position.y += s.vy * dt;
+      s.mesh.position.x = s.baseX + Math.sin(now * 5 + s.phase) * 0.08;
+      if (s.mesh.position.y > 1.6 * (e.scale || 1)) { s.mesh.position.y = 0.2 * (e.scale || 1); }
+      s.mat.opacity = (0.5 + Math.random() * 0.5) * Math.min(1, t * 1.6);
+    }
+    // 적 붉은 틴트: 처음 강하게, 이후 불꽃과 함께 약하게 깜빡
+    if (e._burnTint) {
+      if (b._tintT === undefined) b._tintT = 0.5;
+      b._tintT -= dt;
+      const strong = b._tintT > 0; // 초반 0.5초는 강한 붉은빛
+      const pulse = strong ? 1.0 : (0.4 + Math.abs(Math.sin(now * 8)) * 0.3) * Math.min(1, t * 1.6);
+      const r = Math.floor(0xff * pulse), g = Math.floor(0x20 * pulse), bl = Math.floor(0x10 * pulse);
+      const hex = (r << 16) | (g << 8) | bl;
+      for (const tn of e._burnTint) tn.mat.emissive.setHex(hex);
+    }
+  }
+}
+function restoreBurnTint(e) {
+  if (e._burnTint) {
+    for (const tn of e._burnTint) tn.mat.emissive.setHex(tn.orig);
+    e._burnTint = null; e._burnTintT = 0;
   }
 }
 // 서리 여왕의 가호: frostward Lv에 따라 N초마다 자동 빙결 방어막(주변 적 잠시 빙결 + 다음 피해 1회 무효)
@@ -7962,16 +8278,85 @@ function updateSmithFrostWard(dt) {
   smithWardTimer += dt;
   if (smithWardTimer >= interval && !smithWardReady) {
     smithWardReady = true; smithWardTimer = interval;
-    // 방어막 준비 연출(플레이어 주변 빙결 링)
-    if (typeof spawnShockwave === 'function') spawnShockwave(player.obj.position.x, player.obj.position.z, TILE * 1.2);
+    // 방어막 준비 연출(플레이어 주변에 떠오르는 얼음 결정 — 폭발 아닌 잔잔한 서리)
+    if (typeof spawnFrostReadyFx === 'function') spawnFrostReadyFx();
     toast('❄️ 서리 방어막 준비!', 1000);
   }
 }
-// 방어막 소비(damagePlayer에서 호출): 준비돼 있으면 피해 1회 무효 + 주변 적 빙결
+// 서리 방어막 "준비됨" 연출: 플레이어 주변에서 작은 얼음 결정들이 위로 떠오르며 반짝이다 사라짐
+const frostReadyParticles = [];
+function spawnFrostReadyFx() {
+  const px = player.obj.position.x, pz = player.obj.position.z;
+  const N = 10;
+  for (let i = 0; i < N; i++) {
+    const col = Math.random() > 0.5 ? 0xbfeeff : 0x9fd8ff;
+    const m = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.0, depthWrite: false, fog: false });
+    const shard = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1 + Math.random() * 0.08, 0), m);
+    const a = (i / N) * Math.PI * 2 + Math.random() * 0.4;
+    const rr = 0.4 + Math.random() * 0.7;
+    shard.position.set(px + Math.cos(a) * rr, 0.3 + Math.random() * 0.4, pz + Math.sin(a) * rr);
+    scene.add(shard);
+    frostReadyParticles.push({
+      mesh: shard, mat: m, life: 0.9, maxLife: 0.9,
+      vy: 1.2 + Math.random() * 0.8, spin: (Math.random() - 0.5) * 6
+    });
+  }
+}
+function updateFrostReadyFx(dt) {
+  for (let i = frostReadyParticles.length - 1; i >= 0; i--) {
+    const p = frostReadyParticles[i];
+    p.life -= dt;
+    if (p.life <= 0) {
+      scene.remove(p.mesh);
+      if (p.mesh.geometry) p.mesh.geometry.dispose(); if (p.mat) p.mat.dispose();
+      frostReadyParticles.splice(i, 1);
+      continue;
+    }
+    const t = p.life / p.maxLife; // 1→0
+    p.mesh.position.y += p.vy * dt;       // 위로 떠오름
+    p.mesh.rotation.x += p.spin * dt; p.mesh.rotation.y += p.spin * dt;
+    // 처음 빠르게 나타났다가 서서히 페이드아웃(0.7 부근에서 최대 불투명)
+    p.mat.opacity = t > 0.7 ? (1 - t) / 0.3 * 0.9 : t / 0.7 * 0.9;
+  }
+}
+// 서리 방어막 시각 효과: 플레이어를 감싸는 얼음색 반투명 구체(발동 시 잠깐 나타났다 사라짐)
+let wardSphere = null, wardSphereTimer = 0;
+function spawnWardSphere() {
+  if (!wardSphere) {
+    const g = new THREE.Group();
+    // 안쪽 얼음 구체(반투명 하늘색)
+    const m1 = new THREE.MeshBasicMaterial({ color: 0xbfeeff, transparent: true, opacity: 0.0, side: THREE.DoubleSide, depthWrite: false, fog: false });
+    const s1 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.95, 1), m1);
+    g.add(s1);
+    // 바깥 결정 윤곽(더 각진 면, 살짝 큰 와이어풍)
+    const m2 = new THREE.MeshBasicMaterial({ color: 0x7fd8ff, transparent: true, opacity: 0.0, wireframe: true, depthWrite: false, fog: false });
+    const s2 = new THREE.Mesh(new THREE.IcosahedronGeometry(1.05, 0), m2);
+    g.add(s2);
+    g.position.y = 0.9; // 몸통 중심 높이
+    player.obj.add(g);
+    wardSphere = { grp: g, m1, m2, s1, s2 };
+  }
+  wardSphereTimer = 0.85;
+  wardSphere.grp.visible = true;
+}
+function updateWardSphere(dt) {
+  if (!wardSphere || wardSphereTimer <= 0) return;
+  wardSphereTimer -= dt;
+  const t = Math.max(0, wardSphereTimer / 0.85); // 1→0
+  // 나타날 때 잠깐 커지고, 사라질 때 페이드 + 약간 팽창
+  const scale = 1.0 + (1 - t) * 0.25;
+  wardSphere.grp.scale.setScalar(scale);
+  wardSphere.m1.opacity = t * 0.45;
+  wardSphere.m2.opacity = t * 0.85;
+  wardSphere.grp.rotation.y += dt * 1.6;
+  if (wardSphereTimer <= 0) wardSphere.grp.visible = false;
+}
+
 function smithConsumeWard() {
   if (!smithWardReady) return false;
   smithWardReady = false; smithWardTimer = 0;
   const x = player.obj.position.x, z = player.obj.position.z, R = TILE * 2.0;
+  spawnWardSphere(); // 플레이어를 감싸는 얼음 구체 이펙트
   if (typeof spawnShockwave === 'function') spawnShockwave(x, z, R);
   for (const e of enemies) {
     if (e.isDead || !e.obj.visible) continue;
@@ -7980,6 +8365,462 @@ function smithConsumeWard() {
   }
   toast('🛡️ 서리 방어막이 피해를 막았다!', 1200);
   return true;
+}
+
+// ===== 체력 회복 물약 =====
+// 회복량 = 최대 체력의 (50% + 성직자 '물약 효능' 축복 레벨당 8%)
+function potionHealRatio() {
+  const lv = (typeof upgradeLevel === 'function') ? upgradeLevel('potion') : 0;
+  return 0.5 + lv * 0.08; // Lv0=50% … Lv6=98%
+}
+function usePotion() {
+  if (!player.alive) return;
+  if (player.potions <= 0) { toast('🧪 물약이 없다', 1000); return; }
+  if (player.hp >= player.hpMax) { toast('체력이 이미 가득 찼다', 1000); return; }
+  player.potions--;
+  const heal = Math.floor(player.hpMax * potionHealRatio());
+  player.hp = Math.min(player.hpMax, player.hp + heal);
+  spawnPotionFx();
+  if (typeof SFX !== 'undefined' && SFX.heal) SFX.heal(); else if (typeof SFX !== 'undefined' && SFX.pickup) SFX.pickup();
+  toast('🧪 체력 +' + heal, 1200);
+  updateHUD();
+  refreshPotionBtn();
+}
+// 물약 사용 연출: 플레이어 주변에 초록 회복 입자가 위로 떠오름
+const potionParticles = [];
+function spawnPotionFx() {
+  const px = player.obj.position.x, pz = player.obj.position.z;
+  for (let i = 0; i < 10; i++) {
+    const m = new THREE.MeshBasicMaterial({ color: Math.random() > 0.5 ? 0x6cff8a : 0xbfffd0, transparent: true, opacity: 0.9, depthWrite: false, fog: false });
+    const cross = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1 + Math.random() * 0.06, 0), m);
+    const a = (i / 10) * Math.PI * 2 + Math.random() * 0.4;
+    const rr = 0.3 + Math.random() * 0.6;
+    cross.position.set(px + Math.cos(a) * rr, 0.2 + Math.random() * 0.3, pz + Math.sin(a) * rr);
+    scene.add(cross);
+    potionParticles.push({ mesh: cross, mat: m, life: 0.9, maxLife: 0.9, vy: 1.4 + Math.random() * 0.8, spin: (Math.random() - 0.5) * 5 });
+  }
+}
+function updatePotionFx(dt) {
+  for (let i = potionParticles.length - 1; i >= 0; i--) {
+    const p = potionParticles[i];
+    p.life -= dt;
+    if (p.life <= 0) {
+      scene.remove(p.mesh);
+      if (p.mesh.geometry) p.mesh.geometry.dispose(); if (p.mat) p.mat.dispose();
+      potionParticles.splice(i, 1);
+      continue;
+    }
+    const t = p.life / p.maxLife;
+    p.mesh.position.y += p.vy * dt;
+    p.mesh.rotation.x += p.spin * dt; p.mesh.rotation.y += p.spin * dt;
+    p.mat.opacity = t > 0.7 ? (1 - t) / 0.3 * 0.9 : t / 0.7 * 0.9;
+  }
+}
+// 물약 버튼 표시 갱신(개수)
+function refreshPotionBtn() {
+  const btn = document.getElementById('btnPotion');
+  if (!btn) return;
+  const cnt = document.getElementById('potionCount');
+  if (cnt) cnt.textContent = player.potions;
+  btn.classList.toggle('empty', player.potions <= 0);
+}
+
+// ===== 스킬 발동 =====
+// slotIdx: 0 또는 1 (장착 슬롯). 쿨다운 중이거나 미장착이면 무시.
+function useSkill(slotIdx) {
+  if (!player.alive) return;
+  const equipped = (meta.skills && meta.skills.equipped && meta.skills.equipped[selectedChar]) || [null, null];
+  const id = equipped[slotIdx];
+  if (!id) return; // 빈 슬롯
+  if (player.skillCd[slotIdx] > 0) return; // 쿨다운 중
+  const def = SKILL_DEFS[id]; if (!def) return;
+  // 효과 실행(다음 단계에서 직업별 구현). 지금은 스텁 + 쿨다운 진입.
+  const fired = castSkill(id);
+  if (fired !== false) {
+    player.skillCd[slotIdx] = def.cd;
+  }
+}
+// 직업별 스킬 효과(2단계에서 채움). 발동 실패 시 false 반환(쿨다운 안 들어감).
+// ===== 스킬 효과: 공용 범위 피해 헬퍼 =====
+// 플레이어 중심 반경 R 내 적에게 피해. coneDir이 주어지면 그 방향 ±coneCos 안만(부채꼴). 아니면 360°.
+function skillAreaDamage(R, dmgMul, coneDir, coneCos, kbForce) {
+  const px = player.obj.position.x, pz = player.obj.position.z;
+  let hitCount = 0;
+  for (const e of enemies) {
+    if (e.isDead || !e.obj.visible) continue;
+    if ((e.type === 'servantwraith' || e.type === 'icequeen') && (e.swState === 'blinkOut' || e.swState === 'blinkIn')) continue;
+    const dx = e.obj.position.x - px, dz = e.obj.position.z - pz;
+    const d = Math.hypot(dx, dz) || 1;
+    if (d > R + e.radius) continue;
+    if (coneDir) { const dot = (dx * coneDir.x + dz * coneDir.z) / d; if (dot < coneCos) continue; } // 부채꼴 밖
+    // 골렘: 정면 무적(등 뒤만). 휴면 중엔 무효.
+    let dmg = Math.floor((player.atk + 4) * dmgMul);
+    if (e.type === 'golem') {
+      if (!e.golemAwake) { spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale, e.obj.position.z, 0.4); continue; }
+      const fwdX = Math.sin(e.obj.rotation.y), fwdZ = Math.cos(e.obj.rotation.y);
+      const toPX = px - e.obj.position.x, toPZ = pz - e.obj.position.z; const tl = Math.hypot(toPX, toPZ) || 1;
+      const dotG = (fwdX * toPX + fwdZ * toPZ) / tl;
+      if (dotG > -0.6) { spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale * 1.2, e.obj.position.z, 0.5); flashObj(e.obj); continue; }
+      dmg = Math.floor(dmg * 1.5);
+      if (e.limbs && e.limbs._glWeakMat) e.limbs._glWeakMat.emissiveIntensity = 3.0;
+    }
+    // 대장간 치명타도 스킬에 적용
+    const critCh = (typeof smithBonus === 'function') ? smithBonus('crit') : 0;
+    if (critCh > 0 && Math.random() < critCh) dmg = Math.floor(dmg * 1.6);
+    e.hp -= dmg; alertRoom(e);
+    if (kbForce) { e.kbX = (dx / d) * kbForce; e.kbZ = (dz / d) * kbForce; }
+    spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale, e.obj.position.z, dmgMul); flashObj(e.obj);
+    hitCount++;
+    if (e.hp <= 0) killEnemy(e);
+  }
+  return hitCount;
+}
+// 기사 — 돌진 베기: 바라보는 방향으로 돌진(kb 속도) + 경로/도착 지점 전방 적 피해
+function skillKnightDash() {
+  const dirX = -Math.sin(player.yaw), dirZ = -Math.cos(player.yaw);
+  player.kbX = dirX * 38; player.kbZ = dirZ * 38; // 강한 전방 돌진(벽에 막힘·자동 감쇠)
+  // 돌진 직후 전방 부채꼴 피해
+  spawnSlash(1.6); // 검기 이펙트 재사용(강공격 비주얼)
+  skillAreaDamage(TILE * 1.6, 1.8, { x: dirX, z: dirZ }, 0.3, 16); // 전방 넓은 부채꼴
+  if (typeof SFX !== 'undefined' && SFX.swing) SFX.swing();
+  hitStop = 0.05;
+  return true;
+}
+// 기사 — 회전 베기: 제자리 360° 광역 피해
+function skillKnightSpin() {
+  // 회전 검기 비주얼(여러 방향 검기)
+  const baseYaw = player.yaw;
+  for (let k = 0; k < 4; k++) { player.yaw = baseYaw + k * (Math.PI / 2); spawnSlash(1.4); }
+  player.yaw = baseYaw;
+  skillAreaDamage(TILE * 1.7, 1.5, null, 0, 18); // 360° 전방위
+  if (typeof spawnShockwave === 'function') spawnShockwave(player.obj.position.x, player.obj.position.z, TILE * 1.7);
+  if (typeof SFX !== 'undefined' && SFX.swing) SFX.swing();
+  hitStop = 0.06;
+  return true;
+}
+
+// 번개 아크 이펙트(두 점 사이 가는 발광 실린더) — parryRings로 수명 관리
+function spawnLightningArc(x1, y1, z1, x2, y2, z2) {
+  // 두 점 사이를 여러 분절로 나눠 지그재그(번개답게). 각 분절은 가는 발광 실린더.
+  const start = new THREE.Vector3(x1, y1, z1), end = new THREE.Vector3(x2, y2, z2);
+  const total = start.distanceTo(end) || 0.1;
+  const SEG = Math.max(3, Math.min(7, Math.floor(total / 1.2)));
+  const dir = new THREE.Vector3().subVectors(end, start).normalize();
+  // 분절 경로 점들(중간 점들은 경로에서 수직으로 살짝 어긋남)
+  const up = new THREE.Vector3(0, 1, 0);
+  const side = new THREE.Vector3().crossVectors(dir, up).normalize();
+  if (side.lengthSq() < 0.01) side.set(1, 0, 0);
+  const side2 = new THREE.Vector3().crossVectors(dir, side).normalize();
+  const pts = [start.clone()];
+  for (let i = 1; i < SEG; i++) {
+    const f = i / SEG;
+    const p = new THREE.Vector3().lerpVectors(start, end, f);
+    const jitter = (total / SEG) * 0.5;
+    p.addScaledVector(side, (Math.random() - 0.5) * jitter);
+    p.addScaledVector(side2, (Math.random() - 0.5) * jitter);
+    pts.push(p);
+  }
+  pts.push(end.clone());
+  const mat = new THREE.MeshBasicMaterial({ color: 0xbfe8ff, transparent: true, opacity: 1.0, fog: false, depthWrite: false });
+  const matCore = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, fog: false, depthWrite: false });
+  const grp = new THREE.Group();
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const seg = new THREE.Vector3().subVectors(b, a);
+    const len = seg.length() || 0.1;
+    // 바깥(굵은 하늘색) + 코어(가는 흰색) 이중
+    const outer = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, len, 5), mat);
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, len, 4), matCore);
+    const mid = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5);
+    outer.position.copy(mid); core.position.copy(mid);
+    const q = new THREE.Quaternion().setFromUnitVectors(up, seg.clone().normalize());
+    outer.quaternion.copy(q); core.quaternion.copy(q);
+    grp.add(outer); grp.add(core);
+  }
+  scene.add(grp);
+  parryRings.push({ mesh: grp, mat, life: 0.32, delay: 0, scale: 1, grow: 0, isLightning: true, fade: 3.0 }); // 번개는 짧게 번쩍
+}
+// 번개 타격 지점: 위로 튀는 푸른 전기 스파크(폭발 파티클 대신 번개 느낌)
+function spawnLightningSpark(x, y, z) {
+  for (let i = 0; i < 7; i++) {
+    const m = new THREE.MeshBasicMaterial({ color: Math.random() > 0.4 ? 0xbfe8ff : 0xffffff, transparent: true, opacity: 1.0, depthWrite: false, fog: false });
+    const s = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.0, 0.4 + Math.random() * 0.3, 4), m);
+    s.renderOrder = 999;
+    s.position.set(x, y, z);
+    const a = Math.random() * Math.PI * 2;
+    const sp = 3 + Math.random() * 4;
+    const vx = Math.cos(a) * sp, vy = 4 + Math.random() * 5, vz = Math.sin(a) * sp;
+    // 스파크는 길쭉하게 진행 방향으로 향함
+    s.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+    scene.add(s); particles.push({ mesh: s, vx, vy, vz, life: 0.6 });
+  }
+}
+// 마법사 — 연쇄 번개: 가까운 적부터 시작해 인접 적으로 튕김(최대 5명), 점점 약해짐
+function skillMageChain() {
+  const px = player.obj.position.x, pz = player.obj.position.z;
+  const MAX_JUMPS = 5, JUMP_RANGE = TILE * 4;
+  const hit = new Set();
+  // 첫 표적: 플레이어 기준 가장 가까운 적
+  let cur = null, curD = Infinity;
+  for (const e of enemies) {
+    if (e.isDead || !e.obj.visible || hit.has(e)) continue;
+    if ((e.type === 'servantwraith' || e.type === 'icequeen') && (e.swState === 'blinkOut' || e.swState === 'blinkIn')) continue;
+    const d = Math.hypot(e.obj.position.x - px, e.obj.position.z - pz);
+    if (d < curD && d < TILE * 7) { curD = d; cur = e; }
+  }
+  if (!cur) { return false; } // 사거리 내 적 없음 → 발동 안 함(쿨다운 안 들어감)
+  let fromX = px, fromY = player.obj.position.y + 1.1, fromZ = pz;
+  let dmgMul = 1.6;
+  for (let j = 0; j < MAX_JUMPS && cur; j++) {
+    // 아크
+    spawnLightningArc(fromX, fromY, fromZ, cur.obj.position.x, cur.obj.position.y + cur.scale, cur.obj.position.z);
+    // 피해
+    let dmg = Math.floor((player.atk + 4) * dmgMul);
+    const critCh = (typeof smithBonus === 'function') ? smithBonus('crit') : 0;
+    if (critCh > 0 && Math.random() < critCh) dmg = Math.floor(dmg * 1.6);
+    cur.hp -= dmg; alertRoom(cur);
+    spawnLightningSpark(cur.obj.position.x, cur.obj.position.y + cur.scale, cur.obj.position.z); flashObj(cur.obj);
+    hit.add(cur);
+    if (cur.hp <= 0) killEnemy(cur);
+    // 다음 표적: 현재 적 기준 가장 가까운 미타격 적
+    const cx = cur.obj.position.x, cz = cur.obj.position.z;
+    let next = null, nd = Infinity;
+    for (const e of enemies) {
+      if (e.isDead || !e.obj.visible || hit.has(e)) continue;
+      if ((e.type === 'servantwraith' || e.type === 'icequeen') && (e.swState === 'blinkOut' || e.swState === 'blinkIn')) continue;
+      const d = Math.hypot(e.obj.position.x - cx, e.obj.position.z - cz);
+      if (d < nd && d < JUMP_RANGE) { nd = d; next = e; }
+    }
+    fromX = cx; fromY = cur.obj.position.y + cur.scale; fromZ = cz;
+    cur = next; dmgMul *= 0.82; // 튕길수록 약화
+  }
+  if (typeof SFX !== 'undefined' && SFX.glint) SFX.glint();
+  return true;
+}
+// 마법사 — 순간이동: 바라보는 방향으로 블링크(벽이면 가능한 만큼)
+function skillMageBlink() {
+  const dirX = -Math.sin(player.yaw), dirZ = -Math.cos(player.yaw);
+  const MAXD = TILE * 2.15; // 최대 순간이동 거리(기존 3.2의 약 2/3)
+  const sx = player.obj.position.x, sz = player.obj.position.z;
+  // 목적지에서 뒤로 물러나며 통행 가능한 가장 먼 지점 탐색
+  let destX = sx, destZ = sz;
+  for (let dd = MAXD; dd >= TILE * 0.5; dd -= TILE * 0.4) {
+    const tx = sx + dirX * dd, tz = sz + dirZ * dd;
+    const gx = Math.round(tx / TILE + MAP_W / 2), gy = Math.round(tz / TILE + MAP_H / 2);
+    if (dungeon && dungeon.grid && dungeon.grid[gy] && dungeon.grid[gy][gx] === 1) { destX = tx; destZ = tz; break; }
+  }
+  if (destX === sx && destZ === sz) return false; // 갈 곳 없음 → 발동 안 함
+  spawnBlinkFx(sx, sz);        // 출발 지점 연출
+  player.obj.position.x = destX; player.obj.position.z = destZ;
+  spawnBlinkFx(destX, destZ);  // 도착 지점 연출
+  player.kbX = 0; player.kbZ = 0; // 잔여 속도 제거
+  if (typeof SFX !== 'undefined' && SFX.glint) SFX.glint();
+  return true;
+}
+
+// 궁수 — 관통 사격: 강한 화살 1발이 일직선 모든 적을 관통(pierce)
+// 관통 화살 궤적 잔상: 화살이 지나간 자리에 짧은 노란 발광 조각이 남았다 빠르게 사라짐
+const pierceTrails = [];
+function spawnPierceTrail(x, y, z, dirX, dirZ) {
+  const m = new THREE.MeshBasicMaterial({ color: 0xffe070, transparent: true, opacity: 0.7, fog: false, depthWrite: false });
+  const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 1.0, 6), m);
+  // 진행 방향으로 눕힘
+  const ang = Math.atan2(dirX, dirZ);
+  seg.rotation.x = Math.PI / 2; seg.rotation.z = 0; seg.rotation.y = ang;
+  seg.position.set(x, y, z);
+  scene.add(seg);
+  pierceTrails.push({ mesh: seg, mat: m, life: 0.28, maxLife: 0.28 });
+}
+function updatePierceTrails(dt) {
+  for (let i = pierceTrails.length - 1; i >= 0; i--) {
+    const p = pierceTrails[i];
+    p.life -= dt;
+    if (p.life <= 0) {
+      scene.remove(p.mesh);
+      if (p.mesh.geometry) p.mesh.geometry.dispose(); if (p.mat) p.mat.dispose();
+      pierceTrails.splice(i, 1);
+      continue;
+    }
+    const t = p.life / p.maxLife;
+    p.mat.opacity = t * 0.7;
+    p.mesh.scale.set(t, 1, t); // 굵기가 점점 가늘어지며 사라짐
+  }
+}
+
+function skillArcherPierce() {
+  const dirX = -Math.sin(player.yaw), dirZ = -Math.cos(player.yaw);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xfff0a0, transparent: true, opacity: 1.0, fog: false, depthWrite: false });
+  const grp = new THREE.Group();
+  grp.add(new THREE.Mesh(arrowShaftGeo, mat));
+  const tip = new THREE.Mesh(arrowTipGeo, mat); tip.position.z = -0.44; grp.add(tip);
+  // 빛나는 발광 오라(반투명, 화살을 감싸 더 굵고 강해 보임)
+  const auraMat = new THREE.MeshBasicMaterial({ color: 0xffd24a, transparent: true, opacity: 0.4, fog: false, depthWrite: false });
+  const aura = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.12, 1.6, 6), auraMat);
+  aura.rotation.x = Math.PI / 2; aura.position.z = -0.2; grp.add(aura);
+  // 더 굵고 길게(관통 사격 느낌)
+  grp.scale.set(1.7, 1.7, 2.6);
+  const startX = player.obj.position.x + dirX * 0.8, startZ = player.obj.position.z + dirZ * 0.8;
+  grp.position.set(startX, player.obj.position.y + 1.1, startZ);
+  grp.rotation.y = player.yaw;
+  scene.add(grp);
+  // 발사 섬광(발사 지점에 짧은 노란 충격 링 + 전방 스파크)
+  spawnPierceMuzzle(startX, player.obj.position.y + 1.1, startZ, dirX, dirZ);
+  slashes.push({
+    mesh: grp, mat, vx: dirX * 48, vz: dirZ * 48, dirX, dirZ,  // 속도 32→48(더 빠르게)
+    traveled: 0, range: TILE * 9, damage: Math.floor((player.atk + 4) * 2.2),
+    radius: 0.6, hitSet: new Set(), life: 1.0, power: 1.6, screenCull: false,
+    pierce: true, // 관통
+    trail: true, trailY: player.obj.position.y + 1.1 // 궤적 잔상
+  });
+  if (typeof SFX !== 'undefined' && SFX.swing) SFX.swing();
+  return true;
+}
+// 관통 화살 발사 섬광: 발사 지점에 노란 링 + 전방 스파크
+function spawnPierceMuzzle(x, y, z, dirX, dirZ) {
+  const m = new THREE.MeshBasicMaterial({ color: 0xfff0a0, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false, fog: false });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.6, 14), m);
+  ring.position.set(x, y, z);
+  ring.lookAt(x + dirX, y, z + dirZ); // 진행 방향을 향한 링
+  scene.add(ring);
+  parryRings.push({ mesh: ring, mat: m, life: 0.22, delay: 0, scale: 1, grow: 6, fade: 4.5 });
+  // 전방으로 튀는 스파크
+  for (let i = 0; i < 6; i++) {
+    const sm = new THREE.MeshBasicMaterial({ color: Math.random() > 0.4 ? 0xfff0a0 : 0xffffff, transparent: true, opacity: 1.0, depthWrite: false, fog: false });
+    const s = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.0, 0.35, 4), sm);
+    s.renderOrder = 999; s.position.set(x, y, z);
+    const spread = (Math.random() - 0.5) * 0.8;
+    const vx = (dirX + spread) * (8 + Math.random() * 6), vz = (dirZ + spread) * (8 + Math.random() * 6);
+    s.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+    scene.add(s); particles.push({ mesh: s, vx, vy: Math.random() * 2 - 1, vz, life: 0.4 });
+  }
+}
+// 궁수 — 화살 비: 전방 지점에 화살이 쏟아지는 지역 장판
+// 지점 조준 스킬(화살 비 등)의 드래그 착탄 위치 + 미리보기 링
+let skillAimActive = false, skillAimX = 0, skillAimZ = 0, skillAimRing = null;
+function showAimRing(x, z, radius) {
+  if (!skillAimRing) {
+    const g = new THREE.Group();
+    const m1 = new THREE.MeshBasicMaterial({ color: 0xaed46a, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false, fog: false });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(radius * 0.82, radius, 28), m1);
+    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.08; g.add(ring);
+    const m2 = new THREE.MeshBasicMaterial({ color: 0xcfe8a0, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false, fog: false });
+    const fill = new THREE.Mesh(new THREE.CircleGeometry(radius, 24), m2);
+    fill.rotation.x = -Math.PI / 2; fill.position.y = 0.06; g.add(fill);
+    scene.add(g);
+    skillAimRing = { grp: g };
+  }
+  skillAimRing.grp.position.set(x, 0, z);
+  skillAimRing.grp.visible = true;
+}
+function hideAimRing() { if (skillAimRing) skillAimRing.grp.visible = false; }
+
+function skillArcherRain() {
+  let cx, cz;
+  if (skillAimActive) { cx = skillAimX; cz = skillAimZ; } // 드래그로 찍은 지점
+  else { const dirX = -Math.sin(player.yaw), dirZ = -Math.cos(player.yaw); const dist = TILE * 3.5; cx = player.obj.position.x + dirX * dist; cz = player.obj.position.z + dirZ * dist; }
+  spawnArrowRain(cx, cz, TILE * 1.8, Math.floor((player.atk + 4) * 0.5));
+  if (typeof SFX !== 'undefined' && SFX.swing) SFX.swing();
+  return true;
+}
+// 화살 비 zone 생성: 텔레그래프 후 화살이 쏟아지며 지역 내 적에게 주기 피해
+function spawnArrowRain(x, z, radius, dmg) {
+  const grp = new THREE.Group(); grp.position.set(x, 0, z);
+  const teleMat = new THREE.MeshBasicMaterial({ color: 0xcfe8a0, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false, fog: false });
+  const tele = new THREE.Mesh(new THREE.RingGeometry(radius * 0.85, radius, 28), teleMat);
+  tele.rotation.x = -Math.PI / 2; tele.position.y = 0.06; grp.add(tele);
+  const fillMat = new THREE.MeshBasicMaterial({ color: 0xaed46a, transparent: true, opacity: 0.0, side: THREE.DoubleSide, depthWrite: false, fog: false });
+  const fill = new THREE.Mesh(new THREE.CircleGeometry(radius, 24), fillMat);
+  fill.rotation.x = -Math.PI / 2; fill.position.y = 0.05; grp.add(fill);
+  // 떨어지는 화살 비주얼(여러 개, 위에서 아래로)
+  const drops = [];
+  for (let k = 0; k < 10; k++) {
+    const a = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random()) * radius;
+    const d = new THREE.Mesh(arrowShaftGeo, new THREE.MeshBasicMaterial({ color: 0xeae0c8, transparent: true, opacity: 0.0, fog: false, depthWrite: false }));
+    d.rotation.x = Math.PI / 2; // 아래로
+    d.position.set(Math.cos(a) * rr, 4 + Math.random() * 2, Math.sin(a) * rr);
+    grp.add(d); drops.push({ mesh: d, baseX: Math.cos(a) * rr, baseZ: Math.sin(a) * rr, speed: 8 + Math.random() * 6 });
+  }
+  scene.add(grp);
+  arrowRains.push({ grp, tele, teleMat, fill, fillMat, drops, x, z, radius, dmg: dmg || 8, state: 'telegraph', tTimer: 0.6, aTimer: 1.8, hitCd: 0 });
+}
+function updateArrowRains(dt) {
+  for (let i = arrowRains.length - 1; i >= 0; i--) {
+    const r = arrowRains[i];
+    if (r.state === 'telegraph') {
+      r.tTimer -= dt;
+      r.teleMat.opacity = 0.3 + Math.abs(Math.sin(performance.now() * 0.012)) * 0.4; // 점멸
+      if (r.tTimer <= 0) { r.state = 'active'; r.fillMat.opacity = 0.35; for (const d of r.drops) d.mesh.material.opacity = 0.9; }
+    } else if (r.state === 'active') {
+      r.aTimer -= dt; r.hitCd -= dt;
+      // 떨어지는 화살 애니메이션
+      for (const d of r.drops) {
+        d.mesh.position.y -= d.speed * dt;
+        if (d.mesh.position.y < 0.1) { d.mesh.position.y = 4 + Math.random() * 2; } // 재낙하
+      }
+      r.teleMat.opacity = 0.4;
+      // 주기 피해(0.35초마다)
+      if (r.hitCd <= 0) {
+        r.hitCd = 0.35;
+        for (const e of enemies) {
+          if (e.isDead || !e.obj.visible) continue;
+          if ((e.type === 'servantwraith' || e.type === 'icequeen') && (e.swState === 'blinkOut' || e.swState === 'blinkIn')) continue;
+          const dd = Math.hypot(e.obj.position.x - r.x, e.obj.position.z - r.z);
+          if (dd < r.radius + e.radius) {
+            let dmg = r.dmg;
+            const critCh = (typeof smithBonus === 'function') ? smithBonus('crit') : 0;
+            if (critCh > 0 && Math.random() < critCh) dmg = Math.floor(dmg * 1.6);
+            e.hp -= dmg; alertRoom(e); flashObj(e.obj);
+            if (e.hp <= 0) killEnemy(e);
+          }
+        }
+      }
+      if (r.aTimer <= 0) { // 소멸
+        scene.remove(r.grp);
+        r.grp.traverse(o => { if (o.geometry && o.geometry !== arrowShaftGeo && o.geometry !== arrowTipGeo) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+        arrowRains.splice(i, 1);
+      }
+    }
+  }
+}
+
+function castSkill(id) {
+  switch (id) {
+    case 'knight_dash': return skillKnightDash();
+    case 'knight_spin': return skillKnightSpin();
+    case 'mage_chain': return skillMageChain();
+    case 'mage_blink': return skillMageBlink();
+    case 'archer_pierce': return skillArcherPierce();
+    case 'archer_rain': return skillArcherRain();
+    default:
+      toast('✦ ' + (SKILL_DEFS[id] ? SKILL_DEFS[id].name : '스킬') + ' (효과 준비 중)', 800);
+      return true;
+  }
+}
+// 쿨다운 감소(매 프레임)
+function updateSkillCooldowns(dt) {
+  for (let i = 0; i < player.skillCd.length; i++) {
+    if (player.skillCd[i] > 0) player.skillCd[i] = Math.max(0, player.skillCd[i] - dt);
+  }
+  refreshSkillButtons();
+}
+// 스킬 버튼 아이콘/쿨다운 표시 갱신
+function refreshSkillButtons() {
+  if (!isTouchDevice) return;
+  const equipped = (meta.skills && meta.skills.equipped && meta.skills.equipped[selectedChar]) || [null, null];
+  for (let i = 0; i < 2; i++) {
+    const btn = document.getElementById('btnSkill' + (i + 1));
+    if (!btn) continue;
+    const id = equipped[i];
+    const iconEl = btn.querySelector('.skill-icon');
+    const cdEl = document.getElementById('skill' + (i + 1) + 'Cd');
+    if (!id) { btn.style.display = 'none'; continue; }
+    btn.style.display = 'flex';
+    const def = SKILL_DEFS[id];
+    if (iconEl) iconEl.textContent = def ? def.icon : '✦';
+    const cd = player.skillCd[i];
+    if (cd > 0) { btn.classList.add('cooling'); if (cdEl) cdEl.textContent = Math.ceil(cd); }
+    else { btn.classList.remove('cooling'); if (cdEl) cdEl.textContent = ''; }
+  }
 }
 
 function dealSwingDamage(multiplier) {
@@ -8134,7 +8975,9 @@ function applyStat(stat, amount) {
 
 let rewardPaused = false;
 let bossTestMode = false;     // 보스 테스트(무적) 모드 여부
-let godMode = false;          // 만렙 테스트 캐릭터(무적 + 스태미나 무한, 일반 던전 탐험용)
+let godMode = false;          // 만렙 테스트 캐릭터(일반 난이도 + 재료·골드 무한, 무적은 godInvuln으로 별도 토글)
+let godInvuln = false;        // 무적(체력 무한) 토글 — 만렙 모드에서 껐다 켰다
+let lastResultTestMode = false; // 직전 결과 화면이 테스트 모드 죽음이었는지(복귀 흐름 결정)
 function openBossReward() {
   // 선택 없이 4가지 능력치 중 하나를 랜덤으로 즉시 강화(꽝 없음).
   const k = STAT_KEYS[Math.floor(Math.random() * STAT_KEYS.length)];
@@ -8191,7 +9034,7 @@ function damagePlayer(amount, enemyObj) {
   if (!enemyObj) {
     player.hp -= Math.max(1, amount); player.hurtCooldown = 0.4; player.hitThisFloor = true;
     $('hurt').style.opacity = '1'; setTimeout(() => { $('hurt').style.opacity = '0'; }, 150);
-    if ((bossTestMode || godMode) && player.hp <= 0) player.hp = 1;
+    if ((bossTestMode || godInvuln) && player.hp <= 0) player.hp = 1;
     updateHUD(); if (player.hp <= 0) die();
     return;
   }
@@ -8232,7 +9075,7 @@ function damagePlayer(amount, enemyObj) {
   SFX.hurt(); // 피격음
   player.hp -= amount; player.hurtCooldown = 0.5; player.hitThisFloor = true; $('hurt').style.opacity = '1'; setTimeout(() => { $('hurt').style.opacity = '0'; }, 150);
   if (typeof smithThorns === 'function') smithThorns(enemyObj); // 마그마 핵: 실제 피격 시 화염 반격
-  if ((bossTestMode || godMode) && player.hp <= 0) player.hp = 1; // 테스트/만렙 모드: 죽지 않음
+  if ((bossTestMode || godInvuln) && player.hp <= 0) player.hp = 1; // 테스트/만렙 모드: 죽지 않음
   updateHUD(); if (player.hp <= 0) die();
 }
 
@@ -8243,7 +9086,7 @@ function hurtPlayerEnv(amount) {
   SFX.hurt();
   player.hp -= amount; player.hurtCooldown = 0.5; player.hitThisFloor = true;
   $('hurt').style.opacity = '1'; setTimeout(() => { $('hurt').style.opacity = '0'; }, 150);
-  if ((bossTestMode || godMode) && player.hp <= 0) player.hp = 1; // 테스트/만렙 모드: 죽지 않음
+  if ((bossTestMode || godInvuln) && player.hp <= 0) player.hp = 1; // 테스트/만렙 모드: 죽지 않음
   updateHUD(); if (player.hp <= 0) die();
 }
 
@@ -8372,6 +9215,13 @@ function update(dt) {
   updateAbsoluteZeroTelegraphs(dt);
   updateAbsoluteZeroBursts(dt);
   if (typeof updateSmithFrostWard === 'function') updateSmithFrostWard(dt); // 대장간 서리 방어막 충전
+  if (typeof updateWardSphere === 'function') updateWardSphere(dt); // 서리 방어막 구체 이펙트
+  if (typeof updateFrostReadyFx === 'function') updateFrostReadyFx(dt); // 서리 방어막 준비 입자
+  if (typeof updatePotionFx === 'function') updatePotionFx(dt); // 물약 회복 입자
+  if (typeof updatePierceTrails === 'function') updatePierceTrails(dt); // 관통 화살 궤적 잔상
+  if (typeof updateBurnEffects === 'function') updateBurnEffects(dt); // 마그마 핵 화염 반격(적 불타는 이펙트)
+  if (typeof updateSkillCooldowns === 'function') updateSkillCooldowns(dt); // 스킬 쿨다운
+  if (typeof updateArrowRains === 'function') updateArrowRains(dt); // 궁수 화살 비
   updateCollapseTraps(dt);
   updateBossRocks(dt);
   updateSlashes(dt);
@@ -8861,6 +9711,62 @@ function update(dt) {
         e.attackCd = Math.max(0, e.attackCd - dt);
         continue;
       }
+      // 일반 오크: 막 발견한 순간, 거리가 있으면 점프 도약으로 플레이어에게 덮침(첫 1회)
+      if (e.type === 'orc' && !e.isBoss && !e.orcLeapDone && e.orcLeap === 'none' && d > TILE * 2 && d < TILE * 6) {
+        e.orcLeap = 'crouch'; e.orcLeapTimer = 0.35; // 짧게 웅크렸다 도약
+        e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
+      }
+    }
+
+    // ===== 일반 오크: 점프 도약(갭클로저) — 발견 시 1회, 웅크림→포물선 도약→착지 =====
+    if (e.type === 'orc' && !e.isBoss && e.orcLeap !== 'none' && e.frozen <= 0) {
+      if (e.orcLeap === 'crouch') {
+        e.orcLeapTimer -= dt;
+        const tp = Math.max(0, Math.min(1, (0.35 - e.orcLeapTimer) / 0.35));
+        e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
+        if (e.limbs.legR) { e.limbs.legR.rotation.x = tp * 0.7; e.limbs.legL.rotation.x = tp * 0.7; }
+        if (e.limbs.armR) e.limbs.armR.rotation.x = -tp * 0.6;
+        if (e.limbs.armL) e.limbs.armL.rotation.x = -tp * 0.6;
+        if (e.orcLeapTimer <= 0) {
+          // 도약 시작: 플레이어 약간 못 미치는 지점까지(바짝 붙되 겹치지 않게)
+          const dd = d || 1;
+          const land = Math.max(0, d - (e.radius + player.radius + 0.3)); // 착지 목표 거리
+          const reach = Math.min(land, TILE * 6); // 도약 사거리 상한
+          e.orcLeapVx = (dx / dd) * reach; e.orcLeapVz = (dz / dd) * reach; // 0.5초에 걸쳐 이동할 총 변위
+          e.orcLeap = 'air'; e.orcLeapTimer = 0.5; e.orcLeapHit = false;
+          SFX.swing && SFX.swing();
+        }
+        continue;
+      } else if (e.orcLeap === 'air') {
+        e.orcLeapTimer -= dt;
+        const remain = Math.max(0, e.orcLeapTimer), prog = 1 - remain / 0.5; // 0→1
+        // 수평 이동(균등) — 벽 충돌 체크
+        const step = dt / 0.5;
+        const ndx = e.orcLeapVx * step, ndz = e.orcLeapVz * step;
+        let bx = false, bz = false;
+        for (const w of walls) {
+          if (!bx && Math.abs(e.obj.position.x + ndx - w.x) < w.halfW + e.radius && Math.abs(e.obj.position.z - w.z) < w.halfD + e.radius) bx = true;
+          if (!bz && Math.abs(e.obj.position.x - w.x) < w.halfW + e.radius && Math.abs(e.obj.position.z + ndz - w.z) < w.halfD + e.radius) bz = true;
+        }
+        if (!bx) e.obj.position.x += ndx; if (!bz) e.obj.position.z += ndz;
+        // 포물선 높이(sin)
+        e.obj.position.y = e.baseY + Math.sin(prog * Math.PI) * 1.8 * e.scale;
+        e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
+        // 착지 직전 플레이어와 닿으면 1회 덮침 피해
+        if (!e.orcLeapHit && d < e.radius + player.radius + 0.5) {
+          e.orcLeapHit = true;
+          damagePlayer(e.damage, e);
+        }
+        if (e.orcLeapTimer <= 0 || bx || bz) {
+          e.obj.position.y = e.baseY; e.orcLeap = 'none'; e.orcLeapDone = true;
+          if (typeof spawnShockwave === 'function') spawnShockwave(e.obj.position.x, e.obj.position.z, TILE * 0.5);
+          if (e.limbs.legR) { e.limbs.legR.rotation.x = 0; e.limbs.legL.rotation.x = 0; }
+          if (e.limbs.armR) e.limbs.armR.rotation.x = 0;
+          if (e.limbs.armL) e.limbs.armL.rotation.x = 0;
+          e.attackCd = 0.2; // 착지 직후 곧 공격
+        }
+        continue;
+      }
     }
 
     // ===== 보스 특수 패턴 =====
@@ -8878,7 +9784,7 @@ function update(dt) {
         const tp = (0.8 - e.dashTimer) / 0.8; // 0→1 진행도
         // 예비동작: 플레이어를 계속 노려보며, 뒤로 웅크렸다가 솟구칠 듯 몸을 낮춘다(큰 경고).
         e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI; // 표적 향해 고정
-        e.obj.position.y = e.baseY - Math.sin(tp * Math.PI) * 0.5 * e.scale; // 덩치에 비례해 크게 웅크림
+        e.obj.position.y = e.baseY; // 발은 땅에 고정(파고들지 않게) — 웅크림은 다리 굽힘으로 표현
         // 살짝 뒤로 물러나며 힘을 모으는 느낌(플레이어 반대 방향으로 약간)
         const u = d || 1;
         const back = Math.sin(tp * Math.PI) * 0.04 * e.scale;
@@ -8887,8 +9793,10 @@ function update(dt) {
         const armBack = -Math.sin(tp * Math.PI) * 0.9;
         if (e.limbs.armR) e.limbs.armR.rotation.x = armBack;
         if (e.limbs.armL) e.limbs.armL.rotation.x = armBack;
-        // 다리도 웅크려 굽힘
-        if (e.limbs.legR) { e.limbs.legR.rotation.x = Math.sin(tp * Math.PI) * 0.4; e.limbs.legL.rotation.x = Math.sin(tp * Math.PI) * 0.4; }
+        // 다리를 깊게 굽혀 웅크림 표현(몸이 낮아 보이게, 발은 바닥 유지)
+        if (e.limbs.legR) { e.limbs.legR.rotation.x = Math.sin(tp * Math.PI) * 0.8; e.limbs.legL.rotation.x = Math.sin(tp * Math.PI) * 0.8; }
+        // 상체(있으면)를 앞으로 살짝 숙여 돌진 직전 긴장감
+        if (e.limbs.torso) e.limbs.torso.rotation.x = Math.sin(tp * Math.PI) * 0.3;
         if (e.dashTimer <= 0) {
           // 돌진 시작: 현재 플레이어 방향으로 속도 고정(돌진 중엔 방향 안 바뀜)
           const dd = d || 1;
@@ -8896,6 +9804,10 @@ function update(dt) {
           e.dashVx = (dx / dd) * e.speed * 6.0; // 평소 속도의 6배로 돌진
           e.dashVz = (dz / dd) * e.speed * 6.0;
           e.obj.position.y = e.baseY;
+          // 준비자세에서 굽힌 상체·팔 복원(굽은 채 남지 않게)
+          if (e.limbs.torso) e.limbs.torso.rotation.x = 0;
+          if (e.limbs.armR) e.limbs.armR.rotation.x = 0;
+          if (e.limbs.armL) e.limbs.armL.rotation.x = 0;
         }
         continue; // 예비동작 중엔 일반 이동/공격 로직이 위치·팔다리를 덮어쓰지 않게 건너뜀
       } else if (e.dashState === 'dashing') {
@@ -10164,9 +11076,9 @@ function update(dt) {
 function descend() {
   if (!player.hitThisFloor) player.noHitFloors++; player.hitThisFloor = false;
   // 막 사이 쉼터: 30층(보스)을 클리어하면 다음 층 대신 여행자의 쉼터로 진입
-  if (player.floor === 30) { meta.restUnlocked = true; saveMeta(); restIsFinal = false; enterRest(true); return; }
+  if (player.floor === 30) { meta.restUnlocked = true; saveMeta(); restIsFinal = false; player.potions++; toast('🧪 회복 물약 +1 (1막 클리어!)', 2500); enterRest(true); return; }
   // 60층(2막 최종 보스=얼음 여왕) 클리어: 현재 콘텐츠의 끝 → 쉼터로(아직 3막 미구현, 입구 막힘 안내)
-  if (player.floor === 60) { restIsFinal = true; enterRest(true); return; }
+  if (player.floor === 60) { restIsFinal = true; player.potions++; toast('🧪 회복 물약 +1 (2막 클리어!)', 2500); enterRest(true); return; }
   player.floor += 1; toast('▼ Floor ' + player.floor); player.hp = Math.min(player.hpMax, player.hp + 25); startFloor(); updateFloorJumpPanel();
 }
 function startFloor() {
@@ -10219,6 +11131,7 @@ const UPGRADE_DEFS = [
   { key: 'sta',   name: '최대 스태미나', desc: '레벨당 +10',     icon: '⚡', baseCost: 60,  growth: 1.55, max: 10 },
   { key: 'speed', name: '이동 속도',    desc: '레벨당 +0.25',   icon: '🥾', baseCost: 80,  growth: 1.7,  max: 4 },
   { key: 'gold',  name: '골드 획득량', desc: '레벨당 골드 +8%', icon: '💰', baseCost: 100, growth: 1.85, max: 8 },
+  { key: 'potion', name: '물약 효능', desc: '레벨당 회복 +8%', icon: '🧪', baseCost: 90, growth: 1.7, max: 6 },
 ];
 let meta = { gold: 0, upgrades: {} };
 function loadMeta() {
@@ -10250,6 +11163,13 @@ function loadMeta() {
   if (!meta.smith || typeof meta.smith !== 'object') meta.smith = {};
   if (!meta.smith.crafted || typeof meta.smith.crafted !== 'object') meta.smith.crafted = {};
   if (!meta.smith.equipped || typeof meta.smith.equipped !== 'object') meta.smith.equipped = { weapon: null, armor: null, trinket1: null, trinket2: null };
+  // 스킬: owned=구매한 스킬 id 목록, equipped=캐릭터별 장착 2슬롯
+  if (!meta.skills || typeof meta.skills !== 'object') meta.skills = {};
+  if (!Array.isArray(meta.skills.owned)) meta.skills.owned = [];
+  if (!meta.skills.equipped || typeof meta.skills.equipped !== 'object') meta.skills.equipped = {};
+  for (const c of ['knight', 'mage', 'archer']) {
+    if (!Array.isArray(meta.skills.equipped[c])) meta.skills.equipped[c] = [null, null];
+  }
 }
 function saveMeta() {
   try { localStorage.setItem('dungeon_meta', JSON.stringify(meta)); } catch (e) {}
@@ -10270,21 +11190,37 @@ const MATERIAL_INFO = {
 // 장비 정의: slot(weapon/armor/trinket), mat(재료 id), craftCost(제작 골드), upCostMat/upCostGold(레벨업 비용), maxLevel, stat(효과 키), per(레벨당 수치), 설명
 const SMITH_ITEMS = {
   // --- 1막: 기본 능력치 ---
-  fang_blade:   { name: '날카로운 송곳니', icon: '🗡️', slot: 'weapon', mat: 'goblin_fang', craftMat: 3, craftGold: 120, upMat: 2, upGold: 100, maxLevel: 5, stat: 'crit', per: 0.04, act: 1,
+  fang_blade:   { name: '날카로운 송곳니', icon: '🗡️', slot: 'weapon', mat: 'goblin_fang', craftMat: 1, craftGold: 120, upMat: 2, upGold: 100, maxLevel: 5, stat: 'crit', per: 0.04, act: 1,
                   desc: lv => '치명타 확률 +' + Math.round(lv * 4) + '%' },
-  bone_plate:   { name: '뼈 흉갑', icon: '🛡️', slot: 'armor', mat: 'bone_shard', craftMat: 3, craftGold: 120, upMat: 2, upGold: 100, maxLevel: 5, stat: 'defense', per: 0.04, act: 1,
+  bone_plate:   { name: '뼈 흉갑', icon: '🛡️', slot: 'armor', mat: 'bone_shard', craftMat: 1, craftGold: 120, upMat: 2, upGold: 100, maxLevel: 5, stat: 'defense', per: 0.04, act: 1,
                   desc: lv => '받는 피해 -' + Math.round(lv * 4) + '%' },
-  orc_belt:     { name: '오크 군장의 허리띠', icon: '🟫', slot: 'trinket', mat: 'orc_hide', craftMat: 3, craftGold: 150, upMat: 2, upGold: 120, maxLevel: 5, stat: 'staregen', per: 0.15, act: 1,
+  orc_belt:     { name: '오크 군장의 허리띠', icon: '🟫', slot: 'trinket', mat: 'orc_hide', craftMat: 1, craftGold: 150, upMat: 2, upGold: 120, maxLevel: 5, stat: 'staregen', per: 0.15, act: 1,
                   desc: lv => '스태미나 회복 +' + Math.round(lv * 15) + '%' },
   // --- 2막: 특수 능력 ---
-  wraith_seal:  { name: '망령의 인장', icon: '💠', slot: 'trinket', mat: 'candle_wax', craftMat: 3, craftGold: 300, upMat: 2, upGold: 250, maxLevel: 5, stat: 'killburst', per: 0.06, act: 2,
+  wraith_seal:  { name: '망령의 인장', icon: '💠', slot: 'trinket', mat: 'candle_wax', craftMat: 1, craftGold: 300, upMat: 2, upGold: 250, maxLevel: 5, stat: 'killburst', per: 0.06, act: 2,
                   desc: lv => '처치 시 ' + Math.round(8 + lv * 6) + '% 확률로 폭발' },
-  magma_heart:  { name: '마그마 핵', icon: '🔥', slot: 'trinket', mat: 'magma_core', craftMat: 3, craftGold: 350, upMat: 2, upGold: 300, maxLevel: 5, stat: 'thorns', per: 0.2, act: 2,
+  magma_heart:  { name: '마그마 핵', icon: '🔥', slot: 'trinket', mat: 'magma_core', craftMat: 1, craftGold: 350, upMat: 2, upGold: 300, maxLevel: 5, stat: 'thorns', per: 0.2, act: 2,
                   desc: lv => '피격 시 화염 반격(피해 ' + Math.round(lv * 20) + '%)' },
-  frost_blessing:{ name: '서리 여왕의 가호', icon: '❄️', slot: 'trinket', mat: 'frost_crystal', craftMat: 3, craftGold: 400, upMat: 2, upGold: 350, maxLevel: 5, stat: 'frostward', per: 1, act: 2,
+  frost_blessing:{ name: '서리 여왕의 가호', icon: '❄️', slot: 'trinket', mat: 'frost_crystal', craftMat: 1, craftGold: 400, upMat: 2, upGold: 350, maxLevel: 5, stat: 'frostward', per: 1, act: 2,
                   desc: lv => '피격 시 ' + (Math.max(0, 14 - lv * 1.5)).toFixed(1) + '초마다 빙결 방어막' },
 };
 // 현재 장착 장비로부터 능력치 보너스 합산
+// ===== 직업별 스킬 데이터 =====
+// 각 스킬: cls(직업), name, icon, cd(쿨다운 초), gold(구매가), desc. 효과는 useSkill에서 분기.
+const SKILL_DEFS = {
+  // 기사
+  knight_dash:   { cls: 'knight', name: '돌진 베기', icon: '⚔️', cd: 6, gold: 400, desc: '앞으로 돌진하며 경로의 적을 벤다' },
+  knight_spin:   { cls: 'knight', name: '회전 베기', icon: '🌀', cd: 8, gold: 500, desc: '주변 360° 적을 한 번에 벤다' },
+  // 마법사
+  mage_chain:    { cls: 'mage', name: '연쇄 번개', icon: '⚡', cd: 7, gold: 450, desc: '여러 적에게 튕기는 번개를 쏜다' },
+  mage_blink:    { cls: 'mage', name: '순간이동', icon: '✨', cd: 5, gold: 350, desc: '바라보는 방향으로 짧게 순간이동' },
+  // 궁수
+  archer_pierce: { cls: 'archer', name: '관통 사격', icon: '🏹', cd: 6, gold: 450, desc: '일직선의 모든 적을 꿰뚫는 화살' },
+  archer_rain:   { cls: 'archer', name: '화살 비', icon: '🌧️', cd: 9, gold: 500, desc: '드래그한 지점에 화살이 쏟아진다', aimPoint: true, maxRange: 6.5 },
+};
+// 현재 직업이 살 수 있는 스킬 목록
+function skillsForClass(cls) { return Object.keys(SKILL_DEFS).filter(id => SKILL_DEFS[id].cls === cls); }
+
 function smithBonus(stat) {
   const eq = meta.smith.equipped, cr = meta.smith.crafted;
   let sum = 0;
@@ -10301,6 +11237,7 @@ function dropBossMaterial(type) {
   const mid = BOSS_MATERIAL[type]; if (!mid) return;
   const qty = 1 + (Math.random() < 0.5 ? 1 : 0); // 1~2개
   meta.materials[mid] = (meta.materials[mid] || 0) + qty;
+  runMaterials[mid] = (runMaterials[mid] || 0) + qty; // 이번 판 획득 기록
   saveMeta();
   const info = MATERIAL_INFO[mid];
   toast((info ? info.icon + ' ' + info.name : '재료') + ' +' + qty + ' 획득!', 2600);
@@ -10335,6 +11272,7 @@ function saveRun() {
   try {
     const data = {
       floor: player.floor, hp: player.hp, hpMax: player.hpMax,
+      potions: player.potions,
       lv: player.lv, exp: player.exp, expMax: player.expMax,
       atk: player.atk, atkSpeed: player.atkSpeed, speed: player.speed,
       sta: player.sta, staMax: player.staMax,
@@ -10357,11 +11295,12 @@ function hasSavedRun() { const r = loadRun(); return r && r.floor >= 1; }
 function die() {
   if (!player.alive) return; // 이미 사망 처리됨(같은 프레임 다중 피격 시 골드 중복 적립 방지)
   isCharging = false; SFX.chargeStop(false); player.alive = false;
-  clearRun(); // 죽으면 이어하기 불가
+  const wasTest = godMode; // 테스트 모드 죽음 여부(일반 세이브·골드와 분리)
+  if (!wasTest) clearRun(); // 일반 모드만 이어하기 삭제(테스트 모드는 일반 세이브 보존)
   // 결과 정산(사망): 현재 진행 상태로 점수·골드 화면 표시
   showRunResult({
     floor: player.floor, kills: player.kills, lv: player.lv,
-    score: computeScore(), runGoldVal: runGold, died: true
+    score: computeScore(), runGoldVal: runGold, died: true, testMode: wasTest
   });
 }
 // 결과 화면 표시 + 골드 적립(사망/귀환 공용). data: {floor,kills,lv,score,runGoldVal,died}
@@ -10369,9 +11308,14 @@ function showRunResult(data) {
   const sc = data.score;
   const prevBest = getBestScore();
   const isNewBest = sc.total > prevBest;
-  if (isNewBest) saveBestScore(sc.total);
-  // 회차 종료 정산: 이번 판에서 모은 골드를 영구 골드로 적립.
-  meta.gold += data.runGoldVal; saveMeta();
+  lastResultTestMode = !!data.testMode; // 결과 화면 닫을 때 복귀 흐름 결정용
+  if (data.testMode) {
+    // 테스트 모드: 최고 점수·영구 골드에 반영하지 않음(일반 진행과 완전 분리)
+  } else {
+    if (isNewBest) saveBestScore(sc.total);
+    // 회차 종료 정산: 이번 판에서 모은 골드를 영구 골드로 적립.
+    meta.gold += data.runGoldVal; saveMeta();
+  }
   setTimeout(() => {
     // 사망/귀환에 따라 제목·문구 변경
     const h1 = $('overOverlay').querySelector('h1');
@@ -10390,10 +11334,27 @@ function showRunResult(data) {
     if ($('overNewBest')) $('overNewBest').style.display = isNewBest ? 'block' : 'none';
     if ($('overGold')) $('overGold').textContent = '+' + data.runGoldVal.toLocaleString();
     if ($('overTotalGold')) $('overTotalGold').textContent = meta.gold.toLocaleString();
+    // 이번 판 획득 보스 재료 표시
+    if ($('overMaterials') && $('overMaterialsList')) {
+      const ids = Object.keys(runMaterials).filter(k => runMaterials[k] > 0);
+      if (ids.length > 0) {
+        $('overMaterialsList').innerHTML = '';
+        for (const mid of ids) {
+          const info = (typeof MATERIAL_INFO !== 'undefined') ? MATERIAL_INFO[mid] : null;
+          const chip = document.createElement('div');
+          chip.style.cssText = 'background:rgba(60,48,34,0.8); border:1px solid #6e5436; border-radius:8px; padding:4px 9px; font-size:13px; color:#f0dcb8;';
+          chip.innerHTML = (info ? info.icon + ' ' + info.name : mid) + ' <b style="color:#ffd86b;">×' + runMaterials[mid] + '</b>';
+          $('overMaterialsList').appendChild(chip);
+        }
+        $('overMaterials').style.display = 'block';
+      } else {
+        $('overMaterials').style.display = 'none';
+      }
+    }
     $('overOverlay').classList.remove('hidden');
   }, data.died ? 800 : 0);
 }
-function resetGame() { godMode = false; defeatedBosses.clear(); lastChestFloor = 0; player.alive = true; player.lv = 1; player.exp = 0; player.expMax = 10; player.atkSpeed = 1.0; player.kills = 0; player.floor = 1; staRegenCooldown = 0; player.gold = 0; runGold = 0; player.noHitFloors = 0; player.hitThisFloor = false; applyMetaUpgrades(); runStartTime = Date.now(); $('rewardOverlay').classList.add('hidden'); rewardPaused = false; startFloor(); }
+function resetGame() { godMode = false; defeatedBosses.clear(); lastChestFloor = 0; player.alive = true; player.lv = 1; player.exp = 0; player.expMax = 10; player.atkSpeed = 1.0; player.kills = 0; player.floor = 1; staRegenCooldown = 0; player.gold = 0; runGold = 0; runMaterials = {}; player.noHitFloors = 0; player.hitThisFloor = false; player.potions = 1; applyMetaUpgrades(); runStartTime = Date.now(); $('rewardOverlay').classList.add('hidden'); rewardPaused = false; startFloor(); refreshPotionBtn(); }
 // ===== 만렙 테스트 캐릭터 ===== 일반 던전을 그대로 탐험하되, 스탯을 만렙으로 올리고 무적/스태미나 무한.
 // 만렙 전용: 원하는 층으로 즉시 이동
 function jumpToFloor(n) {
@@ -10411,6 +11372,7 @@ function updateFloorJumpPanel() {
   const p = $('floorJumpPanel'); if (!p) return;
   p.style.display = godMode ? 'flex' : 'none';
   if ($('floorJumpCur')) $('floorJumpCur').textContent = player.floor;
+  if (typeof updateInvulnBtn === 'function') updateInvulnBtn();
 }
 function startMaxLevelRun() {
   godMode = true; bossTestMode = false; inTown = false;
@@ -10420,20 +11382,19 @@ function startMaxLevelRun() {
   scene.add(player.obj);
   clearRun(); // 이어하기 데이터 정리(테스트 회차는 저장 흐름만 따름)
   defeatedBosses.clear(); lastChestFloor = 0; player.alive = true;
-  player.lv = 50; player.exp = 0; player.expMax = Math.floor(10 * Math.pow(1.5, 20));
+  player.lv = 1; player.exp = 0; player.expMax = 10;
   player.atkSpeed = 1.0; player.kills = 0; player.floor = 1;
-  staRegenCooldown = 0; player.gold = 0; runGold = 0; player.noHitFloors = 0; player.hitThisFloor = false;
-  applyMetaUpgrades(); // 기본+메타 적용 후 만렙 보정으로 덮어쓰기
-  player.hpMax = 9999; player.hp = 9999;
-  player.atk = 999;
-  player.staMax = 999; player.sta = 999;
-  player.speed = 9.0;   // 약간 빠르게(쾌적한 탐험)
+  staRegenCooldown = 0; player.gold = 0; runGold = 0; runMaterials = {}; player.noHitFloors = 0; player.hitThisFloor = false; player.potions = 1;
+  applyMetaUpgrades(); // 일반 캐릭터와 동일한 기본+메타 스탯 적용(체력·공격력·레벨·스태미나·이속 모두 일반과 동일)
+  godInvuln = false; // 무적은 꺼진 채 시작 — 던전 상단 패널 버튼으로 켜고 끌 수 있음
+  // 보스 재료·골드를 무한처럼 충분히 지급 → 장비·스킬 구매를 자유롭게 테스트(godMode 회차는 저장 안 되므로 실제 데이터엔 안 샘)
+  meta.gold = 9999999;
+  for (const k of Object.keys(meta.materials)) meta.materials[k] = 9999;
   runStartTime = Date.now();
   if ($('rewardOverlay')) $('rewardOverlay').classList.add('hidden'); rewardPaused = false;
-  showDungeonUI();
-  startFloor();
-  updateFloorJumpPanel();
-  toast('⭐ 만렙 테스트 캐릭터 — 무적 · 1층부터 자유 탐험', 3000);
+  // 던전이 아닌 마을에서 시작 — 교관·대장간에 들러 장비·스킬을 갖추고 입구로 들어가면 던전 시작(godMode 유지)
+  enterTownMode(true);
+  toast('⭐ 테스트 모드 — 마을에서 시작 · 재료·골드 무한 · 던전에서 무적 토글 가능', 3500);
 }
 // 저장된 진행으로 재개(이어하기). 같은 층의 새 맵에서 시작.
 function resumeGame() {
@@ -10449,6 +11410,7 @@ function resumeGame() {
   player.atk = r.atk || 12; player.speed = r.speed || 6.5;
   player.staMax = r.staMax || 100; player.sta = r.sta || player.staMax;
   player.kills = r.kills || 0; player.noHitFloors = r.noHitFloors || 0; player.hitThisFloor = false;
+  player.potions = (typeof r.potions === 'number') ? r.potions : 1;
   // 악용 방지: 이번 판 골드(runGold)를 층 진입 시점 값으로 되돌린다.
   // 골드는 회차 종료 시에만 영구 적립되므로, 그 층에서 모은 골드는 이걸로 무효화된다.
   runGold = r.runGold || 0; staRegenCooldown = 0;
@@ -10645,6 +11607,20 @@ document.querySelectorAll('.floor-jump').forEach(btn => {
 document.querySelectorAll('.floor-goto').forEach(btn => {
   onTap(btn, (e) => { if (e) e.stopPropagation(); jumpToFloor(parseInt(btn.getAttribute('data-f'), 10)); });
 });
+onTap($('invulnToggle'), (e) => {
+  if (e) e.stopPropagation();
+  godInvuln = !godInvuln;
+  updateInvulnBtn();
+  if (godInvuln && player.hp < player.hpMax) player.hp = player.hpMax; // 켤 때 체력 회복
+  toast(godInvuln ? '🛡️ 무적 켜짐 — 죽지 않음' : '⚔️ 무적 꺼짐 — 일반 난이도', 1500);
+});
+function updateInvulnBtn() {
+  const b = $('invulnToggle'); if (!b) return;
+  b.textContent = godInvuln ? '🛡️ 무적: 켜짐' : '🛡️ 무적: 꺼짐';
+  b.style.background = godInvuln ? 'rgba(95,200,150,0.3)' : 'rgba(160,176,200,0.18)';
+  b.style.borderColor = godInvuln ? '#5fc896' : '#9fb0c8';
+  b.style.color = godInvuln ? '#aef5d0' : '#dde8ff';
+}
 onTap($('startToTownBtn'), () => {
   safeResume();
   $('startResumeChoice').classList.add('hidden');
@@ -10775,7 +11751,7 @@ function enterBossTest() {
   defeatedBosses.clear(); lastChestFloor = 0;
   player.alive = true; player.lv = 1; player.exp = 0; player.expMax = 10;
   player.atkSpeed = 1.0; player.kills = 0; player.floor = 30; // 보스 강화 기준(필요시)
-  player.gold = 0; runGold = 0;
+  player.gold = 0; runGold = 0; runMaterials = {};
   applyMetaUpgrades();
   player.hp = player.hpMax; player.sta = player.staMax;
   // 던전 생성 + 메시(적/상자/함정 없이)
@@ -10834,12 +11810,21 @@ function showDungeonUI() {
   if ($('townTalkBtn')) $('townTalkBtn').style.display = 'none';
   if ($('townInteract')) $('townInteract').style.display = 'none';
   townInteractTarget = null; if (typeof restInteractTarget !== 'undefined') restInteractTarget = null;
+  if (typeof refreshSkillButtons === 'function') refreshSkillButtons(); // 장착 스킬 버튼 표시
+  if ($('btnPotion')) $('btnPotion').style.display = 'flex';
+  if (typeof refreshPotionBtn === 'function') refreshPotionBtn();
   lockOrientation();
 }
 
 // ===== 마을 3D 모드 (1단계: 걸어다니기 + 던전 입구 진입) =====
-function enterTownMode() {
-  godMode = false; bossTestMode = false;
+function enterTownMode(keepGod) {
+  const wasGod = godMode;
+  if (!keepGod) {
+    godMode = false; bossTestMode = false; godInvuln = false;
+    if (wasGod) loadMeta(); // 만렙 테스트로 부풀린 골드·재료를 실제 저장값으로 복원(만렙 회차는 저장 안 됨)
+  } else {
+    bossTestMode = false; // 테스트 모드 마을: godMode·무한 자원은 유지, 보스테스트만 해제
+  }
   if ($('floorJumpPanel')) $('floorJumpPanel').style.display = 'none';
   buildTownScene();
   // 쉼터행 텔레포트 패드(여행자의 쉼터를 한 번 도달=30층 클리어한 뒤 해금) — 일방향
@@ -10852,6 +11837,9 @@ function enterTownMode() {
   $('hud').style.display = 'none'; $('minimap').style.display = 'none';
   if (isTouchDevice) $('mobileControls').style.display = 'block';
   if ($('btnBlock')) $('btnBlock').style.display = 'none'; // 마을에선 방어 버튼 숨김
+  if ($('btnSkill1')) $('btnSkill1').style.display = 'none';
+  if ($('btnSkill2')) $('btnSkill2').style.display = 'none';
+  if ($('btnPotion')) $('btnPotion').style.display = 'none';
   lockOrientation();
   // 플레이어 메시를 마을 씬으로 옮기고 성문 근처(남쪽)에서 시작
   townScene.add(player.obj);
@@ -10893,6 +11881,16 @@ function enterDungeonFromTown(resume) {
   townDialogClose(); townInteractTarget = null;
   scene.add(player.obj);
   if (resume) { showDungeonUI(); resumeGame(); }
+  else if (godMode) {
+    // 테스트 모드: godMode·무한 자원 유지한 채 던전 시작(resetGame은 godMode를 꺼버리므로 사용 안 함)
+    clearRun();
+    player.alive = true; player.floor = 1; player.kills = 0;
+    runGold = 0; runMaterials = {};
+    player.hp = player.hpMax; player.sta = player.staMax;
+    showDungeonUI();
+    startFloor();
+    updateFloorJumpPanel(); // 테스트용 층 이동/무적 패널 표시
+  }
   else { clearRun(); showDungeonUI(); resetGame(); }
 }
 // 마을 모드 매 프레임: 이동(조이스틱/키보드) + 회전 패드 + 충돌 + 카메라 추적 + 던전 입구 감지
@@ -10945,6 +11943,12 @@ function makeRestNPC(parent, x, z, kind, name, lines, robeHex, heal) {
   part(new THREE.BoxGeometry(0.14, 0.42, 0.14), robe, 0.33, 0.96, 0);
   if (kind === 'cleric') { const hood = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.4, 7), robe); hood.position.y = 1.72; g.add(hood); }
   if (kind === 'smith') { const apron = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.06), getLowPolyMat(0x3a2c1e)); apron.position.set(0, 0.82, 0.2); g.add(apron); }
+  if (kind === 'trainer') {
+    const hood = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.42, 8), robe); hood.position.y = 1.74; g.add(hood); // 후드
+    const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.5, 6), getLowPolyMat(0x6a4a2a)); staff.position.set(0.4, 0.78, 0.1); g.add(staff); // 지팡이
+    const gemMat = getLowPolyMat(0x7fd8ff); gemMat.emissive = new THREE.Color(0x5fc8ff); gemMat.emissiveIntensity = 1.2;
+    const gem = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 0), gemMat); gem.position.set(0.4, 1.55, 0.1); g.add(gem); // 보석
+  }
   g.children.forEach(c => { c.castShadow = true; c.receiveShadow = true; });
   // 머리 위 대화 마커(작은 마름모)
   const mark = new THREE.Mesh(new THREE.OctahedronGeometry(0.14, 0), new THREE.MeshBasicMaterial({ color: 0xaee3f5, fog: false }));
@@ -11263,11 +12267,11 @@ function buildRestScene() {
     ['저 너머 길은 둘로 갈린다네.', '어느 쪽이든 끝엔 더 강한 것이 기다리지.'],
     ['난 여기서 좀 더 쉬려네. 자네 먼저 가게.'],
   ], 0x7a5a44, false);
-  makeRestNPC(root, VX + 3.6, VZ + 3.2, 'traveler', '음유시인', [
-    ['쉼터의 모닥불 곁에선 누구도 칼을 들지 않아. 마음 놓게.'],
-    ['다음 막에선 함정이 부쩍 늘어난다는 소문이야.', '발밑을 조심하라구.'],
-    ['자네 이야기를 노래로 만들어도 되겠나? 30층의 영웅이라고 말이지.'],
-  ], 0x5f7d7a, false);
+  makeRestNPC(root, VX + 3.6, VZ + 3.2, 'trainer', '스킬 교관', [
+    ['새로운 기술을 익히고 싶나? 골드만 있다면 가르쳐주지.'],
+    ['직업마다 익힐 수 있는 기술이 다르다네.', '자네에게 맞는 걸 골라 보게.'],
+    ['기술은 두 가지까지 몸에 지닐 수 있어. 신중히 고르게.'],
+  ], 0x4a3a6a, false);
 
   // ===== 2막(31층) 입구: 우측 동굴 입구 앞 (마을 던전 입장과 동일 방식) =====
   // 우측 동굴(mouthR) 앞 바닥을 입장 지점으로. 빛나는 표식만 깔아 둔다.
@@ -11305,6 +12309,9 @@ function enterRest(fromRun) {
   $('hud').style.display = 'none'; if ($('minimap')) $('minimap').style.display = 'none';
   if (typeof isTouchDevice !== 'undefined' && isTouchDevice) $('mobileControls').style.display = 'block';
   if ($('btnBlock')) $('btnBlock').style.display = 'none';
+  if ($('btnSkill1')) $('btnSkill1').style.display = 'none';
+  if ($('btnSkill2')) $('btnSkill2').style.display = 'none';
+  if ($('btnPotion')) $('btnPotion').style.display = 'none';
   if ($('townTalkBtn')) $('townTalkBtn').style.display = 'none';
   if ($('townPrompt')) $('townPrompt').style.display = 'none';
   if ($('townLoadWrap')) $('townLoadWrap').style.display = 'none';
@@ -11364,7 +12371,7 @@ function startRunAtFloorReset(n) {
   const lv = Math.max(1, Math.floor(n / 2));
   player.lv = lv; player.exp = 0; player.expMax = Math.floor(10 * Math.pow(1.5, Math.min(lv - 1, 20)));
   player.atkSpeed = 1.0; player.kills = 0; player.floor = n;
-  staRegenCooldown = 0; player.gold = 0; runGold = 0; player.noHitFloors = 0; player.hitThisFloor = false;
+  staRegenCooldown = 0; player.gold = 0; runGold = 0; runMaterials = {}; player.noHitFloors = 0; player.hitThisFloor = false;
   applyMetaUpgrades(); // 기본 스탯 + 메타
   player.hpMax += (lv - 1) * 15; player.atk += (lv - 1) * 4; player.hp = player.hpMax;
   runStartTime = Date.now();
@@ -11623,6 +12630,11 @@ function updateTownMerchant(dt) {
     const d = Math.hypot(px - townMerchant.x, pz - townMerchant.z);
     if (d < bestD) { bestD = d; best = { kind: 'merchant', name: '대장장이 상인' }; }
   }
+  // 스킬 교관(스킬 상점)
+  if (townTrainer) {
+    const d = Math.hypot(px - townTrainer.x, pz - townTrainer.z);
+    if (d < bestD) { bestD = d; best = { kind: 'trainer', name: '스킬 교관' }; }
+  }
   // 대화 NPC(보초·주민) — 주민은 현재 위치(obj) 기준
   for (const npc of townNPCs) {
     const nx = npc.obj.position.x, nz = npc.obj.position.z;
@@ -11646,6 +12658,7 @@ function townInteract() {
   if (typeof inRest !== 'undefined' && inRest) {
     const npc = restInteractTarget; if (!npc) return;
     if (npc.kind === 'smith') { openSmith(); return; } // 쉼터 대장장이 → 대장간 UI
+    if (npc.kind === 'trainer') { openSkillShop(); return; } // 쉼터 교관 → 스킬 상점
     townActiveNPC = npc; townDialogIdx = 0;
     if (npc.lineSets && npc.lineSets.length) npc.lines = npc.lineSets[Math.floor(Math.random() * npc.lineSets.length)];
     $('townDialogName').textContent = npc.name;
@@ -11658,6 +12671,7 @@ function townInteract() {
   if (townInteractTarget.kind === 'cleric') { openTownShop(); return; }
   if (townInteractTarget.kind === 'innkeeper') { openCharChange(); return; }
   if (townInteractTarget.kind === 'merchant') { openSmith(); return; }
+  if (townInteractTarget.kind === 'trainer') { openSkillShop(); return; }
   const npc = townInteractTarget.npc;
   townActiveNPC = npc; townDialogIdx = 0;
   // 여러 대사 묶음(lineSets)이 있으면 말 걸 때마다 무작위로 하나 고른다(매번 다른 대화)
@@ -11748,6 +12762,90 @@ function closeTownShop() { townShopOpen = false; $('townShop').classList.add('hi
 let smithOpen = false;
 function openSmith() { smithOpen = true; renderSmith(); $('smithOverlay').classList.remove('hidden'); }
 function closeSmith() { smithOpen = false; $('smithOverlay').classList.add('hidden'); }
+
+// ===== 스킬 상점 UI =====
+let skillShopOpen = false;
+function openSkillShop() { skillShopOpen = true; renderSkillShop(); $('skillOverlay').classList.remove('hidden'); }
+function closeSkillShop() { skillShopOpen = false; $('skillOverlay').classList.add('hidden'); }
+function skillOwned(id) { return meta.skills.owned.indexOf(id) >= 0; }
+function skillEquippedSlot(id) {
+  const eq = meta.skills.equipped[selectedChar] || [null, null];
+  return eq.indexOf(id);
+}
+const CHAR_NAMES = { knight: '기사', mage: '마법사', archer: '궁수' };
+function renderSkillShop() {
+  $('skillGold').textContent = meta.gold.toLocaleString();
+  $('skillCharName').textContent = CHAR_NAMES[selectedChar] || selectedChar;
+  const eq = meta.skills.equipped[selectedChar] || [null, null];
+  // 장착 슬롯
+  const slotWrap = $('skillSlots'); slotWrap.innerHTML = '';
+  for (let i = 0; i < 2; i++) {
+    const id = eq[i]; const def = id ? SKILL_DEFS[id] : null;
+    const cell = document.createElement('div');
+    cell.style.cssText = 'background:rgba(36,30,52,0.85); border:1px solid ' + (def ? '#8a6ad0' : '#4a3e60') + '; border-radius:9px; padding:10px 6px; text-align:center; min-height:66px; display:flex; flex-direction:column; justify-content:center;';
+    if (def) {
+      cell.innerHTML = '<div style="font-size:22px;">' + def.icon + '</div><div style="font-size:12px; color:#e0d0ff;">' + def.name + '</div><div style="font-size:10px; color:#a89cc0;">쿨다운 ' + def.cd + '초</div>';
+    } else {
+      cell.innerHTML = '<div style="font-size:20px; opacity:0.4;">＋</div><div style="font-size:10px; color:#8a7ca0;">슬롯 ' + (i + 1) + '</div>';
+    }
+    slotWrap.appendChild(cell);
+  }
+  // 현재 직업이 배울 수 있는 스킬 목록
+  const itemWrap = $('skillItems'); itemWrap.innerHTML = '';
+  const ids = skillsForClass(selectedChar);
+  for (const id of ids) {
+    const def = SKILL_DEFS[id];
+    const owned = skillOwned(id);
+    const eqSlot = skillEquippedSlot(id);
+    const row = document.createElement('div');
+    row.style.cssText = 'background:rgba(28,24,40,0.9); border:1px solid #5a4a80; border-radius:10px; padding:10px 12px;';
+    let html = '<div style="display:flex; align-items:center; gap:8px;">';
+    html += '<div style="font-size:22px;">' + def.icon + '</div>';
+    html += '<div style="flex:1; text-align:left;">';
+    html += '<div style="font-size:14px; font-weight:bold; color:#e6d8ff;">' + def.name + ' <span style="font-size:10px; color:#9080b0;">쿨다운 ' + def.cd + '초</span></div>';
+    html += '<div style="font-size:12px; color:#c0b0e0;">' + def.desc + '</div>';
+    html += '</div></div>';
+    html += '<div style="display:flex; gap:6px; margin-top:8px; align-items:center;">';
+    if (!owned) {
+      const can = meta.gold >= def.gold;
+      html += '<div style="flex:1; font-size:11px; color:#a89cc0;">습득 비용: 💰' + def.gold + '</div>';
+      html += '<button data-skill-buy="' + id + '" ' + (can ? '' : 'disabled') + ' style="padding:7px 16px; font-size:13px; ' + (can ? 'background:rgba(138,106,208,0.3); border-color:#8a6ad0; color:#d0b8ff;' : 'opacity:0.4;') + '">습득</button>';
+    } else {
+      const equipped = eqSlot >= 0;
+      html += '<div style="flex:1; font-size:11px; color:#9fd0a0;">✓ 습득함</div>';
+      html += '<button data-skill-equip="' + id + '" style="padding:7px 14px; font-size:12px; ' + (equipped ? 'background:rgba(95,200,150,0.25); border-color:#5fc896; color:#aef5d0;' : 'background:rgba(138,106,208,0.22); border-color:#8a6ad0; color:#d0b8ff;') + '">' + (equipped ? '✓ 장착됨 (해제)' : '장착') + '</button>';
+    }
+    html += '</div>';
+    row.innerHTML = html;
+    itemWrap.appendChild(row);
+  }
+  itemWrap.querySelectorAll('[data-skill-buy]').forEach(b => onTap(b, () => skillBuy(b.getAttribute('data-skill-buy'))));
+  itemWrap.querySelectorAll('[data-skill-equip]').forEach(b => onTap(b, () => skillEquipToggle(b.getAttribute('data-skill-equip'))));
+}
+function skillBuy(id) {
+  const def = SKILL_DEFS[id]; if (!def || skillOwned(id)) return;
+  if (meta.gold < def.gold) return;
+  if (!godMode) meta.gold -= def.gold;
+  meta.skills.owned.push(id);
+  // 빈 슬롯이 있으면 자동 장착
+  const eq = meta.skills.equipped[selectedChar];
+  if (!eq[0]) eq[0] = id; else if (!eq[1]) eq[1] = id;
+  saveMeta(); SFX.pickup && SFX.pickup();
+  toast('✦ ' + def.name + ' 습득!', 2000);
+  renderSkillShop();
+}
+function skillEquipToggle(id) {
+  if (!skillOwned(id)) return;
+  const eq = meta.skills.equipped[selectedChar];
+  const slot = eq.indexOf(id);
+  if (slot >= 0) { eq[slot] = null; } // 해제
+  else {
+    // 빈 슬롯에 장착, 둘 다 차 있으면 슬롯1 교체
+    if (!eq[0]) eq[0] = id; else if (!eq[1]) eq[1] = id; else eq[0] = id;
+  }
+  saveMeta();
+  renderSkillShop();
+}
 function slotLabel(slot) { return slot === 'weapon' ? '무기' : slot === 'armor' ? '방어구' : '장신구'; }
 // 장비를 어느 슬롯 키에 끼울지 결정(장신구는 빈 칸 우선, 없으면 trinket1 교체)
 function equipSlotKey(def) {
@@ -11839,7 +12937,7 @@ function renderSmith() {
 function smithCraft(id) {
   const def = SMITH_ITEMS[id]; if (!def || meta.smith.crafted[id]) return;
   if ((meta.materials[def.mat] || 0) < def.craftMat || meta.gold < def.craftGold) return;
-  meta.materials[def.mat] -= def.craftMat; meta.gold -= def.craftGold;
+  if (!godMode) { meta.materials[def.mat] -= def.craftMat; meta.gold -= def.craftGold; }
   meta.smith.crafted[id] = 1;
   // 빈 슬롯이면 자동 장착
   const sk = equipSlotKey(def);
@@ -11851,7 +12949,7 @@ function smithCraft(id) {
 function smithUpgrade(id) {
   const def = SMITH_ITEMS[id]; const lv = meta.smith.crafted[id]; if (!def || !lv || lv >= def.maxLevel) return;
   if ((meta.materials[def.mat] || 0) < def.upMat || meta.gold < def.upGold) return;
-  meta.materials[def.mat] -= def.upMat; meta.gold -= def.upGold;
+  if (!godMode) { meta.materials[def.mat] -= def.upMat; meta.gold -= def.upGold; }
   meta.smith.crafted[id] = lv + 1;
   saveMeta(); SFX.pickup && SFX.pickup();
   toast('⬆️ ' + def.name + ' Lv.' + (lv + 1) + '!', 2000);
@@ -11877,6 +12975,7 @@ onTap($('charCancelBtn'), () => { const wasMax = maxLevelPending; townCharChange
 onTap($('howtoBtn'), () => { safeResume(); startActualGame(); });
 onTap($('townShopClose'), () => { closeTownShop(); });
 onTap($('smithClose'), () => { closeSmith(); });
+onTap($('skillClose'), () => { closeSkillShop(); });
 onTap($('townTalkBtn'), () => { townInteract(); });
 onTap($('townTimeBtn'), () => {
   // 자동 → 수동 낮 → 수동 밤 → 자동 순환
@@ -11893,7 +12992,7 @@ onTap($('townMusicBtn'), () => {
 });
 onTap($('townDialogNext'), () => { townDialogAdvance(); });
 onTap($('townDialogClose'), () => { townDialogClose(); });
-onTap($('restartBtn'), () => { safeResume(); $('overOverlay').classList.add('hidden'); enterTownMode(); });
+onTap($('restartBtn'), () => { safeResume(); $('overOverlay').classList.add('hidden'); if (lastResultTestMode) { godMode = true; enterTownMode(true); } else { enterTownMode(); } });
 
 dungeon = generateDungeon(); buildDungeonMesh(dungeon); const _r0 = dungeon.rooms[0]; player.obj.position.set((_r0.cx - MAP_W / 2) * TILE, 0, (_r0.cy - MAP_H / 2) * TILE); 
 camera.position.set((_r0.cx - MAP_W / 2) * TILE + isoOffsetX, isoOffsetY, (_r0.cy - MAP_H / 2) * TILE + isoOffsetZ); camera.lookAt(player.obj.position);
