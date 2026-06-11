@@ -153,7 +153,7 @@
   <button id="bossTestExit" style="pointer-events:auto; padding:6px 16px; font-size:12px; border-radius:8px; border:1px solid #6b7280; background:rgba(120,130,150,0.22); color:#cbd5e0;">🚪 나가기</button>
 </div>
 
-<div id="floorJumpPanel" style="display:none; position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:18; flex-direction:column; align-items:center; gap:6px; background:rgba(10,12,19,0.78); padding:10px 14px; border:1px solid #d8b24a; border-radius:12px;">
+<div id="floorJumpPanel" style="display:none; position:fixed; top:6px; left:50%; transform:translateX(-50%) scale(0.5); transform-origin:top center; z-index:18; flex-direction:column; align-items:center; gap:6px; background:rgba(10,12,19,0.78); padding:10px 14px; border:1px solid #d8b24a; border-radius:12px;">
   <div style="font-size:12px; color:#ffe08a; font-weight:bold;">⭐ 만렙 · 층 이동 — 현재 <span id="floorJumpCur">1</span>층</div>
   <div style="display:flex; gap:6px; align-items:center;">
     <button class="floor-jump" data-d="-10" style="pointer-events:auto; padding:8px 10px; font-size:13px; border-radius:8px; border:1px solid #d8b24a; background:rgba(240,200,90,0.18); color:#ffe08a;">-10</button>
@@ -167,6 +167,17 @@
     <button class="floor-goto" data-f="20" style="pointer-events:auto; padding:6px 10px; font-size:12px; border-radius:8px; border:1px solid #9fb0c8; background:rgba(160,176,200,0.18); color:#dde8ff;">20층</button>
     <button class="floor-goto" data-f="30" style="pointer-events:auto; padding:6px 10px; font-size:12px; border-radius:8px; border:1px solid #c0a060; background:rgba(200,160,90,0.18); color:#f0e0b0;">30층</button>
     <button class="floor-goto" data-f="31" style="pointer-events:auto; padding:6px 10px; font-size:12px; border-radius:8px; border:1px solid #c06868; background:rgba(180,90,90,0.18); color:#f5b0b0;">31층</button>
+  </div>
+  <div style="display:flex; gap:6px; align-items:center;">
+    <button class="floor-goto" data-f="40" style="pointer-events:auto; padding:6px 10px; font-size:12px; border-radius:8px; border:1px solid #9fb0c8; background:rgba(160,176,200,0.18); color:#dde8ff;">40층</button>
+    <button class="floor-goto" data-f="50" style="pointer-events:auto; padding:6px 10px; font-size:12px; border-radius:8px; border:1px solid #9fb0c8; background:rgba(160,176,200,0.18); color:#dde8ff;">50층</button>
+    <button class="floor-goto" data-f="60" style="pointer-events:auto; padding:6px 10px; font-size:12px; border-radius:8px; border:1px solid #c0a060; background:rgba(200,160,90,0.18); color:#f0e0b0;">60층</button>
+    <button class="floor-goto" data-f="61" style="pointer-events:auto; padding:6px 10px; font-size:12px; border-radius:8px; border:1px solid #b070a8; background:rgba(170,100,160,0.2); color:#ecc0e4;">61층</button>
+  </div>
+  <div style="display:flex; gap:6px; align-items:center;">
+    <button class="floor-goto" data-f="70" style="pointer-events:auto; padding:6px 10px; font-size:12px; border-radius:8px; border:1px solid #b070a8; background:rgba(170,100,160,0.2); color:#ecc0e4;">70층</button>
+    <button class="floor-goto" data-f="80" style="pointer-events:auto; padding:6px 10px; font-size:12px; border-radius:8px; border:1px solid #b070a8; background:rgba(170,100,160,0.2); color:#ecc0e4;">80층</button>
+    <button class="floor-goto" data-f="90" style="pointer-events:auto; padding:6px 10px; font-size:12px; border-radius:8px; border:1px solid #c05a78; background:rgba(190,80,120,0.22); color:#f5b0c8;">90층</button>
   </div>
   <button id="invulnToggle" style="pointer-events:auto; margin-top:2px; padding:7px 16px; font-size:13px; border-radius:8px; border:1px solid #9fb0c8; background:rgba(160,176,200,0.18); color:#dde8ff; font-weight:bold;">🛡️ 무적: 꺼짐</button>
 </div>
@@ -230,6 +241,7 @@
   <div style="font-size:13px; color:#8b96a8; margin-top:4px;">화면 아무 곳이나 탭하세요</div>
   <button id="bossTestBtn" style="margin-top:18px; padding:10px 22px; font-size:14px; background:rgba(180,90,90,0.22); border:1px solid #c06868; border-radius:10px; color:#f5b0b0;">🐲 보스 테스트 (무적)</button>
   <button id="maxLevelBtn" style="margin-top:10px; padding:10px 22px; font-size:14px; background:rgba(240,200,90,0.18); border:1px solid #d8b24a; border-radius:10px; color:#ffe08a;">⭐ 테스트 캐릭터 (체력·재료·골드 무한)</button>
+  <button id="resetDataBtn" style="margin-top:18px; padding:8px 18px; font-size:12px; background:rgba(80,80,90,0.18); border:1px solid #707688; border-radius:9px; color:#aab0c0;">🗑️ 일반 모드 데이터 초기화</button>
 </div>
 
 <div class="overlay hidden" id="charOverlay">
@@ -283,6 +295,15 @@
 </div>
 
 
+<div id="restChoiceOverlay" class="hidden" style="position:fixed; inset:0; z-index:27; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.82); backdrop-filter:blur(4px); padding:20px;">
+  <div style="background:rgba(14,18,26,0.96); border:1px solid #6fd0ff; border-radius:16px; padding:22px 20px; max-width:340px; width:100%; text-align:center;">
+    <div style="font-size:18px; font-weight:900; color:#cfeeff; margin-bottom:6px;">✨ 여행자의 쉼터</div>
+    <div style="font-size:13px; color:#9fb4c4; margin-bottom:18px;">어느 막의 쉼터로 이동할까?</div>
+    <button id="restChoiceAct2" style="display:block; width:100%; margin-bottom:10px; padding:13px; font-size:14px; font-weight:700; border-radius:11px; border:1px solid #9fb0c8; background:rgba(120,140,180,0.22); color:#dde8ff;">🏰 2막 쉼터 — 31층부터 (무너진 성)</button>
+    <button id="restChoiceAct3" style="display:block; width:100%; margin-bottom:10px; padding:13px; font-size:14px; font-weight:700; border-radius:11px; border:1px solid #b070a8; background:rgba(170,100,160,0.22); color:#ecc0e4;">🩸 3막 쉼터 — 61층부터 (부패한 성)</button>
+    <button id="restChoiceCancel" style="display:block; width:100%; padding:10px; font-size:13px; border-radius:10px; border:1px solid #707688; background:rgba(80,80,90,0.18); color:#aab0c0;">취소</button>
+  </div>
+</div>
 <div id="townPrompt" style="display:none; position:fixed; left:0; right:0; bottom:120px; z-index:15; text-align:center; pointer-events:none; color:#ffe9b0; font-weight:bold; font-size:18px; text-shadow:0 2px 8px rgba(0,0,0,0.9);">⬇️ 던전 입구 — 계단 아래 문 앞에 서면 입장</div>
 <div id="townLoadWrap" style="display:none; position:fixed; left:0; right:0; bottom:120px; z-index:16; text-align:center; pointer-events:none;">
   <div id="townLoadText" style="color:#ffe9b0; font-weight:bold; font-size:16px; margin-bottom:8px; text-shadow:0 2px 8px rgba(0,0,0,0.9);">던전 입장까지 3.0초</div>
@@ -847,6 +868,16 @@ const quadMat = new THREE.ShaderMaterial({
     uTexel: { value: new THREE.Vector2(1 / lowResW, 1 / lowResH) },
     uOutline: { value: new THREE.Color(0x05070c) },
     uStrength: { value: 1.0 },
+    uSat: { value: 1.14 },                                  // HD-2D 색 보정: 채도(1=원본)
+    uCon: { value: 1.07 },                                  // 대비(1=원본)
+    uSplit: { value: new THREE.Vector3(0.045, 0.012, -0.05) }, // 스플릿 토닝: 밝은 곳 따뜻하게/어두운 곳 차갑게
+    uVig: { value: 0.5 },                                   // 비네트 강도(0=없음)
+    uFocusY: { value: 0.52 },                               // 틸트시프트 초점 중심(화면 Y, 0=아래 1=위)
+    uFocusW: { value: 0.18 },                               // 초점 밴드 반폭(이 안은 완전 선명)
+    uBlurMax: { value: 2.2 },                               // 최대 블러 반경(저해상도 텍셀 단위)
+    uTiltOn: { value: 1.0 },                                // 틸트시프트 켬/끔(1/0)
+    tBloom: { value: null },                                // 블룸 텍스처(추출/블러 결과)
+    uBloomStr: { value: 0.85 },                             // 블룸 세기(0=끔)
     uNear: { value: 0.1 },
     uFar: { value: 200 }
   },
@@ -860,6 +891,16 @@ const quadMat = new THREE.ShaderMaterial({
     uniform vec2 uTexel;
     uniform vec3 uOutline;
     uniform float uStrength;
+    uniform float uSat;
+    uniform float uCon;
+    uniform vec3 uSplit;
+    uniform float uVig;
+    uniform float uFocusY;
+    uniform float uFocusW;
+    uniform float uBlurMax;
+    uniform float uTiltOn;
+    uniform sampler2D tBloom;
+    uniform float uBloomStr;
     uniform float uNear;
     uniform float uFar;
     varying vec2 vUv;
@@ -869,6 +910,22 @@ const quadMat = new THREE.ShaderMaterial({
     }
     void main() {
       vec4 col = texture2D(tColor, vUv);
+      // === 틸트시프트(미니어처 디오라마): 화면 위아래로 갈수록 흐려짐 ===
+      float fdy = abs(vUv.y - uFocusY);
+      float blur = smoothstep(uFocusW, uFocusW + 0.28, fdy) * uTiltOn;
+      if (blur > 0.003) {
+        vec2 br = uTexel * (blur * uBlurMax);
+        vec3 acc = col.rgb * 0.25;
+        acc += texture2D(tColor, vUv + vec2( br.x,  br.y)).rgb * 0.125;
+        acc += texture2D(tColor, vUv + vec2(-br.x,  br.y)).rgb * 0.125;
+        acc += texture2D(tColor, vUv + vec2( br.x, -br.y)).rgb * 0.125;
+        acc += texture2D(tColor, vUv + vec2(-br.x, -br.y)).rgb * 0.125;
+        acc += texture2D(tColor, vUv + vec2( br.x * 1.8, 0.0)).rgb * 0.0625;
+        acc += texture2D(tColor, vUv + vec2(-br.x * 1.8, 0.0)).rgb * 0.0625;
+        acc += texture2D(tColor, vUv + vec2(0.0,  br.y * 1.8)).rgb * 0.0625;
+        acc += texture2D(tColor, vUv + vec2(0.0, -br.y * 1.8)).rgb * 0.0625;
+        col.rgb = acc;
+      }
       float c  = linearizeDepth(texture2D(tDepth, vUv).x);
       // 상하좌우 이웃과의 깊이 차로 경계 검출 (Sobel 간략화)
       float l = linearizeDepth(texture2D(tDepth, vUv + vec2(-uTexel.x, 0.0)).x);
@@ -876,15 +933,90 @@ const quadMat = new THREE.ShaderMaterial({
       float u = linearizeDepth(texture2D(tDepth, vUv + vec2(0.0,  uTexel.y)).x);
       float dn= linearizeDepth(texture2D(tDepth, vUv + vec2(0.0, -uTexel.y)).x);
       float edge = abs(c - l) + abs(c - r) + abs(c - u) + abs(c - dn);
-      // 거리에 비례한 임계값(원거리에서 과도한 외곽선 방지)
-      float thresh = 0.18 + c * 0.04;
-      float line = smoothstep(thresh, thresh * 2.2, edge) * uStrength;
-      gl_FragColor = vec4(mix(col.rgb, uOutline, clamp(line, 0.0, 1.0)), 1.0);
+      // 거리에 비례한 임계값(원거리에서 과도한 외곽선 방지). 임계값↑·번짐범위↓ = 더 얇고 또렷한 선
+      float thresh = 0.25 + c * 0.05;
+      float line = smoothstep(thresh, thresh * 1.65, edge) * uStrength;
+      line *= (1.0 - blur * 0.85); // 흐린 영역에선 외곽선도 함께 부드럽게
+      vec3 graded = mix(col.rgb, uOutline, clamp(line, 0.0, 1.0));
+      // === HD-2D 색 보정 ===
+      float lum = dot(graded, vec3(0.299, 0.587, 0.114));
+      graded = mix(vec3(lum), graded, uSat);              // 채도 강화
+      graded = (graded - 0.5) * uCon + 0.5;               // 대비 강화
+      graded += (lum - 0.5) * uSplit;                     // 스플릿 토닝(하이라이트 따뜻 / 그림자 차갑게)
+      graded = clamp(graded, 0.0, 1.0);
+      graded += texture2D(tBloom, vUv).rgb * uBloomStr;   // 진짜 블룸 가산(밝은 부분 번짐)
+      vec2 vc = vUv - 0.5;                                // 비네트(가장자리 어둡게 — 디오라마 집중)
+      float vig = 1.0 - dot(vc, vc) * uVig;
+      graded *= clamp(vig, 0.0, 1.0);
+      gl_FragColor = vec4(graded, 1.0);
     }
   `,
   depthTest: false, depthWrite: false
 });
 quadScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), quadMat));
+
+// ===== 진짜 블룸(밝은 부분 추출 → 블러 → 가산 합성) =====
+// 1/2 해상도 RT에 밝은 부분만 블러해 만들고, 최종 quad에서 색보정 후 더함. HD-2D 발광 강화.
+let bloomW = Math.max(160, Math.floor(lowResW / 2)), bloomH = Math.max(120, Math.floor(lowResH / 2));
+const rtBloom = new THREE.WebGLRenderTarget(bloomW, bloomH, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false });
+const bloomScene = new THREE.Scene();
+const bloomMat = new THREE.ShaderMaterial({
+  uniforms: {
+    tColor: { value: rt.texture },
+    uTexel: { value: new THREE.Vector2(1 / bloomW, 1 / bloomH) },
+    uThresh: { value: 0.62 },   // 이 밝기 초과분만 번짐
+    uRadius: { value: 2.4 },    // 블러 반경(블룸 RT 텍셀 단위)
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+  fragmentShader: `
+    precision mediump float;
+    uniform sampler2D tColor; uniform vec2 uTexel; uniform float uThresh; uniform float uRadius;
+    varying vec2 vUv;
+    vec3 bright(vec2 uv){ vec3 c = texture2D(tColor, uv).rgb; float l = dot(c, vec3(0.299,0.587,0.114)); float k = max(0.0, l - uThresh) / max(0.001, 1.0 - uThresh); return c * k; }
+    void main(){
+      vec2 r = uTexel * uRadius;
+      vec3 s = bright(vUv) * 0.196;
+      s += bright(vUv + vec2( r.x, 0.0)) * 0.118; s += bright(vUv + vec2(-r.x, 0.0)) * 0.118;
+      s += bright(vUv + vec2(0.0,  r.y)) * 0.118; s += bright(vUv + vec2(0.0, -r.y)) * 0.118;
+      s += bright(vUv + vec2( r.x,  r.y)) * 0.083; s += bright(vUv + vec2(-r.x,  r.y)) * 0.083;
+      s += bright(vUv + vec2( r.x, -r.y)) * 0.083; s += bright(vUv + vec2(-r.x, -r.y)) * 0.083;
+      s += bright(vUv + vec2( r.x*2.2, 0.0)) * 0.0; // 자리채움(반경 밖 무게 0)
+      gl_FragColor = vec4(s, 1.0);
+    }`,
+  depthTest: false, depthWrite: false,
+});
+bloomScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bloomMat));
+quadMat.uniforms.tBloom.value = rtBloom.texture;
+
+// 렌더 파이프라인 헬퍼: 씬→rt, 블룸 추출/블러→rtBloom, 최종 합성→화면
+function renderWithPost(sceneToRender) {
+  renderer.setRenderTarget(rt); renderer.clear(); renderer.render(sceneToRender, camera);
+  if (quadMat.uniforms.uBloomStr && quadMat.uniforms.uBloomStr.value > 0.001) {
+    renderer.setRenderTarget(rtBloom); renderer.clear(); renderer.render(bloomScene, quadCam);
+  }
+  renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
+}
+
+// ===== 글로우 빌보드(가짜 블룸) — HD-2D풍 빛번짐 =====
+// 광원(횃불·발광 종양·버섯·계단 구슬)에 붙이는 부드러운 가산 발광 스프라이트.
+// 진짜 블룸 패스 없이 빛이 번지는 느낌을 줌. DataTexture라 어디서든 안전.
+const GLOW_TEX_S = 64;
+const glowTexData = new Uint8Array(GLOW_TEX_S * GLOW_TEX_S * 4);
+for (let gy = 0; gy < GLOW_TEX_S; gy++) for (let gx = 0; gx < GLOW_TEX_S; gx++) {
+  const dx = (gx + 0.5) / GLOW_TEX_S - 0.5, dy = (gy + 0.5) / GLOW_TEX_S - 0.5;
+  const d = Math.min(1, Math.sqrt(dx * dx + dy * dy) * 2);
+  const a = Math.pow(1 - d, 2.4) * 255; // 중심에서 가장자리로 부드럽게 감쇠
+  const ii = (gy * GLOW_TEX_S + gx) * 4;
+  glowTexData[ii] = 255; glowTexData[ii + 1] = 255; glowTexData[ii + 2] = 255; glowTexData[ii + 3] = a;
+}
+const glowSpriteTex = new THREE.DataTexture(glowTexData, GLOW_TEX_S, GLOW_TEX_S, THREE.RGBAFormat);
+glowSpriteTex.needsUpdate = true;
+function makeGlowSprite(color, size, opacity) {
+  const m = new THREE.SpriteMaterial({ map: glowSpriteTex, color, transparent: true, opacity: (opacity !== undefined) ? opacity : 0.5, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+  const s = new THREE.Sprite(m);
+  s.scale.set(size, size, 1);
+  return s;
+}
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x070a06); // 이끼 동굴: 아주 어두운 흙갈/녹빛
@@ -959,11 +1091,15 @@ function buildTownScene() {
   const _collide = (x, z, r) => townColliders.push({ x, z, r });
 
   function mat(colorHex, isMetal = false, rough) {
-    return new THREE.MeshStandardMaterial({
+    const m = new THREE.MeshStandardMaterial({
       color: colorHex, flatShading: true,
       roughness: rough !== undefined ? rough : (isMetal ? 0.5 : 0.92),
       metalness: isMetal ? 0.45 : 0.0
     });
+    // 색→도트 텍스처 자동 배정: 팔레트 색이면 어디서 mat()을 호출해도 텍스처가 따라붙음
+    const t = (!isMetal && typeof TEXBYCOLOR !== 'undefined') ? TEXBYCOLOR[colorHex] : null;
+    if (t) m.map = t;
+    return m;
   }
 
   // 팔레트 (업로드한 배경 원화 기반 — 장밋빛/청록 지붕 + 세이지·크림 회벽 + 마력 균열)
@@ -984,6 +1120,28 @@ function buildTownScene() {
     rift:     0xff9a3c, riftCore: 0xffe9b0, riftDeep: 0x7a2a16,   // 마력 균열
     cloth:    0xa8554a, cloth2: 0x5f7d7a, hay: 0xc2a358,
   };
+  // 색→도트 텍스처 등록표: mat() 팩토리가 자동 조회 — M 재질뿐 아니라 mat(C.x)/mat(0x..) 직접 호출도 전부 커버
+  // (충돌 주의: tileC와 cloth2가 같은 색 0x5f7d7a — 지붕이 우선이라 나중에 등록)
+  const TEXBYCOLOR = {};
+  { const reg = (k, t) => { TEXBYCOLOR[C[k]] = t; };
+    reg('cloth', texCarpetWeaves[0]); reg('cloth2', texCarpetWeaves[1]); reg('hay', texThatches[0]);
+    reg('grass', texMosses[0]); reg('grassD', texMosses[1]);          // 풀밭(이끼 송이)
+    reg('leaf', texMosses[0]); reg('leafD', texMosses[1]); reg('leafA', texMosses[0]); // 나뭇잎
+    reg('dirt', texDirts[0]); reg('dirtD', texDirts[1]);              // 흙길(자갈 점)
+    reg('plaza', texFlagstones[2]);                                    // 광장 포석
+    reg('flag', texFlagstones[0]); reg('flagD', texFlagstones[1]); reg('flagE', texFlagstones[3]);
+    reg('rubble', texStoneGrains[1]); reg('rubbleD', texStoneGrains[3]);
+    reg('plasterA', texStoneGrains[0]); reg('plasterB', texStoneGrains[1]); reg('plasterC', texStoneGrains[2]);
+    reg('timber', texWoods[0]); reg('timberD', texWoods[1]);
+    reg('wood', texWoods[0]); reg('woodD', texWoods[1]);
+    reg('thatch', texThatches[0]); reg('thatchD', texThatches[1]);    // 초가지붕(짚단)
+    reg('stone', texStoneGrains[0]); reg('stoneD', texStoneGrains[3]);
+    reg('tileA', texMasonries[0]); reg('tileB', texMasonries[1]); reg('tileC', texMasonries[0]); // 기와(어긋난 줄) — cloth2와 색 충돌 시 지붕 우선
+    // 팔레트 밖 직접 색: 슬레이트 지붕 / 돔 지붕(목재) / 밀짚 변형
+    TEXBYCOLOR[0x44607e] = texMasonries[1];
+    TEXBYCOLOR[0x6a4a2e] = texWoods[0];
+    TEXBYCOLOR[0xb89548] = texThatches[1];
+  }
   const M = {};
   for (const k in C) M[k] = mat(C[k], k === 'metal');
   // 밤에 빛나는 창문용 머티리얼(공유, emissive 토글)
@@ -1362,7 +1520,8 @@ function buildTownScene() {
     const g = new THREE.Group();
     g.add(box(2.0, 0.16, 1.2, M.wood, 0, 1.0, 0));
     [[-0.9, -0.5], [0.9, -0.5], [-0.9, 0.5], [0.9, 0.5]].forEach(p => g.add(box(0.1, 1.0, 0.1, M.woodD, p[0], 0.5, p[1])));
-    const top = box(2.4, 0.12, 1.5, mat(clothCol), 0, 1.7, 0); top.rotation.z = 0; g.add(top);
+    const topMat = mat(clothCol); topMat.map = texCarpetWeaves[0]; topMat.needsUpdate = true; // 차양은 천 — 색과 무관하게 직조 텍스처
+    const top = box(2.4, 0.12, 1.5, topMat, 0, 1.7, 0); top.rotation.z = 0; g.add(top);
     g.add(box(0.1, 0.7, 0.1, M.woodD, -0.9, 1.35, 0));
     g.add(box(0.1, 0.7, 0.1, M.woodD, 0.9, 1.35, 0));
     // 진열품
@@ -2018,12 +2177,12 @@ function buildTownScene() {
     }
   }
   // 북쪽 호(던전과 뒤쪽 건물 사이) — 3개
-  placeStallRow(0,             3, 9.0, 2.4, [C.cloth, C.tileC, C.cloth2]);
+  placeStallRow(0,             3, 9.0, 2.4, [C.cloth, C.cloth2, C.cloth]);
   // 동쪽 호(상점·여관 앞 빈 공간) — 2개
   placeStallRow(Math.PI / 2,   2, 9.0, 2.4, [C.cloth2, C.cloth]);
   // (남동쪽 호 가판대는 여관 주인 앞 길목을 막아 제거)
   // 광장 북서쪽 가판대 3개: 캐릭터 위치 부근을 중심으로 호 모양 배치(논밭 앞, 위쪽으로)
-  placeStallRow(Math.atan2(-10.6, -9.0), 3, 13.9, 3.0, [C.cloth, C.cloth2, C.tileC]);
+  placeStallRow(Math.atan2(-10.6, -9.0), 3, 13.9, 3.0, [C.cloth, C.cloth2, C.cloth]);
   // 가판대 호의 가운데 앞(중심 쪽)에 상인 NPC 배치 — 광장 중심을 향하게
   {
     const mAng = Math.atan2(-10.6, -9.0), mR = 13.9 - 1.8;
@@ -2412,8 +2571,34 @@ function jitterGeometry(geometry, amount) {
     geometry.computeVertexNormals(); return geometry;
 }
 
+// 결정론적 부드러운 굴곡(랜덤 jitter와 달리 사인파로 면을 물결치게 — 자연 동굴 느낌).
+// 바닥용: 윗면(y>0)만 변형하고 타일 가장자리는 페이드로 평평하게 유지 → 인접 타일과 틈/단차 없음.
+function displaceFloorTop(geo, amp, phx, phz) {
+  const pos = geo.attributes.position; const half = TILE / 2;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    if (y > 0) {
+      const edge = Math.max(0, 1 - Math.abs(x) / half) * Math.max(0, 1 - Math.abs(z) / half); // 중앙 1 → 가장자리 0
+      const d = (Math.sin(x * 1.6 + phx) * 0.6 + Math.sin(z * 1.9 + phz) * 0.6 + Math.sin((x + z) * 1.1) * 0.4) * amp;
+      pos.setY(i, y + d * edge);
+    }
+  }
+  geo.computeVertexNormals();
+}
+// 벽 base용: 옆면을 사인파로 들고나게(세로 결 살린 암반). 바닥과 맞닿는 아랫면은 고정.
+function displaceWallSides(geo, amp) {
+  const pos = geo.attributes.position; const halfH = (TILE * 0.7) / 2;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const yFade = Math.min(1, (y + halfH) / (TILE * 0.7)); // 아래는 고정, 위로 갈수록 변형
+    const dx = Math.sin(z * 1.7 + y * 1.3) * amp, dz = Math.sin(x * 1.7 - y * 1.1) * amp;
+    pos.setX(i, x + dx * yFade); pos.setZ(i, z + dz * yFade);
+  }
+  geo.computeVertexNormals();
+}
+
 const floorGeos = [];
-for(let i=0; i<3; i++) { const fg = new THREE.BoxGeometry(TILE, 0.4, TILE, 4, 1, 4); jitterGeometry(fg, 0.3); floorGeos.push(fg); }
+for(let i=0; i<4; i++) { const fg = new THREE.BoxGeometry(TILE, 0.4, TILE, 6, 1, 6); displaceFloorTop(fg, 0.32, i * 1.7, i * 2.3); floorGeos.push(fg); }
 
 // 벽 높이 축소 (TILE * 1.5 -> TILE * 0.7)
 const wallPatterns = [];
@@ -2424,15 +2609,17 @@ const matWallRock = applyCutoutShader(getLowPolyMat(0x534b3c));   // 박힌 바�
 const matWallMoss = applyCutoutShader(getLowPolyMat(0x44551f));   // 윗면 이끼(어두운 초록)
 for(let i=0; i<4; i++) {
     const grp = new THREE.Group();
-    const baseGeo = new THREE.BoxGeometry(TILE, TILE * 0.7, TILE, 3, 2, 3); jitterGeometry(baseGeo, 0.5);
+    const baseGeo = new THREE.BoxGeometry(TILE, TILE * 0.7, TILE, 4, 3, 4);
+    displaceWallSides(baseGeo, 0.28); // 옆면 암반 들고나기
     const baseMesh = new THREE.Mesh(baseGeo, (i % 2) ? matWallBase2 : matWallBase); baseMesh.castShadow = true; baseMesh.receiveShadow = true; grp.add(baseMesh);
     
-    for(let r=0; r<3; r++) {
-        const rockGeo = new THREE.IcosahedronGeometry(TILE * (0.3 + Math.random()*0.2), 1);
-        jitterGeometry(rockGeo, 0.2);
+    for(let r=0; r<4; r++) {
+        const rockGeo = new THREE.IcosahedronGeometry(TILE * (0.34 + Math.random()*0.26), 1);
+
         const rockMesh = new THREE.Mesh(rockGeo, matWallRock);
-        const rx = (Math.random()-0.5)*TILE*0.7, ry = (Math.random()-0.5)*TILE*0.4, rz = (Math.random()-0.5)*TILE*0.7;
+        const rx = (Math.random()-0.5)*TILE*0.8, ry = (Math.random()-0.5)*TILE*0.45, rz = (Math.random()-0.5)*TILE*0.8;
         rockMesh.position.set(rx, ry, rz);
+        rockMesh.scale.set(1, 0.7 + Math.random()*0.5, 1); // 눌린 바위(자연스러운 돌출)
         rockMesh.castShadow = true; rockMesh.receiveShadow = true;
         grp.add(rockMesh);
     }
@@ -2440,7 +2627,7 @@ for(let i=0; i<4; i++) {
     if (Math.random() < 0.55) {
         const mossN = 1 + Math.floor(Math.random() * 2);
         for (let m = 0; m < mossN; m++) {
-            const mg = new THREE.IcosahedronGeometry(TILE * (0.16 + Math.random() * 0.12), 0); jitterGeometry(mg, 0.08);
+            const mg = new THREE.IcosahedronGeometry(TILE * (0.16 + Math.random() * 0.12), 0);
             const mm = new THREE.Mesh(mg, matWallMoss); mm.scale.y = 0.5;
             mm.position.set((Math.random()-0.5)*TILE*0.6, TILE*0.3 + Math.random()*0.3, (Math.random()-0.5)*TILE*0.6);
             mm.castShadow = true; grp.add(mm);
@@ -2453,8 +2640,219 @@ let dungeon = null;
 let floorGroup = new THREE.Group(); scene.add(floorGroup);
 let wallGroup  = new THREE.Group(); scene.add(wallGroup);
 
-// ===== 막(Act) 판정: 1막=1~30층(이끼 동굴), 2막=31~60층(무너진 성) =====
-function currentAct() { return (player && player.floor >= 31) ? 2 : 1; }
+// ===== 막(Act) 판정: 1막=1~30층(이끼 동굴), 2막=31~60층(무너진 성), 3막=61~90층(부패한 성) =====
+function currentAct() { if (!player) return 1; if (player.floor >= 61) return 3; return (player.floor >= 31) ? 2 : 1; }
+
+// ===== 절차적 도트 텍스처(HD-2D풍) =====
+// 흑백 명도 패턴을 코드로 생성해 재질 색에 곱함 — 팔레트는 유지하고 도트 디테일만 추가.
+// NearestFilter로 도트가 각지게 유지되고, 화면 픽셀화와 겹치며 손도트 느낌이 남.
+function makePixelTexture(size, paint) {
+  const data = new Uint8Array(size * size * 4);
+  const px = (x, y, v) => { const i = (y * size + x) * 4; data[i] = v; data[i + 1] = v; data[i + 2] = v; data[i + 3] = 255; };
+  paint(px, size);
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+// 석재 그레인(벽 블록 표면): 3단계 디더링 + 패인 점 + 가장자리 픽셀 베벨(윗변 밝게/아랫변 어둡게)
+// 같은 패턴이 반복되지 않도록 변형 4장을 생성해 재질마다 다른 장을 사용.
+function makeStoneGrainTex() {
+  return makePixelTexture(32, (px, S) => {
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      let v = 226 + (Math.floor(Math.random() * 4) - 1.5) * 13;  // 디더링 폭 확대 — 픽셀 대비↑
+      v += ((x + y) % 2) * 6 - 3;                                // 약한 베이어(픽셀 격자 또렷)
+      if (Math.random() < 0.06) v = 164 + Math.floor(Math.random() * 3) * 10; // 패인 점/흠집(대비↑)
+      if (y === 0) v += 18; else if (y === 1) v += 8;            // 윗변 베벨(빛 받음)
+      if (y === S - 1) v -= 24; else if (y === S - 2) v -= 10;   // 아랫변 베벨(그늘)
+      if (x === 0) v += 8; if (x === S - 1) v -= 12;
+      px(x, y, Math.max(0, Math.min(255, v)));
+    }
+  });
+}
+const texStoneGrains = [makeStoneGrainTex(), makeStoneGrainTex(), makeStoneGrainTex(), makeStoneGrainTex()];
+// 바닥 석판(슬랩 + 줄눈): 슬랩별 명도 차 + 베벨 + 흠집 — HD-2D 바닥의 정석
+// div=2: 2×2 큰 슬랩, div=4: 4×4 잔슬랩. 변형 4장(잔슬랩 1장 포함)을 섞어 반복감 제거.
+function makeFlagstoneTex(div) {
+  return makePixelTexture(32, (px, S) => {
+    const slab = S / div;
+    const offs = []; for (let i = 0; i < div * div; i++) offs.push((Math.floor(Math.random() * 3) - 1) * 10);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const sx = Math.floor(x / slab), sy = Math.floor(y / slab);
+      const lx = x % slab, ly = y % slab;
+      let v = 216 + offs[sy * div + sx] + (Math.floor(Math.random() * 4) - 1.5) * 12 + (((x + y) % 2) * 6 - 3); // 폭 확대 + 약한 베이어
+      if (lx === 0 || ly === 0) {
+        v = 148 + Math.floor(Math.random() * 2) * 10;            // 줄눈(어두운 홈)
+      } else {
+        if (ly === 1) v += 14;                                    // 슬랩 윗변 베벨
+        if (ly === slab - 1) v -= 18;                             // 슬랩 아랫변 베벨
+        if (lx === 1) v += 8;
+        if (lx === slab - 1) v -= 10;
+        if (Math.random() < 0.03) v -= 34;                        // 흠집
+      }
+      px(x, y, Math.max(0, Math.min(255, v)));
+    }
+  });
+}
+const texFlagstones = [makeFlagstoneTex(2), makeFlagstoneTex(2), makeFlagstoneTex(2), makeFlagstoneTex(2)]; // 전부 2×2 큰 슬랩(잔슬랩 제외)
+// 벽 석조 쌓기(바닥 석판과 같은 크기의 슬랩, 줄마다 반칸 어긋난 브릭 본드) — 벽 코어(민짜 면)용
+function makeMasonryTex() {
+  const tex = makePixelTexture(32, (px, S) => {
+    const rowH = 16, slabW = 16;
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const row = Math.floor(y / rowH), ly = y % rowH;
+      const off = (row % 2) * (slabW / 2);                       // 줄마다 반칸 어긋남
+      const lx = (x + off) % slabW;
+      const si = Math.floor((x + off) / slabW) + row * 7;        // 슬랩 인덱스(명도 변주용)
+      let v = 218 + ((si * 37) % 3 - 1) * 11 + (Math.floor(Math.random() * 4) - 1.5) * 12 + (((x + y) % 2) * 6 - 3); // 폭 확대 + 약한 베이어
+      if (ly === 0 || lx === 0) {
+        v = 148 + Math.floor(Math.random() * 2) * 10;            // 줄눈
+      } else {
+        if (ly === 1) v += 14;                                    // 슬랩 윗변 베벨
+        if (ly === rowH - 1) v -= 18;                             // 아랫변 베벨
+        if (lx === 1) v += 8;
+        if (lx === slabW - 1) v -= 10;
+        if (Math.random() < 0.03) v -= 34;                        // 흠집
+      }
+      px(x, y, Math.max(0, Math.min(255, v)));
+    }
+  });
+  tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1, 1.12);                                        // 벽 높이(TILE*1.12)에서도 슬랩이 바닥과 같은 크기 유지
+  return tex;
+}
+const texMasonries = [makeMasonryTex(), makeMasonryTex()];
+// === 1막(이끼 동굴) 텍스처 ===
+// 동굴 암벽(자연 바위): 거친 4단계 디더링 + 세로 균열 줄기 + 패임/광물 점 — 직선 베벨 없는 자연면
+function makeRockGrainTex() {
+  return makePixelTexture(32, (px, S) => {
+    const v2d = [];
+    for (let y = 0; y < S; y++) { v2d.push([]); for (let x = 0; x < S; x++) {
+      let v = 222 + (Math.floor(Math.random() * 5) - 2) * 13;   // 명암 폭(완화) — 픽셀 대비 유지하되 덜 거칠게
+      v += ((x + y) % 2) * 8 - 4;                               // 2×2 베이어 디더(약하게 — 체커 무늬 덜 보이게)
+      if (Math.random() < 0.07) v = 158 + Math.floor(Math.random() * 3) * 12; // 패임
+      if (Math.random() < 0.025) v = 252;                                     // 반짝이는 광물 점
+      v2d[y].push(v);
+    } }
+    const n = 2 + Math.floor(Math.random() * 2); // 균열 줄기(랜덤 워크) 2~3개
+    for (let i = 0; i < n; i++) {
+      let cx = Math.floor(Math.random() * S);
+      for (let cy = 0; cy < S; cy++) { v2d[cy][cx] = 158; cx = (cx + S + (Math.floor(Math.random() * 3) - 1)) % S; } // 균열
+    }
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) px(x, y, Math.max(0, Math.min(255, Math.round(v2d[y][x]))));
+  });
+}
+const texRockGrains = [makeRockGrainTex(), makeRockGrainTex(), makeRockGrainTex()];
+// 이끼(유기적 얼룩): 밝은 송이 군집 + 어두운 구멍 — 폭신한 점 무더기
+function makeMossTex() {
+  return makePixelTexture(32, (px, S) => {
+    const v2d = [];
+    for (let y = 0; y < S; y++) { v2d.push([]); for (let x = 0; x < S; x++) { let v = 218 + (Math.floor(Math.random() * 4) - 1.5) * 11; v += ((x + y) % 2) * 6 - 3; v2d[y].push(v); } } // 폭(완화) + 약한 베이어
+    for (let i = 0; i < 9; i++) { // 밝은 이끼 송이(더 밝게·더 많이)
+      const cx = Math.floor(Math.random() * S), cy = Math.floor(Math.random() * S), r = 1 + Math.floor(Math.random() * 2);
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { if (dx * dx + dy * dy > r * r) continue; v2d[(cy + dy + S) % S][(cx + dx + S) % S] = 248; }
+    }
+    for (let i = 0; i < 7; i++) { const cx = Math.floor(Math.random() * S), cy = Math.floor(Math.random() * S); v2d[cy][cx] = 168; if (cx + 1 < S) v2d[cy][cx + 1] = 180; } // 어두운 구멍
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) px(x, y, Math.max(0, Math.min(255, v2d[y][x])));
+  });
+}
+const texMosses = [makeMossTex(), makeMossTex()];
+// 흙바닥(잔돌·흙): 디더링 + 도트 자갈(밝은 점+아래 그림자 픽셀) + 어두운 흙 얼룩
+function makeDirtTex() {
+  return makePixelTexture(32, (px, S) => {
+    const v2d = [];
+    for (let y = 0; y < S; y++) { v2d.push([]); for (let x = 0; x < S; x++) {
+      let v = 220 + (Math.floor(Math.random() * 4) - 1.5) * 13;  // 명암 폭(완화)
+      v += ((x + y) % 2) * 6 - 3;                                // 약한 베이어 디더
+      if (Math.random() < 0.05) v -= 40;                          // 어두운 흙 얼룩
+      v2d[y].push(v);
+    } }
+    for (let i = 0; i < 16; i++) { // 도트 자갈: 밝은 점 + 바로 아래 그림자(대비 강화)
+      const cx = Math.floor(Math.random() * S), cy = Math.floor(Math.random() * (S - 1));
+      v2d[cy][cx] = 250; v2d[cy + 1][cx] = 172;
+    }
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) px(x, y, Math.max(0, Math.min(255, v2d[y][x])));
+  });
+}
+const texDirts = [makeDirtTex(), makeDirtTex()];
+// === 3막(부패한 성) 텍스처 ===
+// 습윤한 살덩이: 번들거리는 하이라이트 점(젖은 표면) + 어두운 모공 반점 + 가로로 기는 핏줄 줄기
+function makeFleshWetTex() {
+  return makePixelTexture(32, (px, S) => {
+    const v2d = [];
+    for (let y = 0; y < S; y++) { v2d.push([]); for (let x = 0; x < S; x++) v2d[y].push(220 + (Math.floor(Math.random() * 4) - 1.5) * 13 + (((x + y) % 2) * 6 - 3)); } // 폭 확대 + 약한 베이어
+    for (let i = 0; i < 10; i++) { // 모공/반점(어두운 점 + 옅은 테)
+      const cx = Math.floor(Math.random() * S), cy = Math.floor(Math.random() * S);
+      v2d[cy][cx] = 172; v2d[cy][(cx + 1) % S] = 190;
+    }
+    const nv = 1 + Math.floor(Math.random() * 2); // 핏줄 줄기(가로 랜덤 워크) 1~2개
+    for (let i = 0; i < nv; i++) {
+      let cy = Math.floor(Math.random() * S);
+      for (let cx = 0; cx < S; cx++) { v2d[cy][cx] = Math.min(v2d[cy][cx], 196); cy = (cy + S + (Math.floor(Math.random() * 3) - 1)) % S; }
+    }
+    for (let i = 0; i < 8; i++) { // 번들거리는 습윤 하이라이트
+      const cx = Math.floor(Math.random() * S), cy = Math.floor(Math.random() * S);
+      v2d[cy][cx] = 252;
+    }
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) px(x, y, Math.max(0, Math.min(255, v2d[y][x])));
+  });
+}
+const texFleshWets = [makeFleshWetTex(), makeFleshWetTex()];
+// === 마을·쉼터 공용 텍스처 ===
+// 나무 판자: 8px 판자 4장(틈 + 틈 옆 하이라이트) + 세로 나뭇결 + 옹이 점
+function makeWoodTex() {
+  return makePixelTexture(32, (px, S) => {
+    const plankW = 8;
+    const pOff = [0, 1, 2, 3].map(() => (Math.floor(Math.random() * 3) - 1) * 9);
+    const v2d = [];
+    for (let y = 0; y < S; y++) { v2d.push([]); for (let x = 0; x < S; x++) {
+      const p = Math.floor(x / plankW), lx = x % plankW;
+      let v = 220 + pOff[p] + (Math.floor(Math.random() * 4) - 1.5) * 10 + (((x + y) % 2) * 6 - 3); // 폭 확대 + 약한 베이어
+      if (lx === 3 || lx === 6) v -= 8;        // 세로 나뭇결
+      if (lx === 0) v = 152;                    // 판자 틈
+      else if (lx === 1) v += 10;               // 틈 옆 하이라이트
+      v2d[y].push(v);
+    } }
+    for (let p = 0; p < 4; p++) { if (Math.random() < 0.6) { // 옹이
+      const kx = p * 8 + 2 + Math.floor(Math.random() * 5), ky = Math.floor(Math.random() * S);
+      v2d[ky][kx] = 170; if (ky + 1 < S) v2d[ky + 1][kx] = 182;
+    } }
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) px(x, y, Math.max(0, Math.min(255, v2d[y][x])));
+  });
+}
+const texWoods = [makeWoodTex(), makeWoodTex()];
+// 초가/짚: 가로 짚단 가닥(길이 3~6px 대시, 가닥별 명도 차)
+function makeThatchTex() {
+  return makePixelTexture(32, (px, S) => {
+    for (let y = 0; y < S; y++) {
+      const v0 = 220 + (Math.floor(Math.random() * 4) - 1.5) * 11;  // 폭 확대
+      let x = 0;
+      while (x < S) {
+        const len = 3 + Math.floor(Math.random() * 4);
+        const dv = (Math.floor(Math.random() * 3) - 1) * 16;
+        for (let i = 0; i < len && x < S; i++, x++) px(x, y, Math.max(0, Math.min(255, v0 + dv + (((x + y) % 2) * 6 - 3) + (Math.random() < 0.1 ? -22 : 0)))); // 약한 베이어
+      }
+    }
+  });
+}
+const texThatches = [makeThatchTex(), makeThatchTex()];
+// 1막 동굴 벽 재질에 배정(전역 const라 여기서 — 암벽 2종은 다른 변형, 박힌 바위는 제3 변형, 윗면 이끼는 이끼 텍스처)
+matWallBase.map = texRockGrains[0]; matWallBase.needsUpdate = true;
+matWallBase2.map = texRockGrains[1]; matWallBase2.needsUpdate = true;
+matWallRock.map = texRockGrains[2]; matWallRock.needsUpdate = true;
+matWallMoss.map = texMosses[0]; matWallMoss.needsUpdate = true;
+
+// 카펫 직조(2px 체크 위브 + 노이즈) — 2변형
+function makeCarpetTex() {
+  return makePixelTexture(16, (px, S) => {
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      let v = ((Math.floor(x / 2) + Math.floor(y / 2)) % 2) ? 242 : 214;  // 체크 대비↑
+      v += (Math.floor(Math.random() * 3) - 1) * 9;                        // 노이즈↑
+      px(x, y, Math.max(0, Math.min(255, v)));
+    }
+  });
+}
+const texCarpetWeaves = [makeCarpetTex(), makeCarpetTex()];
 
 // ===== 2막 무너진 성 테마 (업로드 dungeon_viewer_v2 구조 이식) =====
 const CAS = {
@@ -2469,8 +2867,9 @@ const CAS = {
 };
 const CAS_WALL_H = TILE * 1.12; // 2막 성벽 높이(기존 1.6에서 30% 감소)
 const casFloorGeos = [];
-for (let i = 0; i < 4; i++) { const g = new THREE.BoxGeometry(TILE, 0.4, TILE, 4, 1, 4); jitterGeometry(g, 0.28); casFloorGeos.push(g); }
-const casFloorMats = [getLowPolyMat(CAS.floor), getLowPolyMat(CAS.floorB), getLowPolyMat(CAS.floorDark)];
+for (let i = 0; i < 4; i++) { const g = new THREE.BoxGeometry(TILE, 0.4, TILE, 4, 1, 4); casFloorGeos.push(g); }
+const casFloorMats = []; // 3색 × 석판 변형 4장 = 12종 — 타일마다 색·패턴이 섞여 반복감 제거
+texFlagstones.forEach(t => { [CAS.floor, CAS.floorB, CAS.floorDark].forEach(c => { const m = getLowPolyMat(c); m.map = t; m.needsUpdate = true; casFloorMats.push(m); }); });
 // 벽/기둥/아치/잔해/담쟁이는 캐릭터가 뒤에 가려도 비쳐 보이도록 cutout 셰이더 적용(1막과 동일)
 const casMatWall = applyCutoutShader(getLowPolyMat(CAS.wall));
 const casMatWallB = applyCutoutShader(getLowPolyMat(CAS.wallB));
@@ -2480,30 +2879,36 @@ const casMatRubble = applyCutoutShader(getLowPolyMat(CAS.rubble));
 const casMatRubbleD = applyCutoutShader(getLowPolyMat(CAS.rubbleD));
 const casMatPillar = applyCutoutShader(getLowPolyMat(CAS.pillar));
 const casMatPillarD = applyCutoutShader(getLowPolyMat(CAS.pillarD));
+[[casMatWall, 0], [casMatWallB, 1], [casMatWallC, 2], [casMatWallSh, 3], [casMatRubble, 1], [casMatRubbleD, 3], [casMatPillar, 0], [casMatPillarD, 2]].forEach(([m, ti]) => { m.map = texStoneGrains[ti]; m.needsUpdate = true; }); // 재질마다 다른 그레인 변형 — 이웃 블록끼리 패턴이 다름
+// 벽 코어(블록이 안 붙은 민짜 면) 전용: 바닥과 같은 크기 슬랩의 석조 쌓기 텍스처 — 변형 2종 + 어두운 변형
+const casMatWallCoreA = applyCutoutShader(getLowPolyMat(CAS.wallC)); casMatWallCoreA.map = texMasonries[0]; casMatWallCoreA.needsUpdate = true;
+const casMatWallCoreB = applyCutoutShader(getLowPolyMat(CAS.wallC)); casMatWallCoreB.map = texMasonries[1]; casMatWallCoreB.needsUpdate = true;
+const casMatWallCoreSh = applyCutoutShader(getLowPolyMat(CAS.wallSh)); casMatWallCoreSh.map = texMasonries[1]; casMatWallCoreSh.needsUpdate = true;
 const casMatIvy = applyCutoutShader(getLowPolyMat(CAS.ivy));
 const casMatIvyD = applyCutoutShader(getLowPolyMat(CAS.ivyD));
 const casMatIvyA = applyCutoutShader(getLowPolyMat(CAS.ivyA));
 const casBlockMats = [casMatWall, casMatWallB, casMatWallC];
 const casBlockMatsArr = casBlockMats; // 호환용
+const casCarpetMats = [CAS.carpet, CAS.carpetD, CAS.carpetE].map((c, i) => { const m = getLowPolyMat(c); m.map = texCarpetWeaves[i % 2]; m.needsUpdate = true; return m; }); // 도트 직조 카펫(2변형)
 const castleTorches = []; // {flame,f1,f2,light,ph}
 
 function makeCastleWallTile() {
   const grp = new THREE.Group();
-  const coreGeo = new THREE.BoxGeometry(TILE * 0.96, CAS_WALL_H, TILE * 0.96, 2, 3, 2); jitterGeometry(coreGeo, 0.3);
-  const core = new THREE.Mesh(coreGeo, casMatWallC); core.position.y = CAS_WALL_H / 2; core.castShadow = true; core.receiveShadow = true; grp.add(core);
+  const coreGeo = new THREE.BoxGeometry(TILE * 0.96, CAS_WALL_H, TILE * 0.96, 2, 3, 2);
+  const core = new THREE.Mesh(coreGeo, Math.random() < 0.5 ? casMatWallCoreA : casMatWallCoreB); core.position.y = CAS_WALL_H / 2; core.castShadow = true; core.receiveShadow = true; grp.add(core); // 민짜 면에도 석조 쌓기 슬랩
   const courses = 4, ch = CAS_WALL_H / courses;
   for (let c = 0; c < courses; c++) {
     const offset = (c % 2) * (TILE * 0.22), nb = 3;
     for (let b = 0; b < nb; b++) {
       const bw = TILE / nb * (0.82 + Math.random() * 0.18);
       const bx = -TILE / 2 + (b + 0.5) * (TILE / nb) + offset * 0.4 + (Math.random() - 0.5) * 0.12;
-      const bg = new THREE.BoxGeometry(bw, ch * 0.86, TILE * 0.5, 2, 1, 1); jitterGeometry(bg, 0.16);
+      const bg = new THREE.BoxGeometry(bw, ch * 0.86, TILE * 0.5, 2, 1, 1);
       const bm = new THREE.Mesh(bg, casBlockMats[(c + b) % casBlockMats.length]);
       bm.position.set(bx, ch * (c + 0.5), TILE * 0.26); bm.castShadow = true; bm.receiveShadow = true; grp.add(bm);
     }
   }
   for (let r = 0; r < 2; r++) {
-    const rg = new THREE.IcosahedronGeometry(TILE * (0.2 + Math.random() * 0.14), 1); jitterGeometry(rg, 0.16);
+    const rg = new THREE.IcosahedronGeometry(TILE * (0.2 + Math.random() * 0.14), 1);
     const rm = new THREE.Mesh(rg, casMatRubble);
     rm.position.set((Math.random() - 0.5) * TILE * 0.6, TILE * 0.4 + Math.random() * CAS_WALL_H * 0.5, TILE * 0.42); rm.castShadow = true; grp.add(rm);
   }
@@ -2548,16 +2953,17 @@ function makeCastleTorch(parent, x, y, z) {
   const f1 = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.62, 7), getGlowMat(0xff7a1e)); flameG.add(f1);
   const f2 = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.42, 7), getGlowMat(0xffd060)); f2.position.y = 0.12; flameG.add(f2);
   flameG.position.y = 0.55; g.add(flameG);
+  const glowSp = makeGlowSprite(0xffa050, 2.6, 0.5); glowSp.position.y = 0.85; g.add(glowSp); // 빛번짐
   let light = null;
   if (cavernLightBudget > 0) { cavernLightBudget--; light = new THREE.PointLight(0xff8a3a, 1.5, 17, 2.0); light.position.y = 0.6; g.add(light); }
   g.position.set(x, y, z); parent.add(g);
-  castleTorches.push({ flame: flameG, f1, f2, light, ph: Math.random() * 10 });
+  castleTorches.push({ flame: flameG, f1, f2, light, sprite: glowSp, ph: Math.random() * 10 });
 }
 function makeCastlePillar(parent, x, z, broken) {
   const g = new THREE.Group();
   g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.85, 0.5, 8), casMatPillarD));
   const h = broken ? (1.6 + Math.random() * 1.5) : (CAS_WALL_H - 0.5);
-  const shaftGeo = new THREE.CylinderGeometry(0.55, 0.62, h, 8); jitterGeometry(shaftGeo, 0.06);
+  const shaftGeo = new THREE.CylinderGeometry(0.55, 0.62, h, 8);
   const shaft = new THREE.Mesh(shaftGeo, casMatPillar); shaft.position.y = 0.25 + h / 2; shaft.castShadow = true; shaft.receiveShadow = true; g.add(shaft);
   if (broken) {
     const top = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 0), casMatPillarD); top.position.y = 0.25 + h; top.scale.y = 0.5; g.add(top);
@@ -2572,7 +2978,7 @@ function makeCastleRubble(parent, x, z) {
   const n = 4 + Math.floor(Math.random() * 5);
   const rkMats = [casMatRubble, casMatRubbleD, casMatWallB];
   for (let i = 0; i < n; i++) {
-    const rg = new THREE.IcosahedronGeometry(0.4 + Math.random() * 0.6, 0); jitterGeometry(rg, 0.12);
+    const rg = new THREE.IcosahedronGeometry(0.4 + Math.random() * 0.6, 0);
     const rk = new THREE.Mesh(rg, rkMats[i % 3]);
     rk.position.set((Math.random() - 0.5) * 2.2, 0.2 + Math.random() * 0.5, (Math.random() - 0.5) * 2.2);
     rk.rotation.set(Math.random(), Math.random(), Math.random()); rk.castShadow = true; rk.receiveShadow = true; g.add(rk);
@@ -2611,14 +3017,14 @@ function buildCastleMesh(dgn) {
     if (!adj) continue;
     const wt = makeCastleWallTile();
     wt.position.set(wxf(x), 0, wzf(y)); wt.rotation.y = (Math.floor(Math.random() * 4)) * Math.PI / 2;
-    if (Math.random() < 0.25) wt.children[0].material = casMatWallSh;
+    if (Math.random() < 0.25) wt.children[0].material = casMatWallCoreSh;
     if (Math.random() < 0.4) addCastleIvy(wt);
     wallGroup.add(wt); walls.push({ x: wxf(x), z: wzf(y), halfW: TILE / 2, halfD: TILE / 2 });
   }
   // 복도 붉은 카펫(러너) — 복도 타일은 grid===1이므로 corridorTiles로 깐다
   for (const { x, y } of corridorTiles) {
     if (grid[y][x] !== 1) continue;
-    const cm = getLowPolyMat([CAS.carpet, CAS.carpetD, CAS.carpetE][(x + y) % 3]);
+    const cm = casCarpetMats[(x + y) % 3];
     const horiz = isF(x - 1, y) || isF(x + 1, y);           // 복도가 가로로 이어지면 카펫도 가로로
     const lng = TILE * 0.96, shrt = TILE * 0.6;
     const carpet = new THREE.Mesh(new THREE.BoxGeometry(horiz ? lng : shrt, 0.08, horiz ? shrt : lng), cm);
@@ -2648,6 +3054,8 @@ function buildCastleMesh(dgn) {
       corners.forEach((c, k) => { if (Math.random() < 0.3) return; makeCastlePillar(wallGroup, wxf(c[0]), wzf(c[1]), k % 2 === ri % 2); });
     }
     if (Math.random() < 0.5) makeCastleRubble(floorGroup, cx + (Math.random() - 0.5) * TILE, cz + (Math.random() - 0.5) * TILE);
+    // 큰 방엔 깨진 천장/창문으로 드는 차가운 달빛 줄기
+    if (r.w >= 5 && r.h >= 5 && Math.random() < 0.4) makeCavernShaft(cx + (Math.random() - 0.5) * TILE, cz + (Math.random() - 0.5) * TILE, 0xc4d4f0, 0xaec2e8);
     // 방 경계 벽 횃불 1~2
     const cnt = 1 + Math.floor(Math.random() * 2);
     for (let k = 0; k < cnt; k++) {
@@ -2661,6 +3069,273 @@ function buildCastleMesh(dgn) {
     for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) { if (!isF(x + dx, y + dy)) { makeCastleTorch(wallGroup, wxf(x) + dx * TILE * 0.42, 2.4, wzf(y) + dy * TILE * 0.42); break; } }
   }
 }
+// ===== 3막 부패한 성(잠식) 테마 — 옛 석조 건축이 살아있는 살덩이에 잠식당하는 던전 =====
+// 원화 컨셉: 뼈빛 석조 + 진홍/멍든 자주 종양 군집 + 바닥을 기는 핏줄 + 창백한 살막 + 병든 발광
+const COR = {
+  floor: 0x7a735c, floorB: 0x6e6752, floorDark: 0x5e5845,    // 뼈빛 석조 바닥(2막보다 밝고 따뜻한 톤)
+  wall: 0xa89f82, wallB: 0x988f72, wallC: 0x8a8266, wallSh: 0x6a6450,
+  rubble: 0x938a70, rubbleD: 0x736b56,
+  flesh: 0x97283e, fleshB: 0x731f33, fleshC: 0xb24054,        // 진홍 살덩이(종양)
+  bruise: 0x5e3354, bruiseB: 0x7a4570,                        // 멍든 자주
+  pale: 0xdfb9bf, paleB: 0xcc9fae,                            // 창백한 감염 분홍(살막·지방질)
+  bile: 0x6d7c3c, bileD: 0x4f5c2c,                            // 담즙 녹색(병든 이끼)
+  vein: 0x8a2438,                                              // 핏줄
+  glow: 0xff9a68, glowB: 0xffc89a,                             // 살 속에서 새는 병든 발광
+};
+const corFloorMats = []; // 뼈빛 3색 × 석판 변형 4장 = 12종(텍스처는 2막과 공유 — 흑백이라 팔레트만 다르게 입혀짐)
+texFlagstones.forEach(t => { [COR.floor, COR.floorB, COR.floorDark].forEach(c => { const m = getLowPolyMat(c); m.map = t; m.needsUpdate = true; corFloorMats.push(m); }); });
+const corMatWall = applyCutoutShader(getLowPolyMat(COR.wall));
+const corMatWallB = applyCutoutShader(getLowPolyMat(COR.wallB));
+const corMatWallC = applyCutoutShader(getLowPolyMat(COR.wallC));
+const corMatWallSh = applyCutoutShader(getLowPolyMat(COR.wallSh));
+const corMatRubble = applyCutoutShader(getLowPolyMat(COR.rubble));
+const corMatFlesh = applyCutoutShader(getLowPolyMat(COR.flesh));
+const corMatFleshB = applyCutoutShader(getLowPolyMat(COR.fleshB));
+const corMatFleshC = applyCutoutShader(getLowPolyMat(COR.fleshC));
+const corMatBruise = applyCutoutShader(getLowPolyMat(COR.bruise));
+const corMatBruiseB = applyCutoutShader(getLowPolyMat(COR.bruiseB));
+const corMatPale = applyCutoutShader(getLowPolyMat(COR.pale));
+const corMatBile = applyCutoutShader(getLowPolyMat(COR.bile));
+const corBlockMats = [corMatWall, corMatWallB, corMatWallC];
+const corFleshMats = [corMatFlesh, corMatFleshB, corMatFleshC, corMatBruise, corMatBruiseB];
+// 3막 도트 텍스처 배정: 석조 계열은 2막 텍스처 재사용(흑백 → 뼈빛 자동), 살덩이는 습윤 텍스처
+[[corMatWall, 0], [corMatWallB, 1], [corMatWallC, 2], [corMatWallSh, 3], [corMatRubble, 1]].forEach(([m, ti]) => { m.map = texStoneGrains[ti]; m.needsUpdate = true; });
+[[corMatFlesh, 0], [corMatFleshB, 1], [corMatFleshC, 0], [corMatBruise, 1], [corMatBruiseB, 0], [corMatPale, 1]].forEach(([m, ti]) => { m.map = texFleshWets[ti]; m.needsUpdate = true; });
+corMatBile.map = texMosses[1]; corMatBile.needsUpdate = true; // 병든 이끼
+// 벽 코어(민짜 면): 뼈빛 석조 쌓기 — 변형 2종 + 어두운 변형
+const corMatWallCoreA = applyCutoutShader(getLowPolyMat(COR.wallC)); corMatWallCoreA.map = texMasonries[0]; corMatWallCoreA.needsUpdate = true;
+const corMatWallCoreB = applyCutoutShader(getLowPolyMat(COR.wallC)); corMatWallCoreB.map = texMasonries[1]; corMatWallCoreB.needsUpdate = true;
+const corMatWallCoreSh = applyCutoutShader(getLowPolyMat(COR.wallSh)); corMatWallCoreSh.map = texMasonries[0]; corMatWallCoreSh.needsUpdate = true;
+// 살막(반투명 창백한 막) — cutout 미적용(투명 재질)
+const corMembraneMat = getLowPolyMat(COR.pale); corMembraneMat.transparent = true; corMembraneMat.opacity = 0.42; corMembraneMat.side = THREE.DoubleSide; corMembraneMat.depthWrite = false; corMembraneMat.map = texFleshWets[0];
+const corruptPulses = []; // 맥동 종양/발광 {mesh, glow, light, ph, baseI}
+
+// 종양 군집: 진홍·자주·창백 분홍 혹들이 뭉친 덩어리(불규칙하게 눌린 구체들)
+function makeFleshClump(s) {
+  const g = new THREE.Group();
+  const n = 4 + Math.floor(Math.random() * 4);
+  for (let i = 0; i < n; i++) {
+    const r = s * (0.22 + Math.random() * 0.3);
+    const geo = new THREE.IcosahedronGeometry(r, 0);
+    const b = new THREE.Mesh(geo, corFleshMats[Math.floor(Math.random() * corFleshMats.length)]);
+    b.position.set((Math.random() - 0.5) * s * 0.8, r * (0.4 + Math.random() * 0.6), (Math.random() - 0.5) * s * 0.8);
+    b.scale.y = 0.65 + Math.random() * 0.35; // 눌린 혹
+    b.castShadow = true; g.add(b);
+  }
+  return g;
+}
+// 벽을 타고 오르는 살덩이 + 늘어진 살가닥(담쟁이 대체)
+function addWallFlesh(grp) {
+  const n = 3 + Math.floor(Math.random() * 4);
+  for (let i = 0; i < n; i++) {
+    const geo = new THREE.IcosahedronGeometry(0.26 + Math.random() * 0.26, 0);
+    const blob = new THREE.Mesh(geo, corFleshMats[i % corFleshMats.length]);
+    blob.position.set((Math.random() - 0.5) * TILE * 0.8, TILE * 0.4 + Math.random() * CAS_WALL_H * 0.5, (Math.random() - 0.5) * TILE * 0.8);
+    blob.scale.y = 0.7; blob.castShadow = true; grp.add(blob);
+  }
+  // 늘어진 살가닥(점성 있는 물방울처럼 아래로)
+  if (Math.random() < 0.7) {
+    const len = 0.6 + Math.random() * 1.0;
+    const strand = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.11, len, 5), corMatPale);
+    strand.position.set((Math.random() - 0.5) * TILE * 0.6, CAS_WALL_H - len / 2 + 0.1, (Math.random() - 0.5) * TILE * 0.5);
+    grp.add(strand);
+    const tip = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12, 0), corMatPale);
+    tip.position.set(strand.position.x, strand.position.y - len / 2, strand.position.z); grp.add(tip);
+  }
+}
+// 3막 벽 타일: 뼈빛 석조 블록 + 잠식된 살덩이
+function makeCorruptWallTile() {
+  const grp = new THREE.Group();
+  const coreGeo = new THREE.BoxGeometry(TILE * 0.96, CAS_WALL_H, TILE * 0.96, 2, 3, 2);
+  const core = new THREE.Mesh(coreGeo, Math.random() < 0.5 ? corMatWallCoreA : corMatWallCoreB); core.position.y = CAS_WALL_H / 2; core.castShadow = true; core.receiveShadow = true; grp.add(core); // 민짜 면에도 뼈빛 석조 쌓기
+  const courses = 4, ch = CAS_WALL_H / courses;
+  for (let c = 0; c < courses; c++) {
+    const offset = (c % 2) * (TILE * 0.22), nb = 3;
+    for (let b = 0; b < nb; b++) {
+      const bw = TILE / nb * (0.82 + Math.random() * 0.18);
+      const bx = -TILE / 2 + (b + 0.5) * (TILE / nb) + offset * 0.4 + (Math.random() - 0.5) * 0.12;
+      const bg = new THREE.BoxGeometry(bw, ch * 0.86, TILE * 0.5, 2, 1, 1);
+      const bm = new THREE.Mesh(bg, corBlockMats[(c + b) % corBlockMats.length]);
+      bm.position.set(bx, ch * (c + 0.5), TILE * 0.26); bm.castShadow = true; bm.receiveShadow = true; grp.add(bm);
+    }
+  }
+  // 무너진 잔해 혹은 병든 이끼 덩어리
+  if (Math.random() < 0.5) {
+    const rg = new THREE.IcosahedronGeometry(TILE * (0.18 + Math.random() * 0.12), 0);
+    const rm = new THREE.Mesh(rg, Math.random() < 0.5 ? corMatRubble : corMatBile);
+    rm.position.set((Math.random() - 0.5) * TILE * 0.6, TILE * 0.4 + Math.random() * CAS_WALL_H * 0.5, TILE * 0.42); rm.castShadow = true; grp.add(rm);
+  }
+  // 살막(벽면에 늘어진 반투명 막)
+  if (Math.random() < 0.18) {
+    const mg = new THREE.PlaneGeometry(TILE * (0.5 + Math.random() * 0.4), CAS_WALL_H * (0.4 + Math.random() * 0.3), 2, 2);
+    const mem = new THREE.Mesh(mg, corMembraneMat);
+    mem.position.set((Math.random() - 0.5) * TILE * 0.4, CAS_WALL_H * 0.45, TILE * 0.5);
+    mem.rotation.y = (Math.random() - 0.5) * 0.5; grp.add(mem);
+  }
+  return grp;
+}
+// 발광 종양(광원): 살덩이 더미 속에서 따뜻한 병든 빛이 새어나옴 — 횃불 대체 광원
+function makeGlowTumor(parent, x, y, z) {
+  const g = new THREE.Group();
+  const clump = makeFleshClump(1.0); g.add(clump);
+  const nod = new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 0), getGlowMat(COR.glow));
+  nod.position.y = 0.42; g.add(nod);
+  const nod2 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12, 0), getGlowMat(COR.glowB));
+  nod2.position.set(0.3, 0.28, 0.15); g.add(nod2);
+  const glowSp = makeGlowSprite(0xff9a68, 2.3, 0.45); glowSp.position.y = 0.6; g.add(glowSp); // 빛번짐
+  let light = null;
+  if (cavernLightBudget > 0) { cavernLightBudget--; light = new THREE.PointLight(0xff8a55, 1.4, 15, 2.0); light.position.y = 0.7; g.add(light); }
+  g.position.set(x, y, z); parent.add(g);
+  corruptPulses.push({ mesh: clump, glow: nod, light, sprite: glowSp, ph: Math.random() * 10, baseI: 1.4 });
+}
+// 바닥 거대 종양 더미: 방 안 장식 — 큰 살덩이 + 발광 결절
+function makeFleshTumorMass(parent, x, z) {
+  const g = new THREE.Group();
+  const big = makeFleshClump(2.2); g.add(big);
+  if (Math.random() < 0.7) {
+    const nod = new THREE.Mesh(new THREE.IcosahedronGeometry(0.2 + Math.random() * 0.12, 0), getGlowMat(COR.glow));
+    nod.position.set((Math.random() - 0.5) * 1.2, 0.5 + Math.random() * 0.4, (Math.random() - 0.5) * 1.2); g.add(nod);
+    const nsp = makeGlowSprite(0xff9a68, 1.5, 0.38); nsp.position.copy(nod.position); g.add(nsp);
+    corruptPulses.push({ mesh: big, glow: nod, light: null, sprite: nsp, ph: Math.random() * 10, baseI: 0 });
+  } else {
+    corruptPulses.push({ mesh: big, glow: null, light: null, ph: Math.random() * 10, baseI: 0 });
+  }
+  g.position.set(x, 0.1, z); parent.add(g);
+}
+// 바닥을 기는 핏줄: 가는 진홍 가닥이 타일 위를 가로지름
+function makeFloorVeins(parent, wx, wz) {
+  const n = 2 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < n; i++) {
+    const len = TILE * (0.4 + Math.random() * 0.55);
+    const v = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.075, len, 4), corMatFleshB);
+    v.rotation.z = Math.PI / 2; v.rotation.y = Math.random() * Math.PI;
+    v.position.set(wx + (Math.random() - 0.5) * TILE * 0.5, 0.05, wz + (Math.random() - 0.5) * TILE * 0.5);
+    parent.add(v);
+    const node = new THREE.Mesh(new THREE.IcosahedronGeometry(0.09 + Math.random() * 0.06, 0), corMatFlesh);
+    node.position.set(v.position.x + Math.cos(v.rotation.y) * len * 0.5, 0.06, v.position.z - Math.sin(v.rotation.y) * len * 0.5);
+    node.scale.y = 0.6; parent.add(node);
+  }
+}
+// 3막 석조 기둥: 뼈빛 돌기둥, 절반쯤 살덩이에 잠식됨
+function makeCorruptPillar(parent, x, z, broken) {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.85, 0.5, 8), corMatWallSh));
+  const h = broken ? (1.6 + Math.random() * 1.5) : (CAS_WALL_H - 0.5);
+  const shaftGeo = new THREE.CylinderGeometry(0.55, 0.62, h, 8);
+  const shaft = new THREE.Mesh(shaftGeo, corMatWall); shaft.position.y = 0.25 + h / 2; shaft.castShadow = true; shaft.receiveShadow = true; g.add(shaft);
+  if (broken) {
+    const top = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 0), corMatWallSh); top.position.y = 0.25 + h; top.scale.y = 0.5; g.add(top);
+  } else {
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.7, 0.4, 8), corMatWallSh); cap.position.y = 0.25 + h; g.add(cap);
+  }
+  // 기둥 밑동을 감싼 살덩이
+  if (Math.random() < 0.75) { const c = makeFleshClump(1.2); c.position.y = 0.1; g.add(c); }
+  g.position.set(x, 0.25, z); parent.add(g);
+}
+// 3막 아치: 뼈빛 석조 + 키스톤에서 늘어진 살가닥
+function makeCorruptArchway(parent, x, z, dir) {
+  const g = new THREE.Group();
+  const stone = corMatWall, stoneD = corMatWallSh;
+  const span = TILE * 0.95, jamb = 0.55, postH = CAS_WALL_H * 0.62;
+  for (const s of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(jamb, postH, jamb), stone); post.position.set(s * span / 2, postH / 2, 0); post.castShadow = true; post.receiveShadow = true; g.add(post);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(jamb + 0.18, 0.3, jamb + 0.18), stoneD); base.position.set(s * span / 2, 0.15, 0); g.add(base);
+  }
+  const segs = 7, rise = CAS_WALL_H * 0.5, r = span * 0.62;
+  for (let side = -1; side <= 1; side += 2) for (let i = 0; i <= segs; i++) {
+    const a = (i / segs) * (Math.PI / 2) * 0.92;
+    const vs = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.42, jamb + 0.05), i % 2 ? stone : stoneD);
+    vs.position.set(side * (Math.cos(a) * r), postH + Math.sin(a) * rise, 0);
+    vs.rotation.z = side * (a - Math.PI / 2) * 0.85; vs.castShadow = true; g.add(vs);
+  }
+  const key = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.6, jamb + 0.1), stone); key.position.set(0, postH + rise + 0.1, 0); key.castShadow = true; g.add(key);
+  // 아치에서 늘어진 살가닥(점성) + 아치 위 종양
+  if (Math.random() < 0.8) {
+    const len = 0.5 + Math.random() * 0.9;
+    const strand = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.1, len, 5), corMatPale);
+    strand.position.set((Math.random() - 0.5) * span * 0.6, postH + rise - len / 2, 0); g.add(strand);
+    const tip = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 0), corMatPale);
+    tip.position.set(strand.position.x, strand.position.y - len / 2, 0); g.add(tip);
+    const c = makeFleshClump(0.9); c.position.set((Math.random() - 0.5) * span * 0.5, postH + rise + 0.2, 0); g.add(c);
+  }
+  g.position.set(x, 0, z); if (dir === 'z') g.rotation.y = Math.PI / 2; parent.add(g);
+}
+// 3막 부패한 성 메시 빌드(2막 buildCastleMesh와 동일 좌표계·배치 구조)
+function buildCorruptMesh(dgn) {
+  const { grid, rooms, corridorTiles } = dgn;
+  wallGrid = grid;
+  cavernLightBudget = 6;
+  const corridorSet = new Set(corridorTiles.map(c => c.x + ',' + c.y));
+  const wxf = (gx) => (gx - MAP_W / 2) * TILE, wzf = (gy) => (gy - MAP_H / 2) * TILE;
+  const isF = (x, y) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && grid[y][x] > 0;
+  // 바닥(뼈빛 석조) + 핏줄·발광 균열
+  for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+    if (grid[y][x] > 0) {
+      const f = new THREE.Mesh(casFloorGeos[(x + y) % casFloorGeos.length], corFloorMats[(x * 2 + y) % corFloorMats.length]);
+      f.position.set(wxf(x), -0.2, wzf(y)); f.receiveShadow = true; floorGroup.add(f);
+      if (grid[y][x] === 1 && Math.random() < 0.13) makeFloorVeins(floorGroup, wxf(x), wzf(y));
+      if (grid[y][x] === 1 && Math.random() < 0.045) {
+        // 발광 균열: 살 속 빛이 바닥 틈으로 샘
+        const crack = new THREE.Mesh(new THREE.BoxGeometry(TILE * 0.55, 0.08, 0.22), getGlowMat(COR.glow));
+        crack.position.set(wxf(x), 0.01, wzf(y)); crack.rotation.y = Math.random() * Math.PI; floorGroup.add(crack);
+      }
+    }
+  }
+  // 벽(뼈빛 석조 + 살덩이 잠식)
+  for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+    if (grid[y][x] > 0) continue;
+    let adj = false;
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) if (isF(x + dx, y + dy)) { adj = true; break; }
+    if (!adj) continue;
+    const wt = makeCorruptWallTile();
+    wt.position.set(wxf(x), 0, wzf(y)); wt.rotation.y = (Math.floor(Math.random() * 4)) * Math.PI / 2;
+    if (Math.random() < 0.25) wt.children[0].material = corMatWallCoreSh;
+    if (Math.random() < 0.5) addWallFlesh(wt);
+    wallGroup.add(wt); walls.push({ x: wxf(x), z: wzf(y), halfW: TILE / 2, halfD: TILE / 2 });
+  }
+  // 복도: 살이 기어간 길(카펫 대체 — 멍든 자주 지방질 띠 + 핏줄)
+  for (const { x, y } of corridorTiles) {
+    if (grid[y][x] !== 1) continue;
+    const horiz = isF(x - 1, y) || isF(x + 1, y);
+    const lng = TILE * 0.96, shrt = TILE * 0.52;
+    const fleshPath = new THREE.Mesh(new THREE.BoxGeometry(horiz ? lng : shrt, 0.07, horiz ? shrt : lng), [corMatBruise, corMatFleshB, corMatBruiseB][(x + y) % 3]);
+    fleshPath.position.set(wxf(x), 0.035, wzf(y)); fleshPath.receiveShadow = true; floorGroup.add(fleshPath);
+    if (Math.random() < 0.5) makeFloorVeins(floorGroup, wxf(x), wzf(y));
+  }
+  // 아치(방→복도 경계)
+  const archDone = new Set();
+  for (const r of rooms) {
+    for (let x = r.x; x < r.x + r.w; x++) for (const [edgeY, dy] of [[r.y, -1], [r.y + r.h - 1, 1]]) {
+      if (isF(x, edgeY + dy) && corridorSet.has(x + ',' + (edgeY + dy))) { const key = x + ',' + (edgeY + dy * 0.5); if (archDone.has(key)) continue; archDone.add(key); makeCorruptArchway(wallGroup, wxf(x), wzf(edgeY) + dy * TILE * 0.5, 'x'); }
+    }
+    for (let y = r.y; y < r.y + r.h; y++) for (const [edgeX, dx] of [[r.x, -1], [r.x + r.w - 1, 1]]) {
+      if (isF(edgeX + dx, y) && corridorSet.has((edgeX + dx) + ',' + y)) { const key = (edgeX + dx * 0.5) + ',' + y; if (archDone.has(key)) continue; archDone.add(key); makeCorruptArchway(wallGroup, wxf(edgeX) + dx * TILE * 0.5, wzf(y), 'z'); }
+    }
+  }
+  // 방 디테일: 잠식된 기둥 / 종양 더미 / 발광 종양(광원)
+  rooms.forEach((r, ri) => {
+    const cx = wxf(r.cx), cz = wzf(r.cy);
+    if (r.w >= 4 && r.h >= 4) {
+      const corners = [[r.x + 1, r.y + 1], [r.x + r.w - 2, r.y + 1], [r.x + 1, r.y + r.h - 2], [r.x + r.w - 2, r.y + r.h - 2]];
+      corners.forEach((c, k) => { if (Math.random() < 0.35) return; makeCorruptPillar(wallGroup, wxf(c[0]), wzf(c[1]), k % 2 === ri % 2); });
+    }
+    if (Math.random() < 0.65) makeFleshTumorMass(floorGroup, cx + (Math.random() - 0.5) * TILE * 1.2, cz + (Math.random() - 0.5) * TILE * 1.2);
+    // 큰 방엔 부패가 갉아먹은 천장 틈으로 드는 병든 청록빛 줄기
+    if (r.w >= 5 && r.h >= 5 && Math.random() < 0.4) makeCavernShaft(cx + (Math.random() - 0.5) * TILE, cz + (Math.random() - 0.5) * TILE, 0x9fd0bc, 0x86c0a6);
+    // 방 경계 벽에 발광 종양 1~2(횃불 대체 광원)
+    const cnt = 1 + Math.floor(Math.random() * 2);
+    for (let k = 0; k < cnt; k++) {
+      const ex = r.x + Math.floor(Math.random() * r.w), ey = r.y + Math.floor(Math.random() * r.h);
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) { if (!isF(ex + dx, ey + dy)) { makeGlowTumor(wallGroup, wxf(ex) + dx * TILE * 0.4, 0.15, wzf(ey) + dy * TILE * 0.4); break; } }
+    }
+  });
+  // 복도 드문드문 발광 종양
+  for (const { x, y } of corridorTiles) {
+    if (grid[y][x] !== 1 || Math.random() > 0.1) continue;
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) { if (!isF(x + dx, y + dy)) { makeGlowTumor(wallGroup, wxf(x) + dx * TILE * 0.4, 0.15, wzf(y) + dy * TILE * 0.4); break; } }
+  }
+}
+
 let stairsMesh = null;
 const walls = []; 
 let wallGrid = null; // 시야 판정용 벽 격자(generateDungeon에서 채움)
@@ -2677,7 +3352,7 @@ function generateDungeon() {
   const actStart = (Math.floor((player.floor - 1) / 30)) * 30 + 1; // 1,31,61,…
   const floorInAct = player.floor - actStart + 1;                  // 1~30
   // 막별 시작 방 개수: 1막=3개, 2막(31~60층)=4개, 이후 막도 필요시 조정.
-  const actBaseRooms = (actStart === 31) ? 4 : 3;
+  const actBaseRooms = (actStart === 61) ? 5 : (actStart === 31) ? 4 : 3;
   // 목표 방 개수: 막 안에서 4층마다 1개씩 증가, 보스층은 적게.
   let targetRooms;
   if (isBossFloor) targetRooms = actBaseRooms + Math.floor(Math.random() * 2); // 시작개수~+1(단순)
@@ -2763,13 +3438,35 @@ function buildDungeonMesh(dgn) {
   // 이끼 동굴 장식 애니메이션 대상 초기화(층마다 새로)
   cavernShrooms.length = 0; cavernWaters.length = 0; cavernShafts.length = 0;
   castleTorches.length = 0;
-  // 막(Act)별 분위기 전환: 1막=이끼 동굴 / 2막=무너진 성
+  corruptPulses.length = 0; // 3막 맥동 종양 정리
+  // 막(Act)별 분위기 전환: 1막=이끼 동굴 / 2막=무너진 성 / 3막=부패한 성(잠식)
+  if (currentAct() === 3) {
+    // 부패한 성: 병든 청록 달빛(차가운 그림자) + 살덩이의 따뜻한 발광 대비 + 떠다니는 분홍 포자
+    if (scene.background) scene.background.setHex(0x0b070a);
+    if (scene.fog) { scene.fog.color.setHex(0x0b070a); scene.fog.density = 0.014; }
+    ambientLight.color.setHex(0x42363c); ambientLight.intensity = 0.2;   // 멍든 자줏빛 환경광(가장 어두움 — 빛이 닿지 않는 심부)
+    castleMoon.visible = true; castleHemi.visible = true;
+    castleMoon.color.setHex(0x8fb0a4); castleMoon.intensity = 0.16;       // 병든 청록 달빛(그림자 색)
+    castleHemi.color.setHex(0x5a4250); castleHemi.groundColor.setHex(0x161014); castleHemi.intensity = 0.12; // 창백 분홍 하늘 / 어두운 바닥
+    const half3 = (MAP_W * TILE) * 0.5 + TILE * 2;
+    castleMoon.shadow.camera.left = -half3; castleMoon.shadow.camera.right = half3;
+    castleMoon.shadow.camera.top = half3; castleMoon.shadow.camera.bottom = -half3;
+    castleMoon.shadow.camera.updateProjectionMatrix();
+    collapseTiles.length = 0;  // 3막엔 무너지는 함정 없음(이전 막 잔재 정리)
+    buildCorruptMesh(dgn);
+    casDustMat.color.setHex(0xdf9aa8);  // 떠다니는 분홍 포자
+    updateCastleDust(true);
+    return;
+  }
   if (currentAct() === 2) {
     // 무너진 성: 업로드 뷰어와 동일한 분위기(차가운 달빛 + 따뜻한 회색 환경광 + 옅은 안개)
     if (scene.background) scene.background.setHex(0x090b0e);
     if (scene.fog) { scene.fog.color.setHex(0x090b0e); scene.fog.density = 0.013; }
-    ambientLight.color.setHex(0x40454c); ambientLight.intensity = 0.18;  // 어둡고 차가운 회색 환경광
+    ambientLight.color.setHex(0x444a54); ambientLight.intensity = 0.36;  // 차가운 회색 환경광(3막보다 밝음 — 중간 깊이)
     castleMoon.visible = true; castleHemi.visible = true;
+    castleMoon.color.setHex(0x8ea0d8); castleMoon.intensity = 0.32;       // 차가운 달빛(더 밝게)
+    castleHemi.color.setHex(0x3a4360); castleHemi.groundColor.setHex(0x141519); castleHemi.intensity = 0.24;
+    casDustMat.color.setHex(0xd8c89a);                                    // 회색 먼지(3막 포자색 복원)
     // 달빛 그림자 카메라를 현재 맵 크기에 맞춤(맵이 커도 전부 덮도록)
     const half = (MAP_W * TILE) * 0.5 + TILE * 2;
     castleMoon.shadow.camera.left = -half; castleMoon.shadow.camera.right = half;
@@ -2784,15 +3481,18 @@ function buildDungeonMesh(dgn) {
   } else {
     if (scene.background) scene.background.setHex(0x070a06);
     if (scene.fog) { scene.fog.color.setHex(0x070a06); scene.fog.density = 0.025; }
-    ambientLight.color.setHex(0x12140c); ambientLight.intensity = 0.6;  // 이끼 동굴 원래 환경광 복원
-    castleMoon.visible = false; castleHemi.visible = false;
+    ambientLight.color.setHex(0x1a1e12); ambientLight.intensity = 0.88;  // 이끼 동굴(가장 밝음 — 지상에 가까운 입구층)
+    castleMoon.visible = false;
+    // 동굴에도 약한 반구광으로 전체 밝기 확보(달빛은 없지만 은은한 환경 채광)
+    castleHemi.visible = true; castleHemi.color.setHex(0x3a4030); castleHemi.groundColor.setHex(0x14160c); castleHemi.intensity = 0.35;
     updateCastleDust(false);  // 1막(동굴)에선 먼지 숨김
   }
 
   // 이끼 동굴 바닥: 어두운 흙갈 + 변형색, 이끼 얼룩·자갈
   const floorMat = getLowPolyMat(0x2a2417), floorMat2 = getLowPolyMat(0x322b1a);
+  floorMat.map = texDirts[0]; floorMat2.map = texDirts[1]; // 도트 흙바닥(자갈 점)
   const pebbleMat = getLowPolyMat(0x534b3c), pebbleMat2 = getLowPolyMat(0x3d3829);
-  const mossPatchMat = getLowPolyMat(0x3a4a1c); // 어두운 이끼 얼룩
+  const mossPatchMat = getLowPolyMat(0x3a4a1c); mossPatchMat.map = texMosses[1]; // 어두운 이끼 얼룩(도트 이끼)
   const { grid } = dgn;
   wallGrid = grid; // 시야 판정용으로 전역 보관
   for (let y = 0; y < MAP_H; y++) {
@@ -3006,10 +3706,13 @@ function makeGlowShroom(x, y, z) {
     cap.position.set(sx, h, sz); g.add(cap);
   }
   // 약한 청록 점광원(범위·세기 작게 — 시야 제한 유지). 예산 내에서만 실제 광원 추가.
+  const shGlow = makeGlowSprite(0x8fd8ff, 1.9, 0.4); shGlow.position.y = 0.55; g.add(shGlow); // 빛번짐(광원 예산과 무관)
   if (cavernLightBudget > 0) {
     cavernLightBudget--;
     const light = new THREE.PointLight(0x8fd8ff, 0.55, TILE * 1.6, 2.0); light.position.y = 0.6; g.add(light);
-    cavernShrooms.push({ light, ph: Math.random()*10, base: 0.55 });
+    cavernShrooms.push({ light, sprite: shGlow, ph: Math.random()*10, base: 0.55 });
+  } else {
+    cavernShrooms.push({ light: null, sprite: shGlow, ph: Math.random()*10, base: 0.55 });
   }
   g.position.set(x, y, z); floorGroup.add(g);
 }
@@ -3017,7 +3720,7 @@ function makeGlowShroom(x, y, z) {
 // 석순(바닥에서 솟는 바위)
 function makeStalagmite(x, z, h) {
   const g = new THREE.Group();
-  const sg = new THREE.ConeGeometry(0.45 + Math.random()*0.3, h, 6); jitterGeometry(sg, 0.12);
+  const sg = new THREE.ConeGeometry(0.45 + Math.random()*0.3, h, 6);
   const sm = new THREE.Mesh(sg, C_ROCK[Math.floor(Math.random()*2)]);
   sm.position.y = h/2; sm.castShadow = true; sm.receiveShadow = true; g.add(sm);
   if (Math.random() < 0.35) { const moss = new THREE.Mesh(new THREE.IcosahedronGeometry(0.2, 0), C_MOSS[0]); moss.scale.y = 0.4; moss.position.y = h*0.3; g.add(moss); }
@@ -3027,7 +3730,7 @@ function makeStalagmite(x, z, h) {
 // 종유석(벽 윗부분에서 아래로)
 function makeStalactite(x, z) {
   const h = 1.2 + Math.random()*1.6;
-  const sg = new THREE.ConeGeometry(0.3 + Math.random()*0.18, h, 6); jitterGeometry(sg, 0.1);
+  const sg = new THREE.ConeGeometry(0.3 + Math.random()*0.18, h, 6);
   const sm = new THREE.Mesh(sg, C_ROCK[1]); sm.rotation.x = Math.PI; // 끝이 아래로
   sm.position.set(x + (Math.random()-0.5)*TILE*0.5, TILE*0.85 - h/2, z + (Math.random()-0.5)*TILE*0.5);
   sm.castShadow = true; wallGroup.add(sm);
@@ -3052,23 +3755,27 @@ function makeHangingVine(x, z) {
 }
 
 // 천장 틈 빛줄기(은은한 반투명 콘 + 바닥 빛무리 + 약한 점광)
-function makeCavernShaft(x, z) {
+function makeCavernShaft(x, z, col, lightCol) {
+  const beamCol = (col !== undefined) ? col : 0xeaf0c8;       // 빛기둥 색(막별)
+  const spotCol = (lightCol !== undefined) ? lightCol : 0xeaf0b8;
   const g = new THREE.Group();
-  const beamMat = new THREE.MeshBasicMaterial({ color: 0xeaf0c8, transparent: true, opacity: 0.08, depthWrite: false, side: THREE.DoubleSide, fog: false });
+  const beamMat = new THREE.MeshBasicMaterial({ color: beamCol, transparent: true, opacity: 0.08, depthWrite: false, side: THREE.DoubleSide, fog: false });
   const beam = new THREE.Mesh(new THREE.ConeGeometry(2.4, TILE*3, 10, 1, true), beamMat);
   beam.position.y = TILE*1.5; g.add(beam);
-  const poolMat = new THREE.MeshBasicMaterial({ color: 0xeaf0c8, transparent: true, opacity: 0.12, depthWrite: false, fog: false });
+  const poolMat = new THREE.MeshBasicMaterial({ color: beamCol, transparent: true, opacity: 0.12, depthWrite: false, fog: false });
   const pool = new THREE.Mesh(new THREE.CircleGeometry(2.0, 14), poolMat);
   pool.rotation.x = -Math.PI/2; pool.position.y = 0.02; g.add(pool);
   // 빛 안 먼지
   const N = 24, pos = new Float32Array(N*3);
   for (let i = 0; i < N; i++) { pos[i*3]=(Math.random()-0.5)*3; pos[i*3+1]=Math.random()*TILE*3; pos[i*3+2]=(Math.random()-0.5)*3; }
   const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  const motes = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xeaf0c8, size: 0.1, transparent: true, opacity: 0.4, depthWrite: false }));
+  const motes = new THREE.Points(sg, new THREE.PointsMaterial({ color: beamCol, size: 0.1, transparent: true, opacity: 0.4, depthWrite: false }));
   g.add(motes);
+  // 빛기둥 바닥에 글로우 빌보드(HD-2D 빛번짐 — 빛이 닿는 바닥이 환하게)
+  const gsp = makeGlowSprite(beamCol, 2.4, 0.32); gsp.position.y = 0.1; g.add(gsp);
   if (cavernLightBudget > 0) {
     cavernLightBudget--;
-    const spot = new THREE.PointLight(0xeaf0b8, 0.7, TILE*4, 1.6); spot.position.y = TILE*1.2; g.add(spot);
+    const spot = new THREE.PointLight(spotCol, 0.7, TILE*4, 1.6); spot.position.y = TILE*1.2; g.add(spot);
   }
   g.position.set(x, 0, z); floorGroup.add(g);
   cavernShafts.push({ beam, motes: sg, ph: Math.random()*10 });
@@ -7026,6 +7733,8 @@ function spawnEnemies(dgn) {
   skillAimActive = false; if (skillAimRing) { scene.remove(skillAimRing.grp); skillAimRing.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); }); skillAimRing = null; }
   for (const p of pierceTrails) { scene.remove(p.mesh); if (p.mesh.geometry) p.mesh.geometry.dispose(); }
   pierceTrails.length = 0;
+  for (const p of soulDrainParticles) { scene.remove(p.mesh); if (p.mesh.geometry) p.mesh.geometry.dispose(); }
+  soulDrainParticles.length = 0;
   for (const p of icePillars) { scene.remove(p.grp); p.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
   icePillars.length = 0;
   for (const a of azTelegraphs) { if (a.grp.parent) a.grp.parent.remove(a.grp); a.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
@@ -7219,6 +7928,7 @@ function placeStairs(dgn) {
   const baseGeo = new THREE.CylinderGeometry(2.5, 3, 0.5, 6); jitterGeometry(baseGeo, 0.1);
   const base = new THREE.Mesh(baseGeo, darkMetal); base.castShadow = true; base.receiveShadow = true; g.add(base);
   const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.6, 0), getGlowMat(0xf6e05e)); orb.position.y = 1.5; g.add(orb); g._orb = orb;
+  orb.add(makeGlowSprite(0xf6e05e, 2.8, 0.5)); // 계단 구슬 빛번짐
   const glow = new THREE.PointLight(0xf6e05e, 2, 8); glow.position.y = 1.5; g.add(glow);
   g.position.set(sx, 0.25, sz); scene.add(g); stairsMesh = g;
 }
@@ -7239,15 +7949,16 @@ function placeReturnStairs(dgn) {
   const base = new THREE.Mesh(baseGeo, darkMetal); base.castShadow = true; base.receiveShadow = true; g.add(base);
   // 위로 솟은 상행 표시: 푸른 오브 + 위를 향한 화살(콘)
   const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.55, 0), getGlowMat(0x6fd0ff)); orb.position.y = 1.5; g.add(orb); g._orb = orb;
+  orb.add(makeGlowSprite(0x6fd0ff, 2.6, 0.5)); // 귀환 계단 구슬 빛번짐
   const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.7, 5), getGlowMat(0x9fe4ff)); arrow.position.y = 2.3; g.add(arrow);
   const glow = new THREE.PointLight(0x6fd0ff, 2, 8); glow.position.y = 1.5; g.add(glow);
   g.position.set(sx, 0.25, sz); scene.add(g); returnStairsMesh = g;
 }
-// 던전 1층 → 마을로 귀환(회차 정리 후 마을 모드)
+// 던전 1층 → 마을로 귀환(회차 정리 후 마을 모드). 테스트 모드는 유지.
 function returnToTown() {
   if (returnStairsMesh) { scene.remove(returnStairsMesh); returnStairsMesh = null; }
   toast('🏘️ 마을로 돌아갑니다', 1500);
-  enterTownMode();
+  enterTownMode(godMode); // 테스트 모드(godMode)면 keepGod=true로 유지
 }
 
 // ---------------- TREASURE CHEST (10% per floor) & FOUNTAIN (every 5 floors) ----------------
@@ -7684,7 +8395,7 @@ function updateSpikeTraps(dt) {
 }
 // 이끼 동굴 장식 애니메이션: 발광 버섯 맥동, 물웅덩이 잔물결, 빛줄기 먼지
 function updateCavernDecor(dt) {
-  if (cavernShrooms.length === 0 && cavernWaters.length === 0 && cavernShafts.length === 0 && castleTorches.length === 0 && !castleDust.visible) return;
+  if (cavernShrooms.length === 0 && cavernWaters.length === 0 && cavernShafts.length === 0 && castleTorches.length === 0 && corruptPulses.length === 0 && !castleDust.visible) return;
   const t = performance.now() / 1000;
   // 2막 떠다니는 먼지: 위로 상승 + 좌우 흔들림(천장 닿으면 바닥에서 재생성)
   if (castleDust.visible) {
@@ -7700,12 +8411,22 @@ function updateCavernDecor(dt) {
   for (const tc of castleTorches) {
     const f = 1.0 + Math.sin(t * 10 + tc.ph) * 0.22 + Math.sin(t * 23 + tc.ph) * 0.12;
     if (tc.light) tc.light.intensity = 1.4 * f;
+    if (tc.sprite) tc.sprite.material.opacity = 0.36 + f * 0.16; // 빛번짐도 함께 깜빡임
     tc.flame.scale.set(0.9 + Math.sin(t * 13 + tc.ph) * 0.12, f, 0.9 + Math.cos(t * 11 + tc.ph) * 0.12);
     tc.flame.rotation.y = Math.sin(t * 7 + tc.ph) * 0.15;
   }
+  // 3막 맥동 종양: 살덩이가 숨 쉬듯 부풀고 줄며, 발광 결절·점광이 함께 명멸
+  for (const cp of corruptPulses) {
+    const b = 1.0 + Math.sin(t * 1.5 + cp.ph) * 0.055 + Math.sin(t * 3.3 + cp.ph * 1.7) * 0.025;
+    if (cp.mesh) { cp.mesh.scale.set(b, 2.0 - b, b); } // 부풀면 낮아지는 점성 숨쉬기
+    if (cp.glow) { const g = 1.0 + Math.sin(t * 2.2 + cp.ph) * 0.3; cp.glow.scale.setScalar(g); }
+    if (cp.light) cp.light.intensity = cp.baseI * (1.0 + Math.sin(t * 2.2 + cp.ph) * 0.3 + Math.sin(t * 5.1 + cp.ph) * 0.12);
+    if (cp.sprite) cp.sprite.material.opacity = 0.3 + (1.0 + Math.sin(t * 2.2 + cp.ph) * 0.5) * 0.14; // 빛번짐 명멸
+  }
   for (const sh of cavernShrooms) {
     const f = 1.0 + Math.sin(t * 2.0 + sh.ph) * 0.3 + Math.sin(t * 5 + sh.ph) * 0.1;
-    sh.light.intensity = sh.base * f;
+    if (sh.light) sh.light.intensity = sh.base * f;
+    if (sh.sprite) sh.sprite.material.opacity = 0.26 + f * 0.13; // 빛번짐 맥동
   }
   for (const w of cavernWaters) {
     w.mesh.position.y = 0.02 + Math.sin(t * 1.6 + w.ph) * 0.01;
@@ -7935,7 +8656,7 @@ const joyBase = $('joyBase'), joyStick = $('joyStick');
 const turnBase = $('turnBase'), turnStick = $('turnStick');
 // 마을·게임오버·캐릭터선택 등 오버레이가 떠 있으면 게임 터치 조작을 막는다(스크롤·버튼 충돌 방지)
 function anyOverlayOpen() {
-  const ids = ['overOverlay', 'charOverlay', 'startOverlay', 'howtoOverlay', 'rewardOverlay', 'townShop', 'smithOverlay', 'skillOverlay', 'townDialog', 'startResumeChoice'];
+  const ids = ['overOverlay', 'charOverlay', 'startOverlay', 'howtoOverlay', 'rewardOverlay', 'townShop', 'smithOverlay', 'skillOverlay', 'townDialog', 'startResumeChoice', 'restChoiceOverlay'];
   return ids.some(id => { const el = document.getElementById(id); return el && !el.classList.contains('hidden'); });
 }
 
@@ -8137,19 +8858,45 @@ function executeSwing(multiplier) {
 
 // 실제 데미지는 내려치는 임팩트 순간에 호출됨
 // ===== 대장간 2막 특수 능력 효과 =====
-// 망령의 인장: 적 처치 시 killburst 확률로 주변 적에게 폭발 피해
-function smithKillBurst(x, z) {
-  const ch = (typeof smithBonus === 'function') ? smithBonus('killburst') : 0;
-  if (ch <= 0 || Math.random() >= ch) return;
-  const R = TILE * 1.8, dmg = Math.floor((player.atk || 12) * 1.5);
-  if (typeof spawnShockwave === 'function') spawnShockwave(x, z, R);
-  spawnHitEffect(x, 0.8, z, 1.6);
-  for (const e of enemies) {
-    if (e.isDead || !e.obj.visible) continue;
-    const dd = Math.hypot(e.obj.position.x - x, e.obj.position.z - z);
-    if (dd < R) { e.hp -= dmg; flashObj(e.obj); alertRoom(e); if (e.hp <= 0) killEnemy(e); }
+// 망령의 인장: 적 처치 시 영혼을 흡수해 최대 체력의 lifesteal 비율만큼 회복
+function smithSoulDrain() {
+  const r = (typeof smithBonus === 'function') ? smithBonus('lifesteal') : 0;
+  if (r <= 0) return;
+  if (player.hp >= player.hpMax) return; // 이미 가득
+  const heal = Math.max(1, Math.floor(player.hpMax * r));
+  player.hp = Math.min(player.hpMax, player.hp + heal);
+  spawnSoulDrainFx(); // 플레이어 주변 초록 영혼 입자
+  if (typeof updateHUD === 'function') updateHUD();
+}
+// 영혼 흡수 연출: 플레이어 몸에서 위로 떠오르는 청록/초록 영혼 입자(망령다움)
+const soulDrainParticles = [];
+function spawnSoulDrainFx() {
+  const px = player.obj.position.x, pz = player.obj.position.z;
+  for (let i = 0; i < 6; i++) {
+    const m = new THREE.MeshBasicMaterial({ color: Math.random() > 0.5 ? 0x8effc0 : 0x6fe0d0, transparent: true, opacity: 0.85, depthWrite: false, fog: false });
+    const wisp = new THREE.Mesh(new THREE.IcosahedronGeometry(0.09 + Math.random() * 0.05, 0), m);
+    const a = (i / 6) * Math.PI * 2 + Math.random() * 0.5;
+    const rr = 0.3 + Math.random() * 0.4;
+    wisp.position.set(px + Math.cos(a) * rr, 0.4 + Math.random() * 0.5, pz + Math.sin(a) * rr);
+    scene.add(wisp);
+    soulDrainParticles.push({ mesh: wisp, mat: m, life: 0.7, maxLife: 0.7, vy: 1.6 + Math.random() * 0.8, spin: (Math.random() - 0.5) * 5 });
   }
-  toast('💠 망령의 폭발!', 1000);
+}
+function updateSoulDrainFx(dt) {
+  for (let i = soulDrainParticles.length - 1; i >= 0; i--) {
+    const p = soulDrainParticles[i];
+    p.life -= dt;
+    if (p.life <= 0) {
+      scene.remove(p.mesh);
+      if (p.mesh.geometry) p.mesh.geometry.dispose(); if (p.mat) p.mat.dispose();
+      soulDrainParticles.splice(i, 1);
+      continue;
+    }
+    const t = p.life / p.maxLife;
+    p.mesh.position.y += p.vy * dt;
+    p.mesh.rotation.x += p.spin * dt; p.mesh.rotation.y += p.spin * dt;
+    p.mat.opacity = t * 0.85;
+  }
 }
 // 마그마 핵: 피격 시 thorns 비율로 주변 적에게 화염 반격(적이 잠시 불타오름)
 function smithThorns(srcEnemy) {
@@ -8918,11 +9665,8 @@ function killEnemy(e) {
     return;
   }
   e.isDead = true; e.deathTimer = 1.5;
-  // 망령의 인장: 일반 적 처치 시 확률 폭발(보스/난입보스 제외, 폭발 연쇄 시 재귀 방지)
-  if (!e.isBoss && !e.isElite && !e._fromBurst && typeof smithKillBurst === 'function') {
-    e._fromBurst = true; // 자기 자신 중복 방지
-    smithKillBurst(e.obj.position.x, e.obj.position.z);
-  }
+  // 망령의 인장: 적 처치 시 영혼을 흡수해 체력 회복(보스 포함)
+  if (typeof smithSoulDrain === 'function') smithSoulDrain();
   if (e.type === 'icequeen') { setSnowstorm(false); e.iqZeroState = 'none'; e.iqZeroCd = 99999; if (typeof endCurseBeam === 'function') endCurseBeam(e); } // 여왕 사망: 폭풍·절대영도·광선·빔 중단
   // 돌진 중 사망 시 따라다니던 반구 제거(안 사라지는 버그 방지)
   if (e.rushTear) {
@@ -9219,6 +9963,7 @@ function update(dt) {
   if (typeof updateFrostReadyFx === 'function') updateFrostReadyFx(dt); // 서리 방어막 준비 입자
   if (typeof updatePotionFx === 'function') updatePotionFx(dt); // 물약 회복 입자
   if (typeof updatePierceTrails === 'function') updatePierceTrails(dt); // 관통 화살 궤적 잔상
+  if (typeof updateSoulDrainFx === 'function') updateSoulDrainFx(dt); // 망령의 인장 영혼 흡수 입자
   if (typeof updateBurnEffects === 'function') updateBurnEffects(dt); // 마그마 핵 화염 반격(적 불타는 이펙트)
   if (typeof updateSkillCooldowns === 'function') updateSkillCooldowns(dt); // 스킬 쿨다운
   if (typeof updateArrowRains === 'function') updateArrowRains(dt); // 궁수 화살 비
@@ -11076,9 +11821,11 @@ function update(dt) {
 function descend() {
   if (!player.hitThisFloor) player.noHitFloors++; player.hitThisFloor = false;
   // 막 사이 쉼터: 30층(보스)을 클리어하면 다음 층 대신 여행자의 쉼터로 진입
-  if (player.floor === 30) { meta.restUnlocked = true; saveMeta(); restIsFinal = false; player.potions++; toast('🧪 회복 물약 +1 (1막 클리어!)', 2500); enterRest(true); return; }
-  // 60층(2막 최종 보스=얼음 여왕) 클리어: 현재 콘텐츠의 끝 → 쉼터로(아직 3막 미구현, 입구 막힘 안내)
-  if (player.floor === 60) { restIsFinal = true; player.potions++; toast('🧪 회복 물약 +1 (2막 클리어!)', 2500); enterRest(true); return; }
+  if (player.floor === 30) { meta.restUnlocked = true; saveMeta(); restIsFinal = false; restNextFloor = 31; player.potions++; toast('🧪 회복 물약 +1 (1막 클리어!)', 2500); enterRest(true); return; }
+  // 60층(2막 최종 보스=얼음 여왕) 클리어 → 쉼터 → 3막(부패한 성, 61층)으로 이어짐
+  if (player.floor === 60) { meta.act2Cleared = true; saveMeta(); restIsFinal = false; restNextFloor = 61; player.potions++; toast('🧪 회복 물약 +1 (2막 클리어!)', 2500); enterRest(true); return; }
+  // 90층(3막 최종) 클리어: 현재 콘텐츠의 끝 → 쉼터로(다음 막 입구 막힘 안내)
+  if (player.floor === 90) { restIsFinal = true; player.potions++; toast('🧪 회복 물약 +1 (3막 클리어!)', 2500); enterRest(true); return; }
   player.floor += 1; toast('▼ Floor ' + player.floor); player.hp = Math.min(player.hpMax, player.hp + 25); startFloor(); updateFloorJumpPanel();
 }
 function startFloor() {
@@ -11199,8 +11946,8 @@ const SMITH_ITEMS = {
   orc_belt:     { name: '오크 군장의 허리띠', icon: '🟫', slot: 'trinket', mat: 'orc_hide', craftMat: 1, craftGold: 150, upMat: 2, upGold: 120, maxLevel: 5, stat: 'staregen', per: 0.15, act: 1,
                   desc: lv => '스태미나 회복 +' + Math.round(lv * 15) + '%' },
   // --- 2막: 특수 능력 ---
-  wraith_seal:  { name: '망령의 인장', icon: '💠', slot: 'trinket', mat: 'candle_wax', craftMat: 1, craftGold: 300, upMat: 2, upGold: 250, maxLevel: 5, stat: 'killburst', per: 0.06, act: 2,
-                  desc: lv => '처치 시 ' + Math.round(8 + lv * 6) + '% 확률로 폭발' },
+  wraith_seal:  { name: '망령의 인장', icon: '💠', slot: 'trinket', mat: 'candle_wax', craftMat: 1, craftGold: 300, upMat: 2, upGold: 250, maxLevel: 5, stat: 'lifesteal', per: 0.012, act: 2,
+                  desc: lv => '처치 시 최대 체력의 ' + (lv * 1.2).toFixed(1) + '% 회복' },
   magma_heart:  { name: '마그마 핵', icon: '🔥', slot: 'trinket', mat: 'magma_core', craftMat: 1, craftGold: 350, upMat: 2, upGold: 300, maxLevel: 5, stat: 'thorns', per: 0.2, act: 2,
                   desc: lv => '피격 시 화염 반격(피해 ' + Math.round(lv * 20) + '%)' },
   frost_blessing:{ name: '서리 여왕의 가호', icon: '❄️', slot: 'trinket', mat: 'frost_crystal', craftMat: 1, craftGold: 400, upMat: 2, upGold: 350, maxLevel: 5, stat: 'frostward', per: 1, act: 2,
@@ -11477,6 +12224,9 @@ window.addEventListener('resize', () => {
   lowResH = Math.max(240, Math.floor(window.innerHeight / PIXEL_SCALE));
   rt.setSize(lowResW, lowResH);
   quadMat.uniforms.uTexel.value.set(1 / lowResW, 1 / lowResH);
+  bloomW = Math.max(160, Math.floor(lowResW / 2)); bloomH = Math.max(120, Math.floor(lowResH / 2));
+  rtBloom.setSize(bloomW, bloomH);
+  bloomMat.uniforms.uTexel.value.set(1 / bloomW, 1 / bloomH);
   applyAdaptiveFOV();
   updateOrientationWarning();
 });
@@ -11515,18 +12265,15 @@ function tick(now) {
   if (inTown) {
     // 마을 모드: 마을 씬을 같은 픽셀화 파이프라인으로 렌더
     updateTownMode(dt);
-    renderer.setRenderTarget(rt); renderer.clear(); renderer.render(townScene, camera);
-    renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
+    renderWithPost(townScene);
   } else if (inRest) {
     // 여행자의 쉼터(허브): 동일 파이프라인으로 렌더
     updateRestMode(dt);
-    renderer.setRenderTarget(rt); renderer.clear(); renderer.render(restScene, camera);
-    renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
+    renderWithPost(restScene);
   } else {
     if (player.alive && !rewardPaused) update(dt);
     cullSceneLights(camera);   // 동시 점등 광원 수 제한(흰 화면 방지)
-    renderer.setRenderTarget(rt); renderer.clear(); renderer.render(scene, camera);
-    renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
+    renderWithPost(scene);
     drawMinimap();
   }
 
@@ -11599,6 +12346,32 @@ onTap($('startResumeBtn'), () => { safeResume(); $('startResumeChoice').classLis
 // 보스 테스트 진입(시작 화면 버튼). 전체 화면 탭 핸들러로 전파되지 않게 막는다.
 onTap($('bossTestBtn'), (e) => { if (e) e.stopPropagation(); safeResume(); enterBossTest(); });
 onTap($('maxLevelBtn'), (e) => { if (e) e.stopPropagation(); safeResume(); openMaxLevelCharSelect(); });
+// 일반 모드 데이터 초기화(2단계 확인): 첫 탭=경고, 둘째 탭=삭제. 테스트 슬롯은 건드리지 않음.
+let resetConfirm = false, resetConfirmTimer = null;
+onTap($('resetDataBtn'), (e) => {
+  if (e) e.stopPropagation();
+  const btn = $('resetDataBtn');
+  if (!resetConfirm) {
+    resetConfirm = true;
+    btn.textContent = '⚠️ 정말 초기화? (다시 탭)';
+    btn.style.background = 'rgba(180,70,70,0.35)'; btn.style.borderColor = '#d06060'; btn.style.color = '#ffd0d0';
+    clearTimeout(resetConfirmTimer);
+    resetConfirmTimer = setTimeout(() => { resetConfirm = false; btn.textContent = '🗑️ 일반 모드 데이터 초기화'; btn.style.background = 'rgba(80,80,90,0.18)'; btn.style.borderColor = '#707688'; btn.style.color = '#aab0c0'; }, 4000);
+    return;
+  }
+  // 실제 삭제: 일반 모드 영구 데이터 + 이어하기 + 최고 점수(테스트 슬롯 dungeon_meta_test는 보존)
+  clearTimeout(resetConfirmTimer); resetConfirm = false;
+  try {
+    localStorage.removeItem('dungeon_meta');
+    localStorage.removeItem('dungeon_run');
+    localStorage.removeItem('dungeon_best_score');
+  } catch (err) {}
+  metaIsTest = false; loadMeta(); // 깨끗한 일반 슬롯 로드
+  btn.textContent = '✅ 초기화 완료!';
+  btn.style.background = 'rgba(70,160,90,0.3)'; btn.style.borderColor = '#5fc878'; btn.style.color = '#cfffd8';
+  if (typeof refreshPotionBtn === 'function') refreshPotionBtn();
+  setTimeout(() => { btn.textContent = '🗑️ 일반 모드 데이터 초기화'; btn.style.background = 'rgba(80,80,90,0.18)'; btn.style.borderColor = '#707688'; btn.style.color = '#aab0c0'; }, 2500);
+});
 // 보스 룸 안 소환·퇴장 버튼
 document.querySelectorAll('.boss-spawn').forEach(btn => {
   onTap(btn, () => spawnTestBoss(btn.getAttribute('data-boss')));
@@ -11830,8 +12603,8 @@ function enterTownMode(keepGod) {
   }
   if ($('floorJumpPanel')) $('floorJumpPanel').style.display = 'none';
   buildTownScene();
-  // 쉼터행 텔레포트 패드(여행자의 쉼터를 한 번 도달=30층 클리어한 뒤 해금) — 일방향
-  if (meta && meta.restUnlocked) { townRestPad = makeTeleportPad(townScene, 7, 7, 0x6fd0ff); townRestPadHold = 0; }
+  // 쉼터행 텔레포트 패드: 테스트 모드(godMode)는 항상 개방, 일반 모드는 30층 클리어로 해금된 경우 — 일방향
+  if (godMode || (meta && meta.restUnlocked)) { townRestPad = makeTeleportPad(townScene, 7, 7, 0x6fd0ff); townRestPadHold = 0; }
   else townRestPad = null;
   clearRun();          // 마을로 돌아오면 던전 진행은 정리 — 마을에서 입장 시 항상 1층부터
   inTown = true;
@@ -11909,7 +12682,8 @@ let restNPCs = [];                 // {x,z,r,name,kind,lines,lineIdx,obj,mark,he
 let restCampfire = { x: 0, z: -6 };
 let restEnteredFromRun = false;    // true=30층 클리어 후, false=마을 단축 진입
 let restPadHold = 0, restHealCd = 0, restNpcLineT = 0, restActiveNpc = null;
-let restIsFinal = false; // true=60층 후 쉼터(현재 콘텐츠 끝, 다음 막 입구 막힘)
+let restIsFinal = false; // true=마지막 막 클리어 후 쉼터(현재 콘텐츠 끝, 다음 막 입구 막힘)
+let restNextFloor = 31;  // 쉼터에서 입장하면 진입할 다음 막의 시작 층(30층 후=31, 60층 후=61)
 let restExitX = 0, restExitZ = 0, restExitMarker = null, restEnterHold = 0; // 우측 동굴=2막 입구(마을식 게이지 입장)
 let restInteractTarget = null; // 쉼터에서 가장 가까운 대화 NPC(마을식 말걸기)
 let townRestPad = null;            // 마을의 쉼터행 텔레포트 패드 {group,ring,light,x,z}
@@ -11982,6 +12756,19 @@ function buildRestScene() {
 
   const C = { rock: 0x3c4a4a, rockB: 0x44524e, rockC: 0x33403e, rockMoss: 0x46583a, ground: 0x6f6043, groundD: 0x584a33, path: 0xb7a884, pathD: 0x9a8c68, wood: 0x6e5436, woodD: 0x55401f, timber: 0x584734, timberD: 0x43331f, stone: 0x8f938a, stoneD: 0x6f7369, metal: 0x6b7079, leather: 0x7a5a38, canvasA: 0xcdbf9f, canvasB: 0xc2b495, canvasC: 0xd8ccae, patchRed: 0xa75852, patchBlue: 0x5f7d7a, cloth: 0xa8554a, cloth2: 0x5f7d7a, hay: 0xc2a358, leaf: 0x4c6e3a, leafD: 0x3c5a2c, leafA: 0x5e8048, fern: 0x567a40, warm: 0xffcf7a };
   const M = {}; for (const k in C) M[k] = getLowPolyMat(C[k], k === 'metal');
+  // 절차적 도트 텍스처 배정(흑백 명도 패턴 — 팔레트 색은 유지)
+  { const tx = (k, t) => { if (M[k]) { M[k].map = t; M[k].needsUpdate = true; } };
+    tx('rock', texRockGrains[0]); tx('rockB', texRockGrains[1]); tx('rockC', texRockGrains[2]); // 동굴 암벽
+    tx('rockMoss', texMosses[0]);
+    tx('ground', texDirts[0]); tx('groundD', texDirts[1]);          // 흙바닥
+    tx('path', texFlagstones[0]); tx('pathD', texFlagstones[1]);    // 길 포석
+    tx('wood', texWoods[0]); tx('woodD', texWoods[1]);
+    tx('timber', texWoods[0]); tx('timberD', texWoods[1]);
+    tx('stone', texStoneGrains[0]); tx('stoneD', texStoneGrains[1]);
+    tx('canvasA', texCarpetWeaves[0]); tx('canvasB', texCarpetWeaves[1]); tx('canvasC', texCarpetWeaves[0]); // 천막 캔버스
+    tx('cloth', texCarpetWeaves[0]); tx('cloth2', texCarpetWeaves[1]); tx('hay', texThatches[0]);
+    tx('leaf', texMosses[0]); tx('leafD', texMosses[1]); tx('leafA', texMosses[0]); tx('fern', texMosses[1]);
+  }
   const sh = o => { o.castShadow = true; o.receiveShadow = true; return o; };
   const box = (w, h, d, m, x = 0, y = 0, z = 0) => { const e = sh(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m)); e.position.set(x, y, z); return e; };
   const cyl = (rt2, rb, h, s, m, x = 0, y = 0, z = 0) => { const e = sh(new THREE.Mesh(new THREE.CylinderGeometry(rt2, rb, h, s), m)); e.position.set(x, y, z); return e; };
@@ -12130,9 +12917,9 @@ function buildRestScene() {
   // --- 암벽 ---
   function makeCliff(x, z, h, s) {
     const g = new THREE.Group();
-    const baseGeo = new THREE.BoxGeometry(4.2 * s, h, 4.2 * s, 2, 2, 2); jitterGeometry(baseGeo, 0.9);
+    const baseGeo = new THREE.BoxGeometry(4.2 * s, h, 4.2 * s, 2, 2, 2);
     g.add(new THREE.Mesh(baseGeo, [M.rock, M.rockB, M.rockC][Math.floor(Math.random() * 3)]));
-    for (let i = 0; i < 4; i++) { const rg = new THREE.IcosahedronGeometry((1.0 + Math.random() * 1.2) * s, 1); jitterGeometry(rg, 0.5); const rk = new THREE.Mesh(rg, Math.random() < 0.5 ? M.rock : M.rockB); rk.position.set((Math.random() - 0.5) * 3 * s, -h / 2 + Math.random() * h, (Math.random() - 0.5) * 3 * s); rk.castShadow = true; rk.receiveShadow = true; g.add(rk); }
+    for (let i = 0; i < 4; i++) { const rg = new THREE.IcosahedronGeometry((1.0 + Math.random() * 1.2) * s, 1); const rk = new THREE.Mesh(rg, Math.random() < 0.5 ? M.rock : M.rockB); rk.position.set((Math.random() - 0.5) * 3 * s, -h / 2 + Math.random() * h, (Math.random() - 0.5) * 3 * s); rk.castShadow = true; rk.receiveShadow = true; g.add(rk); }
     if (Math.random() < 0.6) { const moss = new THREE.Mesh(new THREE.IcosahedronGeometry(1.0 * s, 0), M.rockMoss); moss.scale.y = 0.4; moss.position.y = h / 2 - 0.2; g.add(moss); }
     g.children.forEach(c => { c.castShadow = true; c.receiveShadow = true; });
     g.position.set(x, h / 2 - 0.5, z); g.rotation.y = Math.random() * Math.PI; root.add(g);
@@ -12156,7 +12943,7 @@ function buildRestScene() {
   // ===== 씬 구성 (원본 rest_market 구조 그대로) =====
   const AREA = 30;
   // --- 바닥(흙 분지) ---
-  const floorGeo = new THREE.BoxGeometry(AREA * 2, 0.5, AREA * 2, 16, 1, 16); jitterGeometry(floorGeo, 0.25);
+  const floorGeo = new THREE.BoxGeometry(AREA * 2, 0.5, AREA * 2, 16, 1, 16);
   const floorMesh = new THREE.Mesh(floorGeo, M.ground); floorMesh.position.y = -0.25; floorMesh.receiveShadow = true; root.add(floorMesh);
   for (let i = 0; i < 26; i++) { const r = 1.2 + Math.random() * 2.4; const patch = new THREE.Mesh(new THREE.CircleGeometry(r, 7), M.groundD); patch.rotation.x = -Math.PI / 2; patch.position.set((Math.random() - 0.5) * AREA * 1.7, 0.02, (Math.random() - 0.5) * AREA * 1.7); root.add(patch); }
 
@@ -12293,8 +13080,8 @@ function buildRestScene() {
     makeRestNPC(root, restExitX - 2.4, restExitZ + 0.4, 'cleric', '길잡이',
       [[
         '그 너머로 가려는 겐가? …아직은 안 되네.',
-        '이 길은 무너진 채로, 더 깊은 곳으로 이어지는 통로가 아직 열리지 않았어.',
-        '얼음 여왕을 쓰러뜨린 자네라면 언젠가 그 길도 열리겠지. 지금은 여기서 쉬게나.',
+        '이 아래는 심연일세. 부패조차 삼켜버린 어둠이지… 통로는 아직 열리지 않았어.',
+        '이 부패의 소굴을 헤쳐온 자네라면 언젠가 그 길도 열리겠지. 지금은 여기서 쉬게나.',
       ]],
       0x6a5acd, false);
   }
@@ -12302,6 +13089,7 @@ function buildRestScene() {
 
 // 쉼터 입장 (fromRun=true: 30층 클리어 직후 / false: 마을 단축 진입)
 function enterRest(fromRun) {
+  if (!fromRun) { restIsFinal = false; } // 마을 포탈 경유: restNextFloor는 선택 오버레이에서 지정(2막=31 / 3막=61)
   restEnteredFromRun = !!fromRun;
   buildRestScene();
   inRest = false; if (typeof inTown !== 'undefined') inTown = false;
@@ -12343,7 +13131,7 @@ function continueFromRest() {
   if (!inRest) return;
   // 60층 후 쉼터: 다음 막(3막)은 아직 미구현 — 입구가 막혀있음. 진입 대신 안내만.
   if (restIsFinal) {
-    toast('🚧 더 깊은 곳으로 향하는 길은 아직 막혀 있다… (다음 막 준비 중)', 3200);
+    toast('🚧 심연으로 향하는 길은 아직 막혀 있다… (다음 막 준비 중)', 3200);
     restEnterHold = 0;
     return;
   }
@@ -12358,13 +13146,14 @@ function continueFromRest() {
   showDungeonUI();
   player.alive = true; player.isBlocking = false; isCharging = false;
   if (restEnteredFromRun) {
-    player.floor = 31; player.hp = Math.min(player.hpMax, player.hp + 25);
+    player.floor = restNextFloor; player.hp = Math.min(player.hpMax, player.hp + 25);
   } else {
-    // 마을 단축 진입: 31층부터 새 회차(레벨/스탯 스케일)
-    startRunAtFloorReset(31); return;
+    // 마을 단축 진입: 다음 막 시작 층부터 새 회차(레벨/스탯 스케일)
+    startRunAtFloorReset(restNextFloor); return;
   }
-  toast('▼ Floor 31 — 다음 막');
+  toast('▼ Floor ' + restNextFloor + ' — 다음 막');
   startFloor();
+  updateFloorJumpPanel(); // 테스트 모드면 층 이동/무적 패널 다시 표시
   updateFloorJumpPanel();
 }
 
@@ -12381,6 +13170,7 @@ function startRunAtFloorReset(n) {
   if ($('rewardOverlay')) $('rewardOverlay').classList.add('hidden'); rewardPaused = false;
   toast('▼ Floor ' + n + ' — 다음 막');
   startFloor();
+  updateFloorJumpPanel(); // 테스트 모드면 층 이동/무적 패널 다시 표시
 }
 
 // 쉼터 매 프레임
@@ -12600,7 +13390,7 @@ function updateTownMode(dt) {
     if (_d < 1.5) {
       townRestPadHold += dt;
       if (_pr) { _pr.style.display = 'block'; _pr.textContent = '✨ 여행자의 쉼터로 이동 중… ' + Math.min(100, Math.round(townRestPadHold / 1.0 * 100)) + '%'; }
-      if (townRestPadHold >= 1.0) { if (_pr) _pr.style.display = 'none'; enterRest(false); return; }
+      if (townRestPadHold >= 1.0) { if (_pr) _pr.style.display = 'none'; townRestPadHold = 0; openRestChoice(); return; }
     } else {
       townRestPadHold = 0;
       if (_pr && _pr.textContent && _pr.textContent.indexOf('쉼터로 이동') >= 0) _pr.style.display = 'none';
@@ -12609,6 +13399,27 @@ function updateTownMode(dt) {
 }
 let townTimeCheck = 0;
 // 가장 가까운 상호작용 대상(상인/대화NPC)을 찾아 말걸기 버튼·안내 표시.
+// 쉼터 갈림길: 2막(31층)·3막(61층) 쉼터 중 선택. 3막은 godMode 또는 2막 클리어 시에만.
+function openRestChoice() {
+  const ov = $('restChoiceOverlay'); if (!ov) { restNextFloor = 31; restIsFinal = false; enterRest(false); return; }
+  const act3Open = godMode || (meta && meta.act2Cleared);
+  const b3 = $('restChoiceAct3');
+  if (b3) {
+    b3.style.display = act3Open ? 'block' : 'none'; // 3막 미해금이면 숨김
+  }
+  // 갈 곳이 2막뿐이면 선택 없이 바로 진입(불필요한 한 번 탭 방지)
+  if (!act3Open) { restNextFloor = 31; restIsFinal = false; enterRest(false); return; }
+  ov.classList.remove('hidden');
+}
+function chooseRest(floor) {
+  $('restChoiceOverlay').classList.add('hidden');
+  restNextFloor = floor; restIsFinal = false;
+  enterRest(false);
+}
+onTap($('restChoiceAct2'), (e) => { if (e) e.stopPropagation(); chooseRest(31); });
+onTap($('restChoiceAct3'), (e) => { if (e) e.stopPropagation(); chooseRest(61); });
+onTap($('restChoiceCancel'), (e) => { if (e) e.stopPropagation(); $('restChoiceOverlay').classList.add('hidden'); });
+
 function updateTownMerchant(dt) {
   const btn = $('townTalkBtn'), hint = $('townInteract');
   if (townShopOpen || (townActiveNPC && !$('townDialog').classList.contains('hidden'))) {
