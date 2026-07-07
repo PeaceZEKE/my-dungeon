@@ -497,16 +497,20 @@ let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
 (async function initCG() {
   try {
-    if (!window.CrazyGames || !window.CrazyGames.SDK) return; // 스크립트 차단/오프라인
+    if (!window.CrazyGames || !window.CrazyGames.SDK) return; // 스크립트 차단/오프라인(AD_TEST면 cgAdsAvailable 유지)
     await window.CrazyGames.SDK.init();
-    cgReady = true; cgAdsAvailable = true;
-  } catch (e) { cgReady = false; cgAdsAvailable = false; }
+    cgReady = true;
+    // 도메인 밖(GitHub Pages 등)에선 init이 성공해도 environment='disabled' → 광고 호출이 전부 예외.
+    // 실제 광고 가능 환경(crazygames/local)에서만 보상형 부활 버튼을 노출한다.
+    const env = window.CrazyGames.SDK.environment || 'disabled';
+    cgAdsAvailable = AD_TEST || env === 'crazygames' || env === 'local';
+  } catch (e) { cgReady = false; cgAdsAvailable = AD_TEST; } // QA 모드는 가짜 광고로 계속 테스트 가능
 })();
 function cgGameplayStart() { try { if (cgReady) window.CrazyGames.SDK.game.gameplayStart(); } catch (e) {} }
 function cgGameplayStop()  { try { if (cgReady) window.CrazyGames.SDK.game.gameplayStop(); } catch (e) {} }
 // 보상형 광고: 성공 시에만 onReward (규정: adError 시 보상 금지). v3는 프로미스 기반.
 async function cgShowRewarded(onReward, onFail) {
-  if (AD_TEST && !cgReady) { toast('📺 (테스트 광고 2초)', 1800); setTimeout(() => { if (onReward) onReward(); }, 2000); return; } // QA 전용 가짜 광고
+  if (AD_TEST) { toast('📺 (테스트 광고 2초)', 1800); setTimeout(() => { if (onReward) onReward(); }, 2000); return; } // QA 전용 가짜 광고(cgReady와 무관하게 우선)
   if (!cgAdsAvailable) { if (onFail) onFail('unavailable'); return; }
   try {
     if (typeof setMusicPausedForAd === 'function') setMusicPausedForAd(true);
