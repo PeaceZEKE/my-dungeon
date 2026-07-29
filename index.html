@@ -4136,8 +4136,17 @@ translateMarkup();
 const AD_TEST = /[?&]adtest=1/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
+const GAME_VERSION = 'v673'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : ''));
+if (AD_TEST) { // QA 배지: 배포본이 최신인지 화면에서 바로 확인(일반 유저에겐 안 보임)
+  const vb = document.createElement('div');
+  vb.textContent = GAME_VERSION + ' · adtest';
+  vb.style.cssText = 'position:fixed; left:6px; bottom:6px; z-index:99; font-size:10px; color:rgba(255,255,255,0.55); background:rgba(0,0,0,0.35); padding:2px 6px; border-radius:6px; pointer-events:none;';
+  document.body.appendChild(vb);
+}
 let goldAdData = null; // 보상형 광고 골드 2배: 현재 결과 화면의 정산 데이터(null이면 버튼 숨김)
 let lastReviveOfferAt = 0; // 부활 제안 쿨다운 기준 시각(제안 남발 방지, 규정 대응)
+let pendingDeathTest = false; // 부활 제안 중인 사망이 테스트 모드였는지(포기/실패 시 올바른 정산 경로 유지)
 (async function initCG() {
   try {
     if (!window.CrazyGames || !window.CrazyGames.SDK) return; // 스크립트 차단/오프라인(AD_TEST면 cgAdsAvailable 유지)
@@ -16404,7 +16413,8 @@ function die() {
   const wasTest = godMode; // 테스트 모드 죽음 여부(일반 세이브·골드와 분리)
   // 보상형 부활 제안: 일반 모드 + 광고 가능 + 이번 회차 미사용 + 제안 쿨다운 경과(규정: 사망마다 제안 금지)
   const reviveCooldownOk = AD_TEST || (Date.now() - lastReviveOfferAt > 180000); // 3분 — QA(adtest)는 면제
-  if (!wasTest && !runReviveUsed && cgAdsAvailable && reviveCooldownOk) { showReviveOffer(); return; }
+  // 테스트 모드(만렙) 사망은 기본 제외지만, QA(adtest=1)에서는 확인 편의를 위해 표시
+  if ((!wasTest || AD_TEST) && !runReviveUsed && cgAdsAvailable && reviveCooldownOk) { pendingDeathTest = wasTest; showReviveOffer(); return; }
   finalizeDeath(wasTest);
 }
 // 사망 확정: 이어하기 삭제 + 결과 정산(부활 거절/실패/불가 시 진입)
@@ -18225,10 +18235,10 @@ onTap($('reviveAdBtn'), (e) => {
   b.disabled = true; b.style.opacity = '0.5';
   cgShowRewarded(
     () => { b.disabled = false; b.style.opacity = '1'; $('reviveOverlay').classList.add('hidden'); doRevive(); },
-    () => { b.disabled = false; b.style.opacity = '1'; $('reviveOverlay').classList.add('hidden'); toast(_i18n('광고를 불러오지 못했습니다'), 1800); finalizeDeath(false); }
+    () => { b.disabled = false; b.style.opacity = '1'; $('reviveOverlay').classList.add('hidden'); toast(_i18n('광고를 불러오지 못했습니다'), 1800); finalizeDeath(pendingDeathTest); }
   );
 });
-onTap($('reviveGiveUpBtn'), (e) => { if (e) e.stopPropagation(); safeResume(); $('reviveOverlay').classList.add('hidden'); finalizeDeath(false); });
+onTap($('reviveGiveUpBtn'), (e) => { if (e) e.stopPropagation(); safeResume(); $('reviveOverlay').classList.add('hidden'); finalizeDeath(pendingDeathTest); });
 // 골드 부활: 광고 없이 재화로 같은 보상(규정의 '대안 제공' 충족). 부족하면 버튼이 비활성이라 보통 도달 안 함.
 onTap($('reviveGoldBtn'), (e) => {
   if (e) e.stopPropagation(); safeResume();
