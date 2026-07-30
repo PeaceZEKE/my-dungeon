@@ -4134,10 +4134,21 @@ translateMarkup();
 // 광고 불가 환경에서는 cgAdsAvailable=false → 보상형 버튼을 아예 숨기는 데 사용.
 // QA: 주소 뒤에 ?adtest=1 을 붙이면 CrazyGames 밖(GitHub Pages)에서도 가짜 2초 광고로 부활 흐름을 테스트할 수 있다.
 const AD_TEST = /[?&]adtest=1/.test(location.search);
+// 개발자 전용 버튼(보스 테스트·만렙 테스트) 노출 플래그.
+// 제출본에서 일반 플레이어에게 치트 버튼이 보이면 심사에서 걸리므로 ?dev=1 에서만 보인다.
+// ?adtest=1 은 QA 겸용이라 dev도 함께 켠다.
+const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v673'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
-console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : ''));
+const GAME_VERSION = 'v675'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : ''));
+// 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
+if (!DEV_MODE) {
+  for (const id of ['bossTestBtn', 'maxLevelBtn']) {
+    const b = document.getElementById(id);
+    if (b) b.style.display = 'none';
+  }
+}
 if (AD_TEST) { // QA 배지: 배포본이 최신인지 화면에서 바로 확인(일반 유저에겐 안 보임)
   const vb = document.createElement('div');
   vb.textContent = GAME_VERSION + ' · adtest';
@@ -4152,24 +4163,50 @@ let pendingDeathTest = false; // 부활 제안 중인 사망이 테스트 모드
     if (!window.CrazyGames || !window.CrazyGames.SDK) return; // 스크립트 차단/오프라인(AD_TEST면 cgAdsAvailable 유지)
     await window.CrazyGames.SDK.init();
     cgReady = true;
+    // 로딩 알림: init이 부팅보다 늦게 끝나면 start/stop을 한꺼번에 보낸다.
+    try {
+      window.CrazyGames.SDK.game.loadingStart();
+      if (cgBootDone) window.CrazyGames.SDK.game.loadingStop();
+    } catch (e) {}
     // 도메인 밖(GitHub Pages 등)에선 init이 성공해도 environment='disabled' → 광고 호출이 전부 예외.
     // 실제 광고 가능 환경(crazygames/local)에서만 보상형 부활 버튼을 노출한다.
     const env = window.CrazyGames.SDK.environment || 'disabled';
     cgAdsAvailable = AD_TEST || env === 'crazygames' || env === 'local';
   } catch (e) { cgReady = false; cgAdsAvailable = AD_TEST; } // QA 모드는 가짜 광고로 계속 테스트 가능
 })();
-function cgGameplayStart() { try { if (cgReady) window.CrazyGames.SDK.game.gameplayStart(); } catch (e) {} }
-function cgGameplayStop()  { try { if (cgReady) window.CrazyGames.SDK.game.gameplayStop(); } catch (e) {} }
+// gameplayStart/Stop: 실제 조작 가능한 전투 구간만 '플레이 중'으로 알린다.
+// 중복 호출은 SDK가 무시하지만, 상태를 직접 들고 있어야 오버레이가 겹칠 때 어긋나지 않는다.
+let cgPlaying = false;
+function cgGameplayStart() { if (cgPlaying) return; cgPlaying = true; try { if (cgReady) window.CrazyGames.SDK.game.gameplayStart(); } catch (e) {} }
+function cgGameplayStop()  { if (!cgPlaying) return; cgPlaying = false; try { if (cgReady) window.CrazyGames.SDK.game.gameplayStop(); } catch (e) {} }
+// 로딩 구간 알림: initCG가 끝나는 시점과 부팅 완료 시점의 순서가 상황마다 달라 양쪽에서 맞춘다.
+let cgBootDone = false;
+function cgLoadingStop() { cgBootDone = true; try { if (cgReady) window.CrazyGames.SDK.game.loadingStop(); } catch (e) {} }
+// 큰 성취 순간(신기록)에만 축하 연출 — 규정: 남용 금지
+function cgHappytime() { try { if (cgReady) window.CrazyGames.SDK.game.happytime(); } catch (e) {} }
+// 광고 중 게임 오디오 음소거(규정). SFX가 아직 초기화 전이어도 안전하게 무시된다.
+function setMusicPausedForAd(paused) {
+  try {
+    if (typeof SFX === 'undefined' || !SFX) return;
+    if (paused) { if (SFX.suspendForAd) SFX.suspendForAd(); }
+    else { if (SFX.resumeAfterAd) SFX.resumeAfterAd(); }
+  } catch (e) {}
+}
 // 보상형 광고: 성공 시에만 onReward (규정: adError 시 보상 금지). v3는 프로미스 기반.
 async function cgShowRewarded(onReward, onFail) {
-  if (AD_TEST) { toast('📺 (테스트 광고 2초)', 1800); setTimeout(() => { if (onReward) onReward(); }, 2000); return; } // QA 전용 가짜 광고(cgReady와 무관하게 우선)
+  if (AD_TEST) { // QA 전용 가짜 광고(cgReady와 무관하게 우선) — 음소거까지 실제와 동일하게 재현
+    toast('📺 (테스트 광고 2초)', 1800);
+    setMusicPausedForAd(true);
+    setTimeout(() => { setMusicPausedForAd(false); if (onReward) onReward(); }, 2000);
+    return;
+  }
   if (!cgAdsAvailable) { if (onFail) onFail('unavailable'); return; }
   try {
-    if (typeof setMusicPausedForAd === 'function') setMusicPausedForAd(true);
+    setMusicPausedForAd(true);
     await window.CrazyGames.SDK.ad.requestAd('rewarded');
     if (onReward) onReward();
   } catch (e) { if (onFail) onFail(e && e.code || 'error'); }
-  finally { if (typeof setMusicPausedForAd === 'function') setMusicPausedForAd(false); }
+  finally { setMusicPausedForAd(false); }
 }
 
 
@@ -4223,11 +4260,19 @@ function tryLoadModel(holder, key, onReady) {
 // ===================== SOUND (Web Audio 합성, 외부 파일 불필요) =====================
 const SFX = (() => {
   let ctx = null;
+  // 광고 재생 중 전체 음소거(CrazyGames 규정: 광고 시작 시 게임 오디오 음소거, 광고 종료 후 복구).
+  // adMuted 동안 ac()가 null을 반환하므로 새 효과음이 아예 생성되지 않고,
+  // ctx.suspend()로 이미 울리고 있는 배경음악 오실레이터까지 함께 멈춘다.
+  let adMuted = false;
   function ac() {
+    if (adMuted) return null;
     if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } }
     if (ctx && ctx.state === 'suspended') ctx.resume();
     return ctx;
   }
+  function suspendForAd() { adMuted = true; try { if (ctx && ctx.state === 'running') ctx.suspend(); } catch (e) {} }
+  function resumeAfterAd() { adMuted = false; try { if (ctx && ctx.state === 'suspended') ctx.resume(); } catch (e) {} }
+  function isAdMuted() { return adMuted; }
   // 화이트노이즈 버퍼(스윙/피격용)
   let noiseBuf = null;
   function noise(c) {
@@ -4565,7 +4610,7 @@ const SFX = (() => {
     }
   }
 
-  return { swing, hit, hurt, block, parry, glint, chargeStart, chargeStop, release, resume: ac, musicStart, musicStop };
+  return { swing, hit, hurt, block, parry, glint, chargeStart, chargeStop, release, resume: ac, musicStart, musicStop, suspendForAd, resumeAfterAd, isAdMuted };
 })();
 
 const PIXEL_SCALE = 2; 
@@ -13957,6 +14002,7 @@ function showBossRewardCard(k) {
   if (rewardPaused) { bossRewardQueue.push(k); return; } // 카드가 이미 떠 있으면 대기열로
   bossRewardCur = k; bossRewardRerolled = false;
   rewardPaused = true;
+  cgGameplayStop(); // 카드가 뜨는 동안은 조작 불가 구간(여기서 리롤 광고가 나갈 수 있음)
   renderBossRewardCard();
   $('rewardOverlay').classList.remove('hidden');
 }
@@ -14010,7 +14056,8 @@ function onBossRewardReroll(e) {
 function closeBossReward() {
   $('rewardOverlay').classList.add('hidden');
   rewardPaused = false; bossRewardCur = null;
-  if (bossRewardQueue.length > 0) { const k = bossRewardQueue.shift(); setTimeout(() => showBossRewardCard(k), 250); }
+  if (bossRewardQueue.length > 0) { const k = bossRewardQueue.shift(); setTimeout(() => showBossRewardCard(k), 250); return; }
+  if (player.alive && !inTown) cgGameplayStart(); // 대기열이 비었을 때만 전투 재개
 }
 
 function damagePlayer(amount, enemyObj) {
@@ -16193,6 +16240,8 @@ function descend() {
 }
 function startFloor() {
   cgGameplayStart(); // CrazyGames 통계
+  // 진행도 보고: 현재 콘텐츠의 끝인 90층 기준(테스트 회차는 제외)
+  if (!godMode) { try { if (cgReady) window.CrazyGames.SDK.game.reportGameCompletedPercentage(Math.max(0, Math.min(100, Math.round(player.floor / 90 * 100)))); } catch (e) {} }
   for (const f of fireballs) scene.remove(f.mesh); fireballs.length = 0;
   for (const c of thrownClubs) scene.remove(c.mesh); thrownClubs.length = 0;
   for (const s of slashes) scene.remove(s.mesh); slashes.length = 0;
@@ -16474,7 +16523,7 @@ function showRunResult(data) {
   if (data.testMode) {
     // 테스트 모드: 최고 점수·영구 골드에 반영하지 않음(일반 진행과 완전 분리)
   } else {
-    if (isNewBest) saveBestScore(sc.total);
+    if (isNewBest) { saveBestScore(sc.total); cgHappytime(); } // 신기록 = 축하 연출을 쓸 만한 순간(규정: 남용 금지)
     // 회차 종료 정산: 이번 판에서 모은 골드를 영구 골드로 적립.
     meta.gold += data.runGoldVal; saveMeta();
   }
@@ -18313,6 +18362,7 @@ function warmupShaders() {
   } catch (e) { console.error('warmup', e); }
 }
 warmupShaders();
+cgLoadingStop(); // 에셋·셰이더 준비 완료 → CrazyGames에 로딩 종료 알림
 
 tick();
 </script>
