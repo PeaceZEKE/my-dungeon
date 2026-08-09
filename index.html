@@ -4152,7 +4152,7 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v688'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v689'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -12034,7 +12034,12 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
   } else if (isCourtMage) {
     buildCourtMageBody(grp, bodyGrp, headGrp, limbs);
   } else if (isGolem) {
-    const golemSeed = (Math.floor(x * 131 + z * 977 + Date.now()) >>> 0) || 0x9e3779b9; // 개체별 바위 모양
+    // 개체별 바위 모양: 좌표(x·z)만으로 이미 개체마다 고유하다 — 골렘은 최소 3칸 간격으로 놓이고
+    // 131·977이 서로소라 맵 크기(≤40칸) 안에서 두 골렘의 시드가 겹칠 수 없다.
+    // 층번호를 더해 다른 층의 같은 자리도 다른 모양이 되게 한다.
+    // (예전엔 Date.now()를 넣어 실행마다 달라졌는데, 개체별 차이에 필요하지 않으면서
+    //  렌더 A/B 비교만 불가능하게 만들어 뺐다 — 다시 넣지 말 것.)
+    const golemSeed = (Math.floor(x * 131 + z * 977 + player.floor * 7919) >>> 0) || 0x9e3779b9;
     buildGolemBody(grp, bodyGrp, headGrp, limbs, golemSeed);
   } else {
 
