@@ -3,7 +3,7 @@
 <head>
 <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>
 <meta charset="utf-8" />
-<title>Quarter-View Dungeon 3D</title>
+<title>Dungeon Legion</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <style>
   :root { color-scheme: dark; }
@@ -229,20 +229,17 @@
   </div>
 </div>
 
-<div class="overlay" id="startOverlay">
-  <h1>LOW POLY DUNGEON</h1>
-  <h2>RANGED & LEGION EDITION</h2>
-  <div id="langRow" style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap; margin:8px 0 2px;"></div>
+<!-- 구 시작 화면: 캐릭터 선택 화면에 흡수되어 더 이상 표시하지 않는다(다른 코드의 hidden 처리 호출을 위해 요소만 남김) -->
+<div class="overlay hidden" id="startOverlay">
+  <h1>DUNGEON LEGION</h1>
   <p>5층부터 화염구를 쏘는 원거리 마법사가 등장합니다!<br>점프로 회피하거나 방패로 막으세요. 보스 층에선 군단이 함께 몰려오고,<br>한 번 격파한 보스는 일반 층에 난입할 수 있습니다.</p>
-  <button id="startBtn">▶ START GAME</button>
-  <div style="font-size:13px; color:#8b96a8; margin-top:4px;">화면 아무 곳이나 탭하세요</div>
-  <button id="bossTestBtn" style="margin-top:18px; padding:10px 22px; font-size:14px; background:rgba(180,90,90,0.22); border:1px solid #c06868; border-radius:10px; color:#f5b0b0;">🐲 보스 테스트 (무적)</button>
-  <button id="maxLevelBtn" style="margin-top:10px; padding:10px 22px; font-size:14px; background:rgba(240,200,90,0.18); border:1px solid #d8b24a; border-radius:10px; color:#ffe08a;">⭐ 테스트 캐릭터 (체력·재료·골드 무한)</button>
-  <button id="resetDataBtn" style="margin-top:18px; padding:8px 18px; font-size:12px; background:rgba(80,80,90,0.18); border:1px solid #707688; border-radius:9px; color:#aab0c0;">🗑️ 일반 모드 데이터 초기화</button>
+  <button id="startBtn" style="display:none;">▶ START GAME</button>
 </div>
 
-<div class="overlay hidden" id="charOverlay">
-  <h1>캐릭터 선택</h1>
+<!-- 첫 화면 = 캐릭터 선택. 카드를 고르면 곧바로 게임이 시작된다(중간 메뉴 없음). -->
+<div class="overlay" id="charOverlay">
+  <h1 style="margin-bottom:2px;">DUNGEON LEGION</h1>
+  <div id="langRow" style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap; margin:8px 0 2px;"></div>
   <p>플레이할 캐릭터를 선택하세요.</p>
   <div id="charChoices" style="display:flex; gap:18px; flex-wrap:wrap; justify-content:center; margin:18px 0;">
     <div class="char-card" data-char="knight">
@@ -262,6 +259,16 @@
     </div>
   </div>
   <button id="charCancelBtn" style="display:none; padding:12px 28px; font-size:15px; background:rgba(120,130,150,0.25); border:1px solid #6b7280; border-radius:10px; color:#cbd5e0;">취소</button>
+  <button id="bossTestBtn" style="margin-top:18px; padding:10px 22px; font-size:14px; background:rgba(180,90,90,0.22); border:1px solid #c06868; border-radius:10px; color:#f5b0b0;">🐲 보스 테스트 (무적)</button>
+  <button id="maxLevelBtn" style="margin-top:10px; padding:10px 22px; font-size:14px; background:rgba(240,200,90,0.18); border:1px solid #d8b24a; border-radius:10px; color:#ffe08a;">⭐ 테스트 캐릭터 (체력·재료·골드 무한)</button>
+  <button id="resetDataBtn" style="margin-top:26px; padding:6px 14px; font-size:11px; background:rgba(80,80,90,0.14); border:1px solid #4c515e; border-radius:8px; color:#7e8696; box-shadow:none; text-shadow:none; letter-spacing:0;">🗑️ 일반 모드 데이터 초기화</button>
+</div>
+
+<!-- 조작 안내: 전체 화면을 막지 않는 힌트 패널. 회차 시작 직후 마을에서 잠깐 떠 있다가 사라진다. -->
+<div id="howtoHint" class="hidden" style="position:fixed; left:50%; transform:translateX(-50%); bottom:18px; z-index:18; pointer-events:none; width:min(560px,94vw); background:rgba(12,16,24,0.86); border:1px solid rgba(150,200,255,0.3); border-radius:14px; padding:14px 18px; transition:opacity 0.6s;">
+  <div id="howtoHintTitle" style="font-weight:900; font-size:15px; color:#aee3f5; letter-spacing:1px; margin-bottom:2px;"></div>
+  <div id="howtoHintSub" style="font-size:12px; color:#8b96a8; margin-bottom:8px;"></div>
+  <div id="howtoHintList" style="font-size:13px; line-height:1.7; color:#dbe4f0; text-align:left;"></div>
 </div>
 
 <div class="overlay hidden" id="howtoOverlay">
@@ -4138,10 +4145,13 @@ const AD_TEST = /[?&]adtest=1/.test(location.search);
 // 제출본에서 일반 플레이어에게 치트 버튼이 보이면 심사에서 걸리므로 ?dev=1 에서만 보인다.
 // ?adtest=1 은 QA 겸용이라 dev도 함께 켠다.
 const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
+// 픽셀아트 모드 A묶음: 내부 해상도 고정 + 한쪽 외곽선 + 선 세기 계단화 + 곱셈 방식 + 하드 그림자.
+// 기본은 꺼져 있고 ?px=1 로만 켜진다 — 기존 룩과 나란히 비교하기 위한 플래그.
+const PX_MODE = /[?&]px=1/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v675'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
-console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : ''));
+const GAME_VERSION = 'v678'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
   for (const id of ['bossTestBtn', 'maxLevelBtn']) {
@@ -4191,6 +4201,21 @@ function setMusicPausedForAd(paused) {
     if (paused) { if (SFX.suspendForAd) SFX.suspendForAd(); }
     else { if (SFX.resumeAfterAd) SFX.resumeAfterAd(); }
   } catch (e) {}
+}
+// 미드게임 광고: 조작이 이미 끊긴 지점(회차 종료 후 마을행, 막 전환 쉼터)에서만 호출한다.
+// 규정상 전투 중에는 금지이고, 노출 빈도는 SDK가 자동 조절(최대 3분 1회)하므로
+// 여기서는 '광고를 틀어도 되는 순간'만 알려주면 된다. 자체로도 2분 하한을 둔다.
+// onDone은 광고 성공·실패·불가 어느 경우에도 정확히 한 번 호출된다(진행이 막히면 안 되므로).
+let lastMidgameAt = 0;
+async function cgShowMidgame(onDone) {
+  const finish = () => { setMusicPausedForAd(false); if (onDone) onDone(); };
+  if (!cgAdsAvailable || Date.now() - lastMidgameAt < 120000) { if (onDone) onDone(); return; }
+  lastMidgameAt = Date.now();
+  cgGameplayStop(); // 광고 동안은 플레이 중이 아님
+  setMusicPausedForAd(true);
+  if (AD_TEST) { toast('📺 (테스트 미드게임 광고 2초)', 1800); setTimeout(finish, 2000); return; }
+  try { await window.CrazyGames.SDK.ad.requestAd('midgame'); } catch (e) {}
+  finish();
 }
 // 보상형 광고: 성공 시에만 onReward (규정: adError 시 보상 금지). v3는 프로미스 기반.
 async function cgShowRewarded(onReward, onFail) {
@@ -4613,18 +4638,39 @@ const SFX = (() => {
   return { swing, hit, hurt, block, parry, glint, chargeStart, chargeStop, release, resume: ac, musicStart, musicStop, suspendForAd, resumeAfterAd, isAdMuted };
 })();
 
-const PIXEL_SCALE = 2; 
-let lowResW = Math.max(320, Math.floor(window.innerWidth / PIXEL_SCALE));
-let lowResH = Math.max(240, Math.floor(window.innerHeight / PIXEL_SCALE));
+const PIXEL_SCALE = 2;
+// 내부(저해상도) 렌더 크기.
+// 기본 모드는 창 크기의 1/2이라 기기마다 픽셀 크기가 달라진다 — 4K에서는 내부 1920×1080이라
+// 사실상 픽셀아트가 아니고, 좁은 폰에서는 하한에 걸려 뭉갠다.
+// 픽셀아트 모드(?px=1)는 세로를 고정하고 가로만 화면비로 유도해, 어떤 기기에서도 같은 픽셀 크기를 낸다.
+const PX_FIXED_H = 360;
+function computeLowRes(w, h) {
+  if (PX_MODE) {
+    const lh = PX_FIXED_H;
+    // 가로에 하한을 걸면 세로로 긴 창에서 텍셀이 정사각형이 아니게 되어 픽셀이 찌그러진다.
+    // 화면비를 그대로 따르고 안전 하한만 아주 낮게 둔다.
+    return [Math.max(64, Math.round(lh * (w / Math.max(1, h)))), lh];
+  }
+  return [Math.max(320, Math.floor(w / PIXEL_SCALE)), Math.max(240, Math.floor(h / PIXEL_SCALE))];
+}
+const _lr0 = computeLowRes(window.innerWidth, window.innerHeight);
+let lowResW = _lr0[0], lowResH = _lr0[1];
 
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(1);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap; // 부드러운 그림자(PCFSoft)보다 가벼움
+// 픽셀아트 모드에서는 하드 그림자(Basic) — 부드러운 그라디언트보다 계단식 경계가 픽셀 격자와 맞는다.
+renderer.shadowMap.type = PX_MODE ? THREE.BasicShadowMap : THREE.PCFShadowMap; // 부드러운 그림자(PCFSoft)보다 가벼움
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 renderer.autoClear = false;
+// 셰이더 링크 로그 확인: three.js는 링크에 성공해도 드라이버가 남긴 경고문이 있으면 그대로 console.warn 한다.
+// 윈도우 크롬(ANGLE→D3D)에서는 배열을 동적 인덱싱하는 셰이더마다 HLSL 컴파일러가 X4000
+// "potentially uninitialized variable" 경고를 뱉어서, 정상 동작인데도 경고가 쌓인다.
+// 개발 중에는 진짜 셰이더 오류를 놓치면 안 되니 켜두고, 배포본에서는 끈다
+// (getProgramInfoLog는 GPU 동기화를 유발해서 로딩도 그만큼 느려진다).
+renderer.debug.checkShaderErrors = DEV_MODE;
 app.appendChild(renderer.domElement);
 
 // === 컨텍스트 손실 디버깅: 튕기는 순간의 GPU 상태를 기록 ===
@@ -4684,7 +4730,12 @@ const quadMat = new THREE.ShaderMaterial({
     uShadowStr: { value: 0.42 },                            // 채색 그림자 강도(0=끔)
     uShadowThresh: { value: 0.42 },                         // 이 밝기 이하를 그림자로 간주(당겨서 먼 쪽 효과 강하게)
     uNear: { value: 0.1 },
-    uFar: { value: 200 }
+    uFar: { value: 200 },
+    // === 픽셀아트 모드(?px=1) 전용 ===
+    uPx: { value: PX_MODE ? 1.0 : 0.0 },
+    uPxThresh: { value: 0.10 },   // 한쪽만 셀 때의 기본 임계값(대칭 방식보다 합이 작아 더 낮게 잡는다)
+    uPxThreshK: { value: 0.035 }, // 거리 비례 계수 — 멀리서 선이 뭉치는 것 방지
+    uPxDark: { value: 0.55 }      // 깊이 엣지에서 색을 얼마나 어둡게 곱할지(1=검정)
   },
   vertexShader: `
     varying vec2 vUv;
@@ -4716,6 +4767,10 @@ const quadMat = new THREE.ShaderMaterial({
     uniform float uShadowThresh;
     uniform float uNear;
     uniform float uFar;
+    uniform float uPx;
+    uniform float uPxThresh;
+    uniform float uPxThreshK;
+    uniform float uPxDark;
     varying vec2 vUv;
     float linearizeDepth(float d) {
       float z = d * 2.0 - 1.0;
@@ -4745,12 +4800,27 @@ const quadMat = new THREE.ShaderMaterial({
       float r = linearizeDepth(texture2D(tDepth, vUv + vec2( uTexel.x, 0.0)).x);
       float u = linearizeDepth(texture2D(tDepth, vUv + vec2(0.0,  uTexel.y)).x);
       float dn= linearizeDepth(texture2D(tDepth, vUv + vec2(0.0, -uTexel.y)).x);
-      float edge = abs(c - l) + abs(c - r) + abs(c - u) + abs(c - dn);
-      // 거리에 비례한 임계값(원거리에서 과도한 외곽선 방지). 임계값↑·번짐범위↓ = 더 얇고 또렷한 선
-      float thresh = 0.25 + c * 0.05;
-      float line = smoothstep(thresh, thresh * 1.65, edge) * uStrength;
-      line *= (1.0 - blur * 0.85); // 흐린 영역에선 외곽선도 함께 부드럽게
-      vec3 graded = mix(col.rgb, uOutline, clamp(line, 0.0, 1.0));
+      vec3 graded;
+      if (uPx > 0.5) {
+        // === 픽셀아트 외곽선(?px=1) ===
+        // 1) 이웃이 '더 멀' 때만 센다(한쪽만). 대칭 abs()로 재면 실루엣 양쪽에 선이 겹쳐 두 배로 두꺼워진다.
+        //    이렇게 하면 앞쪽 면만 자기 실루엣을 그려서 선이 절반 두께로 깔끔해진다.
+        float d = clamp(l - c, 0.0, 1.0) + clamp(r - c, 0.0, 1.0)
+                + clamp(u - c, 0.0, 1.0) + clamp(dn - c, 0.0, 1.0);
+        float t = uPxThresh + c * uPxThreshK;
+        // 2) 선 세기를 {0, 0.5, 1} 세 단계로 끊는다 — 안티에일리어싱된 회색 테두리가 안 생긴다.
+        float dei = floor(smoothstep(t, t * 1.65, d) * 2.0) / 2.0;
+        dei *= uStrength * (1.0 - blur * 0.85);
+        // 3) 검정을 덮어씌우지 않고 곱한다 — 그 면의 색이 어두워진 버전이 선이 되어 재질색이 살아있다.
+        graded = col.rgb * (1.0 - uPxDark * clamp(dei, 0.0, 1.0));
+      } else {
+        float edge = abs(c - l) + abs(c - r) + abs(c - u) + abs(c - dn);
+        // 거리에 비례한 임계값(원거리에서 과도한 외곽선 방지). 임계값↑·번짐범위↓ = 더 얇고 또렷한 선
+        float thresh = 0.25 + c * 0.05;
+        float line = smoothstep(thresh, thresh * 1.65, edge) * uStrength;
+        line *= (1.0 - blur * 0.85); // 흐린 영역에선 외곽선도 함께 부드럽게
+        graded = mix(col.rgb, uOutline, clamp(line, 0.0, 1.0));
+      }
       // === HD-2D 색 보정 ===
       float lum = dot(graded, vec3(0.299, 0.587, 0.114));
       graded = mix(vec3(lum), graded, uSat);              // 채도 강화
@@ -16231,14 +16301,15 @@ function update(dt) {
 function descend() {
   if (!player.hitThisFloor) player.noHitFloors++; player.hitThisFloor = false;
   // 막 사이 쉼터: 30층(보스)을 클리어하면 다음 층 대신 여행자의 쉼터로 진입
-  if (player.floor === 30) { meta.restUnlocked = true; saveMeta(); restIsFinal = false; restNextFloor = 31; player.potions++; toast(_i18n('🧪 회복 물약 +1 (1막 클리어!)'), 2500); enterRest(true); return; }
+  if (player.floor === 30) { meta.restUnlocked = true; saveMeta(); restIsFinal = false; restNextFloor = 31; player.potions++; toast(_i18n('🧪 회복 물약 +1 (1막 클리어!)'), 2500); enterRest(true); cgShowMidgame(); return; } // 막 전환 = 안전한 쉼터 도착 직후라 광고 지점으로 적합
   // 60층(2막 최종 보스=얼음 여왕) 클리어 → 쉼터 → 3막(부패한 성, 61층)으로 이어짐
-  if (player.floor === 60) { meta.act2Cleared = true; saveMeta(); restIsFinal = false; restNextFloor = 61; player.potions++; toast(_i18n('🧪 회복 물약 +1 (2막 클리어!)'), 2500); enterRest(true); return; }
+  if (player.floor === 60) { meta.act2Cleared = true; saveMeta(); restIsFinal = false; restNextFloor = 61; player.potions++; toast(_i18n('🧪 회복 물약 +1 (2막 클리어!)'), 2500); enterRest(true); cgShowMidgame(); return; } // 막 전환 = 안전한 쉼터 도착 직후라 광고 지점으로 적합
   // 90층(3막 최종) 클리어: 현재 콘텐츠의 끝 → 쉼터로(다음 막 입구 막힘 안내)
-  if (player.floor === 90) { restIsFinal = true; player.potions++; toast(_i18n('🧪 회복 물약 +1 (3막 클리어!)'), 2500); enterRest(true); return; }
+  if (player.floor === 90) { restIsFinal = true; player.potions++; toast(_i18n('🧪 회복 물약 +1 (3막 클리어!)'), 2500); enterRest(true); cgShowMidgame(); return; } // 막 전환 = 안전한 쉼터 도착 직후라 광고 지점으로 적합
   player.floor += 1; toast('▼ Floor ' + player.floor); player.hp = Math.min(player.hpMax, player.hp + 25); startFloor(); updateFloorJumpPanel();
 }
 function startFloor() {
+  if (typeof hideHowtoHint === 'function') hideHowtoHint(); // 던전 진입 시 조작 힌트 정리
   cgGameplayStart(); // CrazyGames 통계
   // 진행도 보고: 현재 콘텐츠의 끝인 90층 기준(테스트 회차는 제외)
   if (!godMode) { try { if (cgReady) window.CrazyGames.SDK.game.reportGameCompletedPercentage(Math.max(0, Math.min(100, Math.round(player.floor / 90 * 100)))); } catch (e) {} }
@@ -16688,9 +16759,11 @@ let toastTimer = 0; function toast(text, duration = 2000) { $('toast').textConte
 
 window.addEventListener('resize', () => { 
   renderer.setSize(window.innerWidth, window.innerHeight); 
-  lowResW = Math.max(320, Math.floor(window.innerWidth / PIXEL_SCALE));
-  lowResH = Math.max(240, Math.floor(window.innerHeight / PIXEL_SCALE));
+  const lr = computeLowRes(window.innerWidth, window.innerHeight);
+  lowResW = lr[0]; lowResH = lr[1];
   rt.setSize(lowResW, lowResH);
+  // r128의 setSize는 깊이 텍스처 크기를 따라 갱신해주지 않는다 — 외곽선이 어긋나지 않게 직접 맞춘다.
+  if (rt.depthTexture) { rt.depthTexture.image.width = lowResW; rt.depthTexture.image.height = lowResH; rt.depthTexture.needsUpdate = true; }
   quadMat.uniforms.uTexel.value.set(1 / lowResW, 1 / lowResH);
   bloomW = Math.max(160, Math.floor(lowResW / 2)); bloomH = Math.max(120, Math.floor(lowResH / 2));
   rtBloom.setSize(bloomW, bloomH);
@@ -16910,13 +16983,26 @@ function beginGameWith(kind) {
     toast(kind === 'mage' ? _i18n('마법사로 변경했습니다.') : kind === 'archer' ? _i18n('궁수로 변경했습니다.') : _i18n('기사로 변경했습니다.'));
     return;
   }
-  // 조작 안내: 선택한 캐릭터에 맞춰 동적으로 채운다(터치/데스크탑 구분).
-  const ht = $('howtoOverlay'); if (ht) {
-    renderHowto(kind);
-    ht.classList.remove('hidden');
-  } else {
-    startActualGame();
-  }
+  // 조작 안내를 별도 화면으로 띄우지 않고 곧바로 게임에 진입한다(CrazyGames: 메뉴 최소화).
+  // 안내는 마을에서 잠깐 떠 있다 사라지는 비차단 힌트 패널로 대신한다.
+  renderHowto(kind);
+  startActualGame();
+  showHowtoHint();
+}
+// 조작 힌트 패널: 12초 뒤 서서히 사라진다. 조작을 막지 않으므로 그 사이에도 플레이 가능.
+let howtoHintTimer = null;
+function showHowtoHint() {
+  const h = $('howtoHint'); if (!h) return;
+  clearTimeout(howtoHintTimer);
+  h.classList.remove('hidden'); h.style.opacity = '1';
+  howtoHintTimer = setTimeout(() => {
+    h.style.opacity = '0';
+    howtoHintTimer = setTimeout(() => h.classList.add('hidden'), 700);
+  }, 12000);
+}
+function hideHowtoHint() {
+  const h = $('howtoHint'); if (!h) return;
+  clearTimeout(howtoHintTimer); h.classList.add('hidden'); h.style.opacity = '1';
 }
 // 캐릭터별 조작 안내 데이터(모바일/데스크탑 공통 항목 + 캐릭터 특화)
 const HOWTO_DATA = {
@@ -16972,10 +17058,15 @@ const HOWTO_DATA = {
 function renderHowto(kind) {
   const d = HOWTO_DATA[kind] || HOWTO_DATA.knight;
   const items = isTouchDevice ? d.mobile : d.desktop;
-  if ($('howtoTitle')) $('howtoTitle').textContent = d.emoji + ' ' + d.name + _i18n(' 조작 방법');
+  const title = d.emoji + ' ' + d.name + _i18n(' 조작 방법');
+  const body = items.map(s => '<div>· ' + s + '</div>').join('');
+  if ($('howtoTitle')) $('howtoTitle').textContent = title;
   if ($('howtoSub')) $('howtoSub').textContent = d.sub;
-  const list = $('howtoList');
-  if (list) list.innerHTML = items.map(s => '<div>· ' + s + '</div>').join('');
+  if ($('howtoList')) $('howtoList').innerHTML = body;
+  // 비차단 힌트 패널에도 같은 내용을 채운다
+  if ($('howtoHintTitle')) $('howtoHintTitle').textContent = title;
+  if ($('howtoHintSub')) $('howtoHintSub').textContent = d.sub;
+  if ($('howtoHintList')) $('howtoHintList').innerHTML = body;
 }
 // ===== 보스 테스트(무적) 모드 =====
 // 시작 화면 버튼으로 진입. 빈 던전 방에서 버튼으로 보스를 하나씩 소환해 패턴을 관찰한다.
@@ -18255,7 +18346,8 @@ function smithEquip(id) {
 document.querySelectorAll('#charChoices .char-card').forEach(card => {
   onTap(card, () => beginGameWith(card.getAttribute('data-char')));
 });
-onTap($('charCancelBtn'), () => { const wasMax = maxLevelPending; townCharChange = false; maxLevelPending = false; $('charCancelBtn').style.display = 'none'; $('charOverlay').classList.add('hidden'); if (wasMax && $('startOverlay')) $('startOverlay').classList.remove('hidden'); });
+// 취소: 첫 화면이 곧 캐릭터 선택이므로 만렙 대기 상태만 풀고 그 화면에 남는다.
+onTap($('charCancelBtn'), () => { const wasMax = maxLevelPending; townCharChange = false; maxLevelPending = false; $('charCancelBtn').style.display = 'none'; if (!wasMax) $('charOverlay').classList.add('hidden'); });
 onTap($('howtoBtn'), () => { safeResume(); startActualGame(); });
 onTap($('townShopClose'), () => { closeTownShop(); });
 onTap($('smithClose'), () => { closeSmith(); });
@@ -18276,7 +18368,12 @@ onTap($('townMusicBtn'), () => {
 });
 onTap($('townDialogNext'), () => { townDialogAdvance(); });
 onTap($('townDialogClose'), () => { townDialogClose(); });
-onTap($('restartBtn'), () => { safeResume(); $('overOverlay').classList.add('hidden'); if (lastResultTestMode) { godMode = true; enterTownMode(true); } else { enterTownMode(); } });
+// 회차 종료 → 마을 복귀: 조작이 끊긴 자연스러운 지점이라 미드게임 광고를 여기서 요청한다(테스트 회차 제외).
+onTap($('restartBtn'), () => {
+  safeResume(); $('overOverlay').classList.add('hidden');
+  const toTown = () => { if (lastResultTestMode) { godMode = true; enterTownMode(true); } else { enterTownMode(); } };
+  if (lastResultTestMode) toTown(); else cgShowMidgame(toTown);
+});
 // 보상형 광고 부활 버튼: 성공 시에만 부활(규정), 실패·거절 시 일반 사망 정산으로
 onTap($('reviveAdBtn'), (e) => {
   if (e) e.stopPropagation(); safeResume();
@@ -18363,6 +18460,20 @@ function warmupShaders() {
 }
 warmupShaders();
 cgLoadingStop(); // 에셋·셰이더 준비 완료 → CrazyGames에 로딩 종료 알림
+
+// 첫 화면: 기본은 캐릭터 선택(마크업에서 이미 보이는 상태).
+// 진행 중이던 회차가 있으면 캐릭터 선택 대신 이어하기 선택을 먼저 띄운다.
+(function showFirstScreen() {
+  try {
+    const saved = loadRun();
+    if (saved && saved.floor >= 1) {
+      if (saved.char) { selectedChar = saved.char; applyCharLook(saved.char); }
+      if ($('startResumeFloor')) $('startResumeFloor').textContent = saved.floor;
+      $('charOverlay').classList.add('hidden');
+      $('startResumeChoice').classList.remove('hidden');
+    }
+  } catch (e) { console.error('firstScreen', e); }
+})();
 
 tick();
 </script>
