@@ -4152,7 +4152,7 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v687'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v688'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -7841,6 +7841,25 @@ function generateDungeon() {
     }
     return { grid, rooms, discovered, corridorTiles };
   }
+  // ---- 최후 폴백: 30회 모두 방 배치에 실패한 경우 ----
+  // 현재 설정(MAP_MIN 18 이상, 방 3~7칸)에서는 도달하지 않는다. 다만 MAP_MIN·targetRooms·
+  // 방 크기는 모두 밸런스 튜닝 대상이라, 나중의 조정이 이 경로를 열 수 있다. 그때 조용히
+  // undefined를 반환하면 startFloor의 buildDungeonMesh(undefined)에서 원인을 알 수 없는
+  // 크래시가 나므로, 확실히 통과 가능한 2방 던전을 만들어 층을 살린다.
+  // (정상 경로도 rooms.length===2를 허용하므로 이후 단계들이 이미 다루는 형태다.)
+  console.warn('generateDungeon: 방 배치 30회 실패 — 폴백 던전 사용 (MAP ' + MAP_W + 'x' + MAP_H + ', targetRooms ' + targetRooms + ')');
+  const grid = Array.from({ length: MAP_H }, () => new Array(MAP_W).fill(0));
+  const discovered = Array.from({ length: MAP_H }, () => new Array(MAP_W).fill(false));
+  const corridorTiles = [];
+  const my = MAP_H >> 1; // 가운데 행 좌·우 끝에 방 하나씩 두고 일직선 복도로 잇는다
+  const mkRoom = (rx) => ({ x: rx, y: my - 2, w: 4, h: 4, cx: rx + 2, cy: my });
+  const rooms = [mkRoom(2), mkRoom(MAP_W - 6)];
+  if (isBossFloor) { rooms[0].isStart = true; rooms[1].isBoss = true; }
+  for (const r of rooms) for (let yy = r.y; yy < r.y + r.h; yy++) for (let xx = r.x; xx < r.x + r.w; xx++) grid[yy][xx] = 1;
+  for (let x = rooms[0].cx; x <= rooms[1].cx; x++) {
+    if (grid[my][x] !== 1) { grid[my][x] = 1; corridorTiles.push({ x, y: my }); } // 방 안쪽은 복도로 세지 않는다
+  }
+  return { grid, rooms, discovered, corridorTiles };
 }
 
 // 무너지는 바닥 함정 배열(buildDungeonMesh보다 먼저 선언 — buildDungeonMesh 안에서 length=0 참조하므로 TDZ 방지)
