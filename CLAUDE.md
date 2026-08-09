@@ -33,6 +33,17 @@ const GAME_VERSION = 'v685';
 
 푸시 후 확인: `git show origin/main:index.html | grep -o "GAME_VERSION = 'v[0-9]*'"`
 
+**작업 브랜치를 따지 말고 `main`에 바로 커밋·푸시한다**(사용자 지시). 대신 `main` = 라이브이므로
+푸시 전에 최소한 게임 스크립트 문법은 통과시킬 것 — 마지막 `<script>` 블록만 잘라 `node --check`:
+
+```bash
+S=$(grep -n '^<script>$' index.html | tail -1 | cut -d: -f1)
+E=$(grep -n '^</script>$' index.html | tail -1 | cut -d: -f1)
+sed -n "$((S+1)),$((E-1))p" index.html > /tmp/gc.js && node --check /tmp/gc.js
+```
+
+문서만 고쳤을 때는 `GAME_VERSION`을 올리지 않는다(배지는 게임 코드 배포 확인용).
+
 ## URL 플래그
 
 | 플래그 | 기본 | 용도 |
@@ -132,4 +143,5 @@ await page.goto(url);   // 이 뒤로는 부팅까지 전부 결정적
 
 - 임시 디버그 스크립트를 저장소에 만들지 말 것(과거에 `dbg2.js` 등이 섞여 들어간 적 있다)
 - 사용자는 주로 한국어로 소통한다. 코드 주석도 한국어다
-- 사용자는 모바일에서 작업하는 경우가 많다 — 파일 첨부보다 PR이 다루기 쉽다
+- 사용자는 모바일에서 작업하는 경우가 많다 — 파일 첨부보다 저장소에 바로 올리는 쪽이 다루기 쉽다
+  (예전엔 PR을 선호했지만, 지금은 `main` 직접 푸시로 바꿨다 — 위 릴리스 절차 참고)
