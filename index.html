@@ -4152,7 +4152,7 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v690'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v691'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -4721,7 +4721,7 @@ function _toonChunk(steps) {
 const _toonParam = /[?&]toon=([0-9.]+)/.exec(location.search);
 if (_toonParam) pxToonSteps = parseFloat(_toonParam[1]);
 
-// ===== 깊이 기반 조명 조절(?dspec / ?dlight) — 기본 꺼짐 =====
+// ===== 깊이 기반 조명 조절(?dspec / ?dlight) — 기본 켜짐 =====
 // 카메라로부터의 뷰 깊이로 하이라이트·스펙큘러·직접광 밝기를 다르게 준다.
 // 가까울수록 강조하고 멀수록 감쇠 → 앞쪽(플레이어 주변)에 시선이 붙고 뒤쪽은 배경으로 가라앉는다.
 // 대기 원근(포스트)이 '색'을 깊이로 다루는 것과 달리, 이건 조명 항 자체를 건드린다.
@@ -4732,7 +4732,8 @@ if (_toonParam) pxToonSteps = parseFloat(_toonParam[1]);
 // 램프 구간 기본값은 찍은 값이 아니라 실측이다. 화면에 보이는 메시의 뷰 깊이를 재보니
 // 1층 19.5~32.4, 33층 16.6~33.4 (중앙값 25.1~25.3, 플레이어 25.4)였다. 쿼터뷰 고정 카메라라
 // 화면 전체가 1.7배 범위 안에 들어온다 — 구간을 여기 맞추지 않으면 효과가 통째로 안 나온다.
-let dSpecStr = 0.0, dLightStr = 0.0, dNear = 20.0, dFar = 33.0;
+// 기본값은 '뚜렷' 프리셋(실측: 1막 픽셀 37%·2막 60%가 움직인다). 끄려면 ?dspec=0&dlight=0.
+let dSpecStr = 2.0, dLightStr = 0.6, dNear = 20.0, dFar = 33.0;
 {
   const num = (re) => { const m = re.exec(location.search); return m ? parseFloat(m[1]) : null; };
   const a = num(/[?&]dspec=([0-9.]+)/);  if (a !== null) dSpecStr = a;
