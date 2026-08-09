@@ -4152,7 +4152,7 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v685'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v686'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -8881,7 +8881,7 @@ function clearBossRocks(boss) {
 // 개별 바위 1개 파괴(돌진으로 부숨). 파편 튀고 walls/bossRocks에서 제거.
 function smashBossRock(boss, rock) {
   // 파편 몇 개 튀기기
-  if (typeof spawnShockwave === 'function') spawnShockwave(rock.x, rock.z, 0x6a5a4a);
+  if (typeof spawnShockwave === 'function') spawnShockwave(rock.x, rock.z, TILE * 0.5);
   for (let i = 0; i < 6; i++) {
     const frag = new THREE.Mesh(new THREE.DodecahedronGeometry(TILE * 0.12, 0), new THREE.MeshPhongMaterial({ color: 0x5a5550, flatShading: true, shininess: 5 }));
     const a = Math.random() * Math.PI * 2, sp = 4 + Math.random() * 5;
@@ -12224,7 +12224,7 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
     swMinions: [], swSummonCd: 5.0,   // (시종장) 소환한 혼령 추적 + 소환 쿨다운
     swPhase2: false, swPoolCd: 3.0,   // (시종장) 페이즈2(화염 장판) 진입 여부 + 장판 생성 쿨다운
     iqStorm: false,                    // (얼음여왕) 50% 강설 폭풍 진입(시야 흐림 + 고드름 가속)
-    iqZeroDone: false, iqZeroState: 'none', iqZeroTimer: 0, iqZeroCd: 0, iqBeamTimer: 0, iqBeamWaitTimer: 0, iqStormResumeTimer: -1,  // (얼음여왕) 절대영도(반복) 상태: 'none'|'charge'|'beamWait'|'beam'
+    iqZeroDone: false, iqZeroState: 'none', iqZeroTimer: 0, iqBeamTimer: 0, iqBeamWaitTimer: 0, iqStormResumeTimer: -1,  // (얼음여왕) 절대영도(반복) 상태: 'none'|'charge'|'beamWait'|'beam' — iqZeroCd는 undefined로 시작해야 첫 발동 1초 유예가 걸린다(형제 타이머와 동일 패턴)
     bossRocks: [], rockCount: 0,       // (흑기사 분노) 천장 낙석 누적(엄폐물)
     riftUseCount: 0,                   // (흑기사 분노) 대지가르기 사용 횟수 — 4번이면 방사형 광역기
     rockState: 'none', aoeTimer: 0, aoeDirX: 0, aoeDirZ: 1, aoeProgress: 0, aoeHit: false, // (흑기사) 방사형 화염 광역기
@@ -14401,8 +14401,6 @@ function damagePlayer(amount, enemyObj) {
   // 대장간 방어력: 받는 피해 감소(최대 60% 상한). 모든 피해 경로 진입 시 한 번 적용.
   const def = (typeof smithBonus === 'function') ? Math.min(0.6, smithBonus('defense')) : 0;
   if (def > 0) amount = Math.max(1, Math.round(amount * (1 - def)));
-  // 서리 여왕의 가호: 방어막이 준비돼 있으면 이 피해를 1회 무효화 + 주변 적 빙결
-  if (typeof smithConsumeWard === 'function' && smithConsumeWard()) { player.hurtCooldown = 0.3; return; }
   if (player.dodgeT > 0) {
     // 궁수: 적 공격 타이밍에 맞춘 회피 = 완벽 회피 → 순간 이속 버스트(기사 패링에 대응)
     if (selectedChar === 'archer') {
@@ -14440,6 +14438,9 @@ function damagePlayer(amount, enemyObj) {
     player.hurtCooldown = 0.18;
     return;
   }
+  // 서리 여왕의 가호: 방어막이 준비돼 있으면 이 피해를 1회 무효화 + 주변 적 빙결.
+  // 회피 i-프레임·마나 보호막으로 이미 무효화되는 경우엔 소모하지 않도록 무적 판정 뒤로 옮겼다.
+  if (typeof smithConsumeWard === 'function' && smithConsumeWard()) { player.hurtCooldown = 0.3; return; }
   // 함정 등 적 없는 피해(enemyObj=null): 방향 계산·패링 반격을 건너뛰고 피해만 적용.
   if (!enemyObj) {
     player.hp -= Math.max(1, amount); player.hurtCooldown = 0.4; player.hitThisFloor = true;
