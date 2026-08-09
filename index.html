@@ -4145,12 +4145,14 @@ const AD_TEST = /[?&]adtest=1/.test(location.search);
 // 제출본에서 일반 플레이어에게 치트 버튼이 보이면 심사에서 걸리므로 ?dev=1 에서만 보인다.
 // ?adtest=1 은 QA 겸용이라 dev도 함께 켠다.
 const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
-// 픽셀아트 모드 A묶음: 내부 해상도 고정 + 한쪽 외곽선 + 선 세기 계단화 + 곱셈 방식 + 하드 그림자.
-// 기본은 꺼져 있고 ?px=1 로만 켜진다 — 기존 룩과 나란히 비교하기 위한 플래그.
-const PX_MODE = /[?&]px=1/.test(location.search);
+// 픽셀아트 렌더 모드 — 이제 기본으로 켜져 있다.
+// A묶음: 내부 해상도 고정 + 한쪽 외곽선 + 선 세기 계단화 + 곱셈 방식 + 하드 그림자
+// B묶음: 색 양자화 + 오더드 디더링 + 틸트시프트 블러 해제
+// 예전 룩과 비교하려면 ?px=0 을 붙인다.
+const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v678'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v685'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -4671,6 +4673,54 @@ renderer.autoClear = false;
 // 개발 중에는 진짜 셰이더 오류를 놓치면 안 되니 켜두고, 배포본에서는 끈다
 // (getProgramInfoLog는 GPU 동기화를 유발해서 로딩도 그만큼 느려진다).
 renderer.debug.checkShaderErrors = DEV_MODE;
+
+// === 조명 계단화 (E묶음, px 모드 전용 · 기본 꺼짐) ===
+// 실측: 새로고침해서 단계 수를 바꿔가며 비교하니 화면의 13% 픽셀이 바뀌지만 변화 폭이 최대 20/255로
+// 작고, 3/4/6단계가 서로 구분되지 않았다. 이 게임은 앰비언트가 지배적이고 표면색도 어두워
+// 확산광 밝기가 0 근처에 몰려 있어서, 그 구간을 몇 단계로 끊어봐야 대부분 같은 단계에 떨어진다.
+// 툰 셰이딩이 살려면 조명 자체를 다시 짜야 한다(셰이더 문제가 아님). 그래서 기본은 끄고,
+// ?toon=4 처럼 켜서 실험만 할 수 있게 남겨둔다. 끄면 셰이더 청크를 아예 건드리지 않는다.
+// 부드러운 확산광 대신 몇 단계로 끊으면 면이 평평한 색 덩어리로 읽혀 손으로 칠한 느낌이 난다.
+// 머티리얼별 onBeforeCompile로 심으려 했더니 770개 중 275개만 걸렸다 — 이 게임은 이미
+// 풀 바람 애니메이션 등에 자체 onBeforeCompile을 쓰는 머티리얼이 많고, 인스턴스 쪽이 이긴다.
+// 그래서 공용 셰이더 청크 자체를 고친다. 조명을 쓰는 모든 머티리얼이 이 청크를 include하므로
+// 무엇으로 만들어졌든, 언제 만들어졌든 빠짐없이 적용된다.
+// 색조가 틀어지지 않도록 RGB를 직접 자르지 않고 '밝기'만 계단화한 뒤 비율로 되돌린다.
+const _toonBaseChunk = THREE.ShaderChunk.lights_fragment_end;
+// 기본은 0(끔). 두 번 실측했고 두 번 다 켤 이유를 못 찾았다 — 아래 주석 참고.
+let pxToonSteps = 0.0;
+function _toonChunk(steps) {
+  if (!(steps > 0.5)) return _toonBaseChunk;
+  const s = steps.toFixed(1);
+  // 직접광만 끊으면 이 게임에서는 거의 티가 안 난다(화면 대부분이 앰비언트·헤미스피어로 채워져 있어
+  // 직접광이 닿는 곳이 전체의 1% 미만). 확산광 합계를 끊고 두 항에 같은 비율로 되돌린다.
+  //
+  // 감마 공간에서 끊는 이유: 선형 밝기를 0~1 균등 간격으로 자르면 이 게임에서는 아무 일도
+  // 안 일어난다. 던전이 어두워서 확산광 밝기가 대부분 0~0.2에 몰려 있는데, 4단계면 경계가
+  // 0.125/0.375/... 라서 화면 전체가 같은 칸에 떨어져 버린다(실측: 바뀌는 픽셀 13%, 변화량 20/255 이하).
+  // pow(l, 1/2.2)로 펴면 단계 경계가 어두운 구간에 촘촘히 들어간다.
+  //
+  // 그런데 그렇게 고쳐서 다시 재봐도 여전히 켤 물건이 아니다. 이 게임은 확산광이 화면 전역에서
+  // 거의 균일해서, 단계를 촘촘히 해도 '띠'가 생기는 게 아니라 화면 전체가 같은 칸으로 몰려
+  // 노출만 통째로 오르내린다(toon=3 밝아짐, toon=4 어두워짐, 픽셀 99%가 ±8/255 이내로 평행이동).
+  // 셀셰이딩이 먹으려면 광원이 방향성 있게 세야 하는데 그건 이 게임의 조명 설계 자체를 바꾸는 일이다.
+  return _toonBaseChunk + '\n' + [
+    'vec3 _tsum = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse;',
+    'float _tl = dot(_tsum, vec3(0.2126, 0.7152, 0.0722));',
+    'if (_tl > 0.0001) {',
+    '  float _tg = pow(min(_tl, 1.0), 0.4545);',
+    '  float _tq = pow(floor(_tg * ' + s + ' + 0.5) / ' + s + ', 2.2);',
+    '  float _tk = clamp(_tq / _tl, 0.0, 4.0);',
+    '  reflectedLight.directDiffuse *= _tk;',
+    '  reflectedLight.indirectDiffuse *= _tk;',
+    '}'
+  ].join('\n');
+}
+// 단계 수는 ?toon=N 으로 바꾼다(0이면 끔). 런타임 변경은 안 되는데, three가 프로그램을
+// 캐시하는 키에 셰이더 청크 내용이 안 들어가서 needsUpdate를 줘도 예전 프로그램이 그대로 돌아온다.
+const _toonParam = /[?&]toon=([0-9.]+)/.exec(location.search);
+if (_toonParam) pxToonSteps = parseFloat(_toonParam[1]);
+if (PX_MODE) THREE.ShaderChunk.lights_fragment_end = _toonChunk(pxToonSteps);
 app.appendChild(renderer.domElement);
 
 // === 컨텍스트 손실 디버깅: 튕기는 순간의 GPU 상태를 기록 ===
@@ -4701,6 +4751,12 @@ rt.depthTexture = new THREE.DepthTexture(lowResW, lowResH);
 rt.depthTexture.format = THREE.DepthFormat;
 rt.depthTexture.type = THREE.UnsignedIntType;
 
+// 노멀 버퍼(px 모드 전용). 깊이 텍스처는 필요 없고 깊이 버퍼만 있으면 가림 처리가 맞는다.
+const rtNormal = new THREE.WebGLRenderTarget(lowResW, lowResH, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
+rtNormal.texture.generateMipmaps = false;
+rtNormal.stencilBuffer = false;
+const normalMaterial = new THREE.MeshNormalMaterial();
+
 const quadScene = new THREE.Scene();
 const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 // 깊이 차이가 큰 픽셀에 검은 외곽선을 입히는 포스트프로세스 셰이더
@@ -4718,7 +4774,9 @@ const quadMat = new THREE.ShaderMaterial({
     uFocusY: { value: 0.52 },                               // 틸트시프트 초점 중심(화면 Y, 0=아래 1=위)
     uFocusW: { value: 0.18 },                               // 초점 밴드 반폭(이 안은 완전 선명)
     uBlurMax: { value: 1.5 },                               // 최대 블러 반경(저해상도 텍셀 단위)
-    uTiltOn: { value: 1.0 },                                // 틸트시프트 켬/끔(1/0)
+    // 틸트시프트(미니어처 흐림)는 픽셀 경계를 뭉개서 픽셀아트와 정면으로 충돌한다 → px 모드에선 끈다.
+    // 깊이감은 대기 원근(uAerial*)과 비네트가 계속 맡는다.
+    uTiltOn: { value: PX_MODE ? 0.0 : 1.0 },                // 틸트시프트 켬/끔(1/0)
     tBloom: { value: null },                                // 블룸 텍스처(추출/블러 결과)
     uBloomStr: { value: 0.85 },                             // 블룸 세기(0=끔)
     uAerialColor: { value: new THREE.Color(0x16201a) },     // 대기 원근: 멀리 물드는 분위기색(막별)
@@ -4729,13 +4787,25 @@ const quadMat = new THREE.ShaderMaterial({
     uShadowColor: { value: new THREE.Color(0x141c26) },     // 채색 그림자: 어두운 영역을 물들일 짙은 색(막별)
     uShadowStr: { value: 0.42 },                            // 채색 그림자 강도(0=끔)
     uShadowThresh: { value: 0.42 },                         // 이 밝기 이하를 그림자로 간주(당겨서 먼 쪽 효과 강하게)
+    // 채색 그림자 마스크 계단 수. 기본 0(끔) — 실측 결과 켜도 눈에 안 띈다.
+    // 얼린 프레임 A/B에서 최대 차이가 던전 9/255, 낮 마을 12/255뿐이었다. 이 패스 뒤에
+    // 색 양자화(32단계+디더)가 어차피 화면 전체를 띠로 끊기 때문에, 여기서 미리 끊어도
+    // 하류에서 같은 일이 반복될 뿐이다. 즉 채색 그림자는 이미 사실상 계단화돼 있다.
+    uShadowSteps: { value: 0.0 },
     uNear: { value: 0.1 },
     uFar: { value: 200 },
     // === 픽셀아트 모드(?px=1) 전용 ===
     uPx: { value: PX_MODE ? 1.0 : 0.0 },
     uPxThresh: { value: 0.10 },   // 한쪽만 셀 때의 기본 임계값(대칭 방식보다 합이 작아 더 낮게 잡는다)
     uPxThreshK: { value: 0.035 }, // 거리 비례 계수 — 멀리서 선이 뭉치는 것 방지
-    uPxDark: { value: 0.55 }      // 깊이 엣지에서 색을 얼마나 어둡게 곱할지(1=검정)
+    uPxDark: { value: 0.55 },     // 깊이 엣지에서 색을 얼마나 어둡게 곱할지(1=검정)
+    tNormal: { value: rtNormal.texture }, // 노멀 버퍼(px 모드에서만 채워짐)
+    uSubpixel: { value: new THREE.Vector2(0, 0) }, // 카메라 스냅으로 버린 소수점(UV 단위)
+    uPxNormalStr: { value: 0.30 },// 볼록 모서리 하이라이트 세기(0=끔)
+    uPxNormalBias: { value: new THREE.Vector3(1, 1, 1) }, // 어느 쪽 면이 빛을 받은 것으로 칠지
+    uQuant: { value: 32.0 },      // 채널당 색 단계 수(2 이하면 양자화 끔). 낮출수록 레트로해진다
+    uDither: { value: 0.9 },      // 디더링 세기(0=밴딩 그대로, 1=베이어 패턴으로 완전히 흩음)
+    uQuantGamma: { value: 2.2 }   // 단계를 나눌 공간(1=밝기 균등, 2.2≈지각 균등 — 어두운 쪽에 단계를 몰아줌)
   },
   vertexShader: `
     varying vec2 vUv;
@@ -4765,41 +4835,68 @@ const quadMat = new THREE.ShaderMaterial({
     uniform vec3 uShadowColor;
     uniform float uShadowStr;
     uniform float uShadowThresh;
+    uniform float uShadowSteps;
     uniform float uNear;
     uniform float uFar;
     uniform float uPx;
     uniform float uPxThresh;
     uniform float uPxThreshK;
     uniform float uPxDark;
+    uniform float uQuant;
+    uniform float uDither;
+    uniform float uQuantGamma;
+    uniform sampler2D tNormal;
+    uniform vec2 uSubpixel;
+    uniform float uPxNormalStr;
+    uniform vec3 uPxNormalBias;
     varying vec2 vUv;
+    vec3 nrmAt(vec2 o) { return texture2D(tNormal, vUv + uSubpixel + o * uTexel).rgb * 2.0 - 1.0; }
+    // 이웃 한 칸과의 노멀 차이. 두 가지 장치가 들어간다.
+    //  - bias 방향과의 내적으로 '어느 쪽 면이 빛을 받은 쪽인지' 정해 한쪽에만 하이라이트를 준다.
+    //  - 더 가까운 픽셀만 엣지를 주장하게 해서 경계에 선이 두 줄 생기는 걸 막는다.
+    float nEdge(vec2 o, float dep, vec3 n, float dNb) {
+      float depthDiff = dNb - dep;
+      float normalDiff = dot(n - nrmAt(o), uPxNormalBias);
+      float normalInd = clamp(smoothstep(-0.01, 0.01, normalDiff), 0.0, 1.0);
+      float depthInd = clamp(sign(depthDiff * 0.25 + 0.0025), 0.0, 1.0);
+      return distance(n, nrmAt(o)) * depthInd * normalInd;
+    }
+    // 오더드 디더링용 베이어 임계값. 상수 배열을 동적 인덱싱하면 ANGLE이 헬퍼를 만들어
+    // 셰이더 경고가 생기므로, 2x2를 재귀적으로 겹쳐 계산식으로 구한다.
+    float bayer2(vec2 a) { a = floor(a); return fract(a.x / 2.0 + a.y * a.y * 0.75); }
+    float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
+    float bayer8(vec2 a) { return bayer4(0.5 * a) * 0.25 + bayer2(a); }
     float linearizeDepth(float d) {
       float z = d * 2.0 - 1.0;
       return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear));
     }
     void main() {
-      vec4 col = texture2D(tColor, vUv);
+      // 카메라를 텍셀 격자에 스냅하면서 버린 소수점을 여기서 되돌린다.
+      // 격자는 월드에 고정되고(픽셀이 기어다니지 않음) 움직임은 그대로 매끄럽다.
+      vec2 uv = vUv + uSubpixel;
+      vec4 col = texture2D(tColor, uv);
       // === 틸트시프트(미니어처 디오라마): 화면 위아래로 갈수록 흐려짐 ===
       float fdy = abs(vUv.y - uFocusY);
       float blur = smoothstep(uFocusW, uFocusW + 0.28, fdy) * uTiltOn;
       if (blur > 0.003) {
         vec2 br = uTexel * (blur * uBlurMax);
         vec3 acc = col.rgb * 0.25;
-        acc += texture2D(tColor, vUv + vec2( br.x,  br.y)).rgb * 0.125;
-        acc += texture2D(tColor, vUv + vec2(-br.x,  br.y)).rgb * 0.125;
-        acc += texture2D(tColor, vUv + vec2( br.x, -br.y)).rgb * 0.125;
-        acc += texture2D(tColor, vUv + vec2(-br.x, -br.y)).rgb * 0.125;
-        acc += texture2D(tColor, vUv + vec2( br.x * 1.8, 0.0)).rgb * 0.0625;
-        acc += texture2D(tColor, vUv + vec2(-br.x * 1.8, 0.0)).rgb * 0.0625;
-        acc += texture2D(tColor, vUv + vec2(0.0,  br.y * 1.8)).rgb * 0.0625;
-        acc += texture2D(tColor, vUv + vec2(0.0, -br.y * 1.8)).rgb * 0.0625;
+        acc += texture2D(tColor, uv + vec2( br.x,  br.y)).rgb * 0.125;
+        acc += texture2D(tColor, uv + vec2(-br.x,  br.y)).rgb * 0.125;
+        acc += texture2D(tColor, uv + vec2( br.x, -br.y)).rgb * 0.125;
+        acc += texture2D(tColor, uv + vec2(-br.x, -br.y)).rgb * 0.125;
+        acc += texture2D(tColor, uv + vec2( br.x * 1.8, 0.0)).rgb * 0.0625;
+        acc += texture2D(tColor, uv + vec2(-br.x * 1.8, 0.0)).rgb * 0.0625;
+        acc += texture2D(tColor, uv + vec2(0.0,  br.y * 1.8)).rgb * 0.0625;
+        acc += texture2D(tColor, uv + vec2(0.0, -br.y * 1.8)).rgb * 0.0625;
         col.rgb = acc;
       }
-      float c  = linearizeDepth(texture2D(tDepth, vUv).x);
+      float c  = linearizeDepth(texture2D(tDepth, uv).x);
       // 상하좌우 이웃과의 깊이 차로 경계 검출 (Sobel 간략화)
-      float l = linearizeDepth(texture2D(tDepth, vUv + vec2(-uTexel.x, 0.0)).x);
-      float r = linearizeDepth(texture2D(tDepth, vUv + vec2( uTexel.x, 0.0)).x);
-      float u = linearizeDepth(texture2D(tDepth, vUv + vec2(0.0,  uTexel.y)).x);
-      float dn= linearizeDepth(texture2D(tDepth, vUv + vec2(0.0, -uTexel.y)).x);
+      float l = linearizeDepth(texture2D(tDepth, uv + vec2(-uTexel.x, 0.0)).x);
+      float r = linearizeDepth(texture2D(tDepth, uv + vec2( uTexel.x, 0.0)).x);
+      float u = linearizeDepth(texture2D(tDepth, uv + vec2(0.0,  uTexel.y)).x);
+      float dn= linearizeDepth(texture2D(tDepth, uv + vec2(0.0, -uTexel.y)).x);
       vec3 graded;
       if (uPx > 0.5) {
         // === 픽셀아트 외곽선(?px=1) ===
@@ -4812,7 +4909,22 @@ const quadMat = new THREE.ShaderMaterial({
         float dei = floor(smoothstep(t, t * 1.65, d) * 2.0) / 2.0;
         dei *= uStrength * (1.0 - blur * 0.85);
         // 3) 검정을 덮어씌우지 않고 곱한다 — 그 면의 색이 어두워진 버전이 선이 되어 재질색이 살아있다.
-        graded = col.rgb * (1.0 - uPxDark * clamp(dei, 0.0, 1.0));
+        // 4) 깊이 경계가 아닌 곳에서는 '볼록한 모서리'를 오히려 밝게 해 입체가 깎인 것처럼 보이게 한다.
+        //    어두운 영역에서 하이라이트가 튀면 지저분해지므로 밝기에 비례해 약하게 넣는다.
+        float nei = 0.0;
+        if (uPxNormalStr > 0.001) {
+          vec3 n = nrmAt(vec2(0.0));
+          nei += nEdge(vec2( 0.0, -1.0), c, n, dn);
+          nei += nEdge(vec2( 0.0,  1.0), c, n, u);
+          nei += nEdge(vec2(-1.0,  0.0), c, n, l);
+          nei += nEdge(vec2( 1.0,  0.0), c, n, r);
+          nei = step(0.1, nei);
+          float lumIn = dot(col.rgb, vec3(0.299, 0.587, 0.114));
+          nei *= smoothstep(0.04, 0.22, lumIn);
+        }
+        float k = dei > 0.0 ? (1.0 - uPxDark * clamp(dei, 0.0, 1.0))
+                            : (1.0 + uPxNormalStr * nei);
+        graded = col.rgb * k;
       } else {
         float edge = abs(c - l) + abs(c - r) + abs(c - u) + abs(c - dn);
         // 거리에 비례한 임계값(원거리에서 과도한 외곽선 방지). 임계값↑·번짐범위↓ = 더 얇고 또렷한 선
@@ -4830,16 +4942,32 @@ const quadMat = new THREE.ShaderMaterial({
       // === 채색 그림자(어두운 영역을 검정 대신 짙은 분위기색으로 — 회화적) ===
       float lum2 = dot(graded, vec3(0.299, 0.587, 0.114));
       float shMask = 1.0 - smoothstep(0.0, uShadowThresh, lum2);  // 어두울수록 1
+      // 계단화: 그림자색이 부드럽게 번지면 3D 그라디언트처럼 보인다. 마스크를 몇 칸으로 끊으면
+      // 어두운 영역이 '띠'로 갈라져 손으로 칠한 픽셀아트 음영처럼 읽힌다(0이면 기존 그라디언트).
+      if (uShadowSteps > 0.5) shMask = floor(shMask * uShadowSteps + 0.5) / uShadowSteps;
       graded = mix(graded, max(graded, uShadowColor), shMask * uShadowStr); // 그림자색 이상으로 들어올림
       // === 대기 원근(멀수록 채도↓ + 분위기색으로 물듦 — 배경에 녹아들어 그림 같은 깊이) ===
       float aer = smoothstep(uAerialNear, uAerialFar, c) * uAerialStr;
       float aLum = dot(graded, vec3(0.299, 0.587, 0.114));
       graded = mix(graded, vec3(aLum), aer * uAerialDesat); // 멀수록 색 바램(색조 통일)
       graded = mix(graded, uAerialColor, aer * 0.6);        // 멀수록 분위기색으로
-      graded += texture2D(tBloom, vUv).rgb * uBloomStr;   // 진짜 블룸 가산(밝은 부분 번짐)
+      graded += texture2D(tBloom, uv).rgb * uBloomStr;   // 진짜 블룸 가산(밝은 부분 번짐)
       vec2 vc = vUv - 0.5;                                // 비네트(가장자리 어둡게 — 디오라마 집중)
       float vig = 1.0 - dot(vc, vc) * uVig;
       graded *= clamp(vig, 0.0, 1.0);
+      // === 색 양자화 + 오더드 디더링(픽셀아트 모드) ===
+      // 연속 그라디언트를 단계로 끊되, 끊기 직전에 베이어 임계값을 더해 밴딩을 점 패턴으로 흩는다.
+      // 좌표는 화면 픽셀이 아니라 '저해상도 텍셀' 기준이어야 패턴이 픽셀 격자에 정확히 붙는다.
+      if (uPx > 0.5 && uQuant > 2.5) {
+        vec2 pix = vUv / uTexel;
+        float qstep = 1.0 / (uQuant - 1.0);
+        // 밝기에 균등하게 단계를 깔면 어두운 쪽 간격이 지각적으로 너무 넓어서
+        // 그늘마다 디더 체커가 도드라진다. 감마 공간에서 나눠 어두운 쪽에 단계를 몰아준다.
+        vec3 e = pow(max(graded, 0.0), vec3(1.0 / uQuantGamma));
+        float th = (bayer8(pix) - 0.5) * qstep * uDither;
+        e = clamp(floor((e + th) / qstep + 0.5) * qstep, 0.0, 1.0);
+        graded = pow(e, vec3(uQuantGamma));
+      }
       gl_FragColor = vec4(graded, 1.0);
     }
   `,
@@ -4881,12 +5009,82 @@ bloomScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bloomMat));
 quadMat.uniforms.tBloom.value = rtBloom.texture;
 
 // 렌더 파이프라인 헬퍼: 씬→rt, 블룸 추출/블러→rtBloom, 최종 합성→화면
+// 노멀 패스: 씬을 MeshNormalMaterial로 한 번 더 그려 면 방향을 저장한다.
+// 깊이만으로는 '거리는 비슷한데 면 방향이 꺾이는' 경계(벽↔바닥 모서리 등)를 못 잡는다.
+// 스프라이트·파티클처럼 반투명한 것들은 이 패스에서 빼야 한다 — 안 그러면 발광 하나하나가
+// 불투명 사각형으로 찍혀서 가짜 외곽선이 잔뜩 생긴다.
+const _normalHidden = [];
+function _hideNonSolid(root) {
+  root.traverse(o => {
+    if (!o.visible) return;
+    if (o.isSprite || o.isPoints || (o.material && o.material.transparent)) {
+      o.visible = false; _normalHidden.push(o);
+    }
+  });
+}
+function renderNormalPass(sceneToRender) {
+  _normalHidden.length = 0;
+  _hideNonSolid(sceneToRender);
+  const prevOverride = sceneToRender.overrideMaterial;
+  sceneToRender.overrideMaterial = normalMaterial;
+  renderer.setRenderTarget(rtNormal); renderer.clear(); renderer.render(sceneToRender, camera);
+  sceneToRender.overrideMaterial = prevOverride;
+  for (const o of _normalHidden) o.visible = true;
+  _normalHidden.length = 0;
+}
+// === 카메라 텍셀 스냅 (픽셀 크롤 방지) ===
+// 카메라가 월드 좌표에서 연속적으로 움직이면 저해상도 버퍼가 매 프레임 다른 소수점 위치에서
+// 월드를 샘플링해, 벽·바닥 무늬가 이동 중에 자글거린다.
+// 카메라를 화면 텍셀 격자에 스냅해 격자를 월드에 고정하고, 버린 소수점은 최종 블릿의 UV로 되돌린다.
+// 전제: 시선 방향이 고정이어야 한다. 이 게임은 lookAt(플레이어)를 매 프레임 부르는데 카메라가
+// 추적 지연으로 뒤처져 있어 방향이 최대 4°까지 흔들린다 → px 모드에서는 고정 쿼터니언을 쓴다.
+// isoOffset* 는 이 지점보다 아래에서 선언되므로 즉시 계산하면 TDZ 오류로 부팅이 깨진다 → 첫 사용 시 계산.
+let _pxBasis = null;
+function _pxGetBasis() {
+  if (_pxBasis) return _pxBasis;
+  const q = new THREE.Quaternion().setFromRotationMatrix(
+    new THREE.Matrix4().lookAt(new THREE.Vector3(isoOffsetX, isoOffsetY, isoOffsetZ), new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0)));
+  _pxBasis = {
+    dist: Math.hypot(isoOffsetX, isoOffsetY, isoOffsetZ),
+    quat: q,
+    right: new THREE.Vector3(1, 0, 0).applyQuaternion(q),
+    up: new THREE.Vector3(0, 1, 0).applyQuaternion(q),
+  };
+  return _pxBasis;
+}
+const _pxSaveP = new THREE.Vector3(), _pxSaveQ = new THREE.Quaternion();
+let _pxSnapped = false;
+function applyPixelSnap() {
+  _pxSnapped = false;
+  if (!PX_MODE) { quadMat.uniforms.uSubpixel.value.set(0, 0); return; }
+  // 플레이어는 카메라에서 항상 같은 거리에 있으므로 그 평면 기준 텍셀 크기를 쓴다(원근이라 근사).
+  const B = _pxGetBasis();
+  const wpt = 2.0 * B.dist * Math.tan(camera.fov * Math.PI / 360.0) / lowResH;
+  if (!(wpt > 0)) { quadMat.uniforms.uSubpixel.value.set(0, 0); return; }
+  _pxSaveP.copy(camera.position); _pxSaveQ.copy(camera.quaternion); _pxSnapped = true;
+  camera.quaternion.copy(B.quat);
+  const ax = camera.position.dot(B.right), ay = camera.position.dot(B.up);
+  const dx = ax - Math.round(ax / wpt) * wpt;
+  const dy = ay - Math.round(ay / wpt) * wpt;
+  camera.position.addScaledVector(B.right, -dx).addScaledVector(B.up, -dy);
+  camera.updateMatrixWorld(true);
+  quadMat.uniforms.uSubpixel.value.set(dx / wpt / lowResW, dy / wpt / lowResH);
+}
+function releasePixelSnap() {
+  if (!_pxSnapped) return;
+  camera.position.copy(_pxSaveP); camera.quaternion.copy(_pxSaveQ);
+  camera.updateMatrixWorld(true); _pxSnapped = false;
+}
 function renderWithPost(sceneToRender) {
+  updateBlobShadows();
+  applyPixelSnap();
   renderer.setRenderTarget(rt); renderer.clear(); renderer.render(sceneToRender, camera);
+  if (PX_MODE && quadMat.uniforms.uPxNormalStr.value > 0.001) renderNormalPass(sceneToRender);
   if (quadMat.uniforms.uBloomStr && quadMat.uniforms.uBloomStr.value > 0.001) {
     renderer.setRenderTarget(rtBloom); renderer.clear(); renderer.render(bloomScene, quadCam);
   }
   renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
+  releasePixelSnap(); // 추적 로직이 스냅된 위치를 물려받지 않도록 원래 위치로 되돌린다
 }
 
 // ===== 글로우 빌보드(가짜 블룸) — HD-2D풍 빛번짐 =====
@@ -4903,6 +5101,72 @@ for (let gy = 0; gy < GLOW_TEX_S; gy++) for (let gx = 0; gx < GLOW_TEX_S; gx++) 
 }
 const glowSpriteTex = new THREE.DataTexture(glowTexData, GLOW_TEX_S, GLOW_TEX_S, THREE.RGBAFormat);
 glowSpriteTex.needsUpdate = true;
+// ===== 발밑 블롭 그림자 =====
+// 진짜 그림자를 쓰지 않는 이유: 그림자를 던지는 광원이 플레이어를 따라다니는 PointLight라
+// 큐브맵 6면을 매번 그려야 한다. 몬스터 수십 마리에 켜면 그림자 패스만 수천 드로우가 된다
+// (그래서 createAdvancedMonster가 마지막에 castShadow를 전부 끄고 있다).
+// 발밑 타원 하나는 드로우콜 1개면 되고, 캐릭터가 바닥에 붙어 보이게 만들어 오히려 가독성이 좋다.
+const BLOB_TEX_S = 64;
+// 그림자 계단 수(0=부드러운 그라디언트). 실제 그림자 맵은 px 모드에서 BasicShadowMap이라
+// 이미 경계가 이진값이고, 부드러운 건 이 블롭뿐이라 여기만 끊으면 된다.
+// 주의: 아래 텍스처 생성 루프가 즉시 실행되므로 반드시 루프보다 먼저 선언돼야 한다(TDZ).
+const BLOB_STEPS = (() => { const m = /[?&]blobsteps=([0-9]+)/.exec(location.search); return m ? parseInt(m[1], 10) : 3; })();
+const blobTexData = new Uint8Array(BLOB_TEX_S * BLOB_TEX_S * 4);
+for (let by = 0; by < BLOB_TEX_S; by++) for (let bx = 0; bx < BLOB_TEX_S; bx++) {
+  const dx = (bx + 0.5) / BLOB_TEX_S - 0.5, dy = (by + 0.5) / BLOB_TEX_S - 0.5;
+  const d = Math.min(1, Math.hypot(dx, dy) * 2);
+  // 가운데는 꽉 찬 원, 바깥 45%만 감쇠 — 부드러운 그라디언트만 쓰면 그림자가 아니라
+  // 바닥이 더러운 얼룩처럼 보인다. 형태가 읽히려면 중심부가 단단해야 한다.
+  let a = d >= 1 ? 0 : (d < 0.55 ? 255 : Math.pow(1 - (d - 0.55) / 0.45, 0.85) * 255);
+  // 계단화: 감쇠를 몇 개의 동심 띠로 끊는다. 그냥 두면 포스트 양자화 단계에서 디더로 흩어져
+  // 지저분해지는데, 여기서 미리 끊어두면 경계가 뚜렷한 띠로 남아 픽셀아트와 맞는다.
+  if (BLOB_STEPS > 0) a = Math.round((a / 255) * BLOB_STEPS) / BLOB_STEPS * 255;
+  const bi = (by * BLOB_TEX_S + bx) * 4;
+  blobTexData[bi] = 0; blobTexData[bi + 1] = 0; blobTexData[bi + 2] = 0; blobTexData[bi + 3] = a;
+}
+const blobTex = new THREE.DataTexture(blobTexData, BLOB_TEX_S, BLOB_TEX_S, THREE.RGBAFormat);
+blobTex.magFilter = THREE.NearestFilter; blobTex.minFilter = THREE.LinearFilter; blobTex.needsUpdate = true;
+const blobGeo = new THREE.PlaneGeometry(1, 1);
+const blobMatShared = new THREE.MeshBasicMaterial({
+  map: blobTex, color: 0x000000, transparent: true, opacity: 0.72, depthWrite: false,
+});
+const BLOB_ON = !/[?&]blob=0/.test(location.search); // 비교용 스위치
+function makeBlobShadow(diameter, ownMaterial) {
+  const m = new THREE.Mesh(blobGeo, ownMaterial ? blobMatShared.clone() : blobMatShared);
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = 0.03;               // 바닥과 z-파이팅 나지 않게 살짝 띄움
+  // 크기 주의: 쿼터뷰라 캐릭터 몸이 발밑을 대부분 가린다. 실루엣보다 넓어야 그림자가 삐져나와 읽힌다
+  // (0.9로 줄였더니 화면상 변화가 0%였고, 1.3부터 보이기 시작해 1.8쯤에서 확실해진다.
+  //  2.4는 그림자가 아니라 비네트처럼 보인다. 최종 수치는 실기기에서 조정할 것.)
+  m.scale.set(diameter, diameter, 1);
+  m.userData.blobBase = diameter;
+  m.renderOrder = -1;                // 바닥 위·캐릭터 아래로
+  return m;
+}
+// 캐릭터가 뛰거나 떠 있어도 그림자는 바닥에 남아야 한다 → 로컬 y로 높이를 상쇄하고
+// 높이에 비례해 작고 옅게 만든다(공중에 뜬 느낌).
+function updateBlobShadows() {
+  if (!BLOB_ON) return;
+  if (player && player.obj) {
+    if (!player._blob) { player._blob = makeBlobShadow(1.6, true); player.obj.add(player._blob); }
+    const h = Math.max(0, player.obj.position.y);
+    const k = 1 / (1 + h * 0.6);
+    const s = player._blob.userData.blobBase * k;
+    player._blob.position.y = 0.03 - h;
+    player._blob.scale.set(s, s, 1);
+    player._blob.material.opacity = 0.72 * k;
+    player._blob.visible = player.alive;
+  }
+  if (typeof enemies === 'undefined') return;
+  for (const e of enemies) {
+    const bl = e.obj && e.obj.userData.blob;
+    if (!bl) continue;
+    if (e.isDead) { bl.visible = false; continue; }
+    bl.visible = true;
+    bl.position.y = 0.03 - Math.max(0, e.obj.position.y - (e.baseY || 0));
+  }
+}
+
 function makeGlowSprite(color, size, opacity) {
   const m = new THREE.SpriteMaterial({ map: glowSpriteTex, color, transparent: true, opacity: (opacity !== undefined) ? opacity : 0.5, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
   const s = new THREE.Sprite(m);
@@ -11930,6 +12194,8 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
     // 성능: 적은 그림자를 드리우지 않음(castShadow off) — 그림자 패스 부담 제거. 벽 그림자는 받음.
     grp.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; } });
   }
+  // 진짜 그림자 대신 발밑 블롭을 붙인다(위 traverse에서 castShadow를 끈 것에 대한 대체)
+  if (BLOB_ON) { const _bl = makeBlobShadow(isBoss ? 2.3 : 1.4); grp.add(_bl); grp.userData.blob = _bl; }
   grp.scale.setScalar(scale * (isBoss ? 1 : 1.10)); grp.position.set(x, 0, z); scene.add(grp);
 
   const ent = { 
@@ -16762,6 +17028,7 @@ window.addEventListener('resize', () => {
   const lr = computeLowRes(window.innerWidth, window.innerHeight);
   lowResW = lr[0]; lowResH = lr[1];
   rt.setSize(lowResW, lowResH);
+  rtNormal.setSize(lowResW, lowResH);
   // r128의 setSize는 깊이 텍스처 크기를 따라 갱신해주지 않는다 — 외곽선이 어긋나지 않게 직접 맞춘다.
   if (rt.depthTexture) { rt.depthTexture.image.width = lowResW; rt.depthTexture.image.height = lowResH; rt.depthTexture.needsUpdate = true; }
   quadMat.uniforms.uTexel.value.set(1 / lowResW, 1 / lowResH);
@@ -18460,6 +18727,30 @@ function warmupShaders() {
 }
 warmupShaders();
 cgLoadingStop(); // 에셋·셰이더 준비 완료 → CrazyGames에 로딩 종료 알림
+
+// 숨김 제스처: 제목을 5번 연속 탭하면 개발자 버튼(보스 테스트·만렙 테스트)이 나온다.
+// 폰에서 주소에 ?dev=1 을 매번 치기 번거로워서 넣은 것으로, 이번 접속에만 적용된다(새로고침하면 다시 숨김).
+// onTap을 쓰면 안 된다 — 그쪽은 400ms 중복 방지가 걸려 있어 빠른 연타가 먹히지 않는다.
+// pointerup을 쓰면 마우스·터치가 한 번씩만 들어와서 이중 카운트도 없다.
+(function wireDevReveal() {
+  if (DEV_MODE) return; // 이미 보이는 상태
+  const title = document.querySelector('#charOverlay h1');
+  if (!title) return;
+  let taps = 0, lastTap = 0;
+  const onHit = () => {
+    const now = Date.now();
+    taps = (now - lastTap < 3000) ? taps + 1 : 1; // 저사양 기기에서 프레임이 밀려도 연타로 인정되게 여유
+    lastTap = now;
+    if (taps < 5) return;
+    taps = 0;
+    for (const id of ['bossTestBtn', 'maxLevelBtn']) {
+      const b = document.getElementById(id); if (b) b.style.display = '';
+    }
+    try { toast('🛠️ 개발자 버튼 표시'); } catch (e) {}
+  };
+  if (window.PointerEvent) title.addEventListener('pointerup', onHit);
+  else title.addEventListener('click', onHit);
+})();
 
 // 첫 화면: 기본은 캐릭터 선택(마크업에서 이미 보이는 상태).
 // 진행 중이던 회차가 있으면 캐릭터 선택 대신 이어하기 선택을 먼저 띄운다.
