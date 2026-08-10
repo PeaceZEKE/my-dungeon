@@ -144,12 +144,8 @@
     <button class="boss-spawn" data-boss="goblin" style="pointer-events:auto; padding:4px 8px; font-size:11px; border-radius:6px; border:1px solid #7fae5f; background:rgba(95,200,150,0.2); color:#bfeccd;">고블린</button>
     <button class="boss-spawn" data-boss="skeleton" style="pointer-events:auto; padding:4px 8px; font-size:11px; border-radius:6px; border:1px solid #9fb0c8; background:rgba(160,176,200,0.2); color:#dde8ff;">스켈레톤</button>
     <button class="boss-spawn" data-boss="orc" style="pointer-events:auto; padding:4px 8px; font-size:11px; border-radius:6px; border:1px solid #c0a060; background:rgba(200,160,90,0.2); color:#f0e0b0;">오크</button>
-    <button class="boss-spawn" data-boss="ghoul" style="pointer-events:auto; padding:4px 8px; font-size:11px; border-radius:6px; border:1px solid #8fa87f; background:rgba(120,150,100,0.2); color:#d8e8c8;">구울</button>
-    <button class="boss-spawn" data-boss="ghostknight" style="pointer-events:auto; padding:4px 8px; font-size:11px; border-radius:6px; border:1px solid #6fae9f; background:rgba(90,180,150,0.2); color:#c0f0e0;">유령 기사</button>
     <button class="boss-spawn" data-boss="darkknight" style="pointer-events:auto; padding:4px 8px; font-size:11px; border-radius:6px; border:1px solid #c06868; background:rgba(200,90,70,0.2); color:#f0c0b0;">흑기사</button>
     <button class="boss-spawn" data-boss="servantwraith" style="pointer-events:auto; padding:4px 8px; font-size:11px; border-radius:6px; border:1px solid #5fae9f; background:rgba(80,200,180,0.2); color:#c0f0e8;">시종장</button>
-    <button class="boss-spawn" data-boss="courtmage" style="pointer-events:auto; padding:4px 8px; font-size:11px; border-radius:6px; border:1px solid #9f7fc8; background:rgba(144,64,208,0.2); color:#e0c0f0;">궁중 마법사</button>
-    <button class="boss-spawn" data-boss="golem" style="pointer-events:auto; padding:4px 8px; font-size:11px; border-radius:6px; border:1px solid #9aa888; background:rgba(154,157,136,0.25); color:#dde4c8;">골렘</button>
     <button class="boss-spawn" data-boss="icequeen" style="pointer-events:auto; padding:4px 8px; font-size:11px; border-radius:6px; border:1px solid #88c8ff; background:rgba(136,200,255,0.2); color:#cfe8ff;">얼음 여왕</button>
   </div>
   <button id="bossTestExit" style="pointer-events:auto; padding:6px 16px; font-size:12px; border-radius:8px; border:1px solid #6b7280; background:rgba(120,130,150,0.22); color:#cbd5e0;">🚪 나가기</button>
@@ -4152,7 +4148,7 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v692'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v693'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -4760,11 +4756,49 @@ function _depthLitChunk() {
     'reflectedLight.directDiffuse *= _dkl;'
   ].join('\n');
 }
-// 조합 순서: 기본 청크 → 깊이 조절 → 계단화.
-// 계단화를 마지막에 둬야 단계 경계가 깊이 스케일에 다시 뭉개지지 않는다.
+// ===== 러프니스 기반 하이라이트 세기(?drough) — 기본 켜짐 =====
+// 매끈한 표면(갑옷·금속·얼음)은 하이라이트를 살리고, 거친 표면(돌·흙·이끼)은 죽인다.
+// PBR이 이미 러프니스로 하이라이트를 넓히긴 하지만 이 게임은 밝기 차가 잘 안 드러나서,
+// 두 무리를 눈에 띄게 갈라 주는 보정을 따로 건다.
+//
+// 램프 구간은 실측이다. 이 게임의 러프니스는 0.60 / 0.90 / 0.92 / 1.00 네 값뿐이고
+// roughnessMap은 하나도 없다. 0.60(갑옷·금속류)이 1층 23%·33층 13%이고 나머지는 0.90 이상이라,
+// 0.60~0.95 구간에 램프를 두면 '반짝여야 할 것'과 '무광이어야 할 것'이 정확히 갈린다.
+//
+// 러프니스를 material 구조체에서 읽지 않는 이유: r128의 필드명은 material.roughness가 아니라
+// specularRoughness라 그대로 쓰면 컴파일이 깨진다. roughnessFactor는 이름이 안 바뀌어 더 안전하다.
+// 이 값은 STANDARD/PHYSICAL 셰이더에만 있으므로 Phong 머티리얼에서 깨지지 않게 #ifdef로 감싼다.
+let dRoughStr = 1.2, dRoughLo = 0.60, dRoughHi = 0.95;
+{
+  const m = /[?&]drough=([0-9.]+)/.exec(location.search);
+  if (m) dRoughStr = parseFloat(m[1]);
+  const lo = /[?&]droughlo=([0-9.]+)/.exec(location.search); if (lo) dRoughLo = parseFloat(lo[1]);
+  const hi = /[?&]droughhi=([0-9.]+)/.exec(location.search); if (hi) dRoughHi = parseFloat(hi[1]);
+}
+function _roughSpecChunk() {
+  if (!(dRoughStr > 0.001)) return '';
+  const s = dRoughStr.toFixed(3);
+  const lo = dRoughLo.toFixed(2), hi = Math.max(dRoughLo + 0.01, dRoughHi).toFixed(2);
+  return '\n' + [
+    '#ifdef STANDARD',
+    'float _rg = smoothstep(' + lo + ', ' + hi + ', clamp(roughnessFactor, 0.0, 1.0)); // 0=매끈 1=거침',
+    // 무광 쪽 계수를 0.5로 둔다. 0.8이면 기본값(1.2)에서 이미 0.04까지 떨어져 하이라이트가
+    // 통째로 사라지고 조절 여지도 1.25에서 끝난다. 0.5면 기본에서 40%를 남기고 2.0까지 쓸 수 있다.
+    'float _kr = mix(1.0 + ' + s + ', max(0.0, 1.0 - ' + s + ' * 0.5), _rg);',
+    'reflectedLight.directSpecular *= _kr;',
+    'reflectedLight.indirectSpecular *= _kr;',
+    '#endif'
+  ].join('\n');
+}
+// 조합 순서: 기본 청크 → 러프니스 보정 → 깊이 조절 → 계단화.
+// 러프니스가 먼저인 이유: '이 표면이 얼마나 반짝이는가'를 정한 뒤 거리로 감쇠해야 순서가 맞다.
+// 계단화는 마지막이어야 단계 경계가 뒤따르는 스케일에 다시 뭉개지지 않는다.
+const _roughCode = _roughSpecChunk();
 const _depthCode = _depthLitChunk();
 const _toonTail = (PX_MODE && pxToonSteps > 0.5) ? _toonChunk(pxToonSteps).slice(_toonBaseChunk.length) : '';
-if (PX_MODE || _depthCode) THREE.ShaderChunk.lights_fragment_end = _toonBaseChunk + _depthCode + _toonTail;
+if (PX_MODE || _roughCode || _depthCode) {
+  THREE.ShaderChunk.lights_fragment_end = _toonBaseChunk + _roughCode + _depthCode + _toonTail;
+}
 app.appendChild(renderer.domElement);
 
 // === 컨텍스트 손실 디버깅: 튕기는 순간의 GPU 상태를 기록 ===
