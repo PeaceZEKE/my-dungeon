@@ -4146,9 +4146,21 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 // B묶음: 색 양자화 + 오더드 디더링 + 틸트시프트 블러 해제
 // 예전 룩과 비교하려면 ?px=0 을 붙인다.
 const PX_MODE = !/[?&]px=0/.test(location.search);
+// 픽셀아트 잔디(인스턴싱 빌보드). ?pgrass=0 이면 예전 3D 풀잎 메시로 돌아간다.
+// 쓰는 곳보다 위에서 선언해야 한다 — 모듈 최상위 코드가 즉시 실행되므로 아래에 두면 TDZ로 부팅이 깨진다.
+const PGRASS = !/[?&]pgrass=0/.test(location.search);
+// 잔디 빌보드 방식. 기본은 카메라를 정면으로 보는 풀 빌보드(스프라이트가 안 눌린다).
+// ?pgfull=0 이면 Y축 빌보드(월드 수직으로 선 채 카메라 쪽만 도는 예전 방식).
+const PGRASS_FULL = !/[?&]pgfull=0/.test(location.search);
+// 픽셀아트 나무(인스턴싱 캐노피). ?ptrees=0 이면 예전 20면체 덩어리 나무로 돌아간다.
+const PTREES = !/[?&]ptrees=0/.test(location.search);
+let townPTrees = null;
+// 마을·던전 각각 하나씩(씬이 다르다). 배치가 바뀔 때만 setCells를 부른다.
+// 선언을 잔디 코드 옆이 아니라 여기 두는 이유도 TDZ다 — buildTownScene이 언제 불릴지에 기대지 않는다.
+let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v707'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v725'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -4899,6 +4911,20 @@ const skinTagMaterial = new THREE.ShaderMaterial({
   vertexShader: 'void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
   fragmentShader: 'void main(){ gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); }',
 });
+// ===== 식생(잔디·나뭇잎) 검은 외곽선 제거 =====
+// 외곽선은 깊이 차이로 그린다. 잎 하나하나가 실루엣이라 식생에는 선이 잔뜩 생겨 지저분하다.
+// 노멀 버퍼의 '알파'를 외곽선 스위치로 쓴다 — 알파 0이면 그 픽셀엔 외곽선을 안 그린다.
+// 알파를 쓰는 이유: RGB(=노멀)를 그대로 남길 수 있어서, 나뭇잎은 모서리 하이라이트를 유지한 채
+// 검은 선만 뺄 수 있다. 잔디는 노멀이 의미 없으므로 초록 표식(0,1,0)까지 얹어 하이라이트도 뺀다.
+const VEG_NO_OUTLINE = !/[?&]vout=1/.test(location.search);
+const VEG_TAG_LAYER = 2;
+// 나뭇잎용: 진짜 노멀을 그대로 쓰되 알파만 0으로.
+const vegNormalMaterial = new THREE.MeshNormalMaterial();
+vegNormalMaterial.onBeforeCompile = function (shader) {
+  shader.fragmentShader = shader.fragmentShader.replace(
+    'packNormalToRGB( normal ), opacity', 'packNormalToRGB( normal ), 0.0');
+};
+vegNormalMaterial.customProgramCacheKey = function () { return 'vegNormalA0'; };
 
 const quadScene = new THREE.Scene();
 const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -4910,6 +4936,13 @@ const quadMat = new THREE.ShaderMaterial({
     uTexel: { value: new THREE.Vector2(1 / lowResW, 1 / lowResH) },
     uOutline: { value: new THREE.Color(0x05070c) },
     uStrength: { value: 1.0 },
+    // 구름 그림자: 깊이에서 월드 좌표를 복원해 화면 전체에 적용한다.
+    // 예전에는 y=0.14 평면 하나로 그려서 바닥만 어두워지고 건물·나무·캐릭터는 그대로였다.
+    tCloud: { value: null },
+    uCloudStr: { value: 0.0 },                              // 0이면 완전히 끔(던전에서는 항상 0)
+    uCloudScale: { value: 0.0091 },                         // 월드 좌표 → 구름 텍스처 배율(예전 110x110 평면과 같은 크기)
+    uCloudOff: { value: new THREE.Vector2(0, 0) },          // 흐르는 오프셋
+    uInvVP: { value: new THREE.Matrix4() },                 // (projection*view)의 역행렬 — 월드 좌표 복원용
     uSat: { value: 1.14 },                                  // HD-2D 색 보정: 채도(1=원본)
     uCon: { value: 1.07 },                                  // 대비(1=원본)
     uSplit: { value: new THREE.Vector3(0.045, 0.012, -0.05) }, // 스플릿 토닝: 밝은 곳 따뜻하게/어두운 곳 차갑게
@@ -4989,6 +5022,10 @@ const quadMat = new THREE.ShaderMaterial({
     uniform float uDither;
     uniform float uQuantGamma;
     uniform sampler2D tNormal;
+    uniform sampler2D tCloud;
+    uniform float uCloudStr, uCloudScale;
+    uniform vec2 uCloudOff;
+    uniform mat4 uInvVP;
     uniform vec2 uSubpixel;
     uniform float uPxNormalStr;
     uniform vec3 uPxNormalBias;
@@ -4998,12 +5035,16 @@ const quadMat = new THREE.ShaderMaterial({
     // 디코드하면 (1,-1,-1)인데, 진짜 단위 노멀은 g·b가 -0.7 아래면 r이 ±0.14를 못 넘으므로
     // 이 조합은 정상 노멀과 절대 겹치지 않는다 → 표식으로 안전하다.
     bool isSkinTag(vec3 n) { return n.r > 0.7 && n.g < -0.7 && n.b < -0.7; }
+    // 식생 표식(순수 초록). 디코드하면 (-1,1,-1) — 위와 같은 이유로 정상 노멀과 겹치지 않는다.
+    bool isVegTag(vec3 n) { return n.g > 0.7 && n.r < -0.7 && n.b < -0.7; }
+    // 외곽선 스위치: 노멀 버퍼 알파가 0이면 그 픽셀은 식생 → 검은 외곽선을 안 그린다.
+    float outlineAt() { return texture2D(tNormal, vUv + uSubpixel).a; }
     // 이웃 한 칸과의 노멀 차이. 두 가지 장치가 들어간다.
     //  - bias 방향과의 내적으로 '어느 쪽 면이 빛을 받은 쪽인지' 정해 한쪽에만 하이라이트를 준다.
     //  - 더 가까운 픽셀만 엣지를 주장하게 해서 경계에 선이 두 줄 생기는 걸 막는다.
     float nEdge(vec2 o, float dep, vec3 n, float dNb) {
       vec3 m = nrmAt(o);
-      if (isSkinTag(m)) return 0.0; // 이웃이 피부면 그쪽 경계는 없는 것으로 친다
+      if (isSkinTag(m) || isVegTag(m)) return 0.0; // 이웃이 피부·잔디면 그쪽 경계는 없는 것으로 친다
       float depthDiff = dNb - dep;
       float normalDiff = dot(n - m, uPxNormalBias);
       float normalInd = clamp(smoothstep(-0.01, 0.01, normalDiff), 0.0, 1.0);
@@ -5057,6 +5098,9 @@ const quadMat = new THREE.ShaderMaterial({
         // 2) 선 세기를 {0, 0.5, 1} 세 단계로 끊는다 — 안티에일리어싱된 회색 테두리가 안 생긴다.
         float dei = floor(smoothstep(t, t * 1.65, d) * 2.0) / 2.0;
         dei *= uStrength * (1.0 - blur * 0.85);
+        // 식생(노멀 버퍼 알파 0)에는 검은 외곽선을 그리지 않는다. 잎마다 실루엣이라
+        // 그대로 두면 캐노피·잔디가 선으로 뒤덮여 지저분해진다.
+        dei *= step(0.5, outlineAt());
         // 3) 검정을 덮어씌우지 않고 곱한다 — 그 면의 색이 어두워진 버전이 선이 되어 재질색이 살아있다.
         // 4) 깊이 경계가 아닌 곳에서는 '볼록한 모서리'를 오히려 밝게 해 입체가 깎인 것처럼 보이게 한다.
         //    어두운 영역에서 하이라이트가 튀면 지저분해지므로 밝기에 비례해 약하게 넣는다.
@@ -5064,7 +5108,8 @@ const quadMat = new THREE.ShaderMaterial({
         if (uPxNormalStr > 0.001) {
           vec3 n = nrmAt(vec2(0.0));
           // 피부에는 모서리 하이라이트를 넣지 않는다 — 살이 깎아 만든 무기물처럼 보인다.
-          if (!isSkinTag(n)) {
+          // 잔디도 마찬가지(초록 표식). 나뭇잎은 진짜 노멀이 남아 있어 하이라이트가 그대로 들어간다.
+          if (!isSkinTag(n) && !isVegTag(n)) {
             nei += nEdge(vec2( 0.0, -1.0), c, n, dn);
             nei += nEdge(vec2( 0.0,  1.0), c, n, u);
             nei += nEdge(vec2(-1.0,  0.0), c, n, l);
@@ -5084,6 +5129,19 @@ const quadMat = new THREE.ShaderMaterial({
         float line = smoothstep(thresh, thresh * 1.65, edge) * uStrength;
         line *= (1.0 - blur * 0.85); // 흐린 영역에선 외곽선도 함께 부드럽게
         graded = mix(col.rgb, uOutline, clamp(line, 0.0, 1.0));
+      }
+      // === 구름 그림자 ===
+      // 깊이를 월드 좌표로 되돌려 XZ로 구름 텍스처를 읽는다 → 바닥이든 지붕이든 캐릭터든
+      // '그 지점이 구름 밑인지'로 판정되므로 평면 한 장으로 덮던 예전과 달리 전부 적용된다.
+      if (uCloudStr > 0.001) {
+        float dz = texture2D(tDepth, uv).x;
+        if (dz < 0.9999) {                                  // 하늘(빈 깊이)은 제외
+          vec4 ndc = vec4(uv * 2.0 - 1.0, dz * 2.0 - 1.0, 1.0);
+          vec4 wp = uInvVP * ndc;
+          wp /= wp.w;
+          float cs = texture2D(tCloud, wp.xz * uCloudScale + uCloudOff).g;
+          graded *= 1.0 - uCloudStr * cs;
+        }
       }
       // === HD-2D 색 보정 ===
       float lum = dot(graded, vec3(0.299, 0.587, 0.114));
@@ -5166,9 +5224,10 @@ quadMat.uniforms.tBloom.value = rtBloom.texture;
 // 스프라이트·파티클처럼 반투명한 것들은 이 패스에서 빼야 한다 — 안 그러면 발광 하나하나가
 // 불투명 사각형으로 찍혀서 가짜 외곽선이 잔뜩 생긴다.
 const _normalHidden = [];
+const _normalVeg = [], _normalVegMat = [];
 let _normalSkinCount = 0;
 function _hideNonSolid(root) {
-  _normalSkinCount = 0;
+  _normalSkinCount = 0; _normalVeg.length = 0;
   root.traverse(o => {
     if (!o.visible) return;
     const mm = o.material;
@@ -5180,9 +5239,19 @@ function _hideNonSolid(root) {
     // 색 패스에는 그대로 남으므로 로우폴리 룩은 유지되고, 모서리 강조만 빠진다.
     // 대신 아래 2패스에서 표식색을 덮어쓴다 — 그냥 비워 두면 뒤에 있는 벽·바닥의 노멀이 드러나
     // 그 경계가 피부 위에 하이라이트로 그려진다(실측: 피부 픽셀의 21.9%, 최대 51/255).
-    if (o.isSprite || o.isPoints || organic || (mm && mm.transparent)) {
+    // userData.fx: 픽셀 잔디처럼 알파 discard로 모양을 내는 것들. overrideMaterial이 discard를
+    // 없애 버려서 이 패스에 넣으면 잎이 전부 불투명 사각형으로 찍힌다.
+    if (o.isSprite || o.isPoints || organic || (o.userData && o.userData.fx) || (mm && mm.transparent)) {
       o.visible = false; _normalHidden.push(o);
-      if (organic) _normalSkinCount++;
+      // 표식 레이어는 여기서 붙인다 — 1패스에서 빼는 판정과 2패스에서 덮는 판정이 같은 줄에서
+      // 나오므로 둘이 어긋날 수가 없다. 캐릭터 생성 시점에 붙이면 그 뒤에 추가된 메쉬(장비 교체,
+      // 새 몬스터 빌더)가 빠져서 그 자리에만 구멍이 남는다. 이 패스는 2패스보다 먼저 도므로
+      // 방금 만들어진 메쉬도 같은 프레임에 표식이 붙는다.
+      if (organic) { o.layers.enable(SKIN_TAG_LAYER); _normalSkinCount++; }
+      // 식생은 3패스에서 자기 표식 재질로 다시 그린다(잔디는 초록 표식, 잎은 진짜 노멀 + 알파 0).
+      if (VEG_NO_OUTLINE && o.isMesh && o.userData && o.userData.fxTagMat) {
+        o.layers.enable(VEG_TAG_LAYER); _normalVeg.push(o);
+      }
     }
   });
 }
@@ -5206,6 +5275,24 @@ function renderNormalPass(sceneToRender) {
     camera.layers.set(SKIN_TAG_LAYER);
     renderer.autoClear = false;
     renderer.render(sceneToRender, camera);
+    sceneToRender.background = prevBg;
+    renderer.autoClear = prevAuto;
+    camera.layers.mask = prevMask;
+  }
+  // 3패스: 식생. overrideMaterial을 쓰지 않고 메시마다 자기 표식 재질로 바꿔 그린다 —
+  // 잔디는 알파 discard가 살아 있어야 잎 모양대로 찍히고, 나뭇잎은 진짜 노멀을 남겨야
+  // 모서리 하이라이트가 유지된다. 둘의 요구가 달라서 한 재질로는 안 된다.
+  // 대상이 메시 두어 개뿐이라 재질 교체가 오히려 싸다(레이어로 골라 렌더는 한 번).
+  if (_normalVeg.length) {
+    const prevMask = camera.layers.mask, prevAuto = renderer.autoClear, prevBg = sceneToRender.background;
+    _normalVegMat.length = 0;
+    for (const o of _normalVeg) { _normalVegMat.push(o.material); o.material = o.userData.fxTagMat; }
+    sceneToRender.overrideMaterial = null;
+    sceneToRender.background = null;
+    camera.layers.set(VEG_TAG_LAYER);
+    renderer.autoClear = false;
+    renderer.render(sceneToRender, camera);
+    for (let i = 0; i < _normalVeg.length; i++) _normalVeg[i].material = _normalVegMat[i];
     sceneToRender.background = prevBg;
     renderer.autoClear = prevAuto;
     camera.layers.mask = prevMask;
@@ -5255,6 +5342,7 @@ function releasePixelSnap() {
   camera.position.copy(_pxSaveP); camera.quaternion.copy(_pxSaveQ);
   camera.updateMatrixWorld(true); _pxSnapped = false;
 }
+const _invVP = new THREE.Matrix4();
 function renderWithPost(sceneToRender) {
   updateBlobShadows();
   applyPixelSnap();
@@ -5262,6 +5350,12 @@ function renderWithPost(sceneToRender) {
   if (PX_MODE && quadMat.uniforms.uPxNormalStr.value > 0.001) renderNormalPass(sceneToRender);
   if (quadMat.uniforms.uBloomStr && quadMat.uniforms.uBloomStr.value > 0.001) {
     renderer.setRenderTarget(rtBloom); renderer.clear(); renderer.render(bloomScene, quadCam);
+  }
+  // 구름 그림자는 깊이에서 월드 좌표를 되돌리므로, 색·깊이를 찍은 그 카메라(픽셀 스냅된 상태)의
+  // 역행렬이어야 한다 — releasePixelSnap 전에 갱신할 것.
+  if (quadMat.uniforms.uCloudStr.value > 0.001) {
+    _invVP.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).invert();
+    quadMat.uniforms.uInvVP.value.copy(_invVP);
   }
   renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
   releasePixelSnap(); // 추적 로직이 스냅된 위치를 물려받지 않도록 원래 위치로 되돌린다
@@ -5498,18 +5592,53 @@ function buildTownGrass() {
   // 포석 광장(반경 ~13.5)은 비우고, 바깥 풀밭 링(15.5~32)에만 빽빽하게.
   const tufts = [];
   const rMin = 15.5, rMax = 32;
+  // 건물 콜라이더·밭 안쪽은 비운다. pad는 콜라이더 여유, minR 미만인 콜라이더는 무시한다.
+  const blockedAt = (x, z, pad, minR) => {
+    for (const c of townColliders) {
+      if (c.r < minR) continue;
+      if (Math.hypot(x - c.x, z - c.z) < c.r + pad) return true;
+    }
+    for (const e of townGrassExcludeRects) {
+      const co = Math.cos(e.ry || 0), si = Math.sin(e.ry || 0);
+      const lx = (x - e.x) * co - (z - e.z) * si, lz = (x - e.x) * si + (z - e.z) * co;
+      if (Math.abs(lx) < e.hw && Math.abs(lz) < e.hd) return true;
+    }
+    return false;
+  };
+  if (PGRASS) {
+    // 셀 격자로 링을 채운다. 판정 기준을 잘못 잡으면 밀도가 통째로 달라진다 — 실측한 셀 수:
+    //   링 전체 964 / 예전 규칙(+0.5, 전부) 523 / 여유 없음 698 / 여유 없음 + 작은 콜라이더 무시 811.
+    // 283개 콜라이더 중 235개가 가로등·통·울타리 같은 소품이다. 점으로 뿌리던 예전과 달리 셀은
+    // 1.6칸이라 소품 하나가 그만한 구멍을 내서, 링 곳곳이 뭉텅뭉텅 비어 보였다.
+    // 소품 밑동에 풀이 나는 건 자연스러우므로 r<1.2 는 무시하고 건물만 피한다.
+    const CS = 1.6;
+    const cells = [];
+    for (let z = -rMax; z < rMax; z += CS) for (let x = -rMax; x < rMax; x += CS) {
+      const cx = x + CS / 2, cz = z + CS / 2;
+      const r = Math.hypot(cx, cz);
+      if (r < rMin || r > rMax) continue;
+      if (blockedAt(cx, cz, 0, 1.2)) continue;
+      cells.push([x, z]);
+    }
+    townPGrass = createPixelGrass({
+      scene: townScene, seed: 20260810,
+      billboard: PGRASS_FULL ? 'full' : 'y',
+      cellSize: CS, perCell: 11, sizeMin: 0.62, sizeMax: 1.05,
+      // 바닥 링(0x66843c)과 밑동 톤을 맞춘다 — 성기게 난 곳에서 지면이 딴 색으로 튀지 않게.
+      colors: { base: '#7ba33f', dark: '#577a2c', light: '#c2dc86' },
+      darkRatio: 0.22, lightRatio: 0.09,
+      windSpeed: 1.1, windSway: 0.26,
+      charRadius: 0.55, charPush: 0.30, charSquash: 0.35, // 캐릭터가 커서 밟힘 반경도 키운다
+      tint: 0xffffff,
+    });
+    townPGrass.setCells(cells);
+    return;
+  }
   for (let i = 0; i < GFX.grassTownTries; i++) {
     const ang = Math.random() * Math.PI * 2;
     const r = Math.sqrt(rMin * rMin + Math.random() * (rMax * rMax - rMin * rMin)); // 면적 균등 분포
     const x = Math.cos(ang) * r, z = Math.sin(ang) * r;
-    let blocked = false;
-    for (const c of townColliders) { if (Math.hypot(x - c.x, z - c.z) < c.r + 0.5) { blocked = true; break; } }
-    if (!blocked) for (const e of townGrassExcludeRects) { // 밭(회전 사각형) 내부 제외
-      const co = Math.cos(e.ry || 0), si = Math.sin(e.ry || 0);
-      const lx = (x - e.x) * co - (z - e.z) * si, lz = (x - e.x) * si + (z - e.z) * co;
-      if (Math.abs(lx) < e.hw && Math.abs(lz) < e.hd) { blocked = true; break; }
-    }
-    if (!blocked) tufts.push({ x, z });
+    if (!blockedAt(x, z, 0.5, 0)) tufts.push({ x, z }); // 예전 경로는 규칙을 그대로 유지
   }
   const mesh = makeGrassMesh(tufts, { sizeMul: 1.45, lift: 0.5 }); // 회화풍: 크고 밝은 파스텔 풀
   if (mesh) townScene.add(mesh);
@@ -5630,13 +5759,14 @@ function buildTownScene() {
   // 8각 도넛 베이스 — 중앙이 비고, 가장자리는 보이드로 페이드
   const ground = new THREE.Mesh(new THREE.RingGeometry(TOWN_HOLE, 33, 8, 1), mat(C.flagD));
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; townScene.add(ground);
-  // 흘러가는 구름 그림자: 어두운 투명 평면 + 타일링 노이즈 알파를 천천히 스크롤
+  // 흘러가는 구름 그림자 — 씬에 평면을 놓지 않고 포스트에서 깊이로 적용한다.
+  // 예전에는 y=0.14 짜리 어두운 평면 한 장이었는데, 그 평면보다 높은 것(건물·나무·캐릭터)은
+  // 깊이 검사에서 평면보다 앞이라 그림자가 아예 안 걸렸다.
   {
-    const cloudMat = new THREE.MeshBasicMaterial({ color: 0x06090c, transparent: true, opacity: 0.5, alphaMap: makeCloudShadowTex(), depthWrite: false, fog: false });
-    const cloudPlane = new THREE.Mesh(new THREE.PlaneGeometry(110, 110), cloudMat);
-    cloudPlane.rotation.x = -Math.PI / 2; cloudPlane.position.y = 0.14; cloudPlane.renderOrder = 2;
-    townScene.add(cloudPlane);
-    townAnim.cloudMat = cloudMat; townAnim.cloudTex = cloudMat.alphaMap;
+    const tex = makeCloudShadowTex();
+    quadMat.uniforms.tCloud.value = tex;
+    townAnim.cloudTex = tex;
+    townAnim.cloudStrDay = 0.5; townAnim.cloudStrNight = 0.2;
   }
   // 포석 타일 스캐터(격자 + 지터 + 무작위 결손 = 깨진 포장 느낌)
   const tileTones = [C.flag, C.flagD, C.flagE, C.flag, C.rubble];
@@ -6522,8 +6652,10 @@ function buildTownScene() {
     p.rotation.x = -Math.PI / 2; p.position.set(rr * Math.sin(phi), 0.03, rr * Math.cos(phi)); townScene.add(p);
   }
   // 무성한 풀포기(성벽 쪽으로 갈수록 촘촘) — 게이트 통로는 비움
+  // 픽셀 잔디가 같은 링을 덮으므로 그때는 만들지 않는다. 원뿔 하나가 메시 하나라
+  // 이 루프만으로 드로우콜이 240개 가까이 나온다 — 픽셀 잔디는 전체가 1개다.
   const grassMats = [mat(C.leaf), mat(C.leafA), mat(C.grassD), mat(C.grass)];
-  for (let i = 0; i < 150; i++) {
+  for (let i = 0; !PGRASS && i < 150; i++) {
     const phi = Math.random() * Math.PI * 2, rr = 16.5 + Math.random() * 14;
     const dg = Math.abs(Math.atan2(Math.sin(phi - GATE_ANGLE), Math.cos(phi - GATE_ANGLE)));
     if (dg < 0.15) continue;                         // 도로 통로(게이트→마을) 전체 비움
@@ -6540,6 +6672,7 @@ function buildTownScene() {
 
   // ===== 성벽 안쪽 둘레에 촘촘한 나무 ===== (게이트 통로 + 논밭 구역 제외)
   const FARM_ANGLE = -2.55;                            // 풍차~마차 사이 논밭 부채꼴 중심
+  const treeSpots = [];                                // 픽셀 나무용 좌표(예전 경로는 trees 배열)
   for (let i = 0; i < 48; i++) {
     const phi = i / 48 * Math.PI * 2 + Math.random() * 0.06;
     const dg = Math.abs(Math.atan2(Math.sin(phi - GATE_ANGLE), Math.cos(phi - GATE_ANGLE)));
@@ -6549,7 +6682,53 @@ function buildTownScene() {
     const rr = 21.5 + Math.random() * 2.4 - (i % 2 ? 1.3 : 0);
     const x = rr * Math.sin(phi) + (Math.random() - 0.5) * 1.2;
     const z = rr * Math.cos(phi) + (Math.random() - 0.5) * 1.2;
-    trees.push(makeTree(x, z, 0.8 + Math.random() * 0.7));
+    const s = 0.8 + Math.random() * 0.7;
+    if (PTREES) treeSpots.push({ x, z, scale: s * 3.2 }); // 모듈은 높이 1 기준 — 예전 나무 높이에 맞춘 배율
+    else trees.push(makeTree(x, z, s));
+  }
+  if (PTREES && treeSpots.length) {
+    townPTrees = createPixelTrees({
+      scene: townScene, seed: 20260812,
+      // 잎이 향할 방향 = 카메라가 있는 쪽. iso 오프셋(11.07/20/11.07)을 그대로 쓴다.
+      // 이 게임은 시점이 고정이라 setTrees 때 한 번 구워 두면 끝이다.
+      cameraDir: [isoOffsetX, isoOffsetY, isoOffsetZ],
+      sunDir: [18, 26, 10],
+      // 잔디와 색감을 맞춘 팔레트. 잔디는 ACES를 타고 나무는 안 타므로, 잔디 색이 화면에
+      // 실제로 어떤 색으로 나오는지 계산해서(ACES 정방향) 그 값을 그대로 적었다:
+      //   잔디 #577a2c → 화면 #799247 / #7ba33f → #97aa65 / #c2dc86 → #b8bfa0
+      // 캐노피는 잔디의 '주된' 톤(어두움~기본)에 맞춘다 — 잔디의 밝은 톤(#b8bfa0)은 9%짜리
+      // 악센트라 그걸 캐노피 상단에 쓰면 나무 윗면이 통째로 회녹색으로 뜬다.
+      colors: { deep: 0x4b5b2c, low: 0x66803c, mid: 0x799247, high: 0x97aa65 },
+      // 잔디처럼 가늘고 뾰족한 잎. 얇아서 한 장이 덮는 면적이 작으므로 개수를 늘린다.
+      // 형태는 덩어리가 만들고, 그 표면에 '그린 잎 뭉치' 카드를 눕힌다(t3ssel8r 계열 방식).
+      // 카드가 삼각형 2개뿐이라 폴리곤 잎(15개)보다 훨씬 싸서 촘촘히 깔 수 있다.
+      leafShape: 'sprite', leafAlign: 0.8,
+      leavesPerTree: 150, leafSize: [0.26, 0.40],
+      leafDome: 0.16, leafRim: 1, leafSprigVar: 0,
+      leafSpriteShade: true, leafShadeStr: 0.10, // 잎 안쪽 명암을 살짝만
+      canopyBody: 0.9, canopyBodySeg: 6,
+      blobs: [
+        { x: 0.00, y: 0.62, z: 0.00, r: 0.30 },
+        { x: -0.24, y: 0.52, z: 0.12, r: 0.21 },
+        { x: 0.23, y: 0.54, z: -0.11, r: 0.21 },
+        { x: 0.05, y: 0.82, z: 0.04, r: 0.19 },
+        { x: -0.10, y: 0.70, z: -0.22, r: 0.18 },
+        { x: 0.14, y: 0.68, z: 0.21, r: 0.18 },
+        { x: -0.20, y: 0.86, z: -0.05, r: 0.14 },
+        { x: 0.19, y: 0.84, z: 0.09, r: 0.14 },
+      ],
+      // 밑동은 어둡고 끝은 밝게 — 잔디와 같은 명암. 테두리는 얇은 잎에선 잎 전체를 먹으므로 끈다.
+      leafDome: 0.30, leafRim: 1,
+      trunkMaterial: mat(0x5a3d28),
+      trunkRadius: [0.055, 0.085], trunkHeight: 0.4,
+      wind: { amp: 0.25, speed: 1.2, dir: [1.0, 0.3] },
+      quantize: 8,
+    });
+    townPTrees.setTrees(treeSpots);
+    // 콜라이더: 인스턴싱이라 그룹 바운딩이 숲 전체가 된다 — 자동 등록에서 빼고 그루마다 직접 넣는다.
+    // 반경은 예전 나무의 바운딩 박스 근사(캐노피 폭 × 0.42)와 같은 크기로 맞췄다.
+    townPTrees.group.userData.noCollide = true;
+    for (const t of treeSpots) _collide(t.x, t.z, t.scale * 0.33);
   }
 
   // ===== 입구 → 마을로 이어지는 포장도로 (게이트에서 중앙 광장까지) =====
@@ -6787,7 +6966,7 @@ function setTownTimeOfDay(mode) {
   quadMat.uniforms.uAerialColor.value.setHex(isDay ? 0x9fb4c8 : 0x141a2e);
   quadMat.uniforms.uShadowStr.value = isDay ? 0.15 : 0.3;
   quadMat.uniforms.uShadowColor.value.setHex(isDay ? 0x4a5a48 : 0x1e2a44);
-  if (townAnim.cloudMat) townAnim.cloudMat.opacity = isDay ? 0.5 : 0.2; // 구름 그림자: 밤엔 옅게
+  townAnim.cloudStr = isDay ? 0.5 : 0.2; // 구름 그림자: 밤엔 옅게(매 프레임 uCloudStr로 들어간다)
   // 햇빛/달빛
   L.sun.color.setHex(isDay ? 0xfff2d6 : 0x4a5a8a);
   L.sun.intensity = isDay ? 0.55 : 0.12;
@@ -6811,7 +6990,7 @@ function setTownTimeOfDay(mode) {
 // 마을 애니메이션 갱신(깃발/풍차/연기/보초/등불)
 function updateTown(dt) {
   townAnim.time += dt;
-  if (townAnim.cloudTex) { townAnim.cloudTex.offset.x += dt * 0.02; townAnim.cloudTex.offset.y += dt * 0.011; } // 구름 그림자 흐름
+  { const o = quadMat.uniforms.uCloudOff.value; o.x += dt * 0.02; o.y += dt * 0.011; } // 구름 그림자 흐름
   const t = townAnim.time;
   if (townAnim.wavingFlags) for (const f of townAnim.wavingFlags) {
     const pos = f.geo.attributes.position;
@@ -7186,9 +7365,6 @@ function applyToon(root) {
   root.traverse(function (o) {
     if (o.isMesh && o.material) {
       const mats = Array.isArray(o.material) ? o.material : [o.material];
-      // 노멀 패스 2패스에서 표식색을 찍을 대상 표시. 판정은 _hideNonSolid와 같은 조건이어야
-      // '1패스에서 빠진 메쉬 = 2패스에서 표식이 찍히는 메쉬'가 정확히 맞물린다.
-      if (mats.some(x => x && x.userData && x.userData._organic)) o.layers.enable(SKIN_TAG_LAYER);
       for (const mm of mats) if (!seen.has(mm)) { seen.add(mm); makeToonChar(mm); }
     }
   });
@@ -8244,6 +8420,9 @@ function buildDungeonMesh(dgn) {
   };
   _disposeGroup(floorGroup);
   _disposeGroup(wallGroup);
+  // 픽셀 잔디는 floorGroup 밖(scene 직속)이라 여기서 따로 비운다. 풀이 없는 막에 이전 층 잔디가
+  // 그대로 남지 않게 먼저 지우고, 잔디가 있는 막이면 아래 buildGrass가 다시 채운다.
+  if (dgnPGrass) dgnPGrass.setCells([]);
   walls.length = 0;
   // 이끼 동굴 장식 애니메이션 대상 초기화(층마다 새로)
   cavernShrooms.length = 0; cavernWaters.length = 0; cavernShafts.length = 0;
@@ -8481,6 +8660,931 @@ function buildGolemDecoys(dgn) {
   }
 }
 
+// ===== 픽셀아트 잔디 필드(pixel-grass) =====
+// 인스턴싱 빌보드 스프라이트. 드로우콜 1개로 수천 포기, 스프라이트는 코드로 구워 에셋 파일이 없다.
+// Y축 빌보드(잎이 눕지 않고 선 채로 카메라를 봄) · 무리수 π 바람(공통 주기 제거) · 밟힘 · 색 양자화.
+// 원본 pixel-grass.js(MIT)를 이 게임에 맞춰 두 가지 고쳤다.
+//  · ACES 톤매핑 — 씬의 다른 재질은 전부 renderer.toneMapping을 타는데 ShaderMaterial은 안 탄다.
+//    그대로 두면 잔디만 밝게 떠서 배경에 붙인 스티커처럼 보인다. 노출까지 같은 값을 쓴다.
+//  · uTint — 셰이더에 라이트가 연결돼 있지 않아 조명을 못 받는다. 막·시간대별 색을 곱해 톤을 맞춘다.
+// 주의: 원본 문서대로 mesh.userData.fx = true 를 달아 두고, 노멀 패스에서 반드시 제외해야 한다
+//       (overrideMaterial이 프래그먼트 discard를 없애 버려서 잎이 사각형으로 찍힌다 — _hideNonSolid 참고).
+const PG_NOISE_GLSL = [
+  // three 내장 청크가 rand/noise 를 이미 쓰므로 pg- 로 접두해 충돌을 피한다.
+  'float pgHash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123); }',
+  'float pgNoise(vec2 p){ vec2 i=floor(p),f=fract(p);',
+  '  float a=pgHash(i),b=pgHash(i+vec2(1.,0.)),c=pgHash(i+vec2(0.,1.)),d=pgHash(i+vec2(1.,1.));',
+  '  vec2 u=f*f*(3.-2.*f); return mix(mix(a,b,u.x),mix(c,d,u.x),u.y); }'
+].join('\n');
+// r128 tonemapping_pars_fragment의 ACES와 같은 식(값이 어긋나면 잔디만 색이 튄다).
+const PG_ACES_GLSL = [
+  'vec3 pgRRTFit(vec3 v){ vec3 a=v*(v+0.0245786)-0.000090537; vec3 b=v*(0.983729*v+0.4329510)+0.238081; return a/b; }',
+  'vec3 pgACES(vec3 color){',
+  '  const mat3 IN = mat3(0.59719,0.07600,0.02840, 0.35458,0.90834,0.13383, 0.04823,0.01566,0.83777);',
+  '  const mat3 OUT = mat3(1.60475,-0.10208,-0.00327, -0.53108,1.10813,-0.07276, -0.07367,-0.00605,1.07602);',
+  '  color *= uExposure / 0.6;',
+  '  color = OUT * pgRRTFit(IN * color);',
+  '  return clamp(color, 0.0, 1.0); }'
+].join('\n');
+
+const PG_DEFAULTS = {
+  scene: null, perCell: 14, cellSize: 1,
+  darkRatio: 0.17, lightRatio: 0.07,
+  colors: { base: '#55bb33', dark: '#2c6b28', light: '#cfe08f' },
+  sizeMin: 0.34, sizeMax: 0.60,
+  windDir: [0.75, 0.35], windSpeed: 1.4, windSway: 0.30,
+  windStep: 0.1,          // 바람 시간 양자화(초). 저해상도 렌더에서 서브픽셀 진동=깜빡임을 막는다
+  piWind: true,
+  perspective: 0.0,       // 이 게임은 원근 카메라라 가짜 원근감이 필요 없다(원본 기본값 0.4는 직교용)
+  maxChars: 8, charRadius: 0.28, charPush: 0.19, charSquash: 0.25,
+  quantize: 8, seed: 1,
+  tint: 0xffffff,
+  exposure: 1.1,          // renderer.toneMappingExposure 와 같은 값
+  // 광원 감쇠(던전용). 셰이더에 라이트가 없어서 그냥 두면 캄캄한 동굴에서 잔디만 발광한다.
+  // 플레이어 횃불 자리를 중심으로 거리 제곱에 반비례해 어두워진다(three의 decay=2와 같은 모양).
+  // litNear 안쪽은 그대로, 밖은 (litNear/d)^2 로 떨어지고 litMin 아래로는 안 내려간다.
+  litNear: 0, litMin: 1,              // litNear<=0 이면 감쇠 없음(마을 기본)
+  // 'full' = 카메라를 정면으로(기울기까지 따라감) / 'y' = 월드 수직으로 선 채 카메라 쪽만 도는 Y축 빌보드.
+  // 이 게임 카메라는 수평에서 51.9° 내려다본다(iso 오프셋 11.07/20/11.07). Y축 빌보드로 두면
+  // 월드 수직 1이 화면에서 0.475로 줄어 스프라이트가 세로로 절반쯤 눌린 채 보인다.
+  billboard: 'full',
+};
+function pgHexToRgb255(h) {
+  const n = (typeof h === 'number') ? h : parseInt(String(h).replace('#', ''), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+// 밑동에서 끝으로 갈수록 좁아져 1px로 끝나는 뾰족한 잎
+function pgDrawBlade(buf, atlasW, spriteW, spriteH, ox, cx, topY, baseW, rgb, lean) {
+  for (let y = topY; y < spriteH; y++) {
+    const f = (y - topY) / (spriteH - topY - 1 || 1);      // 0=끝 … 1=밑동
+    const w = Math.max(1, Math.round(1 + (baseW - 1) * f));
+    const bend = Math.round((lean || 0) * (1 - f) * (1 - f));
+    const x0 = Math.round(cx - w / 2) + bend;
+    for (let x = x0; x < x0 + w; x++) {
+      if (x < 0 || x >= spriteW) continue;
+      const i = (y * atlasW + (ox + x)) * 4;
+      buf[i] = rgb[0]; buf[i + 1] = rgb[1]; buf[i + 2] = rgb[2]; buf[i + 3] = 255;
+    }
+  }
+}
+// 3종(기본/어두움/밝음) 스프라이트를 한 장으로.
+// 함정: DataTexture는 flipY=false라 배열 0번 행이 v=0(아래)다. 캔버스 좌표로 그린 뒤 위아래를 뒤집어 담는다.
+function pgBuildAtlas(colors) {
+  const SPW = 32, SPH = 32, N = 3, AW = SPW * N;
+  const top = new Uint8Array(AW * SPH * 4);
+  const base = pgHexToRgb255(colors.base), dark = pgHexToRgb255(colors.dark), lite = pgHexToRgb255(colors.light);
+  const B = (ox, cx, topY, baseW, rgb, lean) => pgDrawBlade(top, AW, SPW, SPH, ox, cx, topY, baseW, rgb, lean);
+  B(0, 8, 7, 10, base, 2); B(0, 20, 13, 10, base, -2);                              // 0: 기본 — 잎 두 가닥
+  B(SPW, 4, 19, 10, dark, -2); B(SPW, 12, 12, 10, dark, 0);                          // 1: 어두움 — 부채꼴 뭉치
+  B(SPW, 20, 15, 10, dark, 2); B(SPW, 26, 21, 8, dark, 2);
+  B(SPW * 2, 12, 3, 8, lite, 2); B(SPW * 2, 20, 12, 8, lite, -2);                     // 2: 밝음 — 가늘고 긴 획
+  const d = new Uint8Array(AW * SPH * 4);
+  for (let y = 0; y < SPH; y++) {
+    const s = (SPH - 1 - y) * AW * 4;
+    d.set(top.subarray(s, s + AW * 4), y * AW * 4);
+  }
+  const tex = new THREE.DataTexture(d, AW, SPH, THREE.RGBAFormat);
+  tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
+  tex.needsUpdate = true;
+  return { texture: tex, tiles: N };
+}
+function createPixelGrass(options) {
+  const O = Object.assign({}, PG_DEFAULTS, options || {});
+  O.colors = Object.assign({}, PG_DEFAULTS.colors, (options || {}).colors || {});
+
+  const atlas = pgBuildAtlas(O.colors);
+  // 피벗을 밑동(y=0)에 둔다 → 스케일을 키워도 뿌리가 지면에 붙어 있다
+  const quad = new THREE.BufferGeometry();
+  quad.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, -0.5, 1, 0, 0.5, 1, 0], 3));
+  quad.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 1, 1], 2));
+  quad.setIndex([0, 1, 2, 1, 3, 2]);
+
+  // 캐릭터 슬롯 — 고정 배열을 재사용해 프레임마다 객체를 만들지 않는다(모바일 GC 스파이크 방지)
+  const chars = [];
+  for (let i = 0; i < O.maxChars; i++) chars.push(new THREE.Vector2(1e5, 1e5));
+
+  const uniforms = {
+    uWind: { value: 0 }, uNight: { value: 0 },
+    uGrass: { value: atlas.texture }, uTiles: { value: atlas.tiles },
+    uPersp: { value: O.perspective },
+    uChars: { value: chars }, uCharCount: { value: 0 },
+    uCharR: { value: O.charRadius }, uCharPush: { value: O.charPush }, uCharSquash: { value: O.charSquash },
+    uWindDir: { value: new THREE.Vector2(O.windDir[0], O.windDir[1]) },
+    uWindSpeed: { value: O.windSpeed }, uWindSway: { value: O.windSway },
+    uTint: { value: new THREE.Color(O.tint) },
+    uExposure: { value: O.exposure },
+    uLit: { value: new THREE.Vector2(O.litNear, O.litMin) },
+    uLitAt: { value: new THREE.Vector2(0, 0) },                        // 광원 중심(보통 플레이어)
+  };
+  const defines = {
+    MAXCH: O.maxChars, PI_WIND: O.piWind ? 1 : 0, QUANT: O.quantize > 0 ? 1 : 0,
+    LIT_FALLOFF: (O.litNear > 0) ? 1 : 0,
+    BILLBOARD_FULL: (O.billboard === 'full') ? 1 : 0,
+  };
+
+  const vert = [
+    'precision highp float;',
+    '#define GPI 3.14159265359',
+    'attribute vec2 aOffset; attribute float aRand; attribute float aTile; attribute float aFlip;',
+    'uniform float uWind, uWindSpeed, uWindSway;',
+    'uniform vec2 uWindDir;',
+    'uniform vec2 uChars[MAXCH]; uniform int uCharCount;',
+    'uniform float uCharR, uCharPush, uCharSquash;',
+    'varying vec2 vUv; varying float vTile; varying float vLean; varying vec2 vWxz;',
+    PG_NOISE_GLSL,
+    'void main(){',
+    '  vUv=uv; vTile=aTile;',
+    '  float sc=' + O.sizeMin.toFixed(4) + '+aRand*' + (O.sizeMax - O.sizeMin).toFixed(4) + ';',
+    '  float h=uv.y;',
+    '  vec3 camRight=normalize(vec3(viewMatrix[0][0],viewMatrix[1][0],viewMatrix[2][0]));',
+    '#if BILLBOARD_FULL',
+    // 풀 빌보드: 가로·세로를 모두 카메라 축에 맞춘다 → 스프라이트가 눌리지 않고 정면으로 보인다.
+    // 밑동(position.y=0)은 그대로 지면에 남고 잎 끝만 카메라 위쪽으로 뻗는다.
+    '  vec3 right=camRight;',
+    '  vec3 up=normalize(vec3(viewMatrix[0][1],viewMatrix[1][1],viewMatrix[2][1]));',
+    '#else',
+    // Y축 빌보드: 뷰 행렬 오른쪽 벡터의 수평 성분만 가로축으로. 세로는 항상 월드 +Y.
+    '  vec3 right=normalize(vec3(camRight.x,0.0,camRight.z));',
+    '  vec3 up=vec3(0.0,1.0,0.0);',
+    '#endif',
+    '  float fs=(aFlip>0.5)?-1.0:1.0;',
+    '  vec3 world=vec3(aOffset.x,0.0,aOffset.y)+right*(position.x*sc*fs)+up*(position.y*sc);',
+    // 바람: 노이즈 둘을 곱해 돌풍처럼. π로 스케일·속도를 어긋내면 공통 주기가 사라진다.
+    '  vec2 wd=normalize(uWindDir);',
+    '#if PI_WIND',
+    '  float s2=1.0/GPI, v2=GPI*0.5;',
+    '#else',
+    '  float s2=0.5, v2=0.5;',
+    '#endif',
+    '  float n1=pgNoise(aOffset*0.10+wd*(uWind*uWindSpeed));',
+    '  float n2=pgNoise(aOffset*(0.10*s2)+wd*(uWind*uWindSpeed*v2));',
+    '  vec2 wo=wd*(clamp(n1*n2*2.0,0.0,1.0)*h*uWindSway*sc);',
+    '  world.x+=wo.x; world.z+=wo.y;',
+    // 밟힘: 가장 가까운 캐릭터만. 슬롯을 다 돌지 않고 조기 종료.
+    '  float infl=0.0; vec2 pdir=vec2(1.0,0.0);',
+    '  for(int i=0;i<MAXCH;i++){',
+    '    if(i>=uCharCount) break;',
+    '    vec2 toB=aOffset-uChars[i]; float d=length(toB);',
+    '    float f=smoothstep(uCharR,0.0,d);',
+    '    if(f>infl){ infl=f; pdir=d>0.001?toB/d:vec2(1.0,0.0); }',
+    '  }',
+    '  vec2 push=pdir*infl*h*uCharPush;',
+    '  world.x+=push.x; world.z+=push.y;',
+    // 눌림은 잎 축(up) 방향으로 줄인다. Y축 빌보드면 up=(0,1,0)이라 예전 world.y*=(1-...)와 같고,
+    // 풀 빌보드에서는 잎이 기울지 않고 제대로 짧아진다.
+    '  world-=up*(position.y*sc*infl*uCharSquash);',
+    '  vec3 fwd=normalize(vec3(viewMatrix[0][2],viewMatrix[1][2],viewMatrix[2][2]));',
+    '  vec2 force=wo+push;',
+    '  vLean = length(force)>0.001 ? dot(normalize(vec3(force.x,0.0,force.y)),fwd) : 0.0;',
+    '  vWxz = world.xz;',
+    '  gl_Position=projectionMatrix*viewMatrix*modelMatrix*vec4(world,1.0);',
+    '}'
+  ].join('\n');
+
+  const frag = [
+    'precision highp float;',
+    'uniform sampler2D uGrass; uniform float uTiles, uPersp;',
+    'uniform float uNight, uExposure; uniform vec3 uTint;',
+    'uniform vec2 uLit, uLitAt;',
+    'varying vec2 vUv; varying float vTile; varying float vLean; varying vec2 vWxz;',
+    PG_ACES_GLSL,
+    'void main(){',
+    '  vec2 uv=vUv;',
+    '  if(uPersp>0.0001){',
+    '    float s=clamp(1.0-(vLean*vUv.y*uPersp),0.05,4.0);',
+    '    uv.x=(uv.x-0.5)*s+0.5;',
+    '    if(uv.x<0.0||uv.x>1.0) discard;',
+    '  }',
+    // 타일 내부 uv → 아틀라스 좌표. 0.999로 이웃 타일 첫 픽셀 침범 방지.
+    '  vec2 auv=vec2((vTile+min(uv.x,0.999))/uTiles, uv.y);',
+    '  vec4 tex=texture2D(uGrass,auv);',
+    '  if(tex.a<0.5) discard;',
+    '  vec3 col=tex.rgb*uTint;',
+    '#if LIT_FALLOFF',
+    // 광원에서 멀수록 어둡게. 이게 없으면 캄캄한 동굴에서 잔디만 발광한다.
+    // 선형(smoothstep)으로 하면 중간 거리가 너무 밝게 남는다 — 점광원처럼 거리 제곱에 반비례시킨다.
+    '  float ld=max(distance(vWxz,uLitAt),0.0001);',
+    '  col*=mix(uLit.y,1.0,clamp((uLit.x*uLit.x)/(ld*ld),0.0,1.0));',
+    '#endif',
+    '  col*=mix(1.0,0.34,uNight);',
+    '  col=pgACES(col);',
+    '#if QUANT',
+    '  col=floor(col*' + O.quantize.toFixed(1) + ')/' + O.quantize.toFixed(1) + ';',
+    '#endif',
+    '  gl_FragColor=vec4(col,1.0);',
+    '}'
+  ].join('\n');
+
+  const material = new THREE.ShaderMaterial({ uniforms, defines, side: THREE.DoubleSide });
+  material.vertexShader = vert;
+  material.fragmentShader = frag;
+
+  // 노멀 패스 3패스용 표식 재질. 정점 셰이더는 같고(잎 모양·바람·밟힘이 그대로 맞아야 한다),
+  // 프래그먼트만 같은 discard 뒤 초록(0,1,0)·알파 0을 찍는다 → 하이라이트도 외곽선도 빠진다.
+  const tagFrag = [
+    'precision highp float;',
+    'uniform sampler2D uGrass; uniform float uTiles, uPersp;',
+    'varying vec2 vUv; varying float vTile; varying float vLean; varying vec2 vWxz;',
+    'void main(){',
+    '  vec2 uv=vUv;',
+    '  if(uPersp>0.0001){',
+    '    float s=clamp(1.0-(vLean*vUv.y*uPersp),0.05,4.0);',
+    '    uv.x=(uv.x-0.5)*s+0.5;',
+    '    if(uv.x<0.0||uv.x>1.0) discard;',
+    '  }',
+    '  vec2 auv=vec2((vTile+min(uv.x,0.999))/uTiles, uv.y);',
+    '  if(texture2D(uGrass,auv).a<0.5) discard;',
+    '  gl_FragColor=vec4(0.0,1.0,0.0,0.0);',
+    '}'
+  ].join('\n');
+  const tagMaterial = new THREE.ShaderMaterial({ uniforms, defines, side: THREE.DoubleSide });
+  tagMaterial.vertexShader = vert;
+  tagMaterial.fragmentShader = tagFrag;
+
+  const mesh = new THREE.Mesh(quad, material);
+  mesh.frustumCulled = false;   // 정점 셰이더로 위치를 만들므로 바운딩이 무의미
+  mesh.userData.fx = true;      // 노멀 패스 제외 표식(_hideNonSolid)
+  mesh.userData.fxTagMat = tagMaterial;
+  if (O.scene) O.scene.add(mesh);
+
+  // 결정적 난수 — 같은 seed면 같은 잔디밭. 게임 전역 Math.random 스트림을 건드리지 않는 이점도 있다.
+  let _s = O.seed >>> 0 || 1;
+  const rnd = () => { _s ^= _s << 13; _s ^= _s >>> 17; _s ^= _s << 5; _s >>>= 0; return _s / 4294967296; };
+  let count = 0;
+
+  // cells: [[worldX, worldZ], ...] — 각 셀의 '모서리' 좌표. 셀 안에 perCell개를 무작위로 뿌린다.
+  // 배치를 바꿀 때만 부를 것 — 매 프레임 부르면 버퍼를 매번 새로 만든다.
+  function setCells(cells) {
+    _s = O.seed >>> 0 || 1;
+    const n = cells.length * O.perCell;
+    const offs = new Float32Array(n * 2), rnds = new Float32Array(n);
+    const tiles = new Float32Array(n), flips = new Float32Array(n);
+    let k = 0;
+    for (let c = 0; c < cells.length; c++) {
+      const cx = cells[c][0], cz = cells[c][1];
+      for (let j = 0; j < O.perCell; j++) {
+        offs[k * 2] = cx + rnd() * O.cellSize;
+        offs[k * 2 + 1] = cz + rnd() * O.cellSize;
+        rnds[k] = rnd();
+        const r = rnd();
+        tiles[k] = r < O.lightRatio ? 2 : (r < O.lightRatio + O.darkRatio ? 1 : 0);
+        flips[k] = rnd() < 0.5 ? 1 : 0;
+        k++;
+      }
+    }
+    const geo = new THREE.InstancedBufferGeometry();
+    geo.index = quad.index;
+    geo.attributes.position = quad.attributes.position;
+    geo.attributes.uv = quad.attributes.uv;
+    geo.instanceCount = n;
+    geo.setAttribute('aOffset', new THREE.InstancedBufferAttribute(offs, 2));
+    geo.setAttribute('aRand', new THREE.InstancedBufferAttribute(rnds, 1));
+    geo.setAttribute('aTile', new THREE.InstancedBufferAttribute(tiles, 1));
+    geo.setAttribute('aFlip', new THREE.InstancedBufferAttribute(flips, 1));
+    if (mesh.geometry && mesh.geometry.isInstancedBufferGeometry) mesh.geometry.dispose();
+    mesh.geometry = geo;
+    mesh.visible = n > 0;
+    count = n;
+    return n;
+  }
+  // state.chars: [{x,z}, ...] 월드 좌표 / state.night: 0~1
+  function update(time, state) {
+    state = state || {};
+    uniforms.uWind.value = O.windStep > 0 ? Math.floor(time / O.windStep) * O.windStep : time;
+    if (state.night !== undefined) uniforms.uNight.value = state.night;
+    // charCount를 따로 받는 이유: 호출부가 고정 배열을 재사용할 수 있어야 slice로 매 프레임
+    // 새 배열을 만들지 않는다(원본은 list.length만 봤다).
+    const list = state.chars; let k = 0;
+    const n = (state.charCount !== undefined) ? state.charCount : (list ? list.length : 0);
+    if (list) {
+      for (let i = 0; i < n && k < O.maxChars; i++) {
+        const c = list[i];
+        if (!c) continue;
+        chars[k].set(c.x, c.z);   // 새 객체를 만들지 않는다
+        k++;
+      }
+    }
+    uniforms.uCharCount.value = k;
+    // 광원 중심은 첫 캐릭터(=플레이어). 던전 횃불이 플레이어를 따라다니므로 이걸로 충분하다.
+    if (state.litAt) uniforms.uLitAt.value.set(state.litAt.x, state.litAt.z);
+    else if (k > 0) uniforms.uLitAt.value.copy(chars[0]);
+  }
+  return {
+    mesh, material, uniforms, setCells, update,
+    get count() { return count; },
+    setTint(hex) { uniforms.uTint.value.setHex(hex); },
+    dispose() {
+      if (mesh.parent) mesh.parent.remove(mesh);
+      if (mesh.geometry) mesh.geometry.dispose();
+      quad.dispose(); material.dispose(); atlas.texture.dispose();
+    },
+  };
+}
+// 밟힘 좌표 슬롯 — 매 프레임 재사용(객체를 새로 만들지 않는다)
+const _pgChars = []; for (let i = 0; i < 8; i++) _pgChars.push({ x: 1e5, z: 1e5 });
+const _pgState = { chars: _pgChars, charCount: 0, night: 0 };
+function _pgPut(o) {
+  if (!o || _pgState.charCount >= _pgChars.length) return;
+  const s = _pgChars[_pgState.charCount++]; s.x = o.x; s.z = o.z;
+}
+function updatePixelGrass(t) {
+  const g = inTown ? townPGrass : (inRest ? null : dgnPGrass);
+  if (!g || !g.count) return;
+  _pgState.charCount = 0;
+  if (player && player.obj) _pgPut(player.obj.position);
+  if (!inTown && typeof enemies !== 'undefined') {
+    for (const e of enemies) { if (_pgState.charCount >= _pgChars.length) break; if (e && e.obj && e.obj.visible) _pgPut(e.obj.position); }
+  }
+  _pgState.night = inTown ? (townTimeOfDay === 'night' ? 1 : 0) : 0;
+  g.update(t, _pgState);
+}
+
+// ===== 픽셀아트 나무/캐노피(pixel-trees) =====
+// 가이드 구체 여러 개를 겹치고 그 union 표면에만 잎을 인스턴싱한다. 다른 구체 안쪽으로 들어간
+// 점을 버려서 원뿔·구체 같은 뻔한 형태가 아니라 뭉친 실루엣이 나온다.
+// 나무 몇 십 그루를 드로우콜 2개(잎 + 줄기)로 그린다.
+// 원본 pixel-trees.js(MIT)를 이 게임에 맞춰 고친 것:
+//  · ACES 톤매핑 — 잎 재질이 라이트를 안 타는 ShaderMaterial이라 잔디와 같은 이유로 필요하다.
+//  · trunkMaterial 옵션 — 원본 기본값 MeshLambertMaterial 대신 마을 목재 재질(도트 텍스처 포함)을
+//    그대로 쓴다. 줄기만 다른 톤으로 튀지 않는다.
+// 잎은 육각 지오메트리라 알파 discard가 없다 → 노멀 패스에 그대로 넣어도 안전하다(잔디와 다른 점).
+// 바람도 정점 셰이더가 아니라 instanceMatrix를 CPU에서 갱신한다 — 그래야 노멀·그림자 패스와
+// 형상이 어긋나지 않는다(overrideMaterial은 정점 변형도 같이 날려 버린다).
+const PT_DEFAULTS = {
+  scene: null,
+  leavesPerTree: 64,
+  leafSize: [0.15, 0.24],       // 잎 한 장의 월드 크기(그루 scale이 곱해진다)
+  // 잎 모양: 원이 아니라 물결진 다각형(r = 1 + amp·cos(lobes·θ)). 레퍼런스의 잎 뭉치처럼
+  // 가장자리가 울퉁불퉁해야 겹쳐 있어도 잎 하나하나의 윤곽이 읽힌다.
+  // leafSides는 둘레 분할 수 — lobes의 4배쯤 되어야 굴곡이 뭉개지지 않는다.
+  leafSides: 20, leafLobes: 5, leafLobeAmp: 0.30,
+  // 'blade' = 잔디처럼 가늘고 뾰족한 잎(밑동에서 끝으로 좁아짐), 'lobed' = 물결진 다각형
+  // 'sprite' = 그린 잎 뭉치 텍스처 카드(알파 컷아웃), 'blade' = 가늘고 뾰족한 잎, 'lobed' = 물결진 다각형
+  leafShape: 'lobed', leafWidth: 0.34, leafSeg: 3,
+  leafAlign: 0.8,               // 1=카드를 캐노피 표면에 완전히 눕힘, 0=카메라 정면
+  leafSpriteShade: false,       // 잎 스프라이트에 테두리·하이라이트를 그려 넣을지(끄면 모양만)
+  leafShadeStr: 0.10,           // 그 명암의 세기. 명암대 한 칸이 0.25라 그보다 작게 둘 것
+  leafBlades: 4, leafSpread: 1.5, leafSprigVar: 0.16, // 카드 한 장에 겹쳐 그릴 잎 수·벌림 각·밝기 차
+  canopyBody: 0.9,              // 캐노피 속을 채우는 덩어리의 반지름 배수(0=끔). 잎 사이로 지면이 안 보이게
+  canopyBodySeg: 6,             // 덩어리 구의 둘레 분할 수. 클수록 둥글고 삼각형이 는다
+  canopyBodyDim: 0.72,          // 덩어리 밝기 배수. 잎보다 어두워야 '안쪽'으로 물러나 보인다
+  // 명암 단계. deep을 주면 4단(깊은 그늘 추가), 안 주면 low로 대체되어 원본과 같은 3단이 된다.
+  colors: { low: 0x2f5f2a, mid: 0x46853a, high: 0x6fae4a },
+  sunDir: [18, 26, 10],
+  upBias: 0.55,                 // 명암을 '위쪽'에 얼마나 실을지(햇빛 방향 대비). 클수록 위가 밝다
+  // 잎 한 장 단위 셰이딩 — 이게 없으면 같은 명암대의 잎끼리 색이 같아서 한 덩어리로 뭉쳐 보인다
+  // (구가 여러 개 붙어 있는 느낌). 레퍼런스처럼 잎마다 윤곽이 보이게 하는 부분.
+  leafDome: 0.22,               // 잎 위는 밝게 아래는 어둡게(잎 자체의 입체감). 0=끔
+  leafRim: 0.74,                // 잎 테두리 밝기 배수(1=끔) — 잎마다 어두운 외곽선이 생긴다
+  leafRimAt: 0.84,              // 테두리로 칠 반지름(0~1). 낮추면 테두리가 두꺼워져 동전처럼 보인다
+  blobs: [                      // 캐노피 형태 — 가이드 구체
+    { x: 0.00, y: 0.60, z: 0.00, r: 0.30 },
+    { x: -0.20, y: 0.50, z: 0.10, r: 0.21 },
+    { x: 0.19, y: 0.53, z: -0.09, r: 0.20 },
+    { x: 0.04, y: 0.80, z: 0.03, r: 0.19 },
+  ],
+  scaleMin: 0.85, scaleMax: 1.15,
+  jitter: 0.16,
+  cameraDir: [0.62, 0.53, 0.58], // 잎이 향할 방향(카메라 쪽)
+  wind: { amp: 0.20, speed: 1.15, dir: [0.906, 0.423] },
+  swayFrom: 0.30, swayTo: 1.05,
+  tint: { lo: 0.86, hi: 1.14, steps: 5 },
+  quantize: 8,
+  trunks: true, trunkMaterial: null,
+  trunkColor: 0x6b4b2e, trunkRadius: [0.055, 0.085], trunkHeight: 0.34,
+  castShadow: true,
+  exposure: 1.1,                 // renderer.toneMappingExposure 와 같은 값
+  // ACES를 태울지. 끄면 적어 넣은 색이 그대로 나온다.
+  // 잎은 끄는 쪽이 낫다 — ACES는 밝은 쪽에서 채도를 크게 눌러서(역산해 보면 #94ce50 목표가
+  // 어떤 입력으로도 #bfce99 같은 뿌연 연두로만 나온다) 픽셀아트의 선명한 초록이 안 나온다.
+  // 대신 색을 씬 밝기에 맞춰 직접 고르면 된다.
+  useACES: false,
+  seed: 1,
+};
+// 잎 한 장 지오메트리: 물결진 다각형(트라이앵글 팬). uv.x에 '중심 0 → 테두리 1'을 넣어 두면
+// 셰이더가 모양과 상관없이 테두리를 찾을 수 있다(원이 아니라 반지름으로는 못 잰다).
+function ptLeafGeo(seg, lobes, amp) {
+  const n = Math.max(6, seg | 0);
+  const pos = [0, 0, 0], uv = [0, 0], nrm = [0, 0, 1], idx = [];
+  for (let i = 0; i < n; i++) {
+    const a = i / n * Math.PI * 2;
+    // 순수 cos면 봉우리가 뾰족하고 골이 깊어 별 모양이 된다. 지수를 1보다 낮게 줘서
+    // 봉우리를 넓고 둥글게, 골을 얕게 만든다 — 레퍼런스의 둥근 잎 뭉치에 가깝다.
+    const c = Math.cos(lobes * a);
+    const bump = (c >= 0 ? 1 : -1) * Math.pow(Math.abs(c), 0.55);
+    const rr = 0.5 * (1 + amp * bump);
+    pos.push(Math.cos(a) * rr, Math.sin(a) * rr, 0);
+    uv.push(1, 0); nrm.push(0, 0, 1);
+  }
+  for (let i = 0; i < n; i++) idx.push(0, 1 + i, 1 + ((i + 1) % n));
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  // 뾰족 잎 쪽과 셰이더를 공유하므로 이쪽에도 있어야 한다(값은 중립).
+  g.setAttribute('aSprig', new THREE.Float32BufferAttribute(new Array(pos.length / 3).fill(0.5), 1));
+  g.setIndex(idx);
+  return g;
+}
+// 가늘고 뾰족한 잎(잔디 잎 모양). 밑동 y=0 → 끝 y=1 로 좁아진다.
+// uv.y 에 '밑동 0 → 끝 1'을 넣어 두면 셰이더가 끝만 밝게 할 수 있다(잔디와 같은 명암).
+// 정점 열을 좌우 2줄만 두는 이유는 삼각형 수 때문이다 — 잎 한 장이 5개면 육각형(6개)보다 싸다.
+// 카드 한 장에 잎을 여러 장 부채꼴로 겹쳐 굽는다. 카드 하나가 '잎 한 장'이 아니라
+// '잎 뭉치'가 되어야 캐노피가 성글어 보이지 않으면서 잎 모양도 읽힌다.
+// aSprig(잎마다 다른 값)로 겹친 잎끼리 밝기를 살짝 어긋내야 겹침이 보인다 — 같은 색이면 한 장처럼 붙는다.
+// 같은 평면에 겹치므로 잎마다 z를 조금씩 띄운다(안 띄우면 겹친 자리가 깊이 싸움으로 지글거린다).
+function ptBladeGeo(seg, width, blades, spread) {
+  const n = Math.max(2, seg | 0), nb = Math.max(1, blades | 0);
+  const pos = [], uv = [], nrm = [], sprig = [], idx = [];
+  for (let b = 0; b < nb; b++) {
+    const f = nb === 1 ? 0.5 : b / (nb - 1);          // 0=왼쪽 끝 … 1=오른쪽 끝
+    const ang = (f - 0.5) * spread;                    // 부채꼴로 벌린다
+    const ca = Math.cos(ang), sa = Math.sin(ang);
+    const len = 0.72 + 0.28 * Math.sin(Math.PI * f);   // 가운데 잎이 가장 길다
+    const zo = b * 0.012;                              // 겹침 순서 고정(깊이 싸움 방지)
+    const tone = (b % 2 === 0) ? 1.0 : 0.0;            // 이웃끼리 밝기를 어긋내 겹침이 보이게
+    const base = pos.length / 3;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      // 실제 나뭇잎 윤곽: 밑동에서 조금 벌어졌다가 중간에서 가장 넓고 끝에서 한 점으로 모인다.
+      // sin에 1보다 작은 지수를 씌워야 측면이 직선이 아니라 둥글게 부푼다(지수 1이면 뾰족한 마름모).
+      const hw = width * 0.5 * Math.pow(Math.sin(Math.PI * (0.10 + 0.90 * t)), 0.62);
+      const y = t * len;
+      for (const sx of [-hw, hw]) {
+        pos.push(sx * ca - y * sa, sx * sa + y * ca, zo);
+        uv.push(0, t); nrm.push(0, 0, 1); sprig.push(tone);
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      const a = base + i * 2, b2 = a + 1, c = a + 2, d = a + 3;
+      idx.push(a, b2, d);
+      if (i < n - 1) idx.push(a, d, c); // 마지막 칸은 끝점으로 모여서 삼각형 하나면 된다
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('aSprig', new THREE.Float32BufferAttribute(sprig, 1));
+  g.setIndex(idx);
+  return g;
+}
+// 캐노피 속을 채우는 덩어리. 잎 카드만으로 빈틈을 없애려면 카드 수가 폭발한다(작은 잎으로
+// 표면을 다 덮으려면 그루당 150장 넘게 필요 → 삼각형이 몇 배로 뛴다).
+// 가이드 구체를 그대로 저폴리 덩어리로 깔아 두면 잎 사이로 지면 대신 캐노피 안쪽이 보인다.
+// 그루당 삼각형 80개면 되고, 그림자도 이쪽만 지면 충분하다(잎은 castShadow를 끈다).
+// ===== 잎 뭉치 스프라이트 =====
+// t3ssel8r 계열 방식: 잎을 폴리곤으로 깎지 않고 '그린 그림'을 알파 컷아웃 카드로 붙인다.
+// 폴리곤으로는 실루엣만 만들 수 있어서 내부가 단색이 된다 — 잎맥·하이라이트·테두리는 그려 넣어야 나온다.
+// 카드 한 장이 삼각형 2개라 폴리곤 잎(15개)보다 훨씬 싸다.
+// 색은 스프라이트에 직접 넣지 않는다. R 채널에 '명암 단계 오프셋'(0=한 단 어둡게 / 0.5=그대로 /
+// 1=한 단 밝게)만 저장하고 실제 색은 캐노피 명암대에서 고른다 — 그래야 밤·막별 톤이 그대로 따라온다.
+const PT_LEAF_TILES = [
+  // {cx,cy}=밑동, ang=뻗는 방향(이미지 좌표라 -가 위), len·wid=길이·폭. 뒤에 그린 잎이 위로 온다.
+  [{ cx: 16, cy: 26, ang: -1.57, len: 15, wid: 8.5 }, { cx: 14, cy: 24, ang: -2.35, len: 12, wid: 7 },
+   { cx: 18, cy: 24, ang: -0.79, len: 12, wid: 7 }, { cx: 13, cy: 22, ang: -3.05, len: 10, wid: 6 },
+   { cx: 19, cy: 22, ang: -0.09, len: 10, wid: 6 }],
+  [{ cx: 16, cy: 25, ang: -1.4, len: 14, wid: 9 }, { cx: 13, cy: 23, ang: -2.7, len: 11, wid: 7.5 },
+   { cx: 19, cy: 23, ang: -0.45, len: 11, wid: 7.5 }, { cx: 16, cy: 21, ang: -1.9, len: 12, wid: 7 }],
+  [{ cx: 16, cy: 22, ang: -1.57, len: 12, wid: 8 }, { cx: 12, cy: 20, ang: -2.9, len: 11, wid: 7 },
+   { cx: 20, cy: 20, ang: -0.24, len: 11, wid: 7 }, { cx: 14, cy: 24, ang: -2.2, len: 12, wid: 7.5 },
+   { cx: 18, cy: 24, ang: -0.94, len: 12, wid: 7.5 }, { cx: 16, cy: 18, ang: -1.57, len: 9, wid: 6 }],
+];
+function ptDrawLeafSprite(buf, aw, ox, spw, sph, lf, shade) {
+  const ca = Math.cos(lf.ang), sa = Math.sin(lf.ang);
+  const LX = -0.6, LY = -0.8; // 빛 방향(이미지 좌표: 위·왼쪽). 뭉치 전체가 같은 쪽에서 빛을 받게 한다
+  for (let py = 0; py < sph; py++) for (let px = 0; px < spw; px++) {
+    const dx = px + 0.5 - lf.cx, dy = py + 0.5 - lf.cy;
+    const u = (dx * ca + dy * sa) / lf.len;
+    if (u < 0 || u > 1) continue;
+    const v = (-dx * sa + dy * ca) / (lf.wid * 0.5);
+    // 잎 윤곽은 폴리곤 쪽과 같은 식(측면이 둥근 난형)
+    const prof = Math.pow(Math.sin(Math.PI * (0.10 + 0.90 * u)), 0.62);
+    const av = Math.abs(v);
+    if (av > prof) continue;
+    const edge = prof - av;
+    // shade가 꺼져 있으면 스프라이트는 '모양(알파)'만 담당하고 색은 전부 캐노피 명암대가 정한다.
+    // 켜면 잎마다 테두리를 어둡게·빛 받는 쪽을 밝게 그려 넣는다(선이 도드라져 보일 수 있다).
+    let tone = 128;
+    if (shade) {
+      const lit = (dx * LX + dy * LY) / lf.len;
+      tone = edge < 0.14 ? 0 : (lit > 0.22 ? 255 : 128); // 테두리는 얇게, 하이라이트는 좁게
+    }
+    const i = (py * aw + (ox + px)) * 4;
+    buf[i] = tone; buf[i + 1] = 0; buf[i + 2] = 0; buf[i + 3] = 255;
+  }
+}
+function ptBuildLeafAtlas(shade) {
+  const SPW = 32, SPH = 32, N = PT_LEAF_TILES.length, AW = SPW * N;
+  const top = new Uint8Array(AW * SPH * 4);
+  PT_LEAF_TILES.forEach((leaves, ti) => {
+    for (const lf of leaves) ptDrawLeafSprite(top, AW, ti * SPW, SPW, SPH, lf, shade);
+  });
+  // 함정(잔디와 같음): DataTexture는 flipY=false라 배열 0번 행이 v=0(아래)다 → 행을 뒤집어 담는다
+  const d = new Uint8Array(AW * SPH * 4);
+  for (let y = 0; y < SPH; y++) {
+    const s = (SPH - 1 - y) * AW * 4;
+    d.set(top.subarray(s, s + AW * 4), y * AW * 4);
+  }
+  const tex = new THREE.DataTexture(d, AW, SPH, THREE.RGBAFormat);
+  tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
+  tex.needsUpdate = true;
+  return { texture: tex, tiles: N };
+}
+function ptCanopyBodyGeo(blobs, shrink, seg) {
+  const pos = [], nrm = [], aN = [], uv = [], sprig = [];
+  const wSeg = Math.max(4, seg | 0), hSeg = Math.max(3, (seg - 1) | 0);
+  for (const b of blobs) {
+    // 20면체(detail 0)는 각져서 덩어리 티가 난다. 저해상도 구가 삼각형당 둥글기가 좋다
+    // (6×5 구 = 48삼각형, 20면체 detail 1 = 80삼각형).
+    const g = new THREE.SphereGeometry(b.r * shrink, wSeg, hSeg).toNonIndexed();
+    const p = g.attributes.position.array, nn = g.attributes.normal.array;
+    for (let i = 0; i < p.length; i += 3) {
+      pos.push(p[i] + b.x, p[i + 1] + b.y, p[i + 2] + b.z);
+      nrm.push(nn[i], nn[i + 1], nn[i + 2]);
+      aN.push(nn[i], nn[i + 1], nn[i + 2]); // 명암은 잎과 같은 '구체 바깥 방향' 기준
+      uv.push(0, 0.5);                      // vEdge=0(테두리 아님), vDome=0(길이 명암 없음)
+      sprig.push(0.5);
+    }
+    g.dispose();
+  }
+  const geo = new THREE.InstancedBufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  geo.setAttribute('aNorm', new THREE.Float32BufferAttribute(aN, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setAttribute('aSprig', new THREE.Float32BufferAttribute(sprig, 1));
+  return geo;
+}
+function createPixelTrees(options) {
+  const O = Object.assign({}, PT_DEFAULTS, options || {});
+  const opt = options || {};
+  O.colors = Object.assign({}, PT_DEFAULTS.colors, opt.colors || {});
+  O.wind = Object.assign({}, PT_DEFAULTS.wind, opt.wind || {});
+  O.tint = Object.assign({}, PT_DEFAULTS.tint, opt.tint || {});
+
+  // 쓰는 곳(defines·정점 셰이더)보다 위에서 선언한다 — 아래에 두면 TDZ로 나무가 통째로 안 만들어진다.
+  const isBlade = (O.leafShape === 'blade');
+  const isSprite = (O.leafShape === 'sprite');
+  const group = new THREE.Group();
+  if (O.scene) O.scene.add(group);
+
+  const uniforms = {
+    uSunDir: { value: new THREE.Vector3(O.sunDir[0], O.sunDir[1], O.sunDir[2]).normalize() },
+    uNight: { value: 0 },
+    uDeep: { value: new THREE.Color(O.colors.deep !== undefined ? O.colors.deep : O.colors.low) },
+    uLo: { value: new THREE.Color(O.colors.low) },
+    uMid: { value: new THREE.Color(O.colors.mid) },
+    uHi: { value: new THREE.Color(O.colors.high) },
+    uDome: { value: O.leafDome }, uRim: { value: O.leafRim }, uRimAt: { value: O.leafRimAt },
+    uSprigVar: { value: O.leafSprigVar },
+    uExposure: { value: O.exposure },
+    uLeafTex: { value: null }, uLeafTiles: { value: 1 }, uLeafShade: { value: O.leafShadeStr },
+  };
+  const defines = { QUANT: O.quantize > 0 ? 1 : 0, ACES_ON: O.useACES ? 1 : 0, BLADE: isBlade ? 1 : 0 };
+
+  const vert = [
+    'precision highp float;',
+    'attribute vec3 aNorm;',   // 캐노피 구체의 바깥 방향 — 명암 계산용
+    'attribute float aTint;',  // 그루별 밝기(한 나무의 잎은 모두 같은 값)
+    'attribute float aSprig;', // 한 카드 안에서 잎마다 다른 값(겹친 잎을 갈라 보이게)
+    'attribute float aTile;',  // 잎 뭉치 스프라이트 종류(아틀라스 칸)
+    'varying vec3 vN; varying float vTint; varying float vEdge; varying float vDome; varying float vSprig;',
+    'varying vec2 vUvT; varying float vTile; varying vec3 vViewN;',
+    'void main(){',
+    '  vN=normalize(aNorm); vTint=aTint; vSprig=aSprig; vUvT=uv; vTile=aTile;',
+    // 노멀 패스에 넘길 '캐노피 덩어리 노멀'을 뷰 공간으로. 카드 자기 노멀을 쓰면 카드 경계마다
+    // 하이라이트가 그어진다 — 덩어리 노멀을 써야 캐노피 전체가 둥글게 읽힌다.
+    '  vViewN=normalize(normalMatrix*aNorm);',
+    '  vEdge=uv.x;',   // 0=잎 중심, 1=잎 테두리 (모양이 원이 아니라 반지름으로는 못 잰다)
+    // 위치는 instanceMatrix 로만 만든다. 정점 셰이더에서 흔들면 재질을 교체하는 패스와
+    // 형상이 어긋나 외곽선이 깨진다.
+    '  vec4 wp=modelMatrix*instanceMatrix*vec4(position,1.0);',
+    '#if BLADE',
+    // 가늘고 뾰족한 잎은 '잎 길이 방향'으로 명암을 준다 — 밑동이 어둡고 끝이 밝은 잔디 명암.
+    '  vDome=uv.y*2.0-1.0;',
+    '#else',
+    // 잎의 '위쪽'은 월드에서 잰다 — 잎마다 무작위로 돌려도(반복감 완화) 위아래 명암이 안 흔들린다.
+    '  vec4 wc=modelMatrix*instanceMatrix*vec4(0.0,0.0,0.0,1.0);',
+    '  float ls=max(length(instanceMatrix[0].xyz)*0.5,1e-4);',
+    '  vDome=(wp.y-wc.y)/ls;',
+    '#endif',
+    '  gl_Position=projectionMatrix*viewMatrix*wp;',
+    '}'
+  ].join('\n');
+
+  // 프래그먼트 셰이더 네 벌: (스프라이트 잎 / 덩어리) × (색 패스 / 노멀 표식 패스).
+  //  · 잎만 알파 컷아웃이 필요하다(덩어리는 통짜라 텍스처를 안 읽는다).
+  //  · 표식 패스는 '덩어리 노멀 + 알파 0'을 찍는다 → 검은 외곽선은 빠지고 모서리 하이라이트는 남는다.
+  const mkFrag = (sprite, tag) => [
+    'precision highp float;',
+    'uniform vec3 uSunDir; uniform float uNight, uExposure;',
+    'uniform vec3 uDeep,uLo,uMid,uHi;',
+    'uniform float uDome,uRim,uRimAt,uSprigVar,uLeafTiles,uLeafShade;',
+    'uniform sampler2D uLeafTex;',
+    'varying vec3 vN; varying float vTint; varying float vEdge; varying float vDome; varying float vSprig;',
+    'varying vec2 vUvT; varying float vTile; varying vec3 vViewN;',
+    PG_ACES_GLSL,
+    'void main(){',
+    sprite
+      // 아틀라스 좌표(0.999로 이웃 칸 침범 방지). R 채널은 색이 아니라 '명암 단계 오프셋'이다.
+      ? '  vec4 lt=texture2D(uLeafTex, vec2((vTile+min(vUvT.x,0.999))/uLeafTiles, vUvT.y));\n' +
+        '  if(lt.a<0.5) discard;'
+      : '  vec4 lt=vec4(0.5,0.0,0.0,1.0);',
+    tag
+      // 초록 표식(0,1,0) + 알파 0 = 모서리 하이라이트도 검은 외곽선도 둘 다 빠진다.
+      // 진짜 노멀을 남기면 하이라이트가 계속 들어가 잎마다 반짝이는 선이 그어진다
+      // (실측: 캐노피 픽셀의 0.32%, 최대 59/255).
+      ? '  gl_FragColor=vec4(0.0, 1.0, 0.0, 0.0); }'
+      : [
+        // 잎의 실제 법선 대신 '구체 바깥 방향'으로 명암을 낸다 — 잎 한 장씩 반짝이지 않고
+        // 캐노피 덩어리 전체가 둥글게 보인다. 4단으로 끊어 픽셀아트 톤을 유지.
+        '  float ndl=max(dot(vN,normalize(uSunDir)),0.0);',
+        '  float t=clamp(' + (1 - O.upBias).toFixed(3) + '*ndl+' + O.upBias.toFixed(3) + '*(vN.y*0.5+0.5),0.0,1.0);',
+        '  t+=vDome*uDome;',
+        '  t+=(vSprig-0.5)*uSprigVar;',
+        // 스프라이트에 그려 둔 명암(테두리·빛 받는 쪽)을 명암대 '나누기 전에' 약하게 더한다.
+        // 명암대를 통째로 한 단 옮기면(q에 ±1) 선이 굵게 박혀 '먹은' 느낌이 난다 —
+        // t에 한 단(0.25)보다 작게 더하면 경계 근처 픽셀만 넘어가 은은하게 남는다.
+        '  t+=(lt.r*2.0-1.0)*uLeafShade;',
+        '  float q=floor(clamp(t,0.0,0.999)*4.0);',
+        // 스프라이트가 그려 둔 명암(테두리·하이라이트)을 명암대 위에서 한 단씩 올리고 내린다.
+        // 색을 스프라이트에 직접 넣지 않으므로 밤·막별 톤이 그대로 따라온다.
+
+        '  vec3 col = q<0.5? uDeep : (q<1.5? uLo : (q<2.5? uMid : uHi));',
+        '  if(vEdge>uRimAt) col*=uRim;',
+        '  col*=mix(1.0,0.34,uNight);',
+        '#if ACES_ON',
+        '  col=pgACES(col);',
+        '#endif',
+        '#if QUANT',
+        '  col=floor(col*' + O.quantize.toFixed(1) + ')/' + O.quantize.toFixed(1) + ';',
+        '#endif',
+        // 그루별 밝기는 양자화 '뒤에' 곱한다. 앞에 곱하면 밴드 하나씩 뭉텅이로 튀어
+        // '살짝 다름'이 안 되고, 톤에 따라 아예 차이가 안 나기도 한다.
+        '  col*=vTint;',
+        '  gl_FragColor=vec4(col,1.0);',
+        '}'
+      ].join('\n'),
+  ].join('\n');
+  const mkMat = (sprite, tag) => {
+    const m = new THREE.ShaderMaterial({ uniforms, defines, side: THREE.DoubleSide });
+    m.vertexShader = vert; m.fragmentShader = mkFrag(sprite, tag);
+    return m;
+  };
+  const leafMat = mkMat(isSprite, false);
+  const leafTagMat = mkMat(isSprite, true);
+  // 덩어리는 텍스처를 안 읽는다 — 잎 아틀라스를 그대로 물리면 알파 0인 자리에서 통째로 discard된다.
+  const bodyMat = mkMat(false, false);
+  const bodyTagMat = mkMat(false, true);
+  if (isSprite) {
+    const at = ptBuildLeafAtlas(O.leafSpriteShade);
+    uniforms.uLeafTex.value = at.texture;
+    uniforms.uLeafTiles.value = at.tiles;
+  }
+
+  // 스프라이트 카드는 삼각형 2개짜리 쿼드. 알파 discard가 사라지는 overrideMaterial 패스에는
+  // 넣지 않고(=userData.fx) 식생 표식 패스에서 자기 재질(leafTagMat)로 그린다 — 잔디와 같은 처리.
+  const ptQuadGeo = () => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5,-0.5,0, 0.5,-0.5,0, -0.5,0.5,0, 0.5,0.5,0], 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute([0,0,1, 0,0,1, 0,0,1, 0,0,1], 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute([0,0, 1,0, 0,1, 1,1], 2));
+    g.setAttribute('aSprig', new THREE.Float32BufferAttribute([0.5,0.5,0.5,0.5], 1));
+    g.setIndex([0,1,2, 1,3,2]);
+    return g;
+  };
+  const leafGeo = isSprite ? ptQuadGeo()
+                : isBlade ? ptBladeGeo(O.leafSeg, O.leafWidth, O.leafBlades, O.leafSpread)
+                          : ptLeafGeo(O.leafSides, O.leafLobes, O.leafLobeAmp);
+  const trunkMat = O.trunks ? (O.trunkMaterial || new THREE.MeshLambertMaterial({ color: O.trunkColor })) : null;
+  const trunkGeo = O.trunks ? new THREE.CylinderGeometry(O.trunkRadius[0], O.trunkRadius[1], O.trunkHeight, 5) : null;
+  if (trunkGeo) trunkGeo.translate(0, O.trunkHeight / 2, 0);   // 밑동을 y=0 에
+
+  let canopy = null, trunk = null, body = null;
+  let basePos = null, swayW = null, ownerOf = null, phase = null, treeCount = 0;
+
+  // 좌표로 결정되는 유사난수 — 같은 자리 나무는 항상 같은 모양이다(재생성해도 숲이 안 달라진다).
+  const rnd = (x, y, k) => {
+    const s = Math.sin(x * 127.1 + y * 311.7 + k * 74.7 + O.seed * 13.7) * 43758.5453;
+    return s - Math.floor(s);
+  };
+  const blobsFor = (x, z, scale) => {
+    const jx = (rnd(x, z, 2) - 0.5) * O.jitter, jz = (rnd(x, z, 3) - 0.5) * O.jitter;
+    return O.blobs.map(b => ({ x: jx + b.x * scale, y: b.y * scale, z: jz + b.z * scale, r: b.r * scale }));
+  };
+  const scaleOf = (t) => (t.scale !== undefined ? t.scale : O.scaleMin + rnd(t.x, t.z, 1) * (O.scaleMax - O.scaleMin));
+
+  // trees: [[x,z], ...] 또는 [{x,z,scale?}, ...] — 월드 좌표
+  function setTrees(trees) {
+    if (canopy) { group.remove(canopy); canopy.geometry.dispose(); canopy = null; }
+    if (trunk) { group.remove(trunk); trunk = null; }
+    if (body) { group.remove(body); body.geometry.dispose(); body = null; }
+    basePos = swayW = ownerOf = phase = null; treeCount = 0;
+    if (!trees || !trees.length) return 0;
+    const list = trees.map(t => (Array.isArray(t) ? { x: t[0], z: t[1] } : t));
+
+    const per = O.leavesPerTree, cap = list.length * per;
+    const mats = new Float32Array(cap * 16), norms = new Float32Array(cap * 3);
+    const bpos = new Float32Array(cap * 3), sw = new Float32Array(cap);
+    const owner = new Uint16Array(cap), tint = new Float32Array(cap), tile = new Float32Array(cap);
+    const dummy = new THREE.Object3D();
+    const camN = new THREE.Vector3(O.cameraDir[0], O.cameraDir[1], O.cameraDir[2]).normalize();
+    const look = new THREE.Vector3(), p = new THREE.Vector3();
+    const ex = new THREE.Vector3(), ey = new THREE.Vector3(); // 잎 평면의 로컬 축(뾰족 잎 방향 계산용)
+    const faceDir = new THREE.Vector3();                     // 스프라이트 카드가 향할 방향
+    const steps = Math.max(2, O.tint.steps);
+    let n = 0;
+
+    for (let ti = 0; ti < list.length; ti++) {
+      const tx = list[ti].x, tz = list[ti].z;
+      const scale = scaleOf(list[ti]);
+      // 그루별 밝기 — 몇 단계로 끊어 '노이즈'가 아니라 '팔레트 변주'처럼 보이게
+      const tv = O.tint.lo + (O.tint.hi - O.tint.lo) * (Math.floor(rnd(tx, tz, 41) * steps) / (steps - 1));
+      const blobs = blobsFor(tx, tz, scale);
+      const areas = blobs.map(b => b.r * b.r);
+      const tot = areas.reduce((a, b) => a + b, 0);
+
+      let placed = 0, guard = 0;
+      while (placed < per && guard < per * 12) {
+        const k = guard * 7 + placed; guard++;
+        // 면적 비례로 구체를 고르고, 그 구면 위 한 점을 균일하게 뽑는다
+        let r = rnd(tx + k * 0.13, tz, 11) * tot, bi = 0;
+        while (bi < blobs.length - 1 && r > areas[bi]) { r -= areas[bi]; bi++; }
+        const b2 = blobs[bi];
+        const u = rnd(tx, tz + k * 0.17, 12) * 2 - 1;
+        const th = rnd(tx + k * 0.31, tz + k * 0.11, 13) * Math.PI * 2;
+        const s2 = Math.sqrt(Math.max(0, 1 - u * u));
+        const nx = s2 * Math.cos(th), ny = u, nz = s2 * Math.sin(th);
+        p.set(b2.x + nx * b2.r, b2.y + ny * b2.r, b2.z + nz * b2.r);
+        // 다른 구체 안쪽 점은 버린다 → 겹친 부분이 사라지고 union 표면만 남는다. 이게 이 기법의 핵심.
+        let inside = false;
+        for (let j = 0; j < blobs.length; j++) {
+          if (j === bi) continue;
+          const o = blobs[j];
+          const dx = p.x - o.x, dy = p.y - o.y, dz = p.z - o.z;
+          if (dx * dx + dy * dy + dz * dz < o.r * o.r * 0.94) { inside = true; break; }
+        }
+        if (inside) continue;
+
+        dummy.position.set(tx + p.x, p.y, tz + p.z);
+        if (isSprite) {
+          // 카드를 캐노피 표면에 눕힌다(면 노멀 = 구체 바깥 방향). 카메라를 향해 세우면
+          // 카드가 표면을 덮는 게 아니라 표면에서 튀어나와 야자수처럼 보인다.
+          // leafAlign으로 카메라 쪽으로 조금 당겨 준다 — 1이면 완전히 표면에 눕는다.
+          faceDir.set(nx, ny, nz).lerp(camN, 1 - O.leafAlign).normalize();
+          look.copy(dummy.position).add(faceDir);
+        } else {
+          look.copy(dummy.position).add(camN);                  // 잎이 카메라를 향함
+        }
+        dummy.lookAt(look);
+        if (isSprite) {
+          dummy.rotateZ(rnd(tx + k, tz + k, 14) * Math.PI * 2); // 카드 평면 안에서 무작위 회전
+        } else if (isBlade) {
+          // 가늘고 뾰족한 잎은 캐노피 바깥쪽을 향해 세운다 — 실루엣이 잔디처럼 삐죽삐죽해진다.
+          // 구체 바깥 방향(n)을 잎 평면에 투영해 각도를 구한다. lookAt 직후 행렬의 열이 잎의 로컬 축이다.
+          dummy.updateMatrix();
+          ex.setFromMatrixColumn(dummy.matrix, 0).normalize();
+          ey.setFromMatrixColumn(dummy.matrix, 1).normalize();
+          const ax = nx * ex.x + ny * ex.y + nz * ex.z;
+          const ay = nx * ey.x + ny * ey.y + nz * ey.z;
+          // 로컬 +y를 (ax, ay) 쪽으로 돌린다. +z축 회전에서 +y는 (-sinθ, cosθ)로 간다.
+          dummy.rotateZ(Math.atan2(-ax, ay) + (rnd(tx + k, tz + k, 14) - 0.5) * 0.7);
+        } else {
+          // 무작위 회전으로 잎 굴곡이 같은 방향으로 정렬되는 것을 막는다.
+          // 위아래 명암은 월드 Y로 재므로(vDome) 돌려도 방향이 흔들리지 않는다.
+          dummy.rotateZ(rnd(tx + k, tz + k, 14) * Math.PI * 2);
+        }
+        const ls = (O.leafSize[0] + rnd(tx, tz + k, 15) * (O.leafSize[1] - O.leafSize[0])) * scale;
+        dummy.scale.set(ls, ls, ls);
+        dummy.updateMatrix();
+        dummy.matrix.toArray(mats, n * 16);
+
+        norms[n * 3] = nx; norms[n * 3 + 1] = ny; norms[n * 3 + 2] = nz;
+        bpos[n * 3] = dummy.position.x; bpos[n * 3 + 1] = dummy.position.y; bpos[n * 3 + 2] = dummy.position.z;
+        // 아래는 거의 고정, 위로 갈수록 크게 흔들림(가지가 휘듯)
+        sw[n] = Math.max(0, Math.min(1, (p.y - O.swayFrom * scale) / ((O.swayTo - O.swayFrom) * scale)));
+        owner[n] = ti; tint[n] = tv;
+        tile[n] = Math.floor(rnd(tx + k * 0.7, tz + k * 0.3, 51) * uniforms.uLeafTiles.value);
+        n++; placed++;
+      }
+    }
+    if (!n) return 0;
+
+    const geo = leafGeo.clone();
+    geo.setAttribute('aNorm', new THREE.InstancedBufferAttribute(norms.subarray(0, n * 3), 3));
+    geo.setAttribute('aTint', new THREE.InstancedBufferAttribute(tint.subarray(0, n), 1));
+    geo.setAttribute('aTile', new THREE.InstancedBufferAttribute(tile.subarray(0, n), 1));
+    canopy = new THREE.InstancedMesh(geo, leafMat, n);
+    canopy.instanceMatrix.array.set(mats.subarray(0, n * 16));
+    canopy.instanceMatrix.needsUpdate = true;
+    canopy.frustumCulled = false;
+    // 잎은 그림자를 안 진다 — 잎만으로 그림자를 만들면 패스 하나가 통째로 잎 삼각형만큼 든다.
+    // 대신 아래 캐노피 덩어리(그루당 80삼각형)가 같은 모양의 그림자를 만든다.
+    canopy.castShadow = O.canopyBody ? false : O.castShadow;
+    canopy.receiveShadow = false;
+    // 잎은 육각 지오메트리라 노멀 패스에 넣어도 실루엣이 같다. 다만 잎마다 실루엣이 생겨
+    // 검은 외곽선이 캐노피를 뒤덮으므로, 1패스에서 빼고 3패스에서 '진짜 노멀 + 알파 0'으로 찍는다.
+    // 알파 0이 외곽선만 끄므로 모서리 하이라이트(입체감)는 그대로 남는다.
+    if (VEG_NO_OUTLINE) { canopy.userData.fx = true; canopy.userData.fxTagMat = leafTagMat; }
+    group.add(canopy);
+
+    basePos = bpos.subarray(0, n * 3);
+    swayW = sw.subarray(0, n);
+    ownerOf = owner.subarray(0, n);
+    treeCount = list.length;
+    phase = new Float32Array(treeCount);
+    for (let q = 0; q < treeCount; q++) phase[q] = rnd(list[q].x, list[q].z, 31) * Math.PI * 2;
+
+    if (O.trunks) {
+      trunk = new THREE.InstancedMesh(trunkGeo, trunkMat, list.length);
+      const dm = new THREE.Object3D();
+      for (let m = 0; m < list.length; m++) {
+        const sc2 = scaleOf(list[m]);
+        dm.position.set(list[m].x, 0, list[m].z);
+        dm.scale.set(sc2, sc2, sc2);
+        dm.rotation.set(0, rnd(list[m].x, list[m].z, 21) * Math.PI * 2, 0);
+        dm.updateMatrix();
+        trunk.setMatrixAt(m, dm.matrix);
+      }
+      trunk.instanceMatrix.needsUpdate = true;
+      trunk.castShadow = O.castShadow; trunk.receiveShadow = true;
+      group.add(trunk);
+    }
+
+    if (O.canopyBody) {
+      // 잎과 같은 재질·같은 명암으로 그린다. jitter는 인스턴스 이동에 넣으면 잎 배치와 정확히 맞는다
+      // (blobsFor가 jitter를 스케일 없이 더하기 때문). 회전은 주지 않는다 — 주면 잎과 어긋난다.
+      const bodyGeo = ptCanopyBodyGeo(O.blobs, O.canopyBody, O.canopyBodySeg);
+      const bt = new Float32Array(list.length);
+      const bm = new THREE.InstancedMesh(bodyGeo, bodyMat, list.length);
+      const dm2 = new THREE.Object3D();
+      for (let m = 0; m < list.length; m++) {
+        const t2 = list[m], sc2 = scaleOf(t2);
+        const jx = (rnd(t2.x, t2.z, 2) - 0.5) * O.jitter, jz = (rnd(t2.x, t2.z, 3) - 0.5) * O.jitter;
+        dm2.position.set(t2.x + jx, 0, t2.z + jz);
+        dm2.scale.set(sc2, sc2, sc2);
+        dm2.rotation.set(0, 0, 0);
+        dm2.updateMatrix();
+        bm.setMatrixAt(m, dm2.matrix);
+        // aTint는 색 양자화 뒤에 곱해지므로 여기서 덩어리만 한 단 어둡게 눌러 둔다.
+        // 잎과 같은 밝기로 두면 덩어리가 캐노피처럼 보이고 그 위의 작은 잎이 묻힌다.
+        bt[m] = (O.tint.lo + (O.tint.hi - O.tint.lo) *
+          (Math.floor(rnd(t2.x, t2.z, 41) * steps) / (steps - 1))) * O.canopyBodyDim;
+      }
+      bodyGeo.setAttribute('aTint', new THREE.InstancedBufferAttribute(bt, 1));
+      bm.instanceMatrix.needsUpdate = true;
+      bm.frustumCulled = false;
+      bm.castShadow = O.castShadow; bm.receiveShadow = false;
+      if (VEG_NO_OUTLINE) { bm.userData.fx = true; bm.userData.fxTagMat = bodyTagMat; }
+      body = bm;
+      group.add(body);
+    }
+    return n;
+  }
+
+  let _lean = null;
+  // 매 프레임. 캐노피를 바람 방향으로 기울인다. sin은 그루당 한 번만, 잎은 곱셈만 → CPU 부담이 작다.
+  // 잎마다 따로 흔들면 진폭이 작아 저해상도에서 서브픽셀 진동(지글거림)이 된다.
+  function update(time, state) {
+    state = state || {};
+    if (state.night !== undefined) uniforms.uNight.value = state.night;
+    if (!canopy || !basePos || O.wind.amp <= 0) return;
+    if (!_lean || _lean.length !== treeCount) _lean = new Float32Array(treeCount);
+    const sp = O.wind.speed, amp = O.wind.amp;
+    for (let i = 0; i < treeCount; i++) {
+      const ph = phase[i];
+      // 두 성분의 주기를 π로 어긋내 반복감을 없앤다
+      _lean[i] = (Math.sin(time * sp + ph) * 0.65 + Math.sin(time * sp * Math.PI * 0.5 + ph * 1.7) * 0.35) * amp;
+    }
+    const arr = canopy.instanceMatrix.array;
+    const wx = O.wind.dir[0], wz = O.wind.dir[1];
+    for (let k = 0; k < swayW.length; k++) {
+      const d = _lean[ownerOf[k]] * swayW[k];
+      const o = k * 16;
+      arr[o + 12] = basePos[k * 3] + wx * d;
+      arr[o + 13] = basePos[k * 3 + 1];
+      arr[o + 14] = basePos[k * 3 + 2] + wz * d;
+    }
+    canopy.instanceMatrix.needsUpdate = true;
+  }
+  return {
+    group, uniforms, material: leafMat, setTrees, update,
+    get canopy() { return canopy; },
+    get trunkMesh() { return trunk; },
+    get leafCount() { return canopy ? canopy.count : 0; },
+    get treeCount() { return treeCount; },
+    dispose() {
+      if (group.parent) group.parent.remove(group);
+      if (canopy) canopy.geometry.dispose();
+      leafGeo.dispose(); leafMat.dispose(); leafTagMat.dispose(); bodyMat.dispose(); bodyTagMat.dispose();
+      if (uniforms.uLeafTex.value) uniforms.uLeafTex.value.dispose();
+      if (trunkGeo) trunkGeo.dispose();
+      if (trunkMat && !O.trunkMaterial) trunkMat.dispose();
+    },
+  };
+}
+
 // ===== 풀밭/식생(1막 — 숲 동굴) =====
 // 끝이 밝은 풀잎(vertex color 그라데이션) 여러 개를 한 포기로, InstancedMesh로 한 번에 그림(드로우콜 1개).
 function makeGrassBladeGeo() {
@@ -8569,6 +9673,29 @@ function buildGrass(grid, mossSpots, edgeBias) {
       if (edgeBias) { ex = (Math.random() < 0.5 ? -1 : 1) * TILE * (0.32 + Math.random() * 0.15); ez = (Math.random() < 0.5 ? -1 : 1) * TILE * (0.32 + Math.random() * 0.15); }
       tufts.push({ x: (x - MAP_W / 2) * TILE + ex, z: (y - MAP_H / 2) * TILE + ez });
     }
+  }
+  if (PGRASS) {
+    // 던전 잔디는 층마다 배치가 바뀌므로 인스턴스 하나를 재사용하고 setCells로만 갈아끼운다.
+    // floorGroup에 넣지 않는 이유: buildDungeonMesh의 _disposeGroup이 층 전환 때 재질·텍스처까지
+    // dispose해 버려서 다음 층에서 잔디가 깨진다(공용 자원이라 살려 둬야 한다).
+    if (!dgnPGrass) {
+      dgnPGrass = createPixelGrass({
+        scene, seed: 20260811,
+        billboard: PGRASS_FULL ? 'full' : 'y',
+        cellSize: 2.4, perCell: 7, sizeMin: 0.52, sizeMax: 0.9,
+        colors: { base: '#6d8f34', dark: '#47632a', light: '#a8c05a' },
+        darkRatio: 0.26, lightRatio: 0.08,
+        windSpeed: 0.9, windSway: 0.24,
+        charRadius: 0.7, charPush: 0.34, charSquash: 0.4,
+        // 플레이어 횃불(PointLight distance=TILE*4.5=22.5, decay 2) 밝기 분포에 맞춘 감쇠.
+        litNear: TILE * 0.9, litMin: 0.06,
+      });
+    }
+    // 조명을 못 받으므로 막 분위기를 tint로 맞춘다(1막 숲 동굴은 어둑한 초록, 2막 성은 달빛 냉색).
+    dgnPGrass.setTint(edgeBias ? 0x55637e : 0x71805e);
+    const CS = 2.4;
+    dgnPGrass.setCells(tufts.map(t => [t.x - CS / 2, t.z - CS / 2]));
+    return;
   }
   const _gm = makeGrassMesh(tufts);
   if (_gm) floorGroup.add(_gm);
@@ -17485,6 +18612,13 @@ function tick(now) {
 
   let dt = Math.min(0.05, clock.getDelta());
   windUniforms.uTime.value += dt; // 풀·덩굴 바람
+  if (PGRASS) updatePixelGrass(windUniforms.uTime.value); // 픽셀 잔디(바람·밟힘·밤)
+  // 구름 그림자는 마을 전용 — 던전·쉼터에서는 0으로 꺼 둔다(포스트 셰이더가 통째로 건너뛴다).
+  quadMat.uniforms.uCloudStr.value = (inTown && quadMat.uniforms.tCloud.value) ? (townAnim.cloudStr !== undefined ? townAnim.cloudStr : 0.5) : 0.0;
+  // 픽셀 나무: 마을에서만. instanceMatrix를 CPU에서 갱신하므로 안 보일 때는 돌리지 않는다.
+  if (PTREES && inTown && townPTrees) {
+    townPTrees.update(windUniforms.uTime.value, { night: townTimeOfDay === 'night' ? 1 : 0 });
+  }
   if (_lastInTown !== inTown) { _lastInTown = inTown; applyAdaptiveFOV(); } // 마을↔던전 전환 시 FOV 보정
   // 패링 히트스톱: 짧은 슬로우모션으로 타격감 강조
   if (hitStop > 0) { hitStop -= dt; dt *= 0.18; }
