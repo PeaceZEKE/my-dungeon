@@ -155,6 +155,13 @@ await page.goto(url);   // 이 뒤로는 부팅까지 전부 결정적
 **r128 `WebGLRenderTarget.setSize()`는 `depthTexture`를 안 줄인다.** 리사이즈 핸들러에서
 `rt.depthTexture.image.width/height`를 손으로 맞춰야 한다(안 하면 리사이즈 후 외곽선이 깨진다).
 
+**구름 그림자는 평면이 아니라 포스트에서 깊이로 건다.** 예전에는 y=0.14짜리 어두운 평면 한 장이라
+그보다 높은 것(건물·나무·캐릭터)은 깊이 검사에서 평면보다 앞이라 그림자가 아예 안 걸렸다
+(실측: 바닥 63.8% / 오브젝트 0.5%). 깊이를 `uInvVP`로 월드 좌표로 되돌려 XZ로 구름을 읽으면
+전부 걸린다(오브젝트 53.8% / 바닥 23.7% — 같은 구름 무늬가 화면을 가로지른다).
+역행렬은 **픽셀 스냅을 풀기 전에** 갱신할 것 — 색·깊이를 찍은 그 카메라여야 한다.
+던전·쉼터에서는 `uCloudStr`을 0으로 둬서 셰이더가 통째로 건너뛴다.
+
 **같은 렌더 타깃에 두 번 그리려면 `scene.background`를 꺼야 한다.** `renderer.autoClear = false`로
 막았다고 생각해도, `scene.background`가 Color면 three의 `WebGLBackground.render`가 `forceClear`를
 켜서 무조건 clear한다. 노멀 패스를 2패스로 나눴다가 2패스가 1패스 결과를 통째로 지워서
