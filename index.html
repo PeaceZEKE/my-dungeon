@@ -4148,7 +4148,7 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v705'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v706'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -11055,7 +11055,8 @@ function wraithGhostMat(colorHex, opacity, emissiveHex = 0x000000, emI = 0) {
 }
 function buildWraithBody(grp, bodyGrp, headGrp, limbs) {
   const ectoBright = wraithGhostMat(0xcfece6, 0.55), ectoMid = wraithGhostMat(0x9fcfc8, 0.45), ectoDeep = wraithGhostMat(0x6fa6a6, 0.35), ectoFade = wraithGhostMat(0x8fc4c0, 0.22);
-  const boneMat = getLowPolyMat(0xe2e8f0), boneDk = getLowPolyMat(0xb6c0cc);
+  // 뼈도 유기물로 취급한다 — 스켈레톤의 matSkelBone과 같은 처리(하이라이트 제거 + 노멀 스무딩).
+  const boneMat = markOrganic(getLowPolyMat(0xe2e8f0)), boneDk = markOrganic(getLowPolyMat(0xb6c0cc));
   const socketMat = new THREE.MeshStandardMaterial({ color: 0x1a1410, roughness: 0.9 });
   const clothDk = wraithGhostMat(0x5f928e, 0.3);
   // 몸통(상체 또렷, 아래로 흩어짐)
@@ -11151,7 +11152,8 @@ function buildServantWraithBody(grp, bodyGrp, headGrp, limbs) {
   };
   // 영체/정장/뼈/불꽃 재질
   const ectoBright = wraithGhostMat(0xcfece6, 0.55), ectoMid = wraithGhostMat(0x9fcfc8, 0.45), ectoFade = wraithGhostMat(0x8fc4c0, 0.22);
-  const boneMat = getLowPolyMat(0xe2e8f0), boneDk = getLowPolyMat(0xb6c0cc);
+  // 뼈도 유기물로 취급한다 — 스켈레톤의 matSkelBone과 같은 처리(하이라이트 제거 + 노멀 스무딩).
+  const boneMat = markOrganic(getLowPolyMat(0xe2e8f0)), boneDk = markOrganic(getLowPolyMat(0xb6c0cc));
   const coatMat = getLowPolyMat(0x39434e), coatDk = getLowPolyMat(0x272e37), vestMat = getLowPolyMat(0x707b76);
   const lapelMat = getLowPolyMat(0x47525d), cravatMat = getLowPolyMat(0x8a948c), hairMat = wraithGhostMat(0xd6dacd, 0.72);
   const candMat = getLowPolyMat(0xb8923c, true);
@@ -11758,7 +11760,8 @@ function buildCourtMageBody(grp, bodyGrp, headGrp, limbs) {
   // ===== 재질 (뷰어 팔레트) =====
   const robeMat = getLowPolyMat(0x434a66), robeDk = getLowPolyMat(0x2e3349), robeMid = getLowPolyMat(0x565b7a);
   const hoodMat = getLowPolyMat(0x3a3f5a), collarMat = getLowPolyMat(0x4a4668), trimMat = getLowPolyMat(0x6a6488);
-  const voidMat = getLowPolyMat(0x0a0a12), skinMat = getLowPolyMat(0xb8b0a0), shoeMat = getLowPolyMat(0x2a2636);
+  // 목·손은 실제 살이다. 이 빌더가 바깥 skinMat(0x434a66=로브색)을 가리므로 여기서 따로 표시한다.
+  const voidMat = getLowPolyMat(0x0a0a12), skinMat = markOrganic(getLowPolyMat(0xb8b0a0)), shoeMat = getLowPolyMat(0x2a2636);
   const staffMat = getLowPolyMat(0x5a4a38, true), staffDk = getLowPolyMat(0x3a2e22, true);
   const maskMat = getLowPolyMat(0xe8e4d8), maskDk = getLowPolyMat(0xc4bfb0);
   const crackMat = new THREE.MeshStandardMaterial({ color: 0x4a4438, roughness: 0.8 });
