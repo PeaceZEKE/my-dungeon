@@ -4148,7 +4148,7 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v693'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v694'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -4790,14 +4790,30 @@ function _roughSpecChunk() {
     '#endif'
   ].join('\n');
 }
-// 조합 순서: 기본 청크 → 러프니스 보정 → 깊이 조절 → 계단화.
+// ===== 하이라이트 전체 밝기(?spec) =====
+// 깊이·러프니스 보정이 모두 끝난 뒤 스펙큘러 전체에 곱하는 배수.
+// 대비(가까이↔멀리, 매끈↔거침)는 건드리지 않고 하이라이트 밝기만 통째로 내리거나 올린다.
+// 세기 노브(dspec·drough)를 낮추면 대비까지 같이 죽으므로 '전체 밝기'는 여기서 따로 잡는다.
+// 1.0 = 보정 없음. 조명 보정을 전부 끄려면 ?dspec=0&dlight=0&drough=0&spec=1.
+let dSpecGain = 0.85;
+{ const m = /[?&]spec=([0-9.]+)/.exec(location.search); if (m) dSpecGain = parseFloat(m[1]); }
+function _specGainChunk() {
+  if (Math.abs(dSpecGain - 1.0) < 0.001) return '';
+  const g = dSpecGain.toFixed(3);
+  return '\n' + [
+    'reflectedLight.directSpecular *= ' + g + ';',
+    'reflectedLight.indirectSpecular *= ' + g + ';'
+  ].join('\n');
+}
+// 조합 순서: 기본 청크 → 러프니스 보정 → 깊이 조절 → 전체 밝기 → 계단화.
 // 러프니스가 먼저인 이유: '이 표면이 얼마나 반짝이는가'를 정한 뒤 거리로 감쇠해야 순서가 맞다.
 // 계단화는 마지막이어야 단계 경계가 뒤따르는 스케일에 다시 뭉개지지 않는다.
 const _roughCode = _roughSpecChunk();
 const _depthCode = _depthLitChunk();
+const _gainCode = _specGainChunk();
 const _toonTail = (PX_MODE && pxToonSteps > 0.5) ? _toonChunk(pxToonSteps).slice(_toonBaseChunk.length) : '';
-if (PX_MODE || _roughCode || _depthCode) {
-  THREE.ShaderChunk.lights_fragment_end = _toonBaseChunk + _roughCode + _depthCode + _toonTail;
+if (PX_MODE || _roughCode || _depthCode || _gainCode) {
+  THREE.ShaderChunk.lights_fragment_end = _toonBaseChunk + _roughCode + _depthCode + _gainCode + _toonTail;
 }
 app.appendChild(renderer.domElement);
 
