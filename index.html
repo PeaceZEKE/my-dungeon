@@ -4149,12 +4149,15 @@ const PX_MODE = !/[?&]px=0/.test(location.search);
 // 픽셀아트 잔디(인스턴싱 빌보드). ?pgrass=0 이면 예전 3D 풀잎 메시로 돌아간다.
 // 쓰는 곳보다 위에서 선언해야 한다 — 모듈 최상위 코드가 즉시 실행되므로 아래에 두면 TDZ로 부팅이 깨진다.
 const PGRASS = !/[?&]pgrass=0/.test(location.search);
+// 잔디 빌보드 방식. 기본은 카메라를 정면으로 보는 풀 빌보드(스프라이트가 안 눌린다).
+// ?pgfull=0 이면 Y축 빌보드(월드 수직으로 선 채 카메라 쪽만 도는 예전 방식).
+const PGRASS_FULL = !/[?&]pgfull=0/.test(location.search);
 // 마을·던전 각각 하나씩(씬이 다르다). 배치가 바뀔 때만 setCells를 부른다.
 // 선언을 잔디 코드 옆이 아니라 여기 두는 이유도 TDZ다 — buildTownScene이 언제 불릴지에 기대지 않는다.
 let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v709'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v710'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -5540,6 +5543,7 @@ function buildTownGrass() {
     }
     townPGrass = createPixelGrass({
       scene: townScene, seed: 20260810,
+      billboard: PGRASS_FULL ? 'full' : 'y',
       cellSize: CS, perCell: 11, sizeMin: 0.62, sizeMax: 1.05,
       // 바닥 링(0x66843c)과 밑동 톤을 맞춘다 — 성기게 난 곳에서 지면이 딴 색으로 튀지 않게.
       colors: { base: '#7ba33f', dark: '#577a2c', light: '#c2dc86' },
@@ -8573,6 +8577,10 @@ const PG_DEFAULTS = {
   // 플레이어 횃불 자리를 중심으로 거리 제곱에 반비례해 어두워진다(three의 decay=2와 같은 모양).
   // litNear 안쪽은 그대로, 밖은 (litNear/d)^2 로 떨어지고 litMin 아래로는 안 내려간다.
   litNear: 0, litMin: 1,              // litNear<=0 이면 감쇠 없음(마을 기본)
+  // 'full' = 카메라를 정면으로(기울기까지 따라감) / 'y' = 월드 수직으로 선 채 카메라 쪽만 도는 Y축 빌보드.
+  // 이 게임 카메라는 수평에서 51.9° 내려다본다(iso 오프셋 11.07/20/11.07). Y축 빌보드로 두면
+  // 월드 수직 1이 화면에서 0.475로 줄어 스프라이트가 세로로 절반쯤 눌린 채 보인다.
+  billboard: 'full',
 };
 function pgHexToRgb255(h) {
   const n = (typeof h === 'number') ? h : parseInt(String(h).replace('#', ''), 16);
@@ -8644,6 +8652,7 @@ function createPixelGrass(options) {
   const defines = {
     MAXCH: O.maxChars, PI_WIND: O.piWind ? 1 : 0, QUANT: O.quantize > 0 ? 1 : 0,
     LIT_FALLOFF: (O.litNear > 0) ? 1 : 0,
+    BILLBOARD_FULL: (O.billboard === 'full') ? 1 : 0,
   };
 
   const vert = [
@@ -8660,11 +8669,19 @@ function createPixelGrass(options) {
     '  vUv=uv; vTile=aTile;',
     '  float sc=' + O.sizeMin.toFixed(4) + '+aRand*' + (O.sizeMax - O.sizeMin).toFixed(4) + ';',
     '  float h=uv.y;',
-    // Y축 빌보드: 뷰 행렬 오른쪽 벡터의 수평 성분만 가로축으로. 세로는 항상 월드 +Y.
     '  vec3 camRight=normalize(vec3(viewMatrix[0][0],viewMatrix[1][0],viewMatrix[2][0]));',
+    '#if BILLBOARD_FULL',
+    // 풀 빌보드: 가로·세로를 모두 카메라 축에 맞춘다 → 스프라이트가 눌리지 않고 정면으로 보인다.
+    // 밑동(position.y=0)은 그대로 지면에 남고 잎 끝만 카메라 위쪽으로 뻗는다.
+    '  vec3 right=camRight;',
+    '  vec3 up=normalize(vec3(viewMatrix[0][1],viewMatrix[1][1],viewMatrix[2][1]));',
+    '#else',
+    // Y축 빌보드: 뷰 행렬 오른쪽 벡터의 수평 성분만 가로축으로. 세로는 항상 월드 +Y.
     '  vec3 right=normalize(vec3(camRight.x,0.0,camRight.z));',
+    '  vec3 up=vec3(0.0,1.0,0.0);',
+    '#endif',
     '  float fs=(aFlip>0.5)?-1.0:1.0;',
-    '  vec3 world=vec3(aOffset.x,0.0,aOffset.y)+right*(position.x*sc*fs)+vec3(0.0,position.y*sc,0.0);',
+    '  vec3 world=vec3(aOffset.x,0.0,aOffset.y)+right*(position.x*sc*fs)+up*(position.y*sc);',
     // 바람: 노이즈 둘을 곱해 돌풍처럼. π로 스케일·속도를 어긋내면 공통 주기가 사라진다.
     '  vec2 wd=normalize(uWindDir);',
     '#if PI_WIND',
@@ -8686,7 +8703,9 @@ function createPixelGrass(options) {
     '  }',
     '  vec2 push=pdir*infl*h*uCharPush;',
     '  world.x+=push.x; world.z+=push.y;',
-    '  world.y*=(1.0-infl*uCharSquash);',
+    // 눌림은 잎 축(up) 방향으로 줄인다. Y축 빌보드면 up=(0,1,0)이라 예전 world.y*=(1-...)와 같고,
+    // 풀 빌보드에서는 잎이 기울지 않고 제대로 짧아진다.
+    '  world-=up*(position.y*sc*infl*uCharSquash);',
     '  vec3 fwd=normalize(vec3(viewMatrix[0][2],viewMatrix[1][2],viewMatrix[2][2]));',
     '  vec2 force=wo+push;',
     '  vLean = length(force)>0.001 ? dot(normalize(vec3(force.x,0.0,force.y)),fwd) : 0.0;',
@@ -8926,6 +8945,7 @@ function buildGrass(grid, mossSpots, edgeBias) {
     if (!dgnPGrass) {
       dgnPGrass = createPixelGrass({
         scene, seed: 20260811,
+        billboard: PGRASS_FULL ? 'full' : 'y',
         cellSize: 2.4, perCell: 7, sizeMin: 0.52, sizeMax: 0.9,
         colors: { base: '#6d8f34', dark: '#47632a', light: '#a8c05a' },
         darkRatio: 0.26, lightRatio: 0.08,
