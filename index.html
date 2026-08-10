@@ -4160,7 +4160,7 @@ let townPTrees = null;
 let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v723'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v724'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -6673,6 +6673,7 @@ function buildTownScene() {
       leafShape: 'sprite', leafAlign: 0.8,
       leavesPerTree: 150, leafSize: [0.26, 0.40],
       leafDome: 0.16, leafRim: 1, leafSprigVar: 0,
+      leafSpriteShade: true, leafShadeStr: 0.10, // 잎 안쪽 명암을 살짝만
       canopyBody: 0.9, canopyBodySeg: 6,
       blobs: [
         { x: 0.00, y: 0.62, z: 0.00, r: 0.30 },
@@ -8990,6 +8991,7 @@ const PT_DEFAULTS = {
   leafShape: 'lobed', leafWidth: 0.34, leafSeg: 3,
   leafAlign: 0.8,               // 1=카드를 캐노피 표면에 완전히 눕힘, 0=카메라 정면
   leafSpriteShade: false,       // 잎 스프라이트에 테두리·하이라이트를 그려 넣을지(끄면 모양만)
+  leafShadeStr: 0.10,           // 그 명암의 세기. 명암대 한 칸이 0.25라 그보다 작게 둘 것
   leafBlades: 4, leafSpread: 1.5, leafSprigVar: 0.16, // 카드 한 장에 겹쳐 그릴 잎 수·벌림 각·밝기 차
   canopyBody: 0.9,              // 캐노피 속을 채우는 덩어리의 반지름 배수(0=끔). 잎 사이로 지면이 안 보이게
   canopyBodySeg: 6,             // 덩어리 구의 둘레 분할 수. 클수록 둥글고 삼각형이 는다
@@ -9134,7 +9136,7 @@ function ptDrawLeafSprite(buf, aw, ox, spw, sph, lf, shade) {
     let tone = 128;
     if (shade) {
       const lit = (dx * LX + dy * LY) / lf.len;
-      tone = edge < 0.20 ? 0 : (lit > 0.10 ? 255 : 128);
+      tone = edge < 0.14 ? 0 : (lit > 0.22 ? 255 : 128); // 테두리는 얇게, 하이라이트는 좁게
     }
     const i = (py * aw + (ox + px)) * 4;
     buf[i] = tone; buf[i + 1] = 0; buf[i + 2] = 0; buf[i + 3] = 255;
@@ -9205,7 +9207,7 @@ function createPixelTrees(options) {
     uDome: { value: O.leafDome }, uRim: { value: O.leafRim }, uRimAt: { value: O.leafRimAt },
     uSprigVar: { value: O.leafSprigVar },
     uExposure: { value: O.exposure },
-    uLeafTex: { value: null }, uLeafTiles: { value: 1 },
+    uLeafTex: { value: null }, uLeafTiles: { value: 1 }, uLeafShade: { value: O.leafShadeStr },
   };
   const defines = { QUANT: O.quantize > 0 ? 1 : 0, ACES_ON: O.useACES ? 1 : 0, BLADE: isBlade ? 1 : 0 };
 
@@ -9246,7 +9248,7 @@ function createPixelTrees(options) {
     'precision highp float;',
     'uniform vec3 uSunDir; uniform float uNight, uExposure;',
     'uniform vec3 uDeep,uLo,uMid,uHi;',
-    'uniform float uDome,uRim,uRimAt,uSprigVar,uLeafTiles;',
+    'uniform float uDome,uRim,uRimAt,uSprigVar,uLeafTiles,uLeafShade;',
     'uniform sampler2D uLeafTex;',
     'varying vec3 vN; varying float vTint; varying float vEdge; varying float vDome; varying float vSprig;',
     'varying vec2 vUvT; varying float vTile; varying vec3 vViewN;',
@@ -9269,10 +9271,14 @@ function createPixelTrees(options) {
         '  float t=clamp(' + (1 - O.upBias).toFixed(3) + '*ndl+' + O.upBias.toFixed(3) + '*(vN.y*0.5+0.5),0.0,1.0);',
         '  t+=vDome*uDome;',
         '  t+=(vSprig-0.5)*uSprigVar;',
+        // 스프라이트에 그려 둔 명암(테두리·빛 받는 쪽)을 명암대 '나누기 전에' 약하게 더한다.
+        // 명암대를 통째로 한 단 옮기면(q에 ±1) 선이 굵게 박혀 '먹은' 느낌이 난다 —
+        // t에 한 단(0.25)보다 작게 더하면 경계 근처 픽셀만 넘어가 은은하게 남는다.
+        '  t+=(lt.r*2.0-1.0)*uLeafShade;',
         '  float q=floor(clamp(t,0.0,0.999)*4.0);',
         // 스프라이트가 그려 둔 명암(테두리·하이라이트)을 명암대 위에서 한 단씩 올리고 내린다.
         // 색을 스프라이트에 직접 넣지 않으므로 밤·막별 톤이 그대로 따라온다.
-        '  q=clamp(q+(lt.r*2.0-1.0),0.0,3.0);',
+
         '  vec3 col = q<0.5? uDeep : (q<1.5? uLo : (q<2.5? uMid : uHi));',
         '  if(vEdge>uRimAt) col*=uRim;',
         '  col*=mix(1.0,0.34,uNight);',
