@@ -4160,7 +4160,7 @@ let townPTrees = null;
 let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v716'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v717'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -6664,10 +6664,12 @@ function buildTownScene() {
       // 참고 코드의 3톤 팔레트를 그대로. deep을 안 넘기면 low로 대체되어 사실상 3단이 된다.
       // ACES는 끈 채로 둔다 — 켜면 0x77dd44 같은 밝은 초록이 뿌옇게 뭉개진다(역산해도 안 나온다).
       colors: { low: 0x1e4620, mid: 0x449933, high: 0x77dd44 },
-      // 잎을 작게 많이. 모양을 키워 윤곽을 내는 대신, 잎 개수로 캐노피 밀도를 만드는 방식이다.
-      leavesPerTree: 72, leafSize: [0.18, 0.28],
-      leafSides: 6, leafLobeAmp: 0,          // 육각 잎(참고 코드 기본값). 굴곡 0 = 정육각형
-      leafDome: 0, leafRim: 1,               // 잎 단위 명암·테두리는 끈다(참고 코드에 없는 항목)
+      // 잔디처럼 가늘고 뾰족한 잎. 얇아서 한 장이 덮는 면적이 작으므로 개수를 늘린다.
+      // 길면 캐노피가 야자수처럼 뾰족한 덩어리가 된다 — 짧게, 대신 촘촘하게.
+      leafShape: 'blade', leafWidth: 0.40, leafSeg: 3,
+      leavesPerTree: 110, leafSize: [0.17, 0.27],
+      // 밑동은 어둡고 끝은 밝게 — 잔디와 같은 명암. 테두리는 얇은 잎에선 잎 전체를 먹으므로 끈다.
+      leafDome: 0.30, leafRim: 1,
       trunkMaterial: mat(0x5a3d28),
       trunkRadius: [0.055, 0.085], trunkHeight: 0.4,
       wind: { amp: 0.25, speed: 1.2, dir: [1.0, 0.3] },
@@ -8967,6 +8969,8 @@ const PT_DEFAULTS = {
   // 가장자리가 울퉁불퉁해야 겹쳐 있어도 잎 하나하나의 윤곽이 읽힌다.
   // leafSides는 둘레 분할 수 — lobes의 4배쯤 되어야 굴곡이 뭉개지지 않는다.
   leafSides: 20, leafLobes: 5, leafLobeAmp: 0.30,
+  // 'blade' = 잔디처럼 가늘고 뾰족한 잎(밑동에서 끝으로 좁아짐), 'lobed' = 물결진 다각형
+  leafShape: 'lobed', leafWidth: 0.34, leafSeg: 3,
   // 명암 단계. deep을 주면 4단(깊은 그늘 추가), 안 주면 low로 대체되어 원본과 같은 3단이 된다.
   colors: { low: 0x2f5f2a, mid: 0x46853a, high: 0x6fae4a },
   sunDir: [18, 26, 10],
@@ -9023,6 +9027,32 @@ function ptLeafGeo(seg, lobes, amp) {
   g.setIndex(idx);
   return g;
 }
+// 가늘고 뾰족한 잎(잔디 잎 모양). 밑동 y=0 → 끝 y=1 로 좁아진다.
+// uv.y 에 '밑동 0 → 끝 1'을 넣어 두면 셰이더가 끝만 밝게 할 수 있다(잔디와 같은 명암).
+// 정점 열을 좌우 2줄만 두는 이유는 삼각형 수 때문이다 — 잎 한 장이 5개면 육각형(6개)보다 싸다.
+function ptBladeGeo(seg, width) {
+  const n = Math.max(2, seg | 0);
+  const pos = [], uv = [], nrm = [], idx = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    // 밑동이 넓고 중간에 살짝 배가 나온 뒤 끝에서 한 점으로 모인다
+    const hw = width * 0.5 * Math.pow(1 - t, 0.75) * (0.75 + 0.25 * Math.sin(Math.PI * t));
+    pos.push(-hw, t, 0, hw, t, 0);
+    uv.push(0, t, 0, t);
+    nrm.push(0, 0, 1, 0, 0, 1);
+  }
+  for (let i = 0; i < n; i++) {
+    const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+    idx.push(a, b, d);
+    if (i < n - 1) idx.push(a, d, c); // 마지막 칸은 끝점으로 모여서 삼각형 하나면 된다
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return g;
+}
 function createPixelTrees(options) {
   const O = Object.assign({}, PT_DEFAULTS, options || {});
   const opt = options || {};
@@ -9030,6 +9060,8 @@ function createPixelTrees(options) {
   O.wind = Object.assign({}, PT_DEFAULTS.wind, opt.wind || {});
   O.tint = Object.assign({}, PT_DEFAULTS.tint, opt.tint || {});
 
+  // 쓰는 곳(defines·정점 셰이더)보다 위에서 선언한다 — 아래에 두면 TDZ로 나무가 통째로 안 만들어진다.
+  const isBlade = (O.leafShape === 'blade');
   const group = new THREE.Group();
   if (O.scene) O.scene.add(group);
 
@@ -9043,7 +9075,7 @@ function createPixelTrees(options) {
     uDome: { value: O.leafDome }, uRim: { value: O.leafRim }, uRimAt: { value: O.leafRimAt },
     uExposure: { value: O.exposure },
   };
-  const defines = { QUANT: O.quantize > 0 ? 1 : 0, ACES_ON: O.useACES ? 1 : 0 };
+  const defines = { QUANT: O.quantize > 0 ? 1 : 0, ACES_ON: O.useACES ? 1 : 0, BLADE: isBlade ? 1 : 0 };
 
   const vert = [
     'precision highp float;',
@@ -9056,10 +9088,15 @@ function createPixelTrees(options) {
     // 위치는 instanceMatrix 로만 만든다. 정점 셰이더에서 흔들면 재질을 교체하는 패스와
     // 형상이 어긋나 외곽선이 깨진다.
     '  vec4 wp=modelMatrix*instanceMatrix*vec4(position,1.0);',
+    '#if BLADE',
+    // 가늘고 뾰족한 잎은 '잎 길이 방향'으로 명암을 준다 — 밑동이 어둡고 끝이 밝은 잔디 명암.
+    '  vDome=uv.y*2.0-1.0;',
+    '#else',
     // 잎의 '위쪽'은 월드에서 잰다 — 잎마다 무작위로 돌려도(반복감 완화) 위아래 명암이 안 흔들린다.
     '  vec4 wc=modelMatrix*instanceMatrix*vec4(0.0,0.0,0.0,1.0);',
     '  float ls=max(length(instanceMatrix[0].xyz)*0.5,1e-4);',
     '  vDome=(wp.y-wc.y)/ls;',
+    '#endif',
     '  gl_Position=projectionMatrix*viewMatrix*wp;',
     '}'
   ].join('\n');
@@ -9102,7 +9139,8 @@ function createPixelTrees(options) {
   leafMat.fragmentShader = frag;
 
   // 잎은 알파 텍스처가 아니라 지오메트리로 모양을 낸다 — overrideMaterial 패스에서도 실루엣이 같다.
-  const leafGeo = ptLeafGeo(O.leafSides, O.leafLobes, O.leafLobeAmp);
+  const leafGeo = isBlade ? ptBladeGeo(O.leafSeg, O.leafWidth)
+                          : ptLeafGeo(O.leafSides, O.leafLobes, O.leafLobeAmp);
   const trunkMat = O.trunks ? (O.trunkMaterial || new THREE.MeshLambertMaterial({ color: O.trunkColor })) : null;
   const trunkGeo = O.trunks ? new THREE.CylinderGeometry(O.trunkRadius[0], O.trunkRadius[1], O.trunkHeight, 5) : null;
   if (trunkGeo) trunkGeo.translate(0, O.trunkHeight / 2, 0);   // 밑동을 y=0 에
@@ -9136,6 +9174,7 @@ function createPixelTrees(options) {
     const dummy = new THREE.Object3D();
     const camN = new THREE.Vector3(O.cameraDir[0], O.cameraDir[1], O.cameraDir[2]).normalize();
     const look = new THREE.Vector3(), p = new THREE.Vector3();
+    const ex = new THREE.Vector3(), ey = new THREE.Vector3(); // 잎 평면의 로컬 축(뾰족 잎 방향 계산용)
     const steps = Math.max(2, O.tint.steps);
     let n = 0;
 
@@ -9173,9 +9212,21 @@ function createPixelTrees(options) {
         dummy.position.set(tx + p.x, p.y, tz + p.z);
         look.copy(dummy.position).add(camN);
         dummy.lookAt(look);                                     // 잎이 카메라를 향함
-        // 무작위 회전으로 잎 굴곡이 같은 방향으로 정렬되는 것을 막는다.
-        // 위아래 명암은 월드 Y로 재므로(vDome) 돌려도 방향이 흔들리지 않는다.
-        dummy.rotateZ(rnd(tx + k, tz + k, 14) * Math.PI * 2);
+        if (isBlade) {
+          // 가늘고 뾰족한 잎은 캐노피 바깥쪽을 향해 세운다 — 실루엣이 잔디처럼 삐죽삐죽해진다.
+          // 구체 바깥 방향(n)을 잎 평면에 투영해 각도를 구한다. lookAt 직후 행렬의 열이 잎의 로컬 축이다.
+          dummy.updateMatrix();
+          ex.setFromMatrixColumn(dummy.matrix, 0).normalize();
+          ey.setFromMatrixColumn(dummy.matrix, 1).normalize();
+          const ax = nx * ex.x + ny * ex.y + nz * ex.z;
+          const ay = nx * ey.x + ny * ey.y + nz * ey.z;
+          // 로컬 +y를 (ax, ay) 쪽으로 돌린다. +z축 회전에서 +y는 (-sinθ, cosθ)로 간다.
+          dummy.rotateZ(Math.atan2(-ax, ay) + (rnd(tx + k, tz + k, 14) - 0.5) * 0.7);
+        } else {
+          // 무작위 회전으로 잎 굴곡이 같은 방향으로 정렬되는 것을 막는다.
+          // 위아래 명암은 월드 Y로 재므로(vDome) 돌려도 방향이 흔들리지 않는다.
+          dummy.rotateZ(rnd(tx + k, tz + k, 14) * Math.PI * 2);
+        }
         const ls = (O.leafSize[0] + rnd(tx, tz + k, 15) * (O.leafSize[1] - O.leafSize[0])) * scale;
         dummy.scale.set(ls, ls, ls);
         dummy.updateMatrix();
