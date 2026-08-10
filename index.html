@@ -4160,7 +4160,7 @@ let townPTrees = null;
 let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v718'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v719'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -6665,11 +6665,12 @@ function buildTownScene() {
       // ACES는 끈 채로 둔다 — 켜면 0x77dd44 같은 밝은 초록이 뿌옇게 뭉개진다(역산해도 안 나온다).
       colors: { low: 0x1e4620, mid: 0x449933, high: 0x77dd44 },
       // 잔디처럼 가늘고 뾰족한 잎. 얇아서 한 장이 덮는 면적이 작으므로 개수를 늘린다.
-      // 카드 한 장 = 잎 세 장이 겹친 뭉치. 다섯 장·큰 카드로 하면 잎이 커져 고사리처럼 보이고
-      // 삼각형도 168k까지 오른다 — 세 장짜리 작은 카드를 많이 뿌리는 쪽이 캐노피가 산다.
-      leafShape: 'blade', leafWidth: 0.38, leafSeg: 3,
-      leafBlades: 3, leafSpread: 1.2, leafSprigVar: 0.18,
-      leavesPerTree: 36, leafSize: [0.26, 0.40],
+      // 카드 한 장 = 잎 세 장이 겹친 뭉치. 잎을 작게 하고 카드를 촘촘히 깔되,
+      // 빈틈은 카드 수가 아니라 캐노피 덩어리(canopyBody)로 막는다 — 카드로만 채우면 삼각형이 몇 배가 된다.
+      leafShape: 'blade', leafWidth: 0.46, leafSeg: 3,
+      leafBlades: 3, leafSpread: 1.25, leafSprigVar: 0.18,
+      leavesPerTree: 50, leafSize: [0.18, 0.28],
+      canopyBody: 0.88,
       // 밑동은 어둡고 끝은 밝게 — 잔디와 같은 명암. 테두리는 얇은 잎에선 잎 전체를 먹으므로 끈다.
       leafDome: 0.30, leafRim: 1,
       trunkMaterial: mat(0x5a3d28),
@@ -8974,6 +8975,7 @@ const PT_DEFAULTS = {
   // 'blade' = 잔디처럼 가늘고 뾰족한 잎(밑동에서 끝으로 좁아짐), 'lobed' = 물결진 다각형
   leafShape: 'lobed', leafWidth: 0.34, leafSeg: 3,
   leafBlades: 4, leafSpread: 1.5, leafSprigVar: 0.16, // 카드 한 장에 겹쳐 그릴 잎 수·벌림 각·밝기 차
+  canopyBody: 0.9,              // 캐노피 속을 채우는 덩어리의 반지름 배수(0=끔). 잎 사이로 지면이 안 보이게
   // 명암 단계. deep을 주면 4단(깊은 그늘 추가), 안 주면 low로 대체되어 원본과 같은 3단이 된다.
   colors: { low: 0x2f5f2a, mid: 0x46853a, high: 0x6fae4a },
   sunDir: [18, 26, 10],
@@ -9052,8 +9054,9 @@ function ptBladeGeo(seg, width, blades, spread) {
     const base = pos.length / 3;
     for (let i = 0; i <= n; i++) {
       const t = i / n;
-      // 밑동이 넓고 중간에 살짝 배가 나온 뒤 끝에서 한 점으로 모인다
-      const hw = width * 0.5 * Math.pow(1 - t, 0.75) * (0.75 + 0.25 * Math.sin(Math.PI * t));
+      // 실제 나뭇잎 윤곽: 밑동에서 조금 벌어졌다가 중간에서 가장 넓고 끝에서 한 점으로 모인다.
+      // sin에 1보다 작은 지수를 씌워야 측면이 직선이 아니라 둥글게 부푼다(지수 1이면 뾰족한 마름모).
+      const hw = width * 0.5 * Math.pow(Math.sin(Math.PI * (0.10 + 0.90 * t)), 0.62);
       const y = t * len;
       for (const sx of [-hw, hw]) {
         pos.push(sx * ca - y * sa, sx * sa + y * ca, zo);
@@ -9073,6 +9076,32 @@ function ptBladeGeo(seg, width, blades, spread) {
   g.setAttribute('aSprig', new THREE.Float32BufferAttribute(sprig, 1));
   g.setIndex(idx);
   return g;
+}
+// 캐노피 속을 채우는 덩어리. 잎 카드만으로 빈틈을 없애려면 카드 수가 폭발한다(작은 잎으로
+// 표면을 다 덮으려면 그루당 150장 넘게 필요 → 삼각형이 몇 배로 뛴다).
+// 가이드 구체를 그대로 저폴리 덩어리로 깔아 두면 잎 사이로 지면 대신 캐노피 안쪽이 보인다.
+// 그루당 삼각형 80개면 되고, 그림자도 이쪽만 지면 충분하다(잎은 castShadow를 끈다).
+function ptCanopyBodyGeo(blobs, shrink) {
+  const pos = [], nrm = [], aN = [], uv = [], sprig = [];
+  for (const b of blobs) {
+    const g = new THREE.IcosahedronGeometry(b.r * shrink, 0); // 비인덱스 — 그대로 이어 붙이면 된다
+    const p = g.attributes.position.array, nn = g.attributes.normal.array;
+    for (let i = 0; i < p.length; i += 3) {
+      pos.push(p[i] + b.x, p[i + 1] + b.y, p[i + 2] + b.z);
+      nrm.push(nn[i], nn[i + 1], nn[i + 2]);
+      aN.push(nn[i], nn[i + 1], nn[i + 2]); // 명암은 잎과 같은 '구체 바깥 방향' 기준
+      uv.push(0, 0.5);                      // vEdge=0(테두리 아님), vDome=0(길이 명암 없음)
+      sprig.push(0.5);
+    }
+    g.dispose();
+  }
+  const geo = new THREE.InstancedBufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  geo.setAttribute('aNorm', new THREE.Float32BufferAttribute(aN, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setAttribute('aSprig', new THREE.Float32BufferAttribute(sprig, 1));
+  return geo;
 }
 function createPixelTrees(options) {
   const O = Object.assign({}, PT_DEFAULTS, options || {});
@@ -9170,7 +9199,7 @@ function createPixelTrees(options) {
   const trunkGeo = O.trunks ? new THREE.CylinderGeometry(O.trunkRadius[0], O.trunkRadius[1], O.trunkHeight, 5) : null;
   if (trunkGeo) trunkGeo.translate(0, O.trunkHeight / 2, 0);   // 밑동을 y=0 에
 
-  let canopy = null, trunk = null;
+  let canopy = null, trunk = null, body = null;
   let basePos = null, swayW = null, ownerOf = null, phase = null, treeCount = 0;
 
   // 좌표로 결정되는 유사난수 — 같은 자리 나무는 항상 같은 모양이다(재생성해도 숲이 안 달라진다).
@@ -9188,6 +9217,7 @@ function createPixelTrees(options) {
   function setTrees(trees) {
     if (canopy) { group.remove(canopy); canopy.geometry.dispose(); canopy = null; }
     if (trunk) { group.remove(trunk); trunk = null; }
+    if (body) { group.remove(body); body.geometry.dispose(); body = null; }
     basePos = swayW = ownerOf = phase = null; treeCount = 0;
     if (!trees || !trees.length) return 0;
     const list = trees.map(t => (Array.isArray(t) ? { x: t[0], z: t[1] } : t));
@@ -9274,7 +9304,10 @@ function createPixelTrees(options) {
     canopy.instanceMatrix.array.set(mats.subarray(0, n * 16));
     canopy.instanceMatrix.needsUpdate = true;
     canopy.frustumCulled = false;
-    canopy.castShadow = O.castShadow; canopy.receiveShadow = false;
+    // 잎은 그림자를 안 진다 — 잎만으로 그림자를 만들면 패스 하나가 통째로 잎 삼각형만큼 든다.
+    // 대신 아래 캐노피 덩어리(그루당 80삼각형)가 같은 모양의 그림자를 만든다.
+    canopy.castShadow = O.canopyBody ? false : O.castShadow;
+    canopy.receiveShadow = false;
     // 잎은 육각 지오메트리라 노멀 패스에 넣어도 실루엣이 같다. 다만 잎마다 실루엣이 생겨
     // 검은 외곽선이 캐노피를 뒤덮으므로, 1패스에서 빼고 3패스에서 '진짜 노멀 + 알파 0'으로 찍는다.
     // 알파 0이 외곽선만 끄므로 모서리 하이라이트(입체감)는 그대로 남는다.
@@ -9302,6 +9335,33 @@ function createPixelTrees(options) {
       trunk.instanceMatrix.needsUpdate = true;
       trunk.castShadow = O.castShadow; trunk.receiveShadow = true;
       group.add(trunk);
+    }
+
+    if (O.canopyBody) {
+      // 잎과 같은 재질·같은 명암으로 그린다. jitter는 인스턴스 이동에 넣으면 잎 배치와 정확히 맞는다
+      // (blobsFor가 jitter를 스케일 없이 더하기 때문). 회전은 주지 않는다 — 주면 잎과 어긋난다.
+      const bodyGeo = ptCanopyBodyGeo(O.blobs, O.canopyBody);
+      const bt = new Float32Array(list.length);
+      const bm = new THREE.InstancedMesh(bodyGeo, leafMat, list.length);
+      const dm2 = new THREE.Object3D();
+      for (let m = 0; m < list.length; m++) {
+        const t2 = list[m], sc2 = scaleOf(t2);
+        const jx = (rnd(t2.x, t2.z, 2) - 0.5) * O.jitter, jz = (rnd(t2.x, t2.z, 3) - 0.5) * O.jitter;
+        dm2.position.set(t2.x + jx, 0, t2.z + jz);
+        dm2.scale.set(sc2, sc2, sc2);
+        dm2.rotation.set(0, 0, 0);
+        dm2.updateMatrix();
+        bm.setMatrixAt(m, dm2.matrix);
+        bt[m] = O.tint.lo + (O.tint.hi - O.tint.lo) *
+          (Math.floor(rnd(t2.x, t2.z, 41) * steps) / (steps - 1));
+      }
+      bodyGeo.setAttribute('aTint', new THREE.InstancedBufferAttribute(bt, 1));
+      bm.instanceMatrix.needsUpdate = true;
+      bm.frustumCulled = false;
+      bm.castShadow = O.castShadow; bm.receiveShadow = false;
+      if (canopy && canopy.userData.fx) { bm.userData.fx = true; bm.userData.fxTagMat = canopy.userData.fxTagMat; }
+      body = bm;
+      group.add(body);
     }
     return n;
   }
