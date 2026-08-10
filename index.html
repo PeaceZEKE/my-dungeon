@@ -4148,7 +4148,7 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v701'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v702'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -7932,32 +7932,13 @@ function assignTorchLights() {
     e.light = L;                              // 깜빡임 루프가 이 참조로 intensity를 흔든다
   }
 }
-
-// ===== 점광원 총량 상한(?plcap) =====
-// three.js는 씬의 모든 점광원을 셰이더 유니폼으로 넘긴다. 실측(55층)에서 41개까지 올라가는데
-// 그중 25개가 사거리 1~3짜리 적 장식광이라, 멀면 화면에 아무 기여도 없이 유니폼만 차지한다.
-// 모바일 GPU의 MAX_FRAGMENT_UNIFORM_VECTORS는 보통 224~1024라 이게 링크 실패로 이어질 수 있다.
-// '플레이어를 실제로 비추는 순서'(거리 - 사거리)로 정렬해 상위 N개만 켠다 — 사거리 밖 광원을
-// 꺼도 화면은 그대로다. 켜는 개수를 고정하는 이유: 개수가 바뀌면 three가 모든 머티리얼을
-// 다시 컴파일해 프레임이 튄다. 매 프레임 씬을 훑으면 비싸므로 0.15초마다만 갱신한다.
-let POINT_LIGHT_CAP = 16;
-{ const m = /[?&]plcap=([0-9]+)/.exec(location.search); if (m) POINT_LIGHT_CAP = parseInt(m[1], 10); }
-const _plList = [];
-const _plTmp = new THREE.Vector3();
-let _plTimer = 0;
-function updatePointLightBudget(dt) {
-  if (POINT_LIGHT_CAP <= 0) return;
-  _plTimer -= dt;
-  if (_plTimer > 0) return;
-  _plTimer = 0.15;
-  _plList.length = 0;
-  scene.traverse(o => { if (o.isPointLight) _plList.push(o); });
-  if (_plList.length <= POINT_LIGHT_CAP) { for (const L of _plList) L.visible = true; return; }
-  const p = player.obj.position;
-  for (const L of _plList) { L.getWorldPosition(_plTmp); L._plRank = _plTmp.distanceTo(p) - (L.distance || 0); }
-  _plList.sort((a, b) => a._plRank - b._plRank);
-  for (let i = 0; i < _plList.length; i++) _plList[i].visible = (i < POINT_LIGHT_CAP);
-}
+// ===== 점광원 총량은 cullSceneLights()가 이미 관리한다 =====
+// 여기에 두 번째 상한을 만들지 말 것. 예전에 ?plcap 상한을 따로 넣었다가 흰 화면을 만들었다.
+// 게임에는 원래 cullSceneLights(camera)/MAX_DYN_LIGHTS(6)가 있고, 주석 그대로 '렌더 실패(흰 화면)를
+// 막기 위해' 존재한다. 별도 상한을 걸면 두 시스템이 매 프레임 서로의 visible을 덮어써서
+// 켜진 광원 수가 흔들리고, 그때마다 three가 모든 머티리얼을 재컴파일한다
+// (실측: 55층까지 진행 시 셰이더 프로그램 51개 → 65개, 켜진 광원 6 고정 → 9~16 요동).
+// 그 결과가 2막 진입 시 컨텍스트 손실이었다. 광원 수를 줄여야 하면 MAX_DYN_LIGHTS를 조절할 것.
 
 let wallGrid = null; // 시야 판정용 벽 격자(generateDungeon에서 채움)
 // 이끼 동굴 장식 애니메이션 대상
@@ -14920,7 +14901,6 @@ function update(dt) {
   updatePotions(dt);
   updateParryRings(dt);
   updateEffectLights(dt); // 전투 섬광 풀 감쇠
-  updatePointLightBudget(dt); // 점광원 총량 상한(사거리 밖 광원 끄기 — 모바일 유니폼 보호)
   updateFirePools(dt);
   updateIceZones(dt);
   updateIcePillars(dt);
