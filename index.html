@@ -4160,7 +4160,7 @@ let townPTrees = null;
 let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v721'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v722'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -8986,6 +8986,7 @@ const PT_DEFAULTS = {
   // 'sprite' = 그린 잎 뭉치 텍스처 카드(알파 컷아웃), 'blade' = 가늘고 뾰족한 잎, 'lobed' = 물결진 다각형
   leafShape: 'lobed', leafWidth: 0.34, leafSeg: 3,
   leafAlign: 0.8,               // 1=카드를 캐노피 표면에 완전히 눕힘, 0=카메라 정면
+  leafSpriteShade: false,       // 잎 스프라이트에 테두리·하이라이트를 그려 넣을지(끄면 모양만)
   leafBlades: 4, leafSpread: 1.5, leafSprigVar: 0.16, // 카드 한 장에 겹쳐 그릴 잎 수·벌림 각·밝기 차
   canopyBody: 0.9,              // 캐노피 속을 채우는 덩어리의 반지름 배수(0=끔). 잎 사이로 지면이 안 보이게
   canopyBodySeg: 6,             // 덩어리 구의 둘레 분할 수. 클수록 둥글고 삼각형이 는다
@@ -9112,7 +9113,7 @@ const PT_LEAF_TILES = [
    { cx: 20, cy: 20, ang: -0.24, len: 11, wid: 7 }, { cx: 14, cy: 24, ang: -2.2, len: 12, wid: 7.5 },
    { cx: 18, cy: 24, ang: -0.94, len: 12, wid: 7.5 }, { cx: 16, cy: 18, ang: -1.57, len: 9, wid: 6 }],
 ];
-function ptDrawLeafSprite(buf, aw, ox, spw, sph, lf) {
+function ptDrawLeafSprite(buf, aw, ox, spw, sph, lf, shade) {
   const ca = Math.cos(lf.ang), sa = Math.sin(lf.ang);
   const LX = -0.6, LY = -0.8; // 빛 방향(이미지 좌표: 위·왼쪽). 뭉치 전체가 같은 쪽에서 빛을 받게 한다
   for (let py = 0; py < sph; py++) for (let px = 0; px < spw; px++) {
@@ -9125,17 +9126,22 @@ function ptDrawLeafSprite(buf, aw, ox, spw, sph, lf) {
     const av = Math.abs(v);
     if (av > prof) continue;
     const edge = prof - av;
-    const lit = (dx * LX + dy * LY) / lf.len;
-    const tone = edge < 0.20 ? 0 : (lit > 0.10 ? 255 : 128); // 테두리 어둡게 / 빛 받는 쪽 밝게
+    // shade가 꺼져 있으면 스프라이트는 '모양(알파)'만 담당하고 색은 전부 캐노피 명암대가 정한다.
+    // 켜면 잎마다 테두리를 어둡게·빛 받는 쪽을 밝게 그려 넣는다(선이 도드라져 보일 수 있다).
+    let tone = 128;
+    if (shade) {
+      const lit = (dx * LX + dy * LY) / lf.len;
+      tone = edge < 0.20 ? 0 : (lit > 0.10 ? 255 : 128);
+    }
     const i = (py * aw + (ox + px)) * 4;
     buf[i] = tone; buf[i + 1] = 0; buf[i + 2] = 0; buf[i + 3] = 255;
   }
 }
-function ptBuildLeafAtlas() {
+function ptBuildLeafAtlas(shade) {
   const SPW = 32, SPH = 32, N = PT_LEAF_TILES.length, AW = SPW * N;
   const top = new Uint8Array(AW * SPH * 4);
   PT_LEAF_TILES.forEach((leaves, ti) => {
-    for (const lf of leaves) ptDrawLeafSprite(top, AW, ti * SPW, SPW, SPH, lf);
+    for (const lf of leaves) ptDrawLeafSprite(top, AW, ti * SPW, SPW, SPH, lf, shade);
   });
   // 함정(잔디와 같음): DataTexture는 flipY=false라 배열 0번 행이 v=0(아래)다 → 행을 뒤집어 담는다
   const d = new Uint8Array(AW * SPH * 4);
@@ -9249,7 +9255,10 @@ function createPixelTrees(options) {
         '  if(lt.a<0.5) discard;'
       : '  vec4 lt=vec4(0.5,0.0,0.0,1.0);',
     tag
-      ? '  gl_FragColor=vec4(normalize(vViewN)*0.5+0.5, 0.0); }'
+      // 초록 표식(0,1,0) + 알파 0 = 모서리 하이라이트도 검은 외곽선도 둘 다 빠진다.
+      // 진짜 노멀을 남기면 하이라이트가 계속 들어가 잎마다 반짝이는 선이 그어진다
+      // (실측: 캐노피 픽셀의 0.32%, 최대 59/255).
+      ? '  gl_FragColor=vec4(0.0, 1.0, 0.0, 0.0); }'
       : [
         // 잎의 실제 법선 대신 '구체 바깥 방향'으로 명암을 낸다 — 잎 한 장씩 반짝이지 않고
         // 캐노피 덩어리 전체가 둥글게 보인다. 4단으로 끊어 픽셀아트 톤을 유지.
@@ -9288,7 +9297,7 @@ function createPixelTrees(options) {
   const bodyMat = mkMat(false, false);
   const bodyTagMat = mkMat(false, true);
   if (isSprite) {
-    const at = ptBuildLeafAtlas();
+    const at = ptBuildLeafAtlas(O.leafSpriteShade);
     uniforms.uLeafTex.value = at.texture;
     uniforms.uLeafTiles.value = at.tiles;
   }
