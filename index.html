@@ -4152,7 +4152,7 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v691'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v692'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -17308,6 +17308,10 @@ function openMaxLevelCharSelect() {
   $('startOverlay').classList.add('hidden');
   if ($('startResumeChoice')) $('startResumeChoice').classList.add('hidden');
   $('charOverlay').classList.remove('hidden');
+  // 첫 화면이 이미 캐릭터 선택이라 이 버튼을 눌러도 화면이 그대로였다 — 눌러도 먹통처럼 보였다.
+  // 개발자 버튼을 감추고 안내를 띄워 모드가 걸린 것을 보이게 한다(되돌리기는 charCancelBtn).
+  for (const id of ['bossTestBtn', 'maxLevelBtn']) { const b = $(id); if (b) b.style.display = 'none'; }
+  try { toast('⭐ 테스트 캐릭터 — 캐릭터를 고르세요'); } catch (e) {}
 }
 function beginGameWith(kind) {
   selectedChar = kind;
@@ -17410,7 +17414,12 @@ function enterBossTest() {
   bossTestMode = true; godMode = false;
   inTown = false;
   // 시작/마을 UI 정리
+  // 개발자 버튼(bossTestBtn·maxLevelBtn)은 charOverlay 안에 들어 있다. 예전엔 startOverlay만
+  // 닫았는데 그건 이미 숨겨진 화면이라, 첫 화면이 그대로 남고 게임이 그 뒤에서 돌았다.
+  // anyOverlayOpen()이 true가 되어 모바일 터치 조작까지 막혔다 — charOverlay를 반드시 닫는다.
   $('startOverlay').classList.add('hidden');
+  $('charOverlay').classList.add('hidden');
+  if ($('charCancelBtn')) $('charCancelBtn').style.display = 'none';
   if ($('startResumeChoice')) $('startResumeChoice').classList.add('hidden');
   closeTownShop && closeTownShop();
   if (SFX && SFX.musicStop) SFX.musicStop();
@@ -18683,7 +18692,7 @@ document.querySelectorAll('#charChoices .char-card').forEach(card => {
   onTap(card, () => beginGameWith(card.getAttribute('data-char')));
 });
 // 취소: 첫 화면이 곧 캐릭터 선택이므로 만렙 대기 상태만 풀고 그 화면에 남는다.
-onTap($('charCancelBtn'), () => { const wasMax = maxLevelPending; townCharChange = false; maxLevelPending = false; $('charCancelBtn').style.display = 'none'; if (!wasMax) $('charOverlay').classList.add('hidden'); });
+onTap($('charCancelBtn'), () => { const wasMax = maxLevelPending; townCharChange = false; maxLevelPending = false; $('charCancelBtn').style.display = 'none'; if (!wasMax) $('charOverlay').classList.add('hidden'); else for (const id of ['bossTestBtn', 'maxLevelBtn']) { const b = $(id); if (b) b.style.display = ''; } }); // 만렙 모드를 취소하면 감췄던 개발자 버튼을 되살린다
 onTap($('howtoBtn'), () => { safeResume(); startActualGame(); });
 onTap($('townShopClose'), () => { closeTownShop(); });
 onTap($('smithClose'), () => { closeSmith(); });
