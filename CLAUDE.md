@@ -74,6 +74,7 @@ sed -n "$((S+1)),$((E-1))p" index.html > /tmp/gc.js && node --check /tmp/gc.js
 | `?spec=N` | 0.85 | 하이라이트 전체 밝기 배수(대비는 유지). 1=보정 없음 |
 | `?srough=N` | 1.0 | 바위·돌 재질 러프니스(벽·바닥·기둥·잔해·자갈). 0.9=예전 값 |
 | `?organic=0` | 켜짐 | 피부(사람·몬스터) 하이라이트·모서리 강조 제거를 끔 |
+| `?osmooth=N` | 80 | 피부 노멀 스무딩 각도 한계(도). 0=끔, 180=모서리까지 전부 뭉갬 |
 
 조명 보정을 통째로 끄려면 `?dspec=0&dlight=0&drough=0&spec=1` (전부 중립이어야 청크를 안 건드린다).
 
@@ -149,6 +150,15 @@ await page.goto(url);   // 이 뒤로는 부팅까지 전부 결정적
 
 **r128 `WebGLRenderTarget.setSize()`는 `depthTexture`를 안 줄인다.** 리사이즈 핸들러에서
 `rt.depthTexture.image.width/height`를 손으로 맞춰야 한다(안 하면 리사이즈 후 외곽선이 깨진다).
+
+**`flatShading: true`가 지오메트리 노멀을 통째로 무시한다.** 이 게임 캐릭터는 전부
+`getLowPolyMat`(=`flatShading: true`)이라, 지오메트리 노멀을 아무리 손봐도 색 패스는 면 노멀을
+다시 만들어 쓴다. 노멀을 부드럽게 하려면 그 머티리얼의 `flatShading`도 같이 꺼야 한다.
+덤으로: r128 `PolyhedronGeometry`는 detail>0이면 이미 구면(부드러운) 노멀을 갖고 있다
+(detail 0만 면 노멀). 즉 몬스터 머리(20면체 detail 1)는 `flatShading`만 꺼도 부드러워진다.
+
+**`BufferGeometryUtils`는 동봉돼 있지 않다**(`mergeVertices` grep 0건). 정점 병합·노멀 평균이
+필요하면 위치를 양자화해 직접 묶어야 한다(`_smoothSkinGeo` 참고).
 
 **점광원 상한을 새로 만들지 말 것.** `cullSceneLights(camera)`/`MAX_DYN_LIGHTS`(6)가 이미 있고,
 코드 주석 그대로 "렌더 실패(흰 화면)를 막기 위해" 존재한다. 이걸 모르고 별도 상한(`?plcap`)을
