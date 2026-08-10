@@ -4148,7 +4148,7 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v694'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v695'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -6952,6 +6952,21 @@ function getLowPolyMat(colorHex, isMetal = false) {
   });
 }
 function getGlowMat(colorHex) { return new THREE.MeshBasicMaterial({ color: colorHex }); }
+// ===== 바위·돌 재질 러프니스(?srough) =====
+// 돌은 기본 0.9로는 하이라이트가 남아 젖은 것처럼 보인다. 1.0으로 올려 완전 무광에 가깝게 둔다.
+// ?drough 램프가 0.60~0.95라 0.9→1.0이면 하이라이트 배수가 약 0.54→0.40으로 더 떨어진다.
+// 이끼·담쟁이·살덩이·나무는 돌이 아니므로 제외한다(골렘 바위·흙은 이미 1.0으로 박혀 있다).
+let STONE_ROUGH = 1.0;
+{ const m = /[?&]srough=([0-9.]+)/.exec(location.search); if (m) STONE_ROUGH = parseFloat(m[1]); }
+// 배열도 그대로 받는다(바닥 머티리얼은 12종 배열로 만들어진다).
+function stoneRough(...mats) {
+  for (const m of mats) {
+    if (!m) continue;
+    if (Array.isArray(m)) stoneRough(...m);
+    else if (m.roughness !== undefined) m.roughness = STONE_ROUGH;
+  }
+  return mats[0];
+}
 // ===== 셀셰이딩(캐릭터·NPC·몬스터 전용) =====
 // 직접광(viewLight·directional) 음영만 단계화. ambient는 평평하게 둬서 막별 조명 차이를 최소화.
 // 환경(바닥·벽)엔 적용하지 않음 — 객체 그룹만 traverse.
@@ -7025,6 +7040,7 @@ const matWallBase = applyCutoutShader(getLowPolyMat(0x4a4334));   // 이끼 동�
 const matWallBase2 = applyCutoutShader(getLowPolyMat(0x3d3a2a));  // 변형 암벽(더 어두운 갈색)
 const matWallRock = applyCutoutShader(getLowPolyMat(0x534b3c));   // 박힌 바위
 const matWallMoss = applyCutoutShader(getLowPolyMat(0x44551f));   // 윗면 이끼(어두운 초록)
+stoneRough(matWallBase, matWallBase2, matWallRock); // 암벽·박힌 바위만 무광(이끼는 제외)
 // ===== 벽 덩굴(1막 — 숲 동굴) — 벽 윗면에서 늘어진 줄기 + 잎, 하나의 지오메트리로 병합 =====
 // ===== 바람 흔들림(풀·덩굴 공통) =====
 // 각 정점의 windWeight(0=고정, 1=끝)만큼 시간에 따라 흔든다. vertex 단계라 조명과 무관(안전).
@@ -7400,6 +7416,10 @@ const casMatPillarD = applyCutoutShader(getLowPolyMat(CAS.pillarD));
 const casMatWallCoreA = applyCutoutShader(getLowPolyMat(CAS.wallC)); casMatWallCoreA.map = texMasonries[0]; casMatWallCoreA.needsUpdate = true;
 const casMatWallCoreB = applyCutoutShader(getLowPolyMat(CAS.wallC)); casMatWallCoreB.map = texMasonries[1]; casMatWallCoreB.needsUpdate = true;
 const casMatWallCoreSh = applyCutoutShader(getLowPolyMat(CAS.wallSh)); casMatWallCoreSh.map = texMasonries[1]; casMatWallCoreSh.needsUpdate = true;
+// 성의 석재 일체(바닥 석판·벽·기둥·잔해)를 무광으로. 담쟁이는 식물이라 제외.
+stoneRough(casFloorMats, casMatWall, casMatWallB, casMatWallC, casMatWallSh,
+  casMatRubble, casMatRubbleD, casMatPillar, casMatPillarD,
+  casMatWallCoreA, casMatWallCoreB, casMatWallCoreSh);
 const casMatIvy = applyCutoutShader(getLowPolyMat(CAS.ivy));
 const casMatIvyD = applyCutoutShader(getLowPolyMat(CAS.ivyD));
 const casMatIvyA = applyCutoutShader(getLowPolyMat(CAS.ivyA));
@@ -7609,6 +7629,8 @@ const corMatWallB = applyCutoutShader(getLowPolyMat(COR.wallB));
 const corMatWallC = applyCutoutShader(getLowPolyMat(COR.wallC));
 const corMatWallSh = applyCutoutShader(getLowPolyMat(COR.wallSh));
 const corMatRubble = applyCutoutShader(getLowPolyMat(COR.rubble));
+// 3막도 석재만 무광. 살덩이(flesh)는 젖은 질감이 의도이므로 건드리지 않는다.
+stoneRough(corFloorMats, corMatWall, corMatWallB, corMatWallC, corMatWallSh, corMatRubble);
 const corMatFlesh = applyCutoutShader(getLowPolyMat(COR.flesh));
 const corMatFleshB = applyCutoutShader(getLowPolyMat(COR.fleshB));
 const corMatFleshC = applyCutoutShader(getLowPolyMat(COR.fleshC));
@@ -8049,6 +8071,7 @@ function buildDungeonMesh(dgn) {
   const floorMat = getLowPolyMat(0x2a2417), floorMat2 = getLowPolyMat(0x322b1a);
   floorMat.map = texDirts[0]; floorMat2.map = texDirts[1]; // 도트 흙바닥(자갈 점)
   const pebbleMat = getLowPolyMat(0x534b3c), pebbleMat2 = getLowPolyMat(0x3d3829);
+  stoneRough(floorMat, floorMat2, pebbleMat, pebbleMat2); // 흙바닥·자갈도 돌 계열
   const mossPatchMat = getLowPolyMat(0x3a4a1c); mossPatchMat.map = texMosses[1]; // 어두운 이끼 얼룩(도트 이끼)
   const { grid } = dgn;
   wallGrid = grid; // 시야 판정용으로 전역 보관
@@ -8295,7 +8318,7 @@ function buildGrass(grid, mossSpots, edgeBias) {
 
 // ===== 이끼 동굴 장식 =====
 const C_MOSS = [getLowPolyMat(0x44551f), getLowPolyMat(0x4e5e28), getLowPolyMat(0x3a4a1c)];
-const C_ROCK = [getLowPolyMat(0x534b3c), getLowPolyMat(0x3d3829)];
+const C_ROCK = [getLowPolyMat(0x534b3c), getLowPolyMat(0x3d3829)]; stoneRough(C_ROCK); // 동굴 바위 장식
 const C_TRUNK = getLowPolyMat(0x4a3a26), C_TRUNKD = getLowPolyMat(0x33271a);
 const C_VINE = [getLowPolyMat(0x3d5a26), getLowPolyMat(0x4c6e30)], C_LEAF = getLowPolyMat(0x5a7a30);
 const C_SHROOM_STEM = getLowPolyMat(0xb0a890);
@@ -9115,6 +9138,7 @@ function spawnGroundRift(x, z, dirX, dirZ, length, width) {
   const segN = Math.max(12, Math.floor(length / (TILE * 0.28)));  // 파편 줄 수(촘촘)
   const baseRockMat = getLowPolyMat(0x4a4038, false);    // 어두운 돌 파편(복제용 원본)
   const baseEdgeMat = getLowPolyMat(0x6b5d4f, false);    // 밝은 돌 모서리(복제용 원본)
+  stoneRough(baseRockMat, baseEdgeMat);                  // 무너지는 함정의 돌 파편
 
   // ===== 빨간 바닥: 통짜 균열 메시 하나 (세그먼트로 안 쪼갬 → 깜빡임/끊김 없음) =====
   // 평면의 한쪽 끝(보스 발밑)을 원점에 두고, scale.z로 0→1 자라나게 한다. 기준 길이만큼 미리 만들어 둠.
