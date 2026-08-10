@@ -4160,7 +4160,7 @@ let townPTrees = null;
 let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v725'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v726'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -10130,23 +10130,46 @@ function cullSceneLights(cam) {
   scene.traverse(function (o) {
     if (o.isPointLight) _lightCullList.push(o);
   });
+  // 플레이어 광원(횃불·발밑등)은 무조건 켠다. 예전에는 이것도 거리순 경쟁에 넣었는데,
+  // 기준점이 카메라라 '카메라와 플레이어 사이에 있는 벽 횃불'이 내 횃불보다 가깝다고 판정돼서
+  // 걷는 동안 플레이어 광원이 깜빡깜빡 꺼졌다(실측: 3~85층에서 5~15% 구간).
+  let kept = 0;
+  for (const L of _lightCullList) {
+    L._pinned = (L === torch || L === nearLight);
+    if (L._pinned) { if (L._culled) { L.visible = true; L._culled = false; } kept++; }
+  }
   if (_lightCullList.length <= MAX_DYN_LIGHTS) {
     // 한도 이내면 전부 켬(원래 상태 보존)
     for (const L of _lightCullList) if (L._culled) { L.visible = true; L._culled = false; }
     return;
   }
-  const cx = cam.position.x, cy = cam.position.y, cz = cam.position.z;
-  // 카메라와의 거리 제곱 기준 정렬(가까운 것 우선)
+  // 기준점도 카메라가 아니라 플레이어다. 카메라는 25칸쯤 떨어져 있어서 '카메라에 가까운 광원'과
+  // '내 주변을 밝히는 광원'이 서로 다르다 — 후자가 맞다.
+  const px = (typeof player !== 'undefined' && player.obj) ? player.obj.position.x : cam.position.x;
+  const py = (typeof player !== 'undefined' && player.obj) ? player.obj.position.y : cam.position.y;
+  const pz = (typeof player !== 'undefined' && player.obj) ? player.obj.position.z : cam.position.z;
   for (const L of _lightCullList) {
     L.getWorldPosition(_tmpLightVec);
-    L._distSq = (_tmpLightVec.x - cx) ** 2 + (_tmpLightVec.y - cy) ** 2 + (_tmpLightVec.z - cz) ** 2;
+    L._distSq = (_tmpLightVec.x - px) ** 2 + (_tmpLightVec.y - py) ** 2 + (_tmpLightVec.z - pz) ** 2;
+    // 다 쓴 이펙트 라이트(intensity 0)는 빛을 안 내면서 슬롯만 먹는다 → 맨 뒤로 보낸다.
+    // 끄지 않고 뒤로만 미는 이유: 켜진 광원 '개수'가 프레임마다 달라지면 three가 머티리얼을
+    // 전부 재컴파일한다(v702에서 이것 때문에 컨텍스트 손실이 났다). 개수는 항상 MAX_DYN_LIGHTS다.
+    if (L.intensity <= 0.0001) L._distSq += 1e6;
   }
   _lightCullList.sort((a, b) => a._distSq - b._distSq);
   for (let i = 0; i < _lightCullList.length; i++) {
     const L = _lightCullList[i];
-    const keep = i < MAX_DYN_LIGHTS;
-    if (keep && L._culled) { L.visible = true; L._culled = false; }
-    else if (!keep && !L._culled) { L.visible = false; L._culled = true; }
+    if (L._pinned) continue;                       // 플레이어 광원은 위에서 이미 켜고 슬롯을 예약했다
+    if (kept < MAX_DYN_LIGHTS) {
+      if (L._culled) { L.visible = true; L._culled = false; }
+      // 다른 이유로 꺼져 있는 광원은 슬롯을 세지 않는다 — 세면 실제 켜진 수가 한도보다 적어진다.
+      if (L.visible) kept++;
+    } else if (L.visible) {
+      // 판정을 _culled가 아니라 '지금 켜져 있는가'로 한다. 예전에는 !_culled 로만 봐서,
+      // 컬링이 끈 광원을 다른 코드가 다시 켜면 (_culled=true & visible=true) 상태가 되고
+      // 그 광원이 계속 켜진 채 남아 동시 점등 수가 한도를 넘었다(실측 3층에서 6개여야 할 게 7개).
+      L.visible = false; L._culled = true;
+    }
   }
 }
 const _tmpLightVec = new THREE.Vector3();
