@@ -4148,7 +4148,7 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v698'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v699'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -4762,13 +4762,19 @@ function _depthLitChunk() {
 // 두 무리를 눈에 띄게 갈라 주는 보정을 따로 건다.
 //
 // 램프 구간은 실측이다. 이 게임의 러프니스는 0.60 / 0.90 / 0.92 / 1.00 네 값뿐이고
-// roughnessMap은 하나도 없다. 0.60(갑옷·금속류)이 1층 23%·33층 13%이고 나머지는 0.90 이상이라,
-// 0.60~0.95 구간에 램프를 두면 '반짝여야 할 것'과 '무광이어야 할 것'이 정확히 갈린다.
+// roughnessMap은 하나도 없다. 0.60(갑옷·금속류)이 1층 23%·33층 13%이고 나머지는 0.90 이상이다.
+//
+// 하단을 0.60이 아니라 0.40에 두는 이유: 0.60으로 두면 갑옷이 램프 최하단에 정확히 걸려
+// 최대 배수(1+drough=2.2)를 그대로 받는다. 2막은 달빛(방향광 0.32)이 있어 그 하이라이트가
+// 블룸 임계(0.62)를 넘어 캐릭터·몬스터만 유독 번졌다 — 실측으로 캐릭터 영역의 임계 초과 픽셀이
+// 1막 0.85%인데 2막은 4.36%였고, ?drough=0으로 끄면 0.83%로 떨어졌다.
+// 0.40으로 내리면 갑옷 배수가 2.2 → 1.66이 되어, '매끈=반짝 / 거침=무광'이라는 의도는 그대로
+// 두면서 램프 끝에 걸려 최대치를 받는 것만 완화된다(배경 돌은 1.00이라 그대로 0.4배).
 //
 // 러프니스를 material 구조체에서 읽지 않는 이유: r128의 필드명은 material.roughness가 아니라
 // specularRoughness라 그대로 쓰면 컴파일이 깨진다. roughnessFactor는 이름이 안 바뀌어 더 안전하다.
 // 이 값은 STANDARD/PHYSICAL 셰이더에만 있으므로 Phong 머티리얼에서 깨지지 않게 #ifdef로 감싼다.
-let dRoughStr = 1.2, dRoughLo = 0.60, dRoughHi = 0.95;
+let dRoughStr = 1.2, dRoughLo = 0.40, dRoughHi = 0.95;
 {
   const m = /[?&]drough=([0-9.]+)/.exec(location.search);
   if (m) dRoughStr = parseFloat(m[1]);
