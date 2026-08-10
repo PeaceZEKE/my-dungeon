@@ -4148,7 +4148,7 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v697'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v698'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -7490,10 +7490,11 @@ function makeCastleTorch(parent, x, y, z) {
   const f2 = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.42, 7), getGlowMat(0xffd060)); f2.position.y = 0.12; flameG.add(f2);
   flameG.position.y = 0.55; g.add(flameG);
   const glowSp = makeGlowSprite(0xffa050, 2.6, 0.5); glowSp.position.y = 0.85; g.add(glowSp); // 빛번짐
-  let light = null;
-  if (cavernLightBudget > 0) { cavernLightBudget--; light = new THREE.PointLight(0xff8a3a, 1.5, 17, 2.0); light.position.y = 0.6; g.add(light); }
+  // 광원은 여기서 만들지 않는다 — 아래 assignTorchLights()가 공용 풀에서 가까운 횃불에 붙여 준다.
+  // 예전엔 생성 순서대로 앞 6개만 광원을 받아, 큰 층에서는 대부분이 불만 타고 주변을 못 밝혔다.
   g.position.set(x, y, z); parent.add(g);
-  castleTorches.push({ flame: flameG, f1, f2, light, sprite: glowSp, ph: Math.random() * 10 });
+  castleTorches.push({ flame: flameG, f1, f2, light: null, sprite: glowSp, ph: Math.random() * 10,
+                       lit: true, wx: x, wy: y + 0.6, wz: z, lcol: 0xff8a3a, ldist: 17 });
 }
 function makeCastlePillar(parent, x, z, broken) {
   const g = new THREE.Group();
@@ -7725,10 +7726,10 @@ function makeGlowTumor(parent, x, y, z) {
   const nod2 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12, 0), getGlowMat(COR.glowB));
   nod2.position.set(0.3, 0.28, 0.15); g.add(nod2);
   const glowSp = makeGlowSprite(0xff9a68, 2.3, 0.45); glowSp.position.y = 0.6; g.add(glowSp); // 빛번짐
-  let light = null;
-  if (cavernLightBudget > 0) { cavernLightBudget--; light = new THREE.PointLight(0xff8a55, 1.4, 15, 2.0); light.position.y = 0.7; g.add(light); }
+  // 2막 횃불과 같은 방식 — 광원은 공용 풀에서 가까운 것에 붙인다(assignTorchLights).
   g.position.set(x, y, z); parent.add(g);
-  corruptPulses.push({ mesh: clump, glow: nod, light, sprite: glowSp, ph: Math.random() * 10, baseI: 1.4 });
+  corruptPulses.push({ mesh: clump, glow: nod, light: null, sprite: glowSp, ph: Math.random() * 10, baseI: 1.4,
+                       lit: true, wx: x, wy: y + 0.7, wz: z, lcol: 0xff8a55, ldist: 15 });
 }
 // 바닥 거대 종양 더미: 방 안 장식 — 큰 살덩이 + 발광 결절
 function makeFleshTumorMass(parent, x, z) {
@@ -7885,6 +7886,72 @@ const walls = [];
 // 장식 어셋(기둥·석순·잔해·종양 더미) 충돌체 — walls에 작은 AABB로 등록해
 // 플레이어(moveWithCollision)·적(moveEntityXZ)·투사체 충돌이 전부 일관 적용됨.
 function addDecorCollider(x, z, r) { walls.push({ x, z, halfW: r, halfD: r, isDecor: true }); }
+
+// ===== 횃불 점광원 풀(2막·3막) =====
+// 예전에는 makeCastleTorch가 만들어지는 순서대로 cavernLightBudget(6)을 소진해, 큰 층에서는
+// 앞쪽 방 6개만 밝고 나머지는 불꽃·빛번짐만 있고 실제 광원이 없었다(실측 55층: 횃불 17개 중 6개).
+// 개수는 그대로 6개로 두되 매 프레임 플레이어에게 가까운 횃불로 옮겨 붙인다 —
+// 광원 수가 고정이라 성능 비용도, three의 머티리얼 재컴파일도 늘지 않는다.
+const TORCH_LIGHT_POOL = 6;
+const torchLights = [];
+const _tlFrustum = new THREE.Frustum(), _tlCam = new THREE.Matrix4(), _tlTmp = new THREE.Vector3();
+function assignTorchLights() {
+  if (!torchLights.length) {
+    for (let i = 0; i < TORCH_LIGHT_POOL; i++) {
+      const L = new THREE.PointLight(0xff8a3a, 0, 17, 2.0);
+      scene.add(L); torchLights.push(L);
+    }
+  }
+  const list = [];
+  for (const tc of castleTorches) { tc.light = null; if (tc.lit) list.push(tc); }
+  for (const cp of corruptPulses) { cp.light = null; if (cp.lit) list.push(cp); }
+  if (!list.length) { for (const L of torchLights) L.intensity = 0; return; }
+  // 순위: 화면에 보이는 횃불이 무조건 먼저, 그 다음 가까운 순.
+  // 거리만 쓰면 벽 너머·화면 밖 횃불이 광원을 가져가 정작 눈에 보이는 횃불이 어둡다
+  // (실측 55층 스폰: 가장 가까운 횃불이 17유닛인데 화면 안에는 하나도 없었다).
+  _tlCam.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  _tlFrustum.setFromProjectionMatrix(_tlCam);
+  const p = player.obj.position;
+  for (const e of list) {
+    const dx = e.wx - p.x, dz = e.wz - p.z;
+    _tlTmp.set(e.wx, e.wy, e.wz);
+    e._ld = Math.sqrt(dx * dx + dz * dz) + (_tlFrustum.containsPoint(_tlTmp) ? 0 : 1000);
+  }
+  list.sort((a, b) => a._ld - b._ld);
+  for (let i = 0; i < torchLights.length; i++) {
+    const L = torchLights[i], e = list[i];
+    if (!e) { L.intensity = 0; continue; }   // 켤 횃불이 모자라면 남는 광원은 꺼 둔다
+    L.position.set(e.wx, e.wy, e.wz);
+    L.color.setHex(e.lcol); L.distance = e.ldist;
+    e.light = L;                              // 깜빡임 루프가 이 참조로 intensity를 흔든다
+  }
+}
+
+// ===== 점광원 총량 상한(?plcap) =====
+// three.js는 씬의 모든 점광원을 셰이더 유니폼으로 넘긴다. 실측(55층)에서 41개까지 올라가는데
+// 그중 25개가 사거리 1~3짜리 적 장식광이라, 멀면 화면에 아무 기여도 없이 유니폼만 차지한다.
+// 모바일 GPU의 MAX_FRAGMENT_UNIFORM_VECTORS는 보통 224~1024라 이게 링크 실패로 이어질 수 있다.
+// '플레이어를 실제로 비추는 순서'(거리 - 사거리)로 정렬해 상위 N개만 켠다 — 사거리 밖 광원을
+// 꺼도 화면은 그대로다. 켜는 개수를 고정하는 이유: 개수가 바뀌면 three가 모든 머티리얼을
+// 다시 컴파일해 프레임이 튄다. 매 프레임 씬을 훑으면 비싸므로 0.15초마다만 갱신한다.
+let POINT_LIGHT_CAP = 16;
+{ const m = /[?&]plcap=([0-9]+)/.exec(location.search); if (m) POINT_LIGHT_CAP = parseInt(m[1], 10); }
+const _plList = [];
+const _plTmp = new THREE.Vector3();
+let _plTimer = 0;
+function updatePointLightBudget(dt) {
+  if (POINT_LIGHT_CAP <= 0) return;
+  _plTimer -= dt;
+  if (_plTimer > 0) return;
+  _plTimer = 0.15;
+  _plList.length = 0;
+  scene.traverse(o => { if (o.isPointLight) _plList.push(o); });
+  if (_plList.length <= POINT_LIGHT_CAP) { for (const L of _plList) L.visible = true; return; }
+  const p = player.obj.position;
+  for (const L of _plList) { L.getWorldPosition(_plTmp); L._plRank = _plTmp.distanceTo(p) - (L.distance || 0); }
+  _plList.sort((a, b) => a._plRank - b._plRank);
+  for (let i = 0; i < _plList.length; i++) _plList[i].visible = (i < POINT_LIGHT_CAP);
+}
 
 let wallGrid = null; // 시야 판정용 벽 격자(generateDungeon에서 채움)
 // 이끼 동굴 장식 애니메이션 대상
@@ -13154,6 +13221,8 @@ function updateCavernDecor(dt) {
     }
     casDustGeo.attributes.position.needsUpdate = true;
   }
+  // 광원 풀을 이번 프레임의 가까운 횃불에 붙인다(2막·3막 공용) — 아래 깜빡임 루프가 이 참조를 쓴다
+  assignTorchLights();
   // 2막 성 횃불 깜빡임
   for (const tc of castleTorches) {
     const f = 1.0 + Math.sin(t * 10 + tc.ph) * 0.22 + Math.sin(t * 23 + tc.ph) * 0.12;
@@ -14838,6 +14907,7 @@ function update(dt) {
   updatePotions(dt);
   updateParryRings(dt);
   updateEffectLights(dt); // 전투 섬광 풀 감쇠
+  updatePointLightBudget(dt); // 점광원 총량 상한(사거리 밖 광원 끄기 — 모바일 유니폼 보호)
   updateFirePools(dt);
   updateIceZones(dt);
   updateIcePillars(dt);
