@@ -4148,7 +4148,7 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v696'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v697'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -8025,6 +8025,7 @@ function buildDungeonMesh(dgn) {
     castleMoon.shadow.camera.updateProjectionMatrix();
     collapseTiles.length = 0;  // 3막엔 무너지는 함정 없음(이전 막 잔재 정리)
     buildCorruptMesh(dgn);
+    if (player.floor >= 45) buildGolemDecoys(dgn); // 골렘이 나오는 층이면 위장 바위도(아래 주석 참고)
     casDustMat.color.setHex(0xdf9aa8);  // 떠다니는 분홍 포자
     updateCastleDust(true);
     return;
@@ -8051,6 +8052,10 @@ function buildDungeonMesh(dgn) {
     collapseTiles.length = 0;
     buildCollapseTraps(dgn);
     buildCastleMesh(dgn);
+    // 골렘 위장 바위: 골렘은 45층부터 나오는데 45층은 2막이라, 예전엔 1막 경로 끝에만
+    // 호출이 있어서 한 번도 실행되지 않았다(1막은 30층까지라 floor>=45가 참이 될 수 없다).
+    // 막 분기마다 조기 return이라 골렘이 나오는 2·3막 경로에 각각 걸어 준다.
+    if (player.floor >= 45) buildGolemDecoys(dgn);
     updateCastleDust(true);   // 떠다니는 먼지 켜고 현재 맵 범위로 재배치
     return;
   } else {
@@ -11954,10 +11959,13 @@ function buildGolemBody(grp, bodyGrp, headGrp, limbs, seed) {
   mossMat.roughness = 1.0; mossDk.roughness = 1.0; dirtMat.roughness = 1.0; // 이끼·흙도 무광(빛 반사 통일)
   const crackMat = new THREE.MeshStandardMaterial({ color: 0x2e3026, roughness: 0.95 });
   const coreMat = new THREE.MeshStandardMaterial({ color: 0xffb060, emissive: 0xff7020, emissiveIntensity: 1.4, roughness: 0.4 });
-  // 약점도 본체와 같은 무광(1.0). 혼자 0.9면 휴면 중(발광 0)에도 하이라이트만 더 받아
-  // 약점 위치가 드러난다 — 약점은 '각성 시 발광'으로만 알아보게 하려는 것이라 티가 나면 안 된다.
-  // 발광은 러프니스와 무관하므로 각성 후 식별성은 그대로다.
-  const weakMat = getLowPolyMat(0x7a8a82); weakMat.roughness = 1.0; weakMat.emissive = new THREE.Color(0x2878c0); weakMat.emissiveIntensity = 0.0; // 등 약점(각성 시 발광)
+  // 등 약점은 바위가 아니라 '박힌 보석'이다 — 돌빛(0x7a8a82·무광) 대신 보석 재질로 간다.
+  // 게임의 기존 보석 컨벤션(궁정마법사 지팡이 보석: roughness 0.3 + emissive)을 따른다.
+  // roughness 0.28은 ?drough 램프(0.60~0.95)의 아래쪽 바깥이라 하이라이트가 최대로 붙는다
+  // — 무광 바위 몸체 한가운데서 이 면만 반짝여 보석으로 읽힌다. flatShading이라 각진 면이
+  // 커팅처럼 보인다. 색도 푸른 보석으로 바꿔 휴면(발광 0) 상태에서도 재질이 드러나게 했다.
+  const weakMat = new THREE.MeshStandardMaterial({ color: 0x3f7fb8, flatShading: true, roughness: 0.28, metalness: 0.0 });
+  weakMat.emissive = new THREE.Color(0x2878c0); weakMat.emissiveIntensity = 0.0; // 등 약점(각성 시 발광)
   coreMat._glowMat = true; weakMat._glowMat = true; // 피격 플래시·빙결이 발광색을 덮어쓰지 않도록 표시
 
   const rock = (r, mat, detail) => { const m = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(r, detail === undefined ? 0 : detail), mat)); jitterGeoShared(m.geometry, r * 0.18); return m; };
