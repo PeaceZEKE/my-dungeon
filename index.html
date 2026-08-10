@@ -4148,7 +4148,7 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v703'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v704'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -5153,7 +5153,14 @@ const _normalHidden = [];
 function _hideNonSolid(root) {
   root.traverse(o => {
     if (!o.visible) return;
-    if (o.isSprite || o.isPoints || (o.material && o.material.transparent)) {
+    const mm = o.material;
+    const organic = mm && (Array.isArray(mm) ? mm.some(x => x && x.userData && x.userData._organic)
+                                             : (mm.userData && mm.userData._organic));
+    // 유기체(피부)는 노멀 버퍼에 넣지 않는다.
+    // 이 게임 지오메트리는 면마다 노멀이 끊겨 있어서, 볼록 모서리 하이라이트(uPxNormalStr)가
+    // 피부의 모든 면 경계에 선을 그어 얼굴·팔이 깎아 만든 무기물처럼 보였다.
+    // 색 패스에는 그대로 남으므로 로우폴리 룩은 유지되고, 모서리 강조만 빠진다.
+    if (o.isSprite || o.isPoints || organic || (mm && mm.transparent)) {
       o.visible = false; _normalHidden.push(o);
     }
   });
@@ -7003,8 +7010,12 @@ function getGlowMat(colorHex) { return new THREE.MeshBasicMaterial({ color: colo
 // 함정: three r128의 Material.copy()는 onBeforeCompile을 복사하지 않는다(userData는 복사된다).
 // 그래서 clone()으로 만든 머티리얼은 clone '뒤에' 다시 불러야 하고, 중복 방지 플래그도
 // userData가 아니라 함수 자체에 달아 둔다(복사되지 않으므로 clone 후 자동으로 다시 적용된다).
+// ?organic=0 이면 예전 동작으로 되돌린다(피부에도 하이라이트·모서리 강조가 들어간다).
+// 이 효과는 실측 화면 변화가 매우 작아서(구울 확대 기준 0.14%·최대 6/255) 스크린샷 비교로는
+// 판단이 어렵다 — 실제 기기에서 두 값을 번갈아 보고 정하는 편이 빠르다.
+const ORGANIC_MATTE = !/[?&]organic=0/.test(location.search);
 function markOrganic(m) {
-  if (!m) return m;
+  if (!m || !ORGANIC_MATTE) return m;
   if (m.onBeforeCompile && m.onBeforeCompile._organicMark) return m; // 이미 적용됨
   const prev = m.onBeforeCompile;
   const fn = function (shader) {
@@ -7016,6 +7027,7 @@ function markOrganic(m) {
   };
   fn._organicMark = true;
   m.onBeforeCompile = fn;
+  m.userData = m.userData || {}; m.userData._organic = true; // 노멀 패스 제외 판정용(clone에도 복사된다)
   if (m.roughness !== undefined) m.roughness = 1.0; // 하이라이트가 없으니 러프니스도 무광으로
   m.needsUpdate = true;
   return m;
