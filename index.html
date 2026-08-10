@@ -4160,7 +4160,7 @@ let townPTrees = null;
 let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v713'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v714'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -8979,6 +8979,11 @@ const PT_DEFAULTS = {
   colors: { deep: 0x1c4a24, low: 0x2f7a33, mid: 0x57a83c, high: 0x93cf4e },
   sunDir: [18, 26, 10],
   upBias: 0.62,                 // 명암을 '위쪽'에 얼마나 실을지(햇빛 방향 대비). 클수록 위가 밝다
+  // 잎 한 장 단위 셰이딩 — 이게 없으면 같은 명암대의 잎끼리 색이 같아서 한 덩어리로 뭉쳐 보인다
+  // (구가 여러 개 붙어 있는 느낌). 레퍼런스처럼 잎마다 윤곽이 보이게 하는 부분.
+  leafDome: 0.22,               // 잎 위는 밝게 아래는 어둡게(잎 자체의 입체감). 0=끔
+  leafRim: 0.74,                // 잎 테두리 밝기 배수(1=끔) — 잎마다 어두운 외곽선이 생긴다
+  leafRimAt: 0.84,              // 테두리로 칠 반지름(0~1). 낮추면 테두리가 두꺼워져 동전처럼 보인다
   blobs: [                      // 캐노피 형태 — 가이드 구체
     { x: 0.00, y: 0.60, z: 0.00, r: 0.30 },
     { x: -0.20, y: 0.50, z: 0.10, r: 0.21 },
@@ -9020,6 +9025,7 @@ function createPixelTrees(options) {
     uLo: { value: new THREE.Color(O.colors.low) },
     uMid: { value: new THREE.Color(O.colors.mid) },
     uHi: { value: new THREE.Color(O.colors.high) },
+    uDome: { value: O.leafDome }, uRim: { value: O.leafRim }, uRimAt: { value: O.leafRimAt },
     uExposure: { value: O.exposure },
   };
   const defines = { QUANT: O.quantize > 0 ? 1 : 0, ACES_ON: O.useACES ? 1 : 0 };
@@ -9028,9 +9034,11 @@ function createPixelTrees(options) {
     'precision highp float;',
     'attribute vec3 aNorm;',   // 캐노피 구체의 바깥 방향 — 명암 계산용
     'attribute float aTint;',  // 그루별 밝기(한 나무의 잎은 모두 같은 값)
-    'varying vec3 vN; varying float vTint;',
+    'varying vec3 vN; varying float vTint; varying vec2 vLocal;',
     'void main(){',
     '  vN=normalize(aNorm); vTint=aTint;',
+    // 잎 안에서의 위치(-1~1). 잎 단위 명암·테두리에 쓴다. 지오메트리가 반지름 0.5라 ×2.
+    '  vLocal=position.xy*2.0;',
     // 위치는 instanceMatrix 로만 만든다. 정점 셰이더에서 흔들면 재질을 교체하는 패스와
     // 형상이 어긋나 외곽선이 깨진다.
     '  vec4 wp=modelMatrix*instanceMatrix*vec4(position,1.0);',
@@ -9042,15 +9050,21 @@ function createPixelTrees(options) {
     'precision highp float;',
     'uniform vec3 uSunDir; uniform float uNight, uExposure;',
     'uniform vec3 uDeep,uLo,uMid,uHi;',
-    'varying vec3 vN; varying float vTint;',
+    'uniform float uDome,uRim,uRimAt;',
+    'varying vec3 vN; varying float vTint; varying vec2 vLocal;',
     PG_ACES_GLSL,
     'void main(){',
     // 잎의 실제 법선 대신 '구체 바깥 방향'으로 명암을 낸다 — 잎 한 장씩 반짝이지 않고
     // 캐노피 덩어리 전체가 둥글게 보인다. 4단으로 끊어 픽셀아트 톤을 유지.
     '  float ndl=max(dot(vN,normalize(uSunDir)),0.0);',
     '  float t=clamp(' + (1 - O.upBias).toFixed(3) + '*ndl+' + O.upBias.toFixed(3) + '*(vN.y*0.5+0.5),0.0,1.0);',
+    // 잎 자체의 위아래 명암. 명암대를 나누기 '전에' 더해야 잎마다 계단 경계가 달라져서
+    // 같은 명암대에 있는 이웃 잎과도 색이 갈린다(안 그러면 한 덩어리로 뭉친다).
+    '  t+=vLocal.y*uDome;',
     '  float q=floor(clamp(t,0.0,0.999)*4.0);',
     '  vec3 col = q<0.5? uDeep : (q<1.5? uLo : (q<2.5? uMid : uHi));',
+    // 잎 테두리를 한 단 어둡게 — 잎마다 윤곽선이 생겨 개별 잎이 읽힌다.
+    '  if(length(vLocal)>uRimAt) col*=uRim;',
     '  col*=mix(1.0,0.34,uNight);',
     '#if ACES_ON',
     '  col=pgACES(col);',
@@ -9141,7 +9155,8 @@ function createPixelTrees(options) {
         dummy.position.set(tx + p.x, p.y, tz + p.z);
         look.copy(dummy.position).add(camN);
         dummy.lookAt(look);                                     // 잎이 카메라를 향함
-        dummy.rotateZ(rnd(tx + k, tz + k, 14) * Math.PI * 2);
+        // 원본은 여기서 무작위 Z회전을 넣었는데(반복감 완화), 그러면 잎의 로컬 +y가 제각각이라
+        // 잎 단위 위아래 명암(uDome)이 방향을 잃는다. 팔각형이라 회전해도 실루엣이 같으므로 뺐다.
         const ls = (O.leafSize[0] + rnd(tx, tz + k, 15) * (O.leafSize[1] - O.leafSize[0])) * scale;
         dummy.scale.set(ls, ls, ls);
         dummy.updateMatrix();
