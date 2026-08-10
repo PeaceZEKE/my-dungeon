@@ -4160,7 +4160,7 @@ let townPTrees = null;
 let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v712'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v713'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -6661,10 +6661,25 @@ function buildTownScene() {
       // 이 게임은 시점이 고정이라 setTrees 때 한 번 구워 두면 끝이다.
       cameraDir: [isoOffsetX, isoOffsetY, isoOffsetZ],
       sunDir: [14, 22, 10],                 // 마을 달빛/햇빛 방향과 같은 쪽
-      colors: { low: 0x2c5326, mid: 0x477c33, high: 0x7aa845 },
-      leavesPerTree: 56,
-      trunkMaterial: M.wood,                // 마을 목재 재질(도트 텍스처 포함) 그대로 — 줄기만 톤이 튀지 않게
-      trunkRadius: [0.055, 0.09], trunkHeight: 0.62,
+      // 레퍼런스 픽셀아트 숲 톤: 채도 높은 초록 4단. 안쪽 깊은 그늘이 있어야 잎 덩어리가 겹쳐 보인다.
+      // ACES를 안 타므로 여기 적은 색이 화면에 그대로 나온다. 레퍼런스보다 한 단 낮춘 이유는
+      // 이 마을이 채도가 낮은 중세 팔레트라 원본 그대로 넣으면 나무만 형광으로 뜬다.
+      colors: { deep: 0x17401f, low: 0x2a6b2c, mid: 0x468d33, high: 0x77b440 },
+      upBias: 0.55,
+      // 잎을 크고 적게 — 작은 잎을 많이 뿌리면 색종이처럼 자잘해진다.
+      // 덩어리 하나가 '잎 뭉치'로 읽혀야 레퍼런스처럼 뭉게구름 실루엣이 나온다.
+      leavesPerTree: 42, leafSize: [0.22, 0.36], leafSides: 8,
+      // 캐노피를 하나 더 얹어 실루엣을 더 울퉁불퉁하게(원본 4개 → 5개)
+      blobs: [
+        { x: 0.00, y: 0.58, z: 0.00, r: 0.32 },
+        { x: -0.23, y: 0.48, z: 0.11, r: 0.23 },
+        { x: 0.21, y: 0.51, z: -0.10, r: 0.22 },
+        { x: 0.04, y: 0.80, z: 0.03, r: 0.20 },
+        { x: -0.09, y: 0.68, z: -0.19, r: 0.18 },
+      ],
+      // 줄기: 레퍼런스처럼 붉은 기가 도는 갈색 + 밑동이 넓게 벌어진 형태
+      trunkMaterial: mat(0x7d4a3a),
+      trunkRadius: [0.05, 0.13], trunkHeight: 0.62,
       wind: { amp: 0.20, speed: 0.9, dir: [0.906, 0.423] },
       quantize: 8,
     });
@@ -8959,8 +8974,11 @@ const PT_DEFAULTS = {
   leavesPerTree: 64,
   leafSize: [0.15, 0.24],       // 잎 한 장의 월드 크기(그루 scale이 곱해진다)
   leafSides: 6,
-  colors: { low: 0x2f5f2a, mid: 0x46853a, high: 0x6fae4a },
+  // 명암 4단(깊은 그늘 / 그늘 / 중간 / 햇빛). 원본은 3단인데, 레퍼런스 픽셀아트 나무는
+  // 캐노피 안쪽 깊은 그늘이 한 단 더 있어야 잎 덩어리가 겹쳐 보인다.
+  colors: { deep: 0x1c4a24, low: 0x2f7a33, mid: 0x57a83c, high: 0x93cf4e },
   sunDir: [18, 26, 10],
+  upBias: 0.62,                 // 명암을 '위쪽'에 얼마나 실을지(햇빛 방향 대비). 클수록 위가 밝다
   blobs: [                      // 캐노피 형태 — 가이드 구체
     { x: 0.00, y: 0.60, z: 0.00, r: 0.30 },
     { x: -0.20, y: 0.50, z: 0.10, r: 0.21 },
@@ -8978,6 +8996,11 @@ const PT_DEFAULTS = {
   trunkColor: 0x6b4b2e, trunkRadius: [0.055, 0.085], trunkHeight: 0.34,
   castShadow: true,
   exposure: 1.1,                 // renderer.toneMappingExposure 와 같은 값
+  // ACES를 태울지. 끄면 적어 넣은 색이 그대로 나온다.
+  // 잎은 끄는 쪽이 낫다 — ACES는 밝은 쪽에서 채도를 크게 눌러서(역산해 보면 #94ce50 목표가
+  // 어떤 입력으로도 #bfce99 같은 뿌연 연두로만 나온다) 픽셀아트의 선명한 초록이 안 나온다.
+  // 대신 색을 씬 밝기에 맞춰 직접 고르면 된다.
+  useACES: false,
   seed: 1,
 };
 function createPixelTrees(options) {
@@ -8993,12 +9016,13 @@ function createPixelTrees(options) {
   const uniforms = {
     uSunDir: { value: new THREE.Vector3(O.sunDir[0], O.sunDir[1], O.sunDir[2]).normalize() },
     uNight: { value: 0 },
+    uDeep: { value: new THREE.Color(O.colors.deep !== undefined ? O.colors.deep : O.colors.low) },
     uLo: { value: new THREE.Color(O.colors.low) },
     uMid: { value: new THREE.Color(O.colors.mid) },
     uHi: { value: new THREE.Color(O.colors.high) },
     uExposure: { value: O.exposure },
   };
-  const defines = { QUANT: O.quantize > 0 ? 1 : 0 };
+  const defines = { QUANT: O.quantize > 0 ? 1 : 0, ACES_ON: O.useACES ? 1 : 0 };
 
   const vert = [
     'precision highp float;',
@@ -9017,18 +9041,20 @@ function createPixelTrees(options) {
   const frag = [
     'precision highp float;',
     'uniform vec3 uSunDir; uniform float uNight, uExposure;',
-    'uniform vec3 uLo,uMid,uHi;',
+    'uniform vec3 uDeep,uLo,uMid,uHi;',
     'varying vec3 vN; varying float vTint;',
     PG_ACES_GLSL,
     'void main(){',
     // 잎의 실제 법선 대신 '구체 바깥 방향'으로 명암을 낸다 — 잎 한 장씩 반짝이지 않고
-    // 캐노피 덩어리 전체가 둥글게 보인다. 3단으로 끊어 픽셀아트 톤을 유지.
+    // 캐노피 덩어리 전체가 둥글게 보인다. 4단으로 끊어 픽셀아트 톤을 유지.
     '  float ndl=max(dot(vN,normalize(uSunDir)),0.0);',
-    '  float t=clamp(0.45*ndl+0.55*(vN.y*0.5+0.5),0.0,1.0);',
-    '  t=floor(t*3.0)/3.0;',
-    '  vec3 col = t<0.34? uLo : (t<0.67? uMid : uHi);',
+    '  float t=clamp(' + (1 - O.upBias).toFixed(3) + '*ndl+' + O.upBias.toFixed(3) + '*(vN.y*0.5+0.5),0.0,1.0);',
+    '  float q=floor(clamp(t,0.0,0.999)*4.0);',
+    '  vec3 col = q<0.5? uDeep : (q<1.5? uLo : (q<2.5? uMid : uHi));',
     '  col*=mix(1.0,0.34,uNight);',
+    '#if ACES_ON',
     '  col=pgACES(col);',
+    '#endif',
     '#if QUANT',
     '  col=floor(col*' + O.quantize.toFixed(1) + ')/' + O.quantize.toFixed(1) + ';',
     '#endif',
