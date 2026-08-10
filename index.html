@@ -4152,12 +4152,15 @@ const PGRASS = !/[?&]pgrass=0/.test(location.search);
 // 잔디 빌보드 방식. 기본은 카메라를 정면으로 보는 풀 빌보드(스프라이트가 안 눌린다).
 // ?pgfull=0 이면 Y축 빌보드(월드 수직으로 선 채 카메라 쪽만 도는 예전 방식).
 const PGRASS_FULL = !/[?&]pgfull=0/.test(location.search);
+// 픽셀아트 나무(인스턴싱 캐노피). ?ptrees=0 이면 예전 20면체 덩어리 나무로 돌아간다.
+const PTREES = !/[?&]ptrees=0/.test(location.search);
+let townPTrees = null;
 // 마을·던전 각각 하나씩(씬이 다르다). 배치가 바뀔 때만 setCells를 부른다.
 // 선언을 잔디 코드 옆이 아니라 여기 두는 이유도 TDZ다 — buildTownScene이 언제 불릴지에 기대지 않는다.
 let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v710'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v711'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -6592,6 +6595,7 @@ function buildTownScene() {
 
   // ===== 성벽 안쪽 둘레에 촘촘한 나무 ===== (게이트 통로 + 논밭 구역 제외)
   const FARM_ANGLE = -2.55;                            // 풍차~마차 사이 논밭 부채꼴 중심
+  const treeSpots = [];                                // 픽셀 나무용 좌표(예전 경로는 trees 배열)
   for (let i = 0; i < 48; i++) {
     const phi = i / 48 * Math.PI * 2 + Math.random() * 0.06;
     const dg = Math.abs(Math.atan2(Math.sin(phi - GATE_ANGLE), Math.cos(phi - GATE_ANGLE)));
@@ -6601,7 +6605,29 @@ function buildTownScene() {
     const rr = 21.5 + Math.random() * 2.4 - (i % 2 ? 1.3 : 0);
     const x = rr * Math.sin(phi) + (Math.random() - 0.5) * 1.2;
     const z = rr * Math.cos(phi) + (Math.random() - 0.5) * 1.2;
-    trees.push(makeTree(x, z, 0.8 + Math.random() * 0.7));
+    const s = 0.8 + Math.random() * 0.7;
+    if (PTREES) treeSpots.push({ x, z, scale: s * 3.2 }); // 모듈은 높이 1 기준 — 예전 나무 높이에 맞춘 배율
+    else trees.push(makeTree(x, z, s));
+  }
+  if (PTREES && treeSpots.length) {
+    townPTrees = createPixelTrees({
+      scene: townScene, seed: 20260812,
+      // 잎이 향할 방향 = 카메라가 있는 쪽. iso 오프셋(11.07/20/11.07)을 그대로 쓴다.
+      // 이 게임은 시점이 고정이라 setTrees 때 한 번 구워 두면 끝이다.
+      cameraDir: [isoOffsetX, isoOffsetY, isoOffsetZ],
+      sunDir: [14, 22, 10],                 // 마을 달빛/햇빛 방향과 같은 쪽
+      colors: { low: 0x2c5326, mid: 0x477c33, high: 0x7aa845 },
+      leavesPerTree: 56,
+      trunkMaterial: M.wood,                // 마을 목재 재질(도트 텍스처 포함) 그대로 — 줄기만 톤이 튀지 않게
+      trunkRadius: [0.055, 0.09], trunkHeight: 0.62,
+      wind: { amp: 0.20, speed: 0.9, dir: [0.906, 0.423] },
+      quantize: 8,
+    });
+    townPTrees.setTrees(treeSpots);
+    // 콜라이더: 인스턴싱이라 그룹 바운딩이 숲 전체가 된다 — 자동 등록에서 빼고 그루마다 직접 넣는다.
+    // 반경은 예전 나무의 바운딩 박스 근사(캐노피 폭 × 0.42)와 같은 크기로 맞췄다.
+    townPTrees.group.userData.noCollide = true;
+    for (const t of treeSpots) _collide(t.x, t.z, t.scale * 0.33);
   }
 
   // ===== 입구 → 마을로 이어지는 포장도로 (게이트에서 중앙 광장까지) =====
@@ -8847,6 +8873,270 @@ function updatePixelGrass(t) {
   }
   _pgState.night = inTown ? (townTimeOfDay === 'night' ? 1 : 0) : 0;
   g.update(t, _pgState);
+}
+
+// ===== 픽셀아트 나무/캐노피(pixel-trees) =====
+// 가이드 구체 여러 개를 겹치고 그 union 표면에만 잎을 인스턴싱한다. 다른 구체 안쪽으로 들어간
+// 점을 버려서 원뿔·구체 같은 뻔한 형태가 아니라 뭉친 실루엣이 나온다.
+// 나무 몇 십 그루를 드로우콜 2개(잎 + 줄기)로 그린다.
+// 원본 pixel-trees.js(MIT)를 이 게임에 맞춰 고친 것:
+//  · ACES 톤매핑 — 잎 재질이 라이트를 안 타는 ShaderMaterial이라 잔디와 같은 이유로 필요하다.
+//  · trunkMaterial 옵션 — 원본 기본값 MeshLambertMaterial 대신 마을 목재 재질(도트 텍스처 포함)을
+//    그대로 쓴다. 줄기만 다른 톤으로 튀지 않는다.
+// 잎은 육각 지오메트리라 알파 discard가 없다 → 노멀 패스에 그대로 넣어도 안전하다(잔디와 다른 점).
+// 바람도 정점 셰이더가 아니라 instanceMatrix를 CPU에서 갱신한다 — 그래야 노멀·그림자 패스와
+// 형상이 어긋나지 않는다(overrideMaterial은 정점 변형도 같이 날려 버린다).
+const PT_DEFAULTS = {
+  scene: null,
+  leavesPerTree: 64,
+  leafSize: [0.15, 0.24],       // 잎 한 장의 월드 크기(그루 scale이 곱해진다)
+  leafSides: 6,
+  colors: { low: 0x2f5f2a, mid: 0x46853a, high: 0x6fae4a },
+  sunDir: [18, 26, 10],
+  blobs: [                      // 캐노피 형태 — 가이드 구체
+    { x: 0.00, y: 0.60, z: 0.00, r: 0.30 },
+    { x: -0.20, y: 0.50, z: 0.10, r: 0.21 },
+    { x: 0.19, y: 0.53, z: -0.09, r: 0.20 },
+    { x: 0.04, y: 0.80, z: 0.03, r: 0.19 },
+  ],
+  scaleMin: 0.85, scaleMax: 1.15,
+  jitter: 0.16,
+  cameraDir: [0.62, 0.53, 0.58], // 잎이 향할 방향(카메라 쪽)
+  wind: { amp: 0.20, speed: 1.15, dir: [0.906, 0.423] },
+  swayFrom: 0.30, swayTo: 1.05,
+  tint: { lo: 0.86, hi: 1.14, steps: 5 },
+  quantize: 8,
+  trunks: true, trunkMaterial: null,
+  trunkColor: 0x6b4b2e, trunkRadius: [0.055, 0.085], trunkHeight: 0.34,
+  castShadow: true,
+  exposure: 1.1,                 // renderer.toneMappingExposure 와 같은 값
+  seed: 1,
+};
+function createPixelTrees(options) {
+  const O = Object.assign({}, PT_DEFAULTS, options || {});
+  const opt = options || {};
+  O.colors = Object.assign({}, PT_DEFAULTS.colors, opt.colors || {});
+  O.wind = Object.assign({}, PT_DEFAULTS.wind, opt.wind || {});
+  O.tint = Object.assign({}, PT_DEFAULTS.tint, opt.tint || {});
+
+  const group = new THREE.Group();
+  if (O.scene) O.scene.add(group);
+
+  const uniforms = {
+    uSunDir: { value: new THREE.Vector3(O.sunDir[0], O.sunDir[1], O.sunDir[2]).normalize() },
+    uNight: { value: 0 },
+    uLo: { value: new THREE.Color(O.colors.low) },
+    uMid: { value: new THREE.Color(O.colors.mid) },
+    uHi: { value: new THREE.Color(O.colors.high) },
+    uExposure: { value: O.exposure },
+  };
+  const defines = { QUANT: O.quantize > 0 ? 1 : 0 };
+
+  const vert = [
+    'precision highp float;',
+    'attribute vec3 aNorm;',   // 캐노피 구체의 바깥 방향 — 명암 계산용
+    'attribute float aTint;',  // 그루별 밝기(한 나무의 잎은 모두 같은 값)
+    'varying vec3 vN; varying float vTint;',
+    'void main(){',
+    '  vN=normalize(aNorm); vTint=aTint;',
+    // 위치는 instanceMatrix 로만 만든다. 정점 셰이더에서 흔들면 재질을 교체하는 패스와
+    // 형상이 어긋나 외곽선이 깨진다.
+    '  vec4 wp=modelMatrix*instanceMatrix*vec4(position,1.0);',
+    '  gl_Position=projectionMatrix*viewMatrix*wp;',
+    '}'
+  ].join('\n');
+
+  const frag = [
+    'precision highp float;',
+    'uniform vec3 uSunDir; uniform float uNight, uExposure;',
+    'uniform vec3 uLo,uMid,uHi;',
+    'varying vec3 vN; varying float vTint;',
+    PG_ACES_GLSL,
+    'void main(){',
+    // 잎의 실제 법선 대신 '구체 바깥 방향'으로 명암을 낸다 — 잎 한 장씩 반짝이지 않고
+    // 캐노피 덩어리 전체가 둥글게 보인다. 3단으로 끊어 픽셀아트 톤을 유지.
+    '  float ndl=max(dot(vN,normalize(uSunDir)),0.0);',
+    '  float t=clamp(0.45*ndl+0.55*(vN.y*0.5+0.5),0.0,1.0);',
+    '  t=floor(t*3.0)/3.0;',
+    '  vec3 col = t<0.34? uLo : (t<0.67? uMid : uHi);',
+    '  col*=mix(1.0,0.34,uNight);',
+    '  col=pgACES(col);',
+    '#if QUANT',
+    '  col=floor(col*' + O.quantize.toFixed(1) + ')/' + O.quantize.toFixed(1) + ';',
+    '#endif',
+    // 그루별 밝기는 양자화 '뒤에' 곱한다. 앞에 곱하면 밴드 하나씩 뭉텅이로 튀어
+    // '살짝 다름'이 안 되고, 톤에 따라 아예 차이가 안 나기도 한다.
+    '  col*=vTint;',
+    '  gl_FragColor=vec4(col,1.0);',
+    '}'
+  ].join('\n');
+
+  const leafMat = new THREE.ShaderMaterial({ uniforms, defines, side: THREE.DoubleSide });
+  leafMat.vertexShader = vert;
+  leafMat.fragmentShader = frag;
+
+  // 잎은 알파 텍스처가 아니라 지오메트리로 모양을 낸다 — overrideMaterial 패스에서도 실루엣이 같다.
+  const leafGeo = new THREE.CircleGeometry(0.5, O.leafSides);
+  const trunkMat = O.trunks ? (O.trunkMaterial || new THREE.MeshLambertMaterial({ color: O.trunkColor })) : null;
+  const trunkGeo = O.trunks ? new THREE.CylinderGeometry(O.trunkRadius[0], O.trunkRadius[1], O.trunkHeight, 5) : null;
+  if (trunkGeo) trunkGeo.translate(0, O.trunkHeight / 2, 0);   // 밑동을 y=0 에
+
+  let canopy = null, trunk = null;
+  let basePos = null, swayW = null, ownerOf = null, phase = null, treeCount = 0;
+
+  // 좌표로 결정되는 유사난수 — 같은 자리 나무는 항상 같은 모양이다(재생성해도 숲이 안 달라진다).
+  const rnd = (x, y, k) => {
+    const s = Math.sin(x * 127.1 + y * 311.7 + k * 74.7 + O.seed * 13.7) * 43758.5453;
+    return s - Math.floor(s);
+  };
+  const blobsFor = (x, z, scale) => {
+    const jx = (rnd(x, z, 2) - 0.5) * O.jitter, jz = (rnd(x, z, 3) - 0.5) * O.jitter;
+    return O.blobs.map(b => ({ x: jx + b.x * scale, y: b.y * scale, z: jz + b.z * scale, r: b.r * scale }));
+  };
+  const scaleOf = (t) => (t.scale !== undefined ? t.scale : O.scaleMin + rnd(t.x, t.z, 1) * (O.scaleMax - O.scaleMin));
+
+  // trees: [[x,z], ...] 또는 [{x,z,scale?}, ...] — 월드 좌표
+  function setTrees(trees) {
+    if (canopy) { group.remove(canopy); canopy.geometry.dispose(); canopy = null; }
+    if (trunk) { group.remove(trunk); trunk = null; }
+    basePos = swayW = ownerOf = phase = null; treeCount = 0;
+    if (!trees || !trees.length) return 0;
+    const list = trees.map(t => (Array.isArray(t) ? { x: t[0], z: t[1] } : t));
+
+    const per = O.leavesPerTree, cap = list.length * per;
+    const mats = new Float32Array(cap * 16), norms = new Float32Array(cap * 3);
+    const bpos = new Float32Array(cap * 3), sw = new Float32Array(cap);
+    const owner = new Uint16Array(cap), tint = new Float32Array(cap);
+    const dummy = new THREE.Object3D();
+    const camN = new THREE.Vector3(O.cameraDir[0], O.cameraDir[1], O.cameraDir[2]).normalize();
+    const look = new THREE.Vector3(), p = new THREE.Vector3();
+    const steps = Math.max(2, O.tint.steps);
+    let n = 0;
+
+    for (let ti = 0; ti < list.length; ti++) {
+      const tx = list[ti].x, tz = list[ti].z;
+      const scale = scaleOf(list[ti]);
+      // 그루별 밝기 — 몇 단계로 끊어 '노이즈'가 아니라 '팔레트 변주'처럼 보이게
+      const tv = O.tint.lo + (O.tint.hi - O.tint.lo) * (Math.floor(rnd(tx, tz, 41) * steps) / (steps - 1));
+      const blobs = blobsFor(tx, tz, scale);
+      const areas = blobs.map(b => b.r * b.r);
+      const tot = areas.reduce((a, b) => a + b, 0);
+
+      let placed = 0, guard = 0;
+      while (placed < per && guard < per * 12) {
+        const k = guard * 7 + placed; guard++;
+        // 면적 비례로 구체를 고르고, 그 구면 위 한 점을 균일하게 뽑는다
+        let r = rnd(tx + k * 0.13, tz, 11) * tot, bi = 0;
+        while (bi < blobs.length - 1 && r > areas[bi]) { r -= areas[bi]; bi++; }
+        const b2 = blobs[bi];
+        const u = rnd(tx, tz + k * 0.17, 12) * 2 - 1;
+        const th = rnd(tx + k * 0.31, tz + k * 0.11, 13) * Math.PI * 2;
+        const s2 = Math.sqrt(Math.max(0, 1 - u * u));
+        const nx = s2 * Math.cos(th), ny = u, nz = s2 * Math.sin(th);
+        p.set(b2.x + nx * b2.r, b2.y + ny * b2.r, b2.z + nz * b2.r);
+        // 다른 구체 안쪽 점은 버린다 → 겹친 부분이 사라지고 union 표면만 남는다. 이게 이 기법의 핵심.
+        let inside = false;
+        for (let j = 0; j < blobs.length; j++) {
+          if (j === bi) continue;
+          const o = blobs[j];
+          const dx = p.x - o.x, dy = p.y - o.y, dz = p.z - o.z;
+          if (dx * dx + dy * dy + dz * dz < o.r * o.r * 0.94) { inside = true; break; }
+        }
+        if (inside) continue;
+
+        dummy.position.set(tx + p.x, p.y, tz + p.z);
+        look.copy(dummy.position).add(camN);
+        dummy.lookAt(look);                                     // 잎이 카메라를 향함
+        dummy.rotateZ(rnd(tx + k, tz + k, 14) * Math.PI * 2);
+        const ls = (O.leafSize[0] + rnd(tx, tz + k, 15) * (O.leafSize[1] - O.leafSize[0])) * scale;
+        dummy.scale.set(ls, ls, ls);
+        dummy.updateMatrix();
+        dummy.matrix.toArray(mats, n * 16);
+
+        norms[n * 3] = nx; norms[n * 3 + 1] = ny; norms[n * 3 + 2] = nz;
+        bpos[n * 3] = dummy.position.x; bpos[n * 3 + 1] = dummy.position.y; bpos[n * 3 + 2] = dummy.position.z;
+        // 아래는 거의 고정, 위로 갈수록 크게 흔들림(가지가 휘듯)
+        sw[n] = Math.max(0, Math.min(1, (p.y - O.swayFrom * scale) / ((O.swayTo - O.swayFrom) * scale)));
+        owner[n] = ti; tint[n] = tv;
+        n++; placed++;
+      }
+    }
+    if (!n) return 0;
+
+    const geo = leafGeo.clone();
+    geo.setAttribute('aNorm', new THREE.InstancedBufferAttribute(norms.subarray(0, n * 3), 3));
+    geo.setAttribute('aTint', new THREE.InstancedBufferAttribute(tint.subarray(0, n), 1));
+    canopy = new THREE.InstancedMesh(geo, leafMat, n);
+    canopy.instanceMatrix.array.set(mats.subarray(0, n * 16));
+    canopy.instanceMatrix.needsUpdate = true;
+    canopy.frustumCulled = false;
+    canopy.castShadow = O.castShadow; canopy.receiveShadow = false;
+    group.add(canopy);
+
+    basePos = bpos.subarray(0, n * 3);
+    swayW = sw.subarray(0, n);
+    ownerOf = owner.subarray(0, n);
+    treeCount = list.length;
+    phase = new Float32Array(treeCount);
+    for (let q = 0; q < treeCount; q++) phase[q] = rnd(list[q].x, list[q].z, 31) * Math.PI * 2;
+
+    if (O.trunks) {
+      trunk = new THREE.InstancedMesh(trunkGeo, trunkMat, list.length);
+      const dm = new THREE.Object3D();
+      for (let m = 0; m < list.length; m++) {
+        const sc2 = scaleOf(list[m]);
+        dm.position.set(list[m].x, 0, list[m].z);
+        dm.scale.set(sc2, sc2, sc2);
+        dm.rotation.set(0, rnd(list[m].x, list[m].z, 21) * Math.PI * 2, 0);
+        dm.updateMatrix();
+        trunk.setMatrixAt(m, dm.matrix);
+      }
+      trunk.instanceMatrix.needsUpdate = true;
+      trunk.castShadow = O.castShadow; trunk.receiveShadow = true;
+      group.add(trunk);
+    }
+    return n;
+  }
+
+  let _lean = null;
+  // 매 프레임. 캐노피를 바람 방향으로 기울인다. sin은 그루당 한 번만, 잎은 곱셈만 → CPU 부담이 작다.
+  // 잎마다 따로 흔들면 진폭이 작아 저해상도에서 서브픽셀 진동(지글거림)이 된다.
+  function update(time, state) {
+    state = state || {};
+    if (state.night !== undefined) uniforms.uNight.value = state.night;
+    if (!canopy || !basePos || O.wind.amp <= 0) return;
+    if (!_lean || _lean.length !== treeCount) _lean = new Float32Array(treeCount);
+    const sp = O.wind.speed, amp = O.wind.amp;
+    for (let i = 0; i < treeCount; i++) {
+      const ph = phase[i];
+      // 두 성분의 주기를 π로 어긋내 반복감을 없앤다
+      _lean[i] = (Math.sin(time * sp + ph) * 0.65 + Math.sin(time * sp * Math.PI * 0.5 + ph * 1.7) * 0.35) * amp;
+    }
+    const arr = canopy.instanceMatrix.array;
+    const wx = O.wind.dir[0], wz = O.wind.dir[1];
+    for (let k = 0; k < swayW.length; k++) {
+      const d = _lean[ownerOf[k]] * swayW[k];
+      const o = k * 16;
+      arr[o + 12] = basePos[k * 3] + wx * d;
+      arr[o + 13] = basePos[k * 3 + 1];
+      arr[o + 14] = basePos[k * 3 + 2] + wz * d;
+    }
+    canopy.instanceMatrix.needsUpdate = true;
+  }
+  return {
+    group, uniforms, material: leafMat, setTrees, update,
+    get canopy() { return canopy; },
+    get trunkMesh() { return trunk; },
+    get leafCount() { return canopy ? canopy.count : 0; },
+    get treeCount() { return treeCount; },
+    dispose() {
+      if (group.parent) group.parent.remove(group);
+      if (canopy) canopy.geometry.dispose();
+      leafGeo.dispose(); leafMat.dispose();
+      if (trunkGeo) trunkGeo.dispose();
+      if (trunkMat && !O.trunkMaterial) trunkMat.dispose();
+    },
+  };
 }
 
 // ===== 풀밭/식생(1막 — 숲 동굴) =====
@@ -17877,6 +18167,10 @@ function tick(now) {
   let dt = Math.min(0.05, clock.getDelta());
   windUniforms.uTime.value += dt; // 풀·덩굴 바람
   if (PGRASS) updatePixelGrass(windUniforms.uTime.value); // 픽셀 잔디(바람·밟힘·밤)
+  // 픽셀 나무: 마을에서만. instanceMatrix를 CPU에서 갱신하므로 안 보일 때는 돌리지 않는다.
+  if (PTREES && inTown && townPTrees) {
+    townPTrees.update(windUniforms.uTime.value, { night: townTimeOfDay === 'night' ? 1 : 0 });
+  }
   if (_lastInTown !== inTown) { _lastInTown = inTown; applyAdaptiveFOV(); } // 마을↔던전 전환 시 FOV 보정
   // 패링 히트스톱: 짧은 슬로우모션으로 타격감 강조
   if (hitStop > 0) { hitStop -= dt; dt *= 0.18; }
