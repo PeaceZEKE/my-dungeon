@@ -4160,7 +4160,7 @@ let townPTrees = null;
 let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v711'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v712'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -4911,6 +4911,20 @@ const skinTagMaterial = new THREE.ShaderMaterial({
   vertexShader: 'void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
   fragmentShader: 'void main(){ gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); }',
 });
+// ===== 식생(잔디·나뭇잎) 검은 외곽선 제거 =====
+// 외곽선은 깊이 차이로 그린다. 잎 하나하나가 실루엣이라 식생에는 선이 잔뜩 생겨 지저분하다.
+// 노멀 버퍼의 '알파'를 외곽선 스위치로 쓴다 — 알파 0이면 그 픽셀엔 외곽선을 안 그린다.
+// 알파를 쓰는 이유: RGB(=노멀)를 그대로 남길 수 있어서, 나뭇잎은 모서리 하이라이트를 유지한 채
+// 검은 선만 뺄 수 있다. 잔디는 노멀이 의미 없으므로 초록 표식(0,1,0)까지 얹어 하이라이트도 뺀다.
+const VEG_NO_OUTLINE = !/[?&]vout=1/.test(location.search);
+const VEG_TAG_LAYER = 2;
+// 나뭇잎용: 진짜 노멀을 그대로 쓰되 알파만 0으로.
+const vegNormalMaterial = new THREE.MeshNormalMaterial();
+vegNormalMaterial.onBeforeCompile = function (shader) {
+  shader.fragmentShader = shader.fragmentShader.replace(
+    'packNormalToRGB( normal ), opacity', 'packNormalToRGB( normal ), 0.0');
+};
+vegNormalMaterial.customProgramCacheKey = function () { return 'vegNormalA0'; };
 
 const quadScene = new THREE.Scene();
 const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -5010,12 +5024,16 @@ const quadMat = new THREE.ShaderMaterial({
     // 디코드하면 (1,-1,-1)인데, 진짜 단위 노멀은 g·b가 -0.7 아래면 r이 ±0.14를 못 넘으므로
     // 이 조합은 정상 노멀과 절대 겹치지 않는다 → 표식으로 안전하다.
     bool isSkinTag(vec3 n) { return n.r > 0.7 && n.g < -0.7 && n.b < -0.7; }
+    // 식생 표식(순수 초록). 디코드하면 (-1,1,-1) — 위와 같은 이유로 정상 노멀과 겹치지 않는다.
+    bool isVegTag(vec3 n) { return n.g > 0.7 && n.r < -0.7 && n.b < -0.7; }
+    // 외곽선 스위치: 노멀 버퍼 알파가 0이면 그 픽셀은 식생 → 검은 외곽선을 안 그린다.
+    float outlineAt() { return texture2D(tNormal, vUv + uSubpixel).a; }
     // 이웃 한 칸과의 노멀 차이. 두 가지 장치가 들어간다.
     //  - bias 방향과의 내적으로 '어느 쪽 면이 빛을 받은 쪽인지' 정해 한쪽에만 하이라이트를 준다.
     //  - 더 가까운 픽셀만 엣지를 주장하게 해서 경계에 선이 두 줄 생기는 걸 막는다.
     float nEdge(vec2 o, float dep, vec3 n, float dNb) {
       vec3 m = nrmAt(o);
-      if (isSkinTag(m)) return 0.0; // 이웃이 피부면 그쪽 경계는 없는 것으로 친다
+      if (isSkinTag(m) || isVegTag(m)) return 0.0; // 이웃이 피부·잔디면 그쪽 경계는 없는 것으로 친다
       float depthDiff = dNb - dep;
       float normalDiff = dot(n - m, uPxNormalBias);
       float normalInd = clamp(smoothstep(-0.01, 0.01, normalDiff), 0.0, 1.0);
@@ -5069,6 +5087,9 @@ const quadMat = new THREE.ShaderMaterial({
         // 2) 선 세기를 {0, 0.5, 1} 세 단계로 끊는다 — 안티에일리어싱된 회색 테두리가 안 생긴다.
         float dei = floor(smoothstep(t, t * 1.65, d) * 2.0) / 2.0;
         dei *= uStrength * (1.0 - blur * 0.85);
+        // 식생(노멀 버퍼 알파 0)에는 검은 외곽선을 그리지 않는다. 잎마다 실루엣이라
+        // 그대로 두면 캐노피·잔디가 선으로 뒤덮여 지저분해진다.
+        dei *= step(0.5, outlineAt());
         // 3) 검정을 덮어씌우지 않고 곱한다 — 그 면의 색이 어두워진 버전이 선이 되어 재질색이 살아있다.
         // 4) 깊이 경계가 아닌 곳에서는 '볼록한 모서리'를 오히려 밝게 해 입체가 깎인 것처럼 보이게 한다.
         //    어두운 영역에서 하이라이트가 튀면 지저분해지므로 밝기에 비례해 약하게 넣는다.
@@ -5076,7 +5097,8 @@ const quadMat = new THREE.ShaderMaterial({
         if (uPxNormalStr > 0.001) {
           vec3 n = nrmAt(vec2(0.0));
           // 피부에는 모서리 하이라이트를 넣지 않는다 — 살이 깎아 만든 무기물처럼 보인다.
-          if (!isSkinTag(n)) {
+          // 잔디도 마찬가지(초록 표식). 나뭇잎은 진짜 노멀이 남아 있어 하이라이트가 그대로 들어간다.
+          if (!isSkinTag(n) && !isVegTag(n)) {
             nei += nEdge(vec2( 0.0, -1.0), c, n, dn);
             nei += nEdge(vec2( 0.0,  1.0), c, n, u);
             nei += nEdge(vec2(-1.0,  0.0), c, n, l);
@@ -5178,9 +5200,10 @@ quadMat.uniforms.tBloom.value = rtBloom.texture;
 // 스프라이트·파티클처럼 반투명한 것들은 이 패스에서 빼야 한다 — 안 그러면 발광 하나하나가
 // 불투명 사각형으로 찍혀서 가짜 외곽선이 잔뜩 생긴다.
 const _normalHidden = [];
+const _normalVeg = [], _normalVegMat = [];
 let _normalSkinCount = 0;
 function _hideNonSolid(root) {
-  _normalSkinCount = 0;
+  _normalSkinCount = 0; _normalVeg.length = 0;
   root.traverse(o => {
     if (!o.visible) return;
     const mm = o.material;
@@ -5201,6 +5224,10 @@ function _hideNonSolid(root) {
       // 새 몬스터 빌더)가 빠져서 그 자리에만 구멍이 남는다. 이 패스는 2패스보다 먼저 도므로
       // 방금 만들어진 메쉬도 같은 프레임에 표식이 붙는다.
       if (organic) { o.layers.enable(SKIN_TAG_LAYER); _normalSkinCount++; }
+      // 식생은 3패스에서 자기 표식 재질로 다시 그린다(잔디는 초록 표식, 잎은 진짜 노멀 + 알파 0).
+      if (VEG_NO_OUTLINE && o.isMesh && o.userData && o.userData.fxTagMat) {
+        o.layers.enable(VEG_TAG_LAYER); _normalVeg.push(o);
+      }
     }
   });
 }
@@ -5224,6 +5251,24 @@ function renderNormalPass(sceneToRender) {
     camera.layers.set(SKIN_TAG_LAYER);
     renderer.autoClear = false;
     renderer.render(sceneToRender, camera);
+    sceneToRender.background = prevBg;
+    renderer.autoClear = prevAuto;
+    camera.layers.mask = prevMask;
+  }
+  // 3패스: 식생. overrideMaterial을 쓰지 않고 메시마다 자기 표식 재질로 바꿔 그린다 —
+  // 잔디는 알파 discard가 살아 있어야 잎 모양대로 찍히고, 나뭇잎은 진짜 노멀을 남겨야
+  // 모서리 하이라이트가 유지된다. 둘의 요구가 달라서 한 재질로는 안 된다.
+  // 대상이 메시 두어 개뿐이라 재질 교체가 오히려 싸다(레이어로 골라 렌더는 한 번).
+  if (_normalVeg.length) {
+    const prevMask = camera.layers.mask, prevAuto = renderer.autoClear, prevBg = sceneToRender.background;
+    _normalVegMat.length = 0;
+    for (const o of _normalVeg) { _normalVegMat.push(o.material); o.material = o.userData.fxTagMat; }
+    sceneToRender.overrideMaterial = null;
+    sceneToRender.background = null;
+    camera.layers.set(VEG_TAG_LAYER);
+    renderer.autoClear = false;
+    renderer.render(sceneToRender, camera);
+    for (let i = 0; i < _normalVeg.length; i++) _normalVeg[i].material = _normalVegMat[i];
     sceneToRender.background = prevBg;
     renderer.autoClear = prevAuto;
     camera.layers.mask = prevMask;
@@ -8778,9 +8823,32 @@ function createPixelGrass(options) {
   material.vertexShader = vert;
   material.fragmentShader = frag;
 
+  // 노멀 패스 3패스용 표식 재질. 정점 셰이더는 같고(잎 모양·바람·밟힘이 그대로 맞아야 한다),
+  // 프래그먼트만 같은 discard 뒤 초록(0,1,0)·알파 0을 찍는다 → 하이라이트도 외곽선도 빠진다.
+  const tagFrag = [
+    'precision highp float;',
+    'uniform sampler2D uGrass; uniform float uTiles, uPersp;',
+    'varying vec2 vUv; varying float vTile; varying float vLean; varying vec2 vWxz;',
+    'void main(){',
+    '  vec2 uv=vUv;',
+    '  if(uPersp>0.0001){',
+    '    float s=clamp(1.0-(vLean*vUv.y*uPersp),0.05,4.0);',
+    '    uv.x=(uv.x-0.5)*s+0.5;',
+    '    if(uv.x<0.0||uv.x>1.0) discard;',
+    '  }',
+    '  vec2 auv=vec2((vTile+min(uv.x,0.999))/uTiles, uv.y);',
+    '  if(texture2D(uGrass,auv).a<0.5) discard;',
+    '  gl_FragColor=vec4(0.0,1.0,0.0,0.0);',
+    '}'
+  ].join('\n');
+  const tagMaterial = new THREE.ShaderMaterial({ uniforms, defines, side: THREE.DoubleSide });
+  tagMaterial.vertexShader = vert;
+  tagMaterial.fragmentShader = tagFrag;
+
   const mesh = new THREE.Mesh(quad, material);
   mesh.frustumCulled = false;   // 정점 셰이더로 위치를 만들므로 바운딩이 무의미
   mesh.userData.fx = true;      // 노멀 패스 제외 표식(_hideNonSolid)
+  mesh.userData.fxTagMat = tagMaterial;
   if (O.scene) O.scene.add(mesh);
 
   // 결정적 난수 — 같은 seed면 같은 잔디밭. 게임 전역 Math.random 스트림을 건드리지 않는 이점도 있다.
@@ -9071,6 +9139,10 @@ function createPixelTrees(options) {
     canopy.instanceMatrix.needsUpdate = true;
     canopy.frustumCulled = false;
     canopy.castShadow = O.castShadow; canopy.receiveShadow = false;
+    // 잎은 육각 지오메트리라 노멀 패스에 넣어도 실루엣이 같다. 다만 잎마다 실루엣이 생겨
+    // 검은 외곽선이 캐노피를 뒤덮으므로, 1패스에서 빼고 3패스에서 '진짜 노멀 + 알파 0'으로 찍는다.
+    // 알파 0이 외곽선만 끄므로 모서리 하이라이트(입체감)는 그대로 남는다.
+    if (VEG_NO_OUTLINE) { canopy.userData.fx = true; canopy.userData.fxTagMat = vegNormalMaterial; }
     group.add(canopy);
 
     basePos = bpos.subarray(0, n * 3);
