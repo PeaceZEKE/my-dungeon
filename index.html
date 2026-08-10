@@ -4160,7 +4160,7 @@ let townPTrees = null;
 let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v719'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v720'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -6665,12 +6665,22 @@ function buildTownScene() {
       // ACES는 끈 채로 둔다 — 켜면 0x77dd44 같은 밝은 초록이 뿌옇게 뭉개진다(역산해도 안 나온다).
       colors: { low: 0x1e4620, mid: 0x449933, high: 0x77dd44 },
       // 잔디처럼 가늘고 뾰족한 잎. 얇아서 한 장이 덮는 면적이 작으므로 개수를 늘린다.
-      // 카드 한 장 = 잎 세 장이 겹친 뭉치. 잎을 작게 하고 카드를 촘촘히 깔되,
-      // 빈틈은 카드 수가 아니라 캐노피 덩어리(canopyBody)로 막는다 — 카드로만 채우면 삼각형이 몇 배가 된다.
+      // 형태는 덩어리가 만들고 잎 카드는 표면 질감만 낸다 — 덩어리가 면적을 훨씬 싸게 채운다.
+      // 구 8개(6×5분할 = 48삼각형)로 울퉁불퉁한 캐노피를 깔고, 그 위에 작은 잎 카드를 뿌린다.
       leafShape: 'blade', leafWidth: 0.46, leafSeg: 3,
       leafBlades: 3, leafSpread: 1.25, leafSprigVar: 0.18,
-      leavesPerTree: 50, leafSize: [0.18, 0.28],
-      canopyBody: 0.88,
+      leavesPerTree: 52, leafSize: [0.16, 0.26],
+      canopyBody: 0.9, canopyBodySeg: 6,
+      blobs: [
+        { x: 0.00, y: 0.62, z: 0.00, r: 0.30 },
+        { x: -0.24, y: 0.52, z: 0.12, r: 0.21 },
+        { x: 0.23, y: 0.54, z: -0.11, r: 0.21 },
+        { x: 0.05, y: 0.82, z: 0.04, r: 0.19 },
+        { x: -0.10, y: 0.70, z: -0.22, r: 0.18 },
+        { x: 0.14, y: 0.68, z: 0.21, r: 0.18 },
+        { x: -0.20, y: 0.86, z: -0.05, r: 0.14 },
+        { x: 0.19, y: 0.84, z: 0.09, r: 0.14 },
+      ],
       // 밑동은 어둡고 끝은 밝게 — 잔디와 같은 명암. 테두리는 얇은 잎에선 잎 전체를 먹으므로 끈다.
       leafDome: 0.30, leafRim: 1,
       trunkMaterial: mat(0x5a3d28),
@@ -8976,6 +8986,8 @@ const PT_DEFAULTS = {
   leafShape: 'lobed', leafWidth: 0.34, leafSeg: 3,
   leafBlades: 4, leafSpread: 1.5, leafSprigVar: 0.16, // 카드 한 장에 겹쳐 그릴 잎 수·벌림 각·밝기 차
   canopyBody: 0.9,              // 캐노피 속을 채우는 덩어리의 반지름 배수(0=끔). 잎 사이로 지면이 안 보이게
+  canopyBodySeg: 6,             // 덩어리 구의 둘레 분할 수. 클수록 둥글고 삼각형이 는다
+  canopyBodyDim: 0.72,          // 덩어리 밝기 배수. 잎보다 어두워야 '안쪽'으로 물러나 보인다
   // 명암 단계. deep을 주면 4단(깊은 그늘 추가), 안 주면 low로 대체되어 원본과 같은 3단이 된다.
   colors: { low: 0x2f5f2a, mid: 0x46853a, high: 0x6fae4a },
   sunDir: [18, 26, 10],
@@ -9081,10 +9093,13 @@ function ptBladeGeo(seg, width, blades, spread) {
 // 표면을 다 덮으려면 그루당 150장 넘게 필요 → 삼각형이 몇 배로 뛴다).
 // 가이드 구체를 그대로 저폴리 덩어리로 깔아 두면 잎 사이로 지면 대신 캐노피 안쪽이 보인다.
 // 그루당 삼각형 80개면 되고, 그림자도 이쪽만 지면 충분하다(잎은 castShadow를 끈다).
-function ptCanopyBodyGeo(blobs, shrink) {
+function ptCanopyBodyGeo(blobs, shrink, seg) {
   const pos = [], nrm = [], aN = [], uv = [], sprig = [];
+  const wSeg = Math.max(4, seg | 0), hSeg = Math.max(3, (seg - 1) | 0);
   for (const b of blobs) {
-    const g = new THREE.IcosahedronGeometry(b.r * shrink, 0); // 비인덱스 — 그대로 이어 붙이면 된다
+    // 20면체(detail 0)는 각져서 덩어리 티가 난다. 저해상도 구가 삼각형당 둥글기가 좋다
+    // (6×5 구 = 48삼각형, 20면체 detail 1 = 80삼각형).
+    const g = new THREE.SphereGeometry(b.r * shrink, wSeg, hSeg).toNonIndexed();
     const p = g.attributes.position.array, nn = g.attributes.normal.array;
     for (let i = 0; i < p.length; i += 3) {
       pos.push(p[i] + b.x, p[i + 1] + b.y, p[i + 2] + b.z);
@@ -9340,7 +9355,7 @@ function createPixelTrees(options) {
     if (O.canopyBody) {
       // 잎과 같은 재질·같은 명암으로 그린다. jitter는 인스턴스 이동에 넣으면 잎 배치와 정확히 맞는다
       // (blobsFor가 jitter를 스케일 없이 더하기 때문). 회전은 주지 않는다 — 주면 잎과 어긋난다.
-      const bodyGeo = ptCanopyBodyGeo(O.blobs, O.canopyBody);
+      const bodyGeo = ptCanopyBodyGeo(O.blobs, O.canopyBody, O.canopyBodySeg);
       const bt = new Float32Array(list.length);
       const bm = new THREE.InstancedMesh(bodyGeo, leafMat, list.length);
       const dm2 = new THREE.Object3D();
@@ -9352,8 +9367,10 @@ function createPixelTrees(options) {
         dm2.rotation.set(0, 0, 0);
         dm2.updateMatrix();
         bm.setMatrixAt(m, dm2.matrix);
-        bt[m] = O.tint.lo + (O.tint.hi - O.tint.lo) *
-          (Math.floor(rnd(t2.x, t2.z, 41) * steps) / (steps - 1));
+        // aTint는 색 양자화 뒤에 곱해지므로 여기서 덩어리만 한 단 어둡게 눌러 둔다.
+        // 잎과 같은 밝기로 두면 덩어리가 캐노피처럼 보이고 그 위의 작은 잎이 묻힌다.
+        bt[m] = (O.tint.lo + (O.tint.hi - O.tint.lo) *
+          (Math.floor(rnd(t2.x, t2.z, 41) * steps) / (steps - 1))) * O.canopyBodyDim;
       }
       bodyGeo.setAttribute('aTint', new THREE.InstancedBufferAttribute(bt, 1));
       bm.instanceMatrix.needsUpdate = true;
