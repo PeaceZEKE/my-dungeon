@@ -4148,7 +4148,7 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v699'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v700'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -8110,7 +8110,12 @@ function buildDungeonMesh(dgn) {
     quadMat.uniforms.uAerialColor.value.setHex(0x16202c);
     quadMat.uniforms.uShadowColor.value.setHex(0x222c54); // 2막: 차가운 청보라 그림자 // 2막: 차가운 청회 대기
     quadMat.uniforms.uShadowStr.value = 0.42;
-    bloomMat.uniforms.uThresh.value = 0.62; quadMat.uniforms.uBloomStr.value = 0.85; quadMat.uniforms.uAerialStr.value = 0.45; // 던전 후처리 복원
+    // 2막만 블룸 임계가 높다(0.66). 이 막에만 달빛(방향광 0.32)이 있어 금속 갑옷에 하이라이트가
+    // 맺히는데, 그게 0.62를 넘어 캐릭터·몬스터만 유독 번졌다(실측: 캐릭터 영역 임계 초과 픽셀이
+    // 1막 0.85%인데 2막 4.36%). 임계는 유니폼 하나를 세 막이 덮어쓰는 구조라 전역으로 올리면
+    // 1막이 먼저 죽는다 — 1막 블룸은 0.66에서 4.86%→0.04%로 사라지는데 2막은 1.09%가 남는다.
+    // 그래서 1막·3막은 0.62 그대로 두고 이 막만 올린다.
+    bloomMat.uniforms.uThresh.value = 0.66; quadMat.uniforms.uBloomStr.value = 0.85; quadMat.uniforms.uAerialStr.value = 0.45; // 던전 후처리 복원
     ambientLight.color.setHex(0x444a54); ambientLight.intensity = 0.36;  // 차가운 회색 환경광(3막보다 밝음 — 중간 깊이)
     castleMoon.visible = true; castleHemi.visible = true;
     castleMoon.color.setHex(0x8ea0d8); castleMoon.intensity = 0.32;       // 차가운 달빛(더 밝게)
