@@ -4148,7 +4148,7 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v706'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v707'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -4892,6 +4892,13 @@ const rtNormal = new THREE.WebGLRenderTarget(lowResW, lowResH, { minFilter: THRE
 rtNormal.texture.generateMipmaps = false;
 rtNormal.stencilBuffer = false;
 const normalMaterial = new THREE.MeshNormalMaterial();
+// 피부 표식용. 노멀 버퍼에 순수 빨강을 찍어 두면 포스트 셰이더가 그 픽셀을 모서리 하이라이트에서 뺀다.
+// MeshBasicMaterial을 쓰지 않는 이유: 톤매핑·인코딩을 타서 색이 1.0 그대로 안 나온다.
+const SKIN_TAG_LAYER = 1; // 게임 코드는 레이어를 쓰지 않는다(0번만 사용) — 1번을 표식 전용으로 쓴다
+const skinTagMaterial = new THREE.ShaderMaterial({
+  vertexShader: 'void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: 'void main(){ gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); }',
+});
 
 const quadScene = new THREE.Scene();
 const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -4987,15 +4994,21 @@ const quadMat = new THREE.ShaderMaterial({
     uniform vec3 uPxNormalBias;
     varying vec2 vUv;
     vec3 nrmAt(vec2 o) { return texture2D(tNormal, vUv + uSubpixel + o * uTexel).rgb * 2.0 - 1.0; }
+    // 피부 표식: 노멀 패스 2패스에서 피부만 순수 빨강(1,0,0)으로 덮어 둔다.
+    // 디코드하면 (1,-1,-1)인데, 진짜 단위 노멀은 g·b가 -0.7 아래면 r이 ±0.14를 못 넘으므로
+    // 이 조합은 정상 노멀과 절대 겹치지 않는다 → 표식으로 안전하다.
+    bool isSkinTag(vec3 n) { return n.r > 0.7 && n.g < -0.7 && n.b < -0.7; }
     // 이웃 한 칸과의 노멀 차이. 두 가지 장치가 들어간다.
     //  - bias 방향과의 내적으로 '어느 쪽 면이 빛을 받은 쪽인지' 정해 한쪽에만 하이라이트를 준다.
     //  - 더 가까운 픽셀만 엣지를 주장하게 해서 경계에 선이 두 줄 생기는 걸 막는다.
     float nEdge(vec2 o, float dep, vec3 n, float dNb) {
+      vec3 m = nrmAt(o);
+      if (isSkinTag(m)) return 0.0; // 이웃이 피부면 그쪽 경계는 없는 것으로 친다
       float depthDiff = dNb - dep;
-      float normalDiff = dot(n - nrmAt(o), uPxNormalBias);
+      float normalDiff = dot(n - m, uPxNormalBias);
       float normalInd = clamp(smoothstep(-0.01, 0.01, normalDiff), 0.0, 1.0);
       float depthInd = clamp(sign(depthDiff * 0.25 + 0.0025), 0.0, 1.0);
-      return distance(n, nrmAt(o)) * depthInd * normalInd;
+      return distance(n, m) * depthInd * normalInd;
     }
     // 오더드 디더링용 베이어 임계값. 상수 배열을 동적 인덱싱하면 ANGLE이 헬퍼를 만들어
     // 셰이더 경고가 생기므로, 2x2를 재귀적으로 겹쳐 계산식으로 구한다.
@@ -5050,13 +5063,16 @@ const quadMat = new THREE.ShaderMaterial({
         float nei = 0.0;
         if (uPxNormalStr > 0.001) {
           vec3 n = nrmAt(vec2(0.0));
-          nei += nEdge(vec2( 0.0, -1.0), c, n, dn);
-          nei += nEdge(vec2( 0.0,  1.0), c, n, u);
-          nei += nEdge(vec2(-1.0,  0.0), c, n, l);
-          nei += nEdge(vec2( 1.0,  0.0), c, n, r);
-          nei = step(0.1, nei);
-          float lumIn = dot(col.rgb, vec3(0.299, 0.587, 0.114));
-          nei *= smoothstep(0.04, 0.22, lumIn);
+          // 피부에는 모서리 하이라이트를 넣지 않는다 — 살이 깎아 만든 무기물처럼 보인다.
+          if (!isSkinTag(n)) {
+            nei += nEdge(vec2( 0.0, -1.0), c, n, dn);
+            nei += nEdge(vec2( 0.0,  1.0), c, n, u);
+            nei += nEdge(vec2(-1.0,  0.0), c, n, l);
+            nei += nEdge(vec2( 1.0,  0.0), c, n, r);
+            nei = step(0.1, nei);
+            float lumIn = dot(col.rgb, vec3(0.299, 0.587, 0.114));
+            nei *= smoothstep(0.04, 0.22, lumIn);
+          }
         }
         float k = dei > 0.0 ? (1.0 - uPxDark * clamp(dei, 0.0, 1.0))
                             : (1.0 + uPxNormalStr * nei);
@@ -5150,18 +5166,23 @@ quadMat.uniforms.tBloom.value = rtBloom.texture;
 // 스프라이트·파티클처럼 반투명한 것들은 이 패스에서 빼야 한다 — 안 그러면 발광 하나하나가
 // 불투명 사각형으로 찍혀서 가짜 외곽선이 잔뜩 생긴다.
 const _normalHidden = [];
+let _normalSkinCount = 0;
 function _hideNonSolid(root) {
+  _normalSkinCount = 0;
   root.traverse(o => {
     if (!o.visible) return;
     const mm = o.material;
     const organic = mm && (Array.isArray(mm) ? mm.some(x => x && x.userData && x.userData._organic)
                                              : (mm.userData && mm.userData._organic));
-    // 유기체(피부)는 노멀 버퍼에 넣지 않는다.
+    // 유기체(피부)는 노멀 버퍼에 진짜 노멀을 넣지 않는다.
     // 이 게임 지오메트리는 면마다 노멀이 끊겨 있어서, 볼록 모서리 하이라이트(uPxNormalStr)가
     // 피부의 모든 면 경계에 선을 그어 얼굴·팔이 깎아 만든 무기물처럼 보였다.
     // 색 패스에는 그대로 남으므로 로우폴리 룩은 유지되고, 모서리 강조만 빠진다.
+    // 대신 아래 2패스에서 표식색을 덮어쓴다 — 그냥 비워 두면 뒤에 있는 벽·바닥의 노멀이 드러나
+    // 그 경계가 피부 위에 하이라이트로 그려진다(실측: 피부 픽셀의 21.9%, 최대 51/255).
     if (o.isSprite || o.isPoints || organic || (mm && mm.transparent)) {
       o.visible = false; _normalHidden.push(o);
+      if (organic) _normalSkinCount++;
     }
   });
 }
@@ -5171,9 +5192,25 @@ function renderNormalPass(sceneToRender) {
   const prevOverride = sceneToRender.overrideMaterial;
   sceneToRender.overrideMaterial = normalMaterial;
   renderer.setRenderTarget(rtNormal); renderer.clear(); renderer.render(sceneToRender, camera);
-  sceneToRender.overrideMaterial = prevOverride;
   for (const o of _normalHidden) o.visible = true;
   _normalHidden.length = 0;
+  // 2패스: 피부만 표식색으로. 레이어로 골라내므로 씬을 다시 훑지 않고, 1패스가 써 둔 깊이로
+  // 벽 뒤의 피부는 자동으로 가려진다(clear 하지 않으므로 1패스 결과 위에 덮인다).
+  if (_normalSkinCount > 0) {
+    // 함정: scene.background가 Color면 three가 autoClear와 상관없이 강제로 clear한다
+    // (WebGLBackground.render의 forceClear). 이걸 모르고 그냥 두 번 그리면 2패스가
+    // 1패스 결과를 통째로 지워서 노멀 버퍼가 단색이 되고 모서리 하이라이트가 전부 사라진다.
+    const prevMask = camera.layers.mask, prevAuto = renderer.autoClear, prevBg = sceneToRender.background;
+    sceneToRender.overrideMaterial = skinTagMaterial;
+    sceneToRender.background = null;
+    camera.layers.set(SKIN_TAG_LAYER);
+    renderer.autoClear = false;
+    renderer.render(sceneToRender, camera);
+    sceneToRender.background = prevBg;
+    renderer.autoClear = prevAuto;
+    camera.layers.mask = prevMask;
+  }
+  sceneToRender.overrideMaterial = prevOverride;
 }
 // === 카메라 텍셀 스냅 (픽셀 크롤 방지) ===
 // 카메라가 월드 좌표에서 연속적으로 움직이면 저해상도 버퍼가 매 프레임 다른 소수점 위치에서
@@ -7149,6 +7186,9 @@ function applyToon(root) {
   root.traverse(function (o) {
     if (o.isMesh && o.material) {
       const mats = Array.isArray(o.material) ? o.material : [o.material];
+      // 노멀 패스 2패스에서 표식색을 찍을 대상 표시. 판정은 _hideNonSolid와 같은 조건이어야
+      // '1패스에서 빠진 메쉬 = 2패스에서 표식이 찍히는 메쉬'가 정확히 맞물린다.
+      if (mats.some(x => x && x.userData && x.userData._organic)) o.layers.enable(SKIN_TAG_LAYER);
       for (const mm of mats) if (!seen.has(mm)) { seen.add(mm); makeToonChar(mm); }
     }
   });
