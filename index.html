@@ -4160,7 +4160,7 @@ let townPTrees = null;
 let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v722'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v723'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -6661,9 +6661,12 @@ function buildTownScene() {
       // 이 게임은 시점이 고정이라 setTrees 때 한 번 구워 두면 끝이다.
       cameraDir: [isoOffsetX, isoOffsetY, isoOffsetZ],
       sunDir: [18, 26, 10],
-      // 참고 코드의 3톤 팔레트를 그대로. deep을 안 넘기면 low로 대체되어 사실상 3단이 된다.
-      // ACES는 끈 채로 둔다 — 켜면 0x77dd44 같은 밝은 초록이 뿌옇게 뭉개진다(역산해도 안 나온다).
-      colors: { low: 0x1e4620, mid: 0x449933, high: 0x77dd44 },
+      // 잔디와 색감을 맞춘 팔레트. 잔디는 ACES를 타고 나무는 안 타므로, 잔디 색이 화면에
+      // 실제로 어떤 색으로 나오는지 계산해서(ACES 정방향) 그 값을 그대로 적었다:
+      //   잔디 #577a2c → 화면 #799247 / #7ba33f → #97aa65 / #c2dc86 → #b8bfa0
+      // 캐노피는 잔디의 '주된' 톤(어두움~기본)에 맞춘다 — 잔디의 밝은 톤(#b8bfa0)은 9%짜리
+      // 악센트라 그걸 캐노피 상단에 쓰면 나무 윗면이 통째로 회녹색으로 뜬다.
+      colors: { deep: 0x4b5b2c, low: 0x66803c, mid: 0x799247, high: 0x97aa65 },
       // 잔디처럼 가늘고 뾰족한 잎. 얇아서 한 장이 덮는 면적이 작으므로 개수를 늘린다.
       // 형태는 덩어리가 만들고, 그 표면에 '그린 잎 뭉치' 카드를 눕힌다(t3ssel8r 계열 방식).
       // 카드가 삼각형 2개뿐이라 폴리곤 잎(15개)보다 훨씬 싸서 촘촘히 깔 수 있다.
