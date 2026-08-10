@@ -4146,9 +4146,15 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 // B묶음: 색 양자화 + 오더드 디더링 + 틸트시프트 블러 해제
 // 예전 룩과 비교하려면 ?px=0 을 붙인다.
 const PX_MODE = !/[?&]px=0/.test(location.search);
+// 픽셀아트 잔디(인스턴싱 빌보드). ?pgrass=0 이면 예전 3D 풀잎 메시로 돌아간다.
+// 쓰는 곳보다 위에서 선언해야 한다 — 모듈 최상위 코드가 즉시 실행되므로 아래에 두면 TDZ로 부팅이 깨진다.
+const PGRASS = !/[?&]pgrass=0/.test(location.search);
+// 마을·던전 각각 하나씩(씬이 다르다). 배치가 바뀔 때만 setCells를 부른다.
+// 선언을 잔디 코드 옆이 아니라 여기 두는 이유도 TDZ다 — buildTownScene이 언제 불릴지에 기대지 않는다.
+let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v708'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v709'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -5180,7 +5186,9 @@ function _hideNonSolid(root) {
     // 색 패스에는 그대로 남으므로 로우폴리 룩은 유지되고, 모서리 강조만 빠진다.
     // 대신 아래 2패스에서 표식색을 덮어쓴다 — 그냥 비워 두면 뒤에 있는 벽·바닥의 노멀이 드러나
     // 그 경계가 피부 위에 하이라이트로 그려진다(실측: 피부 픽셀의 21.9%, 최대 51/255).
-    if (o.isSprite || o.isPoints || organic || (mm && mm.transparent)) {
+    // userData.fx: 픽셀 잔디처럼 알파 discard로 모양을 내는 것들. overrideMaterial이 discard를
+    // 없애 버려서 이 패스에 넣으면 잎이 전부 불투명 사각형으로 찍힌다.
+    if (o.isSprite || o.isPoints || organic || (o.userData && o.userData.fx) || (mm && mm.transparent)) {
       o.visible = false; _normalHidden.push(o);
       // 표식 레이어는 여기서 붙인다 — 1패스에서 빼는 판정과 2패스에서 덮는 판정이 같은 줄에서
       // 나오므로 둘이 어긋날 수가 없다. 캐릭터 생성 시점에 붙이면 그 뒤에 추가된 메쉬(장비 교체,
@@ -5502,18 +5510,52 @@ function buildTownGrass() {
   // 포석 광장(반경 ~13.5)은 비우고, 바깥 풀밭 링(15.5~32)에만 빽빽하게.
   const tufts = [];
   const rMin = 15.5, rMax = 32;
+  // 건물 콜라이더·밭 안쪽은 비운다. pad는 콜라이더 여유, minR 미만인 콜라이더는 무시한다.
+  const blockedAt = (x, z, pad, minR) => {
+    for (const c of townColliders) {
+      if (c.r < minR) continue;
+      if (Math.hypot(x - c.x, z - c.z) < c.r + pad) return true;
+    }
+    for (const e of townGrassExcludeRects) {
+      const co = Math.cos(e.ry || 0), si = Math.sin(e.ry || 0);
+      const lx = (x - e.x) * co - (z - e.z) * si, lz = (x - e.x) * si + (z - e.z) * co;
+      if (Math.abs(lx) < e.hw && Math.abs(lz) < e.hd) return true;
+    }
+    return false;
+  };
+  if (PGRASS) {
+    // 셀 격자로 링을 채운다. 판정 기준을 잘못 잡으면 밀도가 통째로 달라진다 — 실측한 셀 수:
+    //   링 전체 964 / 예전 규칙(+0.5, 전부) 523 / 여유 없음 698 / 여유 없음 + 작은 콜라이더 무시 811.
+    // 283개 콜라이더 중 235개가 가로등·통·울타리 같은 소품이다. 점으로 뿌리던 예전과 달리 셀은
+    // 1.6칸이라 소품 하나가 그만한 구멍을 내서, 링 곳곳이 뭉텅뭉텅 비어 보였다.
+    // 소품 밑동에 풀이 나는 건 자연스러우므로 r<1.2 는 무시하고 건물만 피한다.
+    const CS = 1.6;
+    const cells = [];
+    for (let z = -rMax; z < rMax; z += CS) for (let x = -rMax; x < rMax; x += CS) {
+      const cx = x + CS / 2, cz = z + CS / 2;
+      const r = Math.hypot(cx, cz);
+      if (r < rMin || r > rMax) continue;
+      if (blockedAt(cx, cz, 0, 1.2)) continue;
+      cells.push([x, z]);
+    }
+    townPGrass = createPixelGrass({
+      scene: townScene, seed: 20260810,
+      cellSize: CS, perCell: 11, sizeMin: 0.62, sizeMax: 1.05,
+      // 바닥 링(0x66843c)과 밑동 톤을 맞춘다 — 성기게 난 곳에서 지면이 딴 색으로 튀지 않게.
+      colors: { base: '#7ba33f', dark: '#577a2c', light: '#c2dc86' },
+      darkRatio: 0.22, lightRatio: 0.09,
+      windSpeed: 1.1, windSway: 0.26,
+      charRadius: 0.55, charPush: 0.30, charSquash: 0.35, // 캐릭터가 커서 밟힘 반경도 키운다
+      tint: 0xffffff,
+    });
+    townPGrass.setCells(cells);
+    return;
+  }
   for (let i = 0; i < GFX.grassTownTries; i++) {
     const ang = Math.random() * Math.PI * 2;
     const r = Math.sqrt(rMin * rMin + Math.random() * (rMax * rMax - rMin * rMin)); // 면적 균등 분포
     const x = Math.cos(ang) * r, z = Math.sin(ang) * r;
-    let blocked = false;
-    for (const c of townColliders) { if (Math.hypot(x - c.x, z - c.z) < c.r + 0.5) { blocked = true; break; } }
-    if (!blocked) for (const e of townGrassExcludeRects) { // 밭(회전 사각형) 내부 제외
-      const co = Math.cos(e.ry || 0), si = Math.sin(e.ry || 0);
-      const lx = (x - e.x) * co - (z - e.z) * si, lz = (x - e.x) * si + (z - e.z) * co;
-      if (Math.abs(lx) < e.hw && Math.abs(lz) < e.hd) { blocked = true; break; }
-    }
-    if (!blocked) tufts.push({ x, z });
+    if (!blockedAt(x, z, 0.5, 0)) tufts.push({ x, z }); // 예전 경로는 규칙을 그대로 유지
   }
   const mesh = makeGrassMesh(tufts, { sizeMul: 1.45, lift: 0.5 }); // 회화풍: 크고 밝은 파스텔 풀
   if (mesh) townScene.add(mesh);
@@ -6526,8 +6568,10 @@ function buildTownScene() {
     p.rotation.x = -Math.PI / 2; p.position.set(rr * Math.sin(phi), 0.03, rr * Math.cos(phi)); townScene.add(p);
   }
   // 무성한 풀포기(성벽 쪽으로 갈수록 촘촘) — 게이트 통로는 비움
+  // 픽셀 잔디가 같은 링을 덮으므로 그때는 만들지 않는다. 원뿔 하나가 메시 하나라
+  // 이 루프만으로 드로우콜이 240개 가까이 나온다 — 픽셀 잔디는 전체가 1개다.
   const grassMats = [mat(C.leaf), mat(C.leafA), mat(C.grassD), mat(C.grass)];
-  for (let i = 0; i < 150; i++) {
+  for (let i = 0; !PGRASS && i < 150; i++) {
     const phi = Math.random() * Math.PI * 2, rr = 16.5 + Math.random() * 14;
     const dg = Math.abs(Math.atan2(Math.sin(phi - GATE_ANGLE), Math.cos(phi - GATE_ANGLE)));
     if (dg < 0.15) continue;                         // 도로 통로(게이트→마을) 전체 비움
@@ -8245,6 +8289,9 @@ function buildDungeonMesh(dgn) {
   };
   _disposeGroup(floorGroup);
   _disposeGroup(wallGroup);
+  // 픽셀 잔디는 floorGroup 밖(scene 직속)이라 여기서 따로 비운다. 풀이 없는 막에 이전 층 잔디가
+  // 그대로 남지 않게 먼저 지우고, 잔디가 있는 막이면 아래 buildGrass가 다시 채운다.
+  if (dgnPGrass) dgnPGrass.setCells([]);
   walls.length = 0;
   // 이끼 동굴 장식 애니메이션 대상 초기화(층마다 새로)
   cavernShrooms.length = 0; cavernWaters.length = 0; cavernShafts.length = 0;
@@ -8482,6 +8529,307 @@ function buildGolemDecoys(dgn) {
   }
 }
 
+// ===== 픽셀아트 잔디 필드(pixel-grass) =====
+// 인스턴싱 빌보드 스프라이트. 드로우콜 1개로 수천 포기, 스프라이트는 코드로 구워 에셋 파일이 없다.
+// Y축 빌보드(잎이 눕지 않고 선 채로 카메라를 봄) · 무리수 π 바람(공통 주기 제거) · 밟힘 · 색 양자화.
+// 원본 pixel-grass.js(MIT)를 이 게임에 맞춰 두 가지 고쳤다.
+//  · ACES 톤매핑 — 씬의 다른 재질은 전부 renderer.toneMapping을 타는데 ShaderMaterial은 안 탄다.
+//    그대로 두면 잔디만 밝게 떠서 배경에 붙인 스티커처럼 보인다. 노출까지 같은 값을 쓴다.
+//  · uTint — 셰이더에 라이트가 연결돼 있지 않아 조명을 못 받는다. 막·시간대별 색을 곱해 톤을 맞춘다.
+// 주의: 원본 문서대로 mesh.userData.fx = true 를 달아 두고, 노멀 패스에서 반드시 제외해야 한다
+//       (overrideMaterial이 프래그먼트 discard를 없애 버려서 잎이 사각형으로 찍힌다 — _hideNonSolid 참고).
+const PG_NOISE_GLSL = [
+  // three 내장 청크가 rand/noise 를 이미 쓰므로 pg- 로 접두해 충돌을 피한다.
+  'float pgHash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123); }',
+  'float pgNoise(vec2 p){ vec2 i=floor(p),f=fract(p);',
+  '  float a=pgHash(i),b=pgHash(i+vec2(1.,0.)),c=pgHash(i+vec2(0.,1.)),d=pgHash(i+vec2(1.,1.));',
+  '  vec2 u=f*f*(3.-2.*f); return mix(mix(a,b,u.x),mix(c,d,u.x),u.y); }'
+].join('\n');
+// r128 tonemapping_pars_fragment의 ACES와 같은 식(값이 어긋나면 잔디만 색이 튄다).
+const PG_ACES_GLSL = [
+  'vec3 pgRRTFit(vec3 v){ vec3 a=v*(v+0.0245786)-0.000090537; vec3 b=v*(0.983729*v+0.4329510)+0.238081; return a/b; }',
+  'vec3 pgACES(vec3 color){',
+  '  const mat3 IN = mat3(0.59719,0.07600,0.02840, 0.35458,0.90834,0.13383, 0.04823,0.01566,0.83777);',
+  '  const mat3 OUT = mat3(1.60475,-0.10208,-0.00327, -0.53108,1.10813,-0.07276, -0.07367,-0.00605,1.07602);',
+  '  color *= uExposure / 0.6;',
+  '  color = OUT * pgRRTFit(IN * color);',
+  '  return clamp(color, 0.0, 1.0); }'
+].join('\n');
+
+const PG_DEFAULTS = {
+  scene: null, perCell: 14, cellSize: 1,
+  darkRatio: 0.17, lightRatio: 0.07,
+  colors: { base: '#55bb33', dark: '#2c6b28', light: '#cfe08f' },
+  sizeMin: 0.34, sizeMax: 0.60,
+  windDir: [0.75, 0.35], windSpeed: 1.4, windSway: 0.30,
+  windStep: 0.1,          // 바람 시간 양자화(초). 저해상도 렌더에서 서브픽셀 진동=깜빡임을 막는다
+  piWind: true,
+  perspective: 0.0,       // 이 게임은 원근 카메라라 가짜 원근감이 필요 없다(원본 기본값 0.4는 직교용)
+  maxChars: 8, charRadius: 0.28, charPush: 0.19, charSquash: 0.25,
+  quantize: 8, seed: 1,
+  tint: 0xffffff,
+  exposure: 1.1,          // renderer.toneMappingExposure 와 같은 값
+  // 광원 감쇠(던전용). 셰이더에 라이트가 없어서 그냥 두면 캄캄한 동굴에서 잔디만 발광한다.
+  // 플레이어 횃불 자리를 중심으로 거리 제곱에 반비례해 어두워진다(three의 decay=2와 같은 모양).
+  // litNear 안쪽은 그대로, 밖은 (litNear/d)^2 로 떨어지고 litMin 아래로는 안 내려간다.
+  litNear: 0, litMin: 1,              // litNear<=0 이면 감쇠 없음(마을 기본)
+};
+function pgHexToRgb255(h) {
+  const n = (typeof h === 'number') ? h : parseInt(String(h).replace('#', ''), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+// 밑동에서 끝으로 갈수록 좁아져 1px로 끝나는 뾰족한 잎
+function pgDrawBlade(buf, atlasW, spriteW, spriteH, ox, cx, topY, baseW, rgb, lean) {
+  for (let y = topY; y < spriteH; y++) {
+    const f = (y - topY) / (spriteH - topY - 1 || 1);      // 0=끝 … 1=밑동
+    const w = Math.max(1, Math.round(1 + (baseW - 1) * f));
+    const bend = Math.round((lean || 0) * (1 - f) * (1 - f));
+    const x0 = Math.round(cx - w / 2) + bend;
+    for (let x = x0; x < x0 + w; x++) {
+      if (x < 0 || x >= spriteW) continue;
+      const i = (y * atlasW + (ox + x)) * 4;
+      buf[i] = rgb[0]; buf[i + 1] = rgb[1]; buf[i + 2] = rgb[2]; buf[i + 3] = 255;
+    }
+  }
+}
+// 3종(기본/어두움/밝음) 스프라이트를 한 장으로.
+// 함정: DataTexture는 flipY=false라 배열 0번 행이 v=0(아래)다. 캔버스 좌표로 그린 뒤 위아래를 뒤집어 담는다.
+function pgBuildAtlas(colors) {
+  const SPW = 32, SPH = 32, N = 3, AW = SPW * N;
+  const top = new Uint8Array(AW * SPH * 4);
+  const base = pgHexToRgb255(colors.base), dark = pgHexToRgb255(colors.dark), lite = pgHexToRgb255(colors.light);
+  const B = (ox, cx, topY, baseW, rgb, lean) => pgDrawBlade(top, AW, SPW, SPH, ox, cx, topY, baseW, rgb, lean);
+  B(0, 8, 7, 10, base, 2); B(0, 20, 13, 10, base, -2);                              // 0: 기본 — 잎 두 가닥
+  B(SPW, 4, 19, 10, dark, -2); B(SPW, 12, 12, 10, dark, 0);                          // 1: 어두움 — 부채꼴 뭉치
+  B(SPW, 20, 15, 10, dark, 2); B(SPW, 26, 21, 8, dark, 2);
+  B(SPW * 2, 12, 3, 8, lite, 2); B(SPW * 2, 20, 12, 8, lite, -2);                     // 2: 밝음 — 가늘고 긴 획
+  const d = new Uint8Array(AW * SPH * 4);
+  for (let y = 0; y < SPH; y++) {
+    const s = (SPH - 1 - y) * AW * 4;
+    d.set(top.subarray(s, s + AW * 4), y * AW * 4);
+  }
+  const tex = new THREE.DataTexture(d, AW, SPH, THREE.RGBAFormat);
+  tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
+  tex.needsUpdate = true;
+  return { texture: tex, tiles: N };
+}
+function createPixelGrass(options) {
+  const O = Object.assign({}, PG_DEFAULTS, options || {});
+  O.colors = Object.assign({}, PG_DEFAULTS.colors, (options || {}).colors || {});
+
+  const atlas = pgBuildAtlas(O.colors);
+  // 피벗을 밑동(y=0)에 둔다 → 스케일을 키워도 뿌리가 지면에 붙어 있다
+  const quad = new THREE.BufferGeometry();
+  quad.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, -0.5, 1, 0, 0.5, 1, 0], 3));
+  quad.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 1, 1], 2));
+  quad.setIndex([0, 1, 2, 1, 3, 2]);
+
+  // 캐릭터 슬롯 — 고정 배열을 재사용해 프레임마다 객체를 만들지 않는다(모바일 GC 스파이크 방지)
+  const chars = [];
+  for (let i = 0; i < O.maxChars; i++) chars.push(new THREE.Vector2(1e5, 1e5));
+
+  const uniforms = {
+    uWind: { value: 0 }, uNight: { value: 0 },
+    uGrass: { value: atlas.texture }, uTiles: { value: atlas.tiles },
+    uPersp: { value: O.perspective },
+    uChars: { value: chars }, uCharCount: { value: 0 },
+    uCharR: { value: O.charRadius }, uCharPush: { value: O.charPush }, uCharSquash: { value: O.charSquash },
+    uWindDir: { value: new THREE.Vector2(O.windDir[0], O.windDir[1]) },
+    uWindSpeed: { value: O.windSpeed }, uWindSway: { value: O.windSway },
+    uTint: { value: new THREE.Color(O.tint) },
+    uExposure: { value: O.exposure },
+    uLit: { value: new THREE.Vector2(O.litNear, O.litMin) },
+    uLitAt: { value: new THREE.Vector2(0, 0) },                        // 광원 중심(보통 플레이어)
+  };
+  const defines = {
+    MAXCH: O.maxChars, PI_WIND: O.piWind ? 1 : 0, QUANT: O.quantize > 0 ? 1 : 0,
+    LIT_FALLOFF: (O.litNear > 0) ? 1 : 0,
+  };
+
+  const vert = [
+    'precision highp float;',
+    '#define GPI 3.14159265359',
+    'attribute vec2 aOffset; attribute float aRand; attribute float aTile; attribute float aFlip;',
+    'uniform float uWind, uWindSpeed, uWindSway;',
+    'uniform vec2 uWindDir;',
+    'uniform vec2 uChars[MAXCH]; uniform int uCharCount;',
+    'uniform float uCharR, uCharPush, uCharSquash;',
+    'varying vec2 vUv; varying float vTile; varying float vLean; varying vec2 vWxz;',
+    PG_NOISE_GLSL,
+    'void main(){',
+    '  vUv=uv; vTile=aTile;',
+    '  float sc=' + O.sizeMin.toFixed(4) + '+aRand*' + (O.sizeMax - O.sizeMin).toFixed(4) + ';',
+    '  float h=uv.y;',
+    // Y축 빌보드: 뷰 행렬 오른쪽 벡터의 수평 성분만 가로축으로. 세로는 항상 월드 +Y.
+    '  vec3 camRight=normalize(vec3(viewMatrix[0][0],viewMatrix[1][0],viewMatrix[2][0]));',
+    '  vec3 right=normalize(vec3(camRight.x,0.0,camRight.z));',
+    '  float fs=(aFlip>0.5)?-1.0:1.0;',
+    '  vec3 world=vec3(aOffset.x,0.0,aOffset.y)+right*(position.x*sc*fs)+vec3(0.0,position.y*sc,0.0);',
+    // 바람: 노이즈 둘을 곱해 돌풍처럼. π로 스케일·속도를 어긋내면 공통 주기가 사라진다.
+    '  vec2 wd=normalize(uWindDir);',
+    '#if PI_WIND',
+    '  float s2=1.0/GPI, v2=GPI*0.5;',
+    '#else',
+    '  float s2=0.5, v2=0.5;',
+    '#endif',
+    '  float n1=pgNoise(aOffset*0.10+wd*(uWind*uWindSpeed));',
+    '  float n2=pgNoise(aOffset*(0.10*s2)+wd*(uWind*uWindSpeed*v2));',
+    '  vec2 wo=wd*(clamp(n1*n2*2.0,0.0,1.0)*h*uWindSway*sc);',
+    '  world.x+=wo.x; world.z+=wo.y;',
+    // 밟힘: 가장 가까운 캐릭터만. 슬롯을 다 돌지 않고 조기 종료.
+    '  float infl=0.0; vec2 pdir=vec2(1.0,0.0);',
+    '  for(int i=0;i<MAXCH;i++){',
+    '    if(i>=uCharCount) break;',
+    '    vec2 toB=aOffset-uChars[i]; float d=length(toB);',
+    '    float f=smoothstep(uCharR,0.0,d);',
+    '    if(f>infl){ infl=f; pdir=d>0.001?toB/d:vec2(1.0,0.0); }',
+    '  }',
+    '  vec2 push=pdir*infl*h*uCharPush;',
+    '  world.x+=push.x; world.z+=push.y;',
+    '  world.y*=(1.0-infl*uCharSquash);',
+    '  vec3 fwd=normalize(vec3(viewMatrix[0][2],viewMatrix[1][2],viewMatrix[2][2]));',
+    '  vec2 force=wo+push;',
+    '  vLean = length(force)>0.001 ? dot(normalize(vec3(force.x,0.0,force.y)),fwd) : 0.0;',
+    '  vWxz = world.xz;',
+    '  gl_Position=projectionMatrix*viewMatrix*modelMatrix*vec4(world,1.0);',
+    '}'
+  ].join('\n');
+
+  const frag = [
+    'precision highp float;',
+    'uniform sampler2D uGrass; uniform float uTiles, uPersp;',
+    'uniform float uNight, uExposure; uniform vec3 uTint;',
+    'uniform vec2 uLit, uLitAt;',
+    'varying vec2 vUv; varying float vTile; varying float vLean; varying vec2 vWxz;',
+    PG_ACES_GLSL,
+    'void main(){',
+    '  vec2 uv=vUv;',
+    '  if(uPersp>0.0001){',
+    '    float s=clamp(1.0-(vLean*vUv.y*uPersp),0.05,4.0);',
+    '    uv.x=(uv.x-0.5)*s+0.5;',
+    '    if(uv.x<0.0||uv.x>1.0) discard;',
+    '  }',
+    // 타일 내부 uv → 아틀라스 좌표. 0.999로 이웃 타일 첫 픽셀 침범 방지.
+    '  vec2 auv=vec2((vTile+min(uv.x,0.999))/uTiles, uv.y);',
+    '  vec4 tex=texture2D(uGrass,auv);',
+    '  if(tex.a<0.5) discard;',
+    '  vec3 col=tex.rgb*uTint;',
+    '#if LIT_FALLOFF',
+    // 광원에서 멀수록 어둡게. 이게 없으면 캄캄한 동굴에서 잔디만 발광한다.
+    // 선형(smoothstep)으로 하면 중간 거리가 너무 밝게 남는다 — 점광원처럼 거리 제곱에 반비례시킨다.
+    '  float ld=max(distance(vWxz,uLitAt),0.0001);',
+    '  col*=mix(uLit.y,1.0,clamp((uLit.x*uLit.x)/(ld*ld),0.0,1.0));',
+    '#endif',
+    '  col*=mix(1.0,0.34,uNight);',
+    '  col=pgACES(col);',
+    '#if QUANT',
+    '  col=floor(col*' + O.quantize.toFixed(1) + ')/' + O.quantize.toFixed(1) + ';',
+    '#endif',
+    '  gl_FragColor=vec4(col,1.0);',
+    '}'
+  ].join('\n');
+
+  const material = new THREE.ShaderMaterial({ uniforms, defines, side: THREE.DoubleSide });
+  material.vertexShader = vert;
+  material.fragmentShader = frag;
+
+  const mesh = new THREE.Mesh(quad, material);
+  mesh.frustumCulled = false;   // 정점 셰이더로 위치를 만들므로 바운딩이 무의미
+  mesh.userData.fx = true;      // 노멀 패스 제외 표식(_hideNonSolid)
+  if (O.scene) O.scene.add(mesh);
+
+  // 결정적 난수 — 같은 seed면 같은 잔디밭. 게임 전역 Math.random 스트림을 건드리지 않는 이점도 있다.
+  let _s = O.seed >>> 0 || 1;
+  const rnd = () => { _s ^= _s << 13; _s ^= _s >>> 17; _s ^= _s << 5; _s >>>= 0; return _s / 4294967296; };
+  let count = 0;
+
+  // cells: [[worldX, worldZ], ...] — 각 셀의 '모서리' 좌표. 셀 안에 perCell개를 무작위로 뿌린다.
+  // 배치를 바꿀 때만 부를 것 — 매 프레임 부르면 버퍼를 매번 새로 만든다.
+  function setCells(cells) {
+    _s = O.seed >>> 0 || 1;
+    const n = cells.length * O.perCell;
+    const offs = new Float32Array(n * 2), rnds = new Float32Array(n);
+    const tiles = new Float32Array(n), flips = new Float32Array(n);
+    let k = 0;
+    for (let c = 0; c < cells.length; c++) {
+      const cx = cells[c][0], cz = cells[c][1];
+      for (let j = 0; j < O.perCell; j++) {
+        offs[k * 2] = cx + rnd() * O.cellSize;
+        offs[k * 2 + 1] = cz + rnd() * O.cellSize;
+        rnds[k] = rnd();
+        const r = rnd();
+        tiles[k] = r < O.lightRatio ? 2 : (r < O.lightRatio + O.darkRatio ? 1 : 0);
+        flips[k] = rnd() < 0.5 ? 1 : 0;
+        k++;
+      }
+    }
+    const geo = new THREE.InstancedBufferGeometry();
+    geo.index = quad.index;
+    geo.attributes.position = quad.attributes.position;
+    geo.attributes.uv = quad.attributes.uv;
+    geo.instanceCount = n;
+    geo.setAttribute('aOffset', new THREE.InstancedBufferAttribute(offs, 2));
+    geo.setAttribute('aRand', new THREE.InstancedBufferAttribute(rnds, 1));
+    geo.setAttribute('aTile', new THREE.InstancedBufferAttribute(tiles, 1));
+    geo.setAttribute('aFlip', new THREE.InstancedBufferAttribute(flips, 1));
+    if (mesh.geometry && mesh.geometry.isInstancedBufferGeometry) mesh.geometry.dispose();
+    mesh.geometry = geo;
+    mesh.visible = n > 0;
+    count = n;
+    return n;
+  }
+  // state.chars: [{x,z}, ...] 월드 좌표 / state.night: 0~1
+  function update(time, state) {
+    state = state || {};
+    uniforms.uWind.value = O.windStep > 0 ? Math.floor(time / O.windStep) * O.windStep : time;
+    if (state.night !== undefined) uniforms.uNight.value = state.night;
+    // charCount를 따로 받는 이유: 호출부가 고정 배열을 재사용할 수 있어야 slice로 매 프레임
+    // 새 배열을 만들지 않는다(원본은 list.length만 봤다).
+    const list = state.chars; let k = 0;
+    const n = (state.charCount !== undefined) ? state.charCount : (list ? list.length : 0);
+    if (list) {
+      for (let i = 0; i < n && k < O.maxChars; i++) {
+        const c = list[i];
+        if (!c) continue;
+        chars[k].set(c.x, c.z);   // 새 객체를 만들지 않는다
+        k++;
+      }
+    }
+    uniforms.uCharCount.value = k;
+    // 광원 중심은 첫 캐릭터(=플레이어). 던전 횃불이 플레이어를 따라다니므로 이걸로 충분하다.
+    if (state.litAt) uniforms.uLitAt.value.set(state.litAt.x, state.litAt.z);
+    else if (k > 0) uniforms.uLitAt.value.copy(chars[0]);
+  }
+  return {
+    mesh, material, uniforms, setCells, update,
+    get count() { return count; },
+    setTint(hex) { uniforms.uTint.value.setHex(hex); },
+    dispose() {
+      if (mesh.parent) mesh.parent.remove(mesh);
+      if (mesh.geometry) mesh.geometry.dispose();
+      quad.dispose(); material.dispose(); atlas.texture.dispose();
+    },
+  };
+}
+// 밟힘 좌표 슬롯 — 매 프레임 재사용(객체를 새로 만들지 않는다)
+const _pgChars = []; for (let i = 0; i < 8; i++) _pgChars.push({ x: 1e5, z: 1e5 });
+const _pgState = { chars: _pgChars, charCount: 0, night: 0 };
+function _pgPut(o) {
+  if (!o || _pgState.charCount >= _pgChars.length) return;
+  const s = _pgChars[_pgState.charCount++]; s.x = o.x; s.z = o.z;
+}
+function updatePixelGrass(t) {
+  const g = inTown ? townPGrass : (inRest ? null : dgnPGrass);
+  if (!g || !g.count) return;
+  _pgState.charCount = 0;
+  if (player && player.obj) _pgPut(player.obj.position);
+  if (!inTown && typeof enemies !== 'undefined') {
+    for (const e of enemies) { if (_pgState.charCount >= _pgChars.length) break; if (e && e.obj && e.obj.visible) _pgPut(e.obj.position); }
+  }
+  _pgState.night = inTown ? (townTimeOfDay === 'night' ? 1 : 0) : 0;
+  g.update(t, _pgState);
+}
+
 // ===== 풀밭/식생(1막 — 숲 동굴) =====
 // 끝이 밝은 풀잎(vertex color 그라데이션) 여러 개를 한 포기로, InstancedMesh로 한 번에 그림(드로우콜 1개).
 function makeGrassBladeGeo() {
@@ -8570,6 +8918,28 @@ function buildGrass(grid, mossSpots, edgeBias) {
       if (edgeBias) { ex = (Math.random() < 0.5 ? -1 : 1) * TILE * (0.32 + Math.random() * 0.15); ez = (Math.random() < 0.5 ? -1 : 1) * TILE * (0.32 + Math.random() * 0.15); }
       tufts.push({ x: (x - MAP_W / 2) * TILE + ex, z: (y - MAP_H / 2) * TILE + ez });
     }
+  }
+  if (PGRASS) {
+    // 던전 잔디는 층마다 배치가 바뀌므로 인스턴스 하나를 재사용하고 setCells로만 갈아끼운다.
+    // floorGroup에 넣지 않는 이유: buildDungeonMesh의 _disposeGroup이 층 전환 때 재질·텍스처까지
+    // dispose해 버려서 다음 층에서 잔디가 깨진다(공용 자원이라 살려 둬야 한다).
+    if (!dgnPGrass) {
+      dgnPGrass = createPixelGrass({
+        scene, seed: 20260811,
+        cellSize: 2.4, perCell: 7, sizeMin: 0.52, sizeMax: 0.9,
+        colors: { base: '#6d8f34', dark: '#47632a', light: '#a8c05a' },
+        darkRatio: 0.26, lightRatio: 0.08,
+        windSpeed: 0.9, windSway: 0.24,
+        charRadius: 0.7, charPush: 0.34, charSquash: 0.4,
+        // 플레이어 횃불(PointLight distance=TILE*4.5=22.5, decay 2) 밝기 분포에 맞춘 감쇠.
+        litNear: TILE * 0.9, litMin: 0.06,
+      });
+    }
+    // 조명을 못 받으므로 막 분위기를 tint로 맞춘다(1막 숲 동굴은 어둑한 초록, 2막 성은 달빛 냉색).
+    dgnPGrass.setTint(edgeBias ? 0x55637e : 0x71805e);
+    const CS = 2.4;
+    dgnPGrass.setCells(tufts.map(t => [t.x - CS / 2, t.z - CS / 2]));
+    return;
   }
   const _gm = makeGrassMesh(tufts);
   if (_gm) floorGroup.add(_gm);
@@ -17486,6 +17856,7 @@ function tick(now) {
 
   let dt = Math.min(0.05, clock.getDelta());
   windUniforms.uTime.value += dt; // 풀·덩굴 바람
+  if (PGRASS) updatePixelGrass(windUniforms.uTime.value); // 픽셀 잔디(바람·밟힘·밤)
   if (_lastInTown !== inTown) { _lastInTown = inTown; applyAdaptiveFOV(); } // 마을↔던전 전환 시 FOV 보정
   // 패링 히트스톱: 짧은 슬로우모션으로 타격감 강조
   if (hitStop > 0) { hitStop -= dt; dt *= 0.18; }
