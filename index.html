@@ -4148,7 +4148,7 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v702'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v705'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -4654,7 +4654,43 @@ function computeLowRes(w, h) {
 const _lr0 = computeLowRes(window.innerWidth, window.innerHeight);
 let lowResW = _lr0[0], lowResH = _lr0[1];
 
-const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+// WebGL 컨텍스트 생성 실패 안내.
+// 브라우저가 동시에 유지하는 WebGL 컨텍스트 수에는 상한이 있어(보통 8~16개), 이 게임 파일을
+// 여러 탭에 열어 두면 새 탭에서 컨텍스트를 못 받는다. 예전엔 여기서 그대로 throw돼
+// "Uncaught Error: Error creating WebGL context"만 뜨고 화면이 하얗게 비었다 —
+// 원인을 알 수 없으니 무엇을 해야 할지도 알 수 없었다. 그래서 안내를 띄우고 멈춘다.
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+} catch (err) {
+  try {
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed; inset:0; z-index:9999; display:flex; flex-direction:column;' +
+      'align-items:center; justify-content:center; gap:14px; padding:24px; text-align:center;' +
+      'background:#0b0d12; color:#e8e2d4; font-family:inherit;';
+    const h = document.createElement('div');
+    h.style.cssText = 'font-size:19px; font-weight:800; color:#ffd86b;';
+    h.textContent = _i18n('그래픽을 시작할 수 없습니다');
+    const p1 = document.createElement('div');
+    p1.style.cssText = 'font-size:14px; line-height:1.7; max-width:460px; color:#c8c2b4;';
+    p1.textContent = _i18n('브라우저가 이 페이지에 3D 그래픽(WebGL)을 열어 주지 못했습니다. 이 게임을 여러 탭에 열어 두면 생길 수 있습니다.');
+    const p2 = document.createElement('div');
+    p2.style.cssText = 'font-size:14px; line-height:1.7; max-width:460px; color:#9aa0ad;';
+    p2.textContent = _i18n('다른 탭을 모두 닫고 새로고침해 주세요. 그래도 안 되면 브라우저를 완전히 종료했다 다시 열어 보세요.');
+    const btn = document.createElement('button');
+    btn.style.cssText = 'margin-top:6px; padding:12px 26px; font-size:15px; font-weight:800; border-radius:11px;' +
+      'border:1px solid #d8b24a; background:rgba(240,200,90,0.18); color:#ffe08a;';
+    btn.textContent = _i18n('새로고침');
+    btn.onclick = () => location.reload();
+    box.appendChild(h); box.appendChild(p1); box.appendChild(p2); box.appendChild(btn);
+    document.body.appendChild(box);
+    // 시작 화면이 뒤에 비쳐 혼란스럽지 않게 감춘다
+    for (const id of ['charOverlay', 'startOverlay', 'startResumeChoice']) {
+      const el = document.getElementById(id); if (el) el.classList.add('hidden');
+    }
+  } catch (e2) {}
+  throw err; // 렌더러 없이는 아래 코드가 전부 무의미하다 — 여기서 멈춘다
+}
 renderer.setPixelRatio(1);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
@@ -5117,7 +5153,14 @@ const _normalHidden = [];
 function _hideNonSolid(root) {
   root.traverse(o => {
     if (!o.visible) return;
-    if (o.isSprite || o.isPoints || (o.material && o.material.transparent)) {
+    const mm = o.material;
+    const organic = mm && (Array.isArray(mm) ? mm.some(x => x && x.userData && x.userData._organic)
+                                             : (mm.userData && mm.userData._organic));
+    // 유기체(피부)는 노멀 버퍼에 넣지 않는다.
+    // 이 게임 지오메트리는 면마다 노멀이 끊겨 있어서, 볼록 모서리 하이라이트(uPxNormalStr)가
+    // 피부의 모든 면 경계에 선을 그어 얼굴·팔이 깎아 만든 무기물처럼 보였다.
+    // 색 패스에는 그대로 남으므로 로우폴리 룩은 유지되고, 모서리 강조만 빠진다.
+    if (o.isSprite || o.isPoints || organic || (mm && mm.transparent)) {
       o.visible = false; _normalHidden.push(o);
     }
   });
@@ -6080,7 +6123,7 @@ function buildTownScene() {
   // 보초 NPC: 갑옷 + 첨모 투구 + 창 + 둥근 방패 (가벼운 idle)
   function makeGuard(x, z, ry, talk) {
     const g = new THREE.Group();
-    const skin = mat(0xe6b690), armor = M.metal, leather = M.timber, cloth = mat(0x42506b);
+    const skin = markOrganic(mat(0xe6b690)), armor = M.metal, leather = M.timber, cloth = mat(0x42506b);
     g.add(cyl(0.1, 0.12, 0.5, 7, leather, -0.12, 0.25, 0));   // 다리
     g.add(cyl(0.1, 0.12, 0.5, 7, leather, 0.12, 0.25, 0));
     g.add(cyl(0.26, 0.22, 0.58, 9, armor, 0, 0.79, 0));        // 몸통(갑옷)
@@ -6114,7 +6157,7 @@ function buildTownScene() {
   // 상인 NPC: 앞치마 두른 평민 + 머리 위 대화 마커(가벼운 idle). 위치를 townMerchant에 저장.
   function makeMerchant(x, z, ry) {
     const g = new THREE.Group();
-    const skin = mat(0xe6b690), shirt = mat(0x7a5a3a), apron = mat(0x9a8866), hairC = mat(0x3a2a1a);
+    const skin = markOrganic(mat(0xe6b690)), shirt = mat(0x7a5a3a), apron = mat(0x9a8866), hairC = mat(0x3a2a1a);
     g.add(cyl(0.11, 0.13, 0.5, 7, mat(0x4a3a2a), -0.12, 0.25, 0));  // 다리
     g.add(cyl(0.11, 0.13, 0.5, 7, mat(0x4a3a2a), 0.12, 0.25, 0));
     g.add(cyl(0.27, 0.23, 0.6, 9, shirt, 0, 0.8, 0));               // 몸통
@@ -6165,7 +6208,7 @@ function buildTownScene() {
   }
   function makeCleric(x, z, ry) {
     const g = new THREE.Group();
-    const skin = mat(0xe6b690), robe = mat(0xdcdce6), robeTrim = mat(0xc8b860); // 흰 로브 + 금색 띠
+    const skin = markOrganic(mat(0xe6b690)), robe = mat(0xdcdce6), robeTrim = mat(0xc8b860); // 흰 로브 + 금색 띠
     g.add(cyl(0.32, 0.22, 1.0, 10, robe, 0, 0.5, 0));              // 긴 로브(원뿔형 치마)
     g.add(cyl(0.24, 0.26, 0.5, 9, robe, 0, 1.05, 0));              // 상체
     g.add(box(0.5, 0.12, 0.5, robeTrim, 0, 0.78, 0));              // 허리 금띠
@@ -6193,7 +6236,7 @@ function buildTownScene() {
   // 여관 주인 NPC: 앞치마 두른 평민 + 머리 위 대화 마커. 캐릭터 변경 안내.
   function makeInnkeeper(x, z, ry) {
     const g = new THREE.Group();
-    const skin = mat(0xe6b690), shirt = mat(0x7a4a3a), apron = mat(0xd8cbb0), pants = mat(0x4a3a2a);
+    const skin = markOrganic(mat(0xe6b690)), shirt = mat(0x7a4a3a), apron = mat(0xd8cbb0), pants = mat(0x4a3a2a);
     g.add(cyl(0.1, 0.1, 0.5, 6, pants, -0.11, 0.25, 0));          // 다리
     g.add(cyl(0.1, 0.1, 0.5, 6, pants, 0.11, 0.25, 0));
     g.add(cyl(0.24, 0.26, 0.55, 9, shirt, 0, 0.78, 0));          // 상체
@@ -6222,7 +6265,7 @@ function buildTownScene() {
     const g = new THREE.Group();
     const palette = [0x8a5a4a, 0x4a6a7a, 0x6a5a8a, 0x7a6a3a, 0x5a7a5a, 0x9a6a5a];
     const shirtC = opt.color !== undefined ? opt.color : palette[Math.floor(Math.random() * palette.length)];
-    const skin = mat([0xe6b690, 0xd9a878, 0xc89868][Math.floor(Math.random() * 3)]);
+    const skin = markOrganic(mat([0xe6b690, 0xd9a878, 0xc89868][Math.floor(Math.random() * 3)]));
     const shirt = mat(shirtC), pants = mat(0x4a3a2a), hairC = mat([0x3a2a1a, 0x55401f, 0x2a2a2a][Math.floor(Math.random() * 3)]);
     // 다리(걷기 애니메이션 대상)
     const legL = cyl(0.08, 0.1, 0.5, 6, pants, -0.11, 0.25, 0);
@@ -6958,6 +7001,47 @@ function getLowPolyMat(colorHex, isMetal = false) {
   });
 }
 function getGlowMat(colorHex) { return new THREE.MeshBasicMaterial({ color: colorHex }); }
+// ===== 유기체(피부·살) 하이라이트 제거 =====
+// 피부는 젖어 있지 않으면 반짝이지 않는다. ?drough 하이라이트 보정이 매끈한 표면을 강조하면서
+// 사람·몬스터 피부까지 번들거려 플라스틱 인형처럼 보였다 — 이 머티리얼만 스펙큘러를 0으로 뺀다.
+// 공용 ShaderChunk가 아니라 머티리얼별 onBeforeCompile을 쓰는 이유: 피부에만 적용해야 하는데
+// 공용 청크에는 '이게 피부인지' 알릴 수단이 없다(러프니스로 구분하면 돌·금속과 겹친다).
+//
+// 함정: three r128의 Material.copy()는 onBeforeCompile을 복사하지 않는다(userData는 복사된다).
+// 그래서 clone()으로 만든 머티리얼은 clone '뒤에' 다시 불러야 하고, 중복 방지 플래그도
+// userData가 아니라 함수 자체에 달아 둔다(복사되지 않으므로 clone 후 자동으로 다시 적용된다).
+// ?organic=0 이면 예전 동작으로 되돌린다(피부에도 하이라이트·모서리 강조가 들어간다).
+// 이 효과는 실측 화면 변화가 매우 작아서(구울 확대 기준 0.14%·최대 6/255) 스크린샷 비교로는
+// 판단이 어렵다 — 실제 기기에서 두 값을 번갈아 보고 정하는 편이 빠르다.
+const ORGANIC_MATTE = !/[?&]organic=0/.test(location.search);
+// 피부 지오메트리 노멀 스무딩 각도 한계(도). 0이면 끔. 아래 smoothSkinNormals 주석 참고.
+let ORGANIC_SMOOTH = 80;
+{ const m = /[?&]osmooth=([0-9.]+)/.exec(location.search); if (m) ORGANIC_SMOOTH = parseFloat(m[1]); }
+function markOrganic(m) {
+  if (!m) return m;
+  // _skin 표식은 ?organic 과 무관하게 항상 단다 — 노멀 스무딩이 피부 메쉬를 찾는 데 쓴다.
+  // (노멀 패스 제외 판정은 아래 _organic 쪽이라 ?organic=0 이면 예전 그대로 동작한다.)
+  m.userData = m.userData || {}; m.userData._skin = true;
+  // flatShading 이 켜져 있으면 색 패스가 지오메트리 노멀을 무시하고 면 노멀을 다시 만든다 —
+  // 스무딩이 화면에 보이려면 피부 머티리얼에서만 꺼야 한다(다른 재질은 로우폴리 룩 유지).
+  if (ORGANIC_SMOOTH > 0 && m.flatShading) { m.flatShading = false; m.needsUpdate = true; }
+  if (!ORGANIC_MATTE) return m;
+  if (m.onBeforeCompile && m.onBeforeCompile._organicMark) return m; // 이미 적용됨
+  const prev = m.onBeforeCompile;
+  const fn = function (shader) {
+    if (prev) prev.call(this, shader);
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <lights_fragment_end>',
+      '#include <lights_fragment_end>\n\treflectedLight.directSpecular = vec3(0.0);\n\treflectedLight.indirectSpecular = vec3(0.0);'
+    );
+  };
+  fn._organicMark = true;
+  m.onBeforeCompile = fn;
+  m.userData = m.userData || {}; m.userData._organic = true; // 노멀 패스 제외 판정용(clone에도 복사된다)
+  if (m.roughness !== undefined) m.roughness = 1.0; // 하이라이트가 없으니 러프니스도 무광으로
+  m.needsUpdate = true;
+  return m;
+}
 // ===== 바위·돌 재질 러프니스(?srough) =====
 // 돌은 기본 0.9로는 하이라이트가 남아 젖은 것처럼 보인다. 1.0으로 올려 완전 무광에 가깝게 둔다.
 // ?drough 램프가 0.60~0.95라 0.9→1.0이면 하이라이트 배수가 약 0.54→0.40으로 더 떨어진다.
@@ -6994,8 +7078,73 @@ function makeToonChar(m) {
   m.customProgramCacheKey = function () { return 'toonChar' + GFX.toonSteps; };
   m.needsUpdate = true;
 }
+// ===== 피부 지오메트리 노멀 부드럽게(?osmooth=각도, 0=끔) =====
+// 이 게임의 몸통은 면마다 노멀이 끊겨 있어서 얼굴·팔이 '깎아 만든 무기물'처럼 각져 보인다.
+// 같은 위치를 공유하는 정점들의 노멀을 평균 내면 살결이 면을 가로질러 이어진다(실루엣은 그대로).
+//
+// 각도 한계를 두는 이유: 전부 평균 내면 상자 팔다리의 모서리까지 뭉개져 형태가 죽는다.
+// 기본 80°면 20면체 머리(인접면 41.8°)·원기둥 옆면은 이어지고, 상자 모서리·원기둥 뚜껑 경계(90°)는
+// 그대로 남는다. 완전히 둥글게 하려면 ?osmooth=180, 예전 룩은 ?osmooth=0.
+//
+// 함정: r128 번들에 BufferGeometryUtils.mergeVertices 가 없다(grep 0건) — 위치로 직접 묶는다.
+// 함정: 지오메트리를 피부 아닌 메쉬와 공유하고 있으면 그쪽 노멀 패스까지 바뀌므로 복제해서 쓴다.
+function _smoothSkinGeo(geo, cosLimit) {
+  const pos = geo.attributes && geo.attributes.position;
+  const nrm = geo.attributes && geo.attributes.normal;
+  if (!pos || !nrm || pos.count !== nrm.count) return geo;
+  if (geo.userData && geo.userData._skinSmoothed) return geo; // 공유 지오메트리 재처리 방지
+  const n = pos.count;
+  const buckets = new Map();
+  for (let i = 0; i < n; i++) {
+    // 위치를 1/1000 단위로 양자화 — 부동소수 오차로 같은 꼭짓점이 갈라지는 것을 막는다.
+    const k = Math.round(pos.getX(i) * 1000) + ',' + Math.round(pos.getY(i) * 1000) + ',' + Math.round(pos.getZ(i) * 1000);
+    const a = buckets.get(k); if (a) a.push(i); else buckets.set(k, [i]);
+  }
+  const out = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { out[i * 3] = nrm.getX(i); out[i * 3 + 1] = nrm.getY(i); out[i * 3 + 2] = nrm.getZ(i); }
+  for (const arr of buckets.values()) {
+    if (arr.length < 2) continue;
+    for (const i of arr) {
+      const nx = nrm.getX(i), ny = nrm.getY(i), nz = nrm.getZ(i);
+      let sx = 0, sy = 0, sz = 0;
+      for (const j of arr) {
+        const jx = nrm.getX(j), jy = nrm.getY(j), jz = nrm.getZ(j);
+        if (nx * jx + ny * jy + nz * jz < cosLimit) continue; // 각도 차가 크면 진짜 모서리 — 안 섞는다
+        sx += jx; sy += jy; sz += jz;
+      }
+      const len = Math.sqrt(sx * sx + sy * sy + sz * sz);
+      if (len < 1e-6) continue;
+      out[i * 3] = sx / len; out[i * 3 + 1] = sy / len; out[i * 3 + 2] = sz / len;
+    }
+  }
+  geo.setAttribute('normal', new THREE.BufferAttribute(out, 3));
+  geo.userData = geo.userData || {}; geo.userData._skinSmoothed = true;
+  return geo;
+}
+function smoothSkinNormals(root) {
+  if (!root || !(ORGANIC_SMOOTH > 0)) return;
+  const cosLimit = Math.cos(Math.min(180, ORGANIC_SMOOTH) * Math.PI / 180);
+  const skinGeos = new Set(), otherGeos = new Set();
+  const isSkin = (o) => {
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    // 여러 재질 중 하나라도 피부가 아니면 건드리지 않는다(형태 뭉개짐 방지).
+    return mats.length > 0 && mats.every(x => x && x.userData && x.userData._skin);
+  };
+  root.traverse(function (o) {
+    if (!o.isMesh || !o.geometry || !o.material) return;
+    (isSkin(o) ? skinGeos : otherGeos).add(o.geometry);
+  });
+  if (!skinGeos.size) return;
+  root.traverse(function (o) {
+    if (!o.isMesh || !o.geometry || !skinGeos.has(o.geometry)) return;
+    let g = o.geometry;
+    if (otherGeos.has(g)) { g = g.clone(); o.geometry = g; } // 피부 아닌 메쉬와 공유 중 → 복제본만 변형
+    _smoothSkinGeo(g, cosLimit);
+  });
+}
 function applyToon(root) {
   if (!root) return;
+  smoothSkinNormals(root); // 피부 노멀 부드럽게(플레이어·몬스터·NPC 전부 이 함수를 거친다)
   const seen = new Set();
   root.traverse(function (o) {
     if (o.isMesh && o.material) {
@@ -10309,7 +10458,7 @@ player.obj.add(bodyGrp);
 
 const armorMat  = getLowPolyMat(0x7e8ca5, true);  // 어둡고 푸른빛 도는 강철 갑옷
 const darkMetal = getLowPolyMat(0x7a837c, true);  
-const skinMat   = getLowPolyMat(0xffccaa, false); 
+const skinMat   = markOrganic(getLowPolyMat(0xffccaa, false)); 
 const clothMat  = getLowPolyMat(0xba6a5e, false); 
 
 const headGrp = new THREE.Group();
@@ -10462,7 +10611,7 @@ function applyMageLook() {
   const hatMat = getLowPolyMat(0x4a2740, false);
   const hatBand = getLowPolyMat(0x8a2030, false);
   const hairMat = getLowPolyMat(0x9e2b3a, false);
-  const skin = getLowPolyMat(0xffd9b8, false);
+  const skin = markOrganic(getLowPolyMat(0xffd9b8, false));
   const woodMat = getLowPolyMat(0x6a4a2a, false);
   const bookMat = getLowPolyMat(0x7a4a28, false);
 
@@ -10596,7 +10745,7 @@ player.archerLimbs = null;
 function buildArcherRig() {
   const sh = o => { o.castShadow = true; o.receiveShadow = true; return o; };
   // 색 팔레트(원화 기반)
-  const skin = getLowPolyMat(0xf2cfa8, false), skinSh = getLowPolyMat(0xddb389, false);
+  const skin = markOrganic(getLowPolyMat(0xf2cfa8, false)), skinSh = markOrganic(getLowPolyMat(0xddb389, false));
   const hairMat = getLowPolyMat(0xd8c878, false), hairDark = getLowPolyMat(0xbfa85c, false);
   const scarfMat = getLowPolyMat(0x32545c, false), scarfDk = getLowPolyMat(0x243e45, false);
   const leather = getLowPolyMat(0x5a4332, false), leatherD = getLowPolyMat(0x42301f, false), leatherL = getLowPolyMat(0x6e543c, false);
@@ -11785,8 +11934,8 @@ function buildIceQueenBody(grp, bodyGrp, headGrp, limbs) {
   const gownMat   = getLowPolyMat(0x8a2030, false);
   const gownDk    = getLowPolyMat(0x5e1622, false);
   const goldMat   = getLowPolyMat(0xb89048, true);
-  const skinMat   = getLowPolyMat(0xd8e0e4, false);
-  const skinDk    = getLowPolyMat(0xaab4bc, false);
+  const skinMat   = markOrganic(getLowPolyMat(0xd8e0e4, false));
+  const skinDk    = markOrganic(getLowPolyMat(0xaab4bc, false));
   const hairMat   = new THREE.MeshStandardMaterial({ color: 0xc4dae8, emissive: 0x7aa8d0, emissiveIntensity: 0.12, roughness: 0.35, flatShading: true });
   const eyeMat    = new THREE.MeshStandardMaterial({ color: 0xbfe8ff, emissive: 0x60c0ff, emissiveIntensity: 1.8, roughness: 0.3 });
   const curseMat  = new THREE.MeshStandardMaterial({ color: 0x9050d0, emissive: 0x7028c0, emissiveIntensity: 1.2, roughness: 0.4 });
@@ -12185,6 +12334,10 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
     hp = (55 + player.floor * 5) * 1.5; dmg = (12 + player.floor * 2.5) * 1.5 * 0.8; sp = 3.2; exp = 15 + player.floor;
     scale = isBoss ? 2.4 : 1.15; skinMat = matOrcSkin.clone(); armorMat = matOrcArmor.clone();
   }
+  // 피부는 하이라이트를 빼서 살결로 읽히게 한다(갑옷은 그대로 반짝인다).
+  // 위 분기가 전부 clone()을 쓰는데 clone은 onBeforeCompile을 안 옮기므로 여기서 다시 건다.
+  // 흑기사(3a4250)·골렘 계열처럼 skinMat이 사실상 금속/암석인 타입은 제외한다.
+  if (type !== 'darkknight' && type !== 'golem') markOrganic(skinMat);
   if (isBoss) {
     hp *= 10; dmg *= 1.5; exp *= 10;
     // 보스는 보통 느리지만(×0.8), 고블린(민첩)·오크(근접 압박)는 컨셉상 빠릿하게 유지
@@ -17767,7 +17920,7 @@ function makeTeleportPad(parent, x, z, colorHex) {
 // 공용: 쉼터 NPC(간단한 SD 휴머노이드 + 머리 위 마커)
 function makeRestNPC(parent, x, z, kind, name, lines, robeHex, heal) {
   const g = new THREE.Group();
-  const skin = getLowPolyMat(0xd8a87a), robe = getLowPolyMat(robeHex), pant = getLowPolyMat(0x4a4334);
+  const skin = markOrganic(getLowPolyMat(0xd8a87a)), robe = getLowPolyMat(robeHex), pant = getLowPolyMat(0x4a4334);
   const part = (geo, m, px, py, pz) => { const e = new THREE.Mesh(geo, m); e.position.set(px, py, pz); g.add(e); return e; };
   part(new THREE.BoxGeometry(0.52, 0.56, 0.36), robe, 0, 0.88, 0);
   part(new THREE.BoxGeometry(0.22, 0.34, 0.2), pant, -0.13, 0.42, 0);
