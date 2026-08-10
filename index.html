@@ -4160,7 +4160,7 @@ let townPTrees = null;
 let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v715'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v716'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -6660,30 +6660,17 @@ function buildTownScene() {
       // 잎이 향할 방향 = 카메라가 있는 쪽. iso 오프셋(11.07/20/11.07)을 그대로 쓴다.
       // 이 게임은 시점이 고정이라 setTrees 때 한 번 구워 두면 끝이다.
       cameraDir: [isoOffsetX, isoOffsetY, isoOffsetZ],
-      sunDir: [14, 22, 10],                 // 마을 달빛/햇빛 방향과 같은 쪽
-      // 레퍼런스 픽셀아트 숲 톤: 채도 높은 초록 4단. 안쪽 깊은 그늘이 있어야 잎 덩어리가 겹쳐 보인다.
-      // ACES를 안 타므로 여기 적은 색이 화면에 그대로 나온다. 레퍼런스보다 한 단 낮춘 이유는
-      // 이 마을이 채도가 낮은 중세 팔레트라 원본 그대로 넣으면 나무만 형광으로 뜬다.
-      colors: { deep: 0x17401f, low: 0x2a6b2c, mid: 0x468d33, high: 0x77b440 },
-      upBias: 0.55,
-      // 잎을 크고 적게 — 작은 잎을 많이 뿌리면 색종이처럼 자잘해진다.
-      // 덩어리 하나가 '잎 뭉치'로 읽혀야 레퍼런스처럼 뭉게구름 실루엣이 나온다.
-      // 잎 한 장이 삼각형 leafSides개다. 모양이 보이려면 잎이 커야 하므로, 개수를 줄이고
-      // 크기를 키워 삼각형 수를 맞춘다(잎당 24분할·32장이면 마을 삼각형이 181k까지 올라간다).
-      leavesPerTree: 28, leafSize: [0.28, 0.46],
-      leafSides: 20, leafLobes: 5, leafLobeAmp: 0.24,
-      // 캐노피를 하나 더 얹어 실루엣을 더 울퉁불퉁하게(원본 4개 → 5개)
-      blobs: [
-        { x: 0.00, y: 0.58, z: 0.00, r: 0.32 },
-        { x: -0.23, y: 0.48, z: 0.11, r: 0.23 },
-        { x: 0.21, y: 0.51, z: -0.10, r: 0.22 },
-        { x: 0.04, y: 0.80, z: 0.03, r: 0.20 },
-        { x: -0.09, y: 0.68, z: -0.19, r: 0.18 },
-      ],
-      // 줄기: 레퍼런스처럼 붉은 기가 도는 갈색 + 밑동이 넓게 벌어진 형태
-      trunkMaterial: mat(0x7d4a3a),
-      trunkRadius: [0.05, 0.13], trunkHeight: 0.62,
-      wind: { amp: 0.20, speed: 0.9, dir: [0.906, 0.423] },
+      sunDir: [18, 26, 10],
+      // 참고 코드의 3톤 팔레트를 그대로. deep을 안 넘기면 low로 대체되어 사실상 3단이 된다.
+      // ACES는 끈 채로 둔다 — 켜면 0x77dd44 같은 밝은 초록이 뿌옇게 뭉개진다(역산해도 안 나온다).
+      colors: { low: 0x1e4620, mid: 0x449933, high: 0x77dd44 },
+      // 잎을 작게 많이. 모양을 키워 윤곽을 내는 대신, 잎 개수로 캐노피 밀도를 만드는 방식이다.
+      leavesPerTree: 72, leafSize: [0.18, 0.28],
+      leafSides: 6, leafLobeAmp: 0,          // 육각 잎(참고 코드 기본값). 굴곡 0 = 정육각형
+      leafDome: 0, leafRim: 1,               // 잎 단위 명암·테두리는 끈다(참고 코드에 없는 항목)
+      trunkMaterial: mat(0x5a3d28),
+      trunkRadius: [0.055, 0.085], trunkHeight: 0.4,
+      wind: { amp: 0.25, speed: 1.2, dir: [1.0, 0.3] },
       quantize: 8,
     });
     townPTrees.setTrees(treeSpots);
@@ -8980,11 +8967,10 @@ const PT_DEFAULTS = {
   // 가장자리가 울퉁불퉁해야 겹쳐 있어도 잎 하나하나의 윤곽이 읽힌다.
   // leafSides는 둘레 분할 수 — lobes의 4배쯤 되어야 굴곡이 뭉개지지 않는다.
   leafSides: 20, leafLobes: 5, leafLobeAmp: 0.30,
-  // 명암 4단(깊은 그늘 / 그늘 / 중간 / 햇빛). 원본은 3단인데, 레퍼런스 픽셀아트 나무는
-  // 캐노피 안쪽 깊은 그늘이 한 단 더 있어야 잎 덩어리가 겹쳐 보인다.
-  colors: { deep: 0x1c4a24, low: 0x2f7a33, mid: 0x57a83c, high: 0x93cf4e },
+  // 명암 단계. deep을 주면 4단(깊은 그늘 추가), 안 주면 low로 대체되어 원본과 같은 3단이 된다.
+  colors: { low: 0x2f5f2a, mid: 0x46853a, high: 0x6fae4a },
   sunDir: [18, 26, 10],
-  upBias: 0.62,                 // 명암을 '위쪽'에 얼마나 실을지(햇빛 방향 대비). 클수록 위가 밝다
+  upBias: 0.55,                 // 명암을 '위쪽'에 얼마나 실을지(햇빛 방향 대비). 클수록 위가 밝다
   // 잎 한 장 단위 셰이딩 — 이게 없으면 같은 명암대의 잎끼리 색이 같아서 한 덩어리로 뭉쳐 보인다
   // (구가 여러 개 붙어 있는 느낌). 레퍼런스처럼 잎마다 윤곽이 보이게 하는 부분.
   leafDome: 0.22,               // 잎 위는 밝게 아래는 어둡게(잎 자체의 입체감). 0=끔
