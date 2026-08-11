@@ -1165,7 +1165,14 @@ function createArm(isRight) {
   fore.position.y = -0.45; jitterGeometry(fore.geometry, 0.05); elbowGrp.add(fore);
   tumorShell(elbowGrp, { cx: 0, cy: -0.44, cz: 0, rx: 0.24, ry: 0.40, rz: 0.24, count: 11, rMin: 0.18, rMax: 0.26, yBase: SY - 0.88 });
   // 손(뭉툭한 살덩이 + 뾰족한 발톱)
-  const handGrp = new THREE.Group(); handGrp.position.y = -0.88; elbowGrp.add(handGrp);
+  // 손등이 바깥(좌우)을 보게 손목을 비튼다. 손은 로컬 +y 가 손등, -z 가 손가락 방향으로
+  // 만들어져 있으므로 z축으로 90° 돌리면 손등이 ±x, 즉 몸 바깥을 향한다
+  // (팔을 늘어뜨린 짐승의 손 모양 — 손바닥이 몸통을 마주 본다).
+  // 손가락은 그만큼 세로로 늘어서므로, 아래 fx 간격이 화면에서 상하로 벌어지게 된다.
+  const handGrp = new THREE.Group(); handGrp.position.y = -0.88;
+  handGrp.rotation.z = -sign * Math.PI / 2;
+  handGrp.scale.setScalar(1.5);   // 아래팔(반지름 0.25)보다 확실히 굵어야 손으로 읽힌다
+  elbowGrp.add(handGrp);
   const fist = lump(0.24, bandMats[2], 1); fist.scale.set(1.15, 0.9, 1.1); handGrp.add(fist);
   for (let f = 0; f < 4; f++) {
     const fx = (f - 1.5) * 0.13;
