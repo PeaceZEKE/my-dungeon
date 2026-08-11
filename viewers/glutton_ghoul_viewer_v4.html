@@ -465,10 +465,7 @@ function updateCam() {
 // 카메라는 늘 플레이어 뒤에 있으므로, 카메라를 돌리면 플레이어도 같이 돈다
 // (= 플레이어가 몬스터 주위를 돌면서 보는 것과 같다).
 const PLAYER_DIST = 3.0;   // 몬스터와 플레이어 사이 거리(근접 교전 간격)
-// 스튜디오 리그 그룹은 아래에서 만들지만 updateLightRig 가 먼저 돌 수 있어 여기서 선언한다.
-// const 로 아래에 두면 TDZ 로 부팅이 깨진다 — typeof 가드도 소용없다.
-let studioGrp = null;
-let discMat = null;   // 바닥 재질 — 아래에서 만든다(막마다 색이 다르다)
+let discMat = null;   // 바닥 재질 — 아래에서 만든다(모드마다 색이 다르다)
 const ambientLight = new THREE.AmbientLight(0x1a1e12, 0.88);
 scene.add(ambientLight);
 const torch = new THREE.PointLight(0xffc488, 1.6, TILE * 4.5, 2.0);
@@ -484,8 +481,6 @@ const lightTarget = new THREE.Object3D(); scene.add(lightTarget); viewLight.targ
 // 게임의 갱신식 그대로: 횃불 +2.5 / 근접광 +1.2 / 시야광 +3.0, 시야광은 플레이어가 보는 쪽 5칸.
 // 플레이어는 카메라와 몬스터 사이에 서서 몬스터를 바라본다.
 function updateLightRig() {
-  // 스튜디오 리그는 카메라를 따라 돈다(턴테이블) — 어느 각도에서도 조명 관계가 같다
-  if (studioGrp) studioGrp.rotation.y = camYaw;
   const px = Math.sin(camYaw) * PLAYER_DIST, pz = Math.cos(camYaw) * PLAYER_DIST;
   torch.position.set(px, 2.5, pz);
   nearLight.position.set(px, 1.2, pz);
@@ -503,47 +498,40 @@ castleMoon.visible = false; scene.add(castleMoon); scene.add(castleMoon.target);
 const castleHemi = new THREE.HemisphereLight(0x3a4030, 0x14160c, 0.35);
 scene.add(castleHemi);
 
-// ---------- 스튜디오 3점 조명(뷰어 전용) ----------
-// 게임 리그는 광원이 전부 플레이어(=전방 아래)에 몰려 있어서 위를 향한 면이 통째로 죽는다.
-// 형태를 보려고 만든 모드라 여기서는 키·필·림을 따로 세운다.
-// 세 가지를 지켰다:
-//  · 카메라를 따라 돈다 — 어느 각도에서 봐도 같은 조명 관계가 유지된다(턴테이블).
-//  · 방향광만 쓴다 — 거리 감쇠가 없어 3.9 높이의 꼭대기까지 고르게 닿는다.
-//  · 전체 밝기는 게임 리그와 같은 수준으로 맞췄다(회색 프로브로 재서 조정) —
-//    세기는 재서 정했다 — 캐릭터 픽셀 휘도 80.7 / 채도 0.266 / 클리핑 0%.
-//    게임 1막이 휘도 60.9 / 채도 0.260 이므로, 채도는 같고 밝기만 33% 올린 셈이다.
-studioGrp = new THREE.Group(); scene.add(studioGrp);
-const studioKey = new THREE.DirectionalLight(0xfff0dc, 3.28);   // 키: 정면 위 왼쪽
-studioKey.position.set(-4.2, 6.4, 6.2);
-studioKey.castShadow = true; studioKey.shadow.mapSize.set(1024, 1024);
-studioKey.shadow.camera.near = 1; studioKey.shadow.camera.far = 30;
-studioKey.shadow.camera.left = -4; studioKey.shadow.camera.right = 4;
-studioKey.shadow.camera.top = 5; studioKey.shadow.camera.bottom = -2;
-studioKey.shadow.bias = -0.0012;
-studioGrp.add(studioKey); studioGrp.add(studioKey.target);
-const studioFill = new THREE.DirectionalLight(0x9ab4d8, 1.25);  // 필: 반대쪽에서 그림자를 열어 준다
-studioFill.position.set(5.6, 2.2, 4.4);
-studioGrp.add(studioFill); studioGrp.add(studioFill.target);
-const studioRim = new THREE.DirectionalLight(0xd8c4ff, 2.15);   // 림: 뒤 위에서 실루엣을 배경과 분리
-studioRim.position.set(1.8, 5.2, -6.4);
-studioGrp.add(studioRim); studioGrp.add(studioRim.target);
-// 위를 향한 면을 살리는 반구광(게임에서 죽던 어깨 윗면이 여기서 살아난다)
-const studioHemi = new THREE.HemisphereLight(0x8a94b4, 0x2a2622, 1.00);
-scene.add(studioHemi);
-const studioAmb = new THREE.AmbientLight(0x40465a, 0.48);
+// ---------- 스튜디오 조명(뷰어 전용) ----------
+// 처음 올라온 뷰어(glutton_ghoul_viewer v3)의 조명을 값 그대로 가져온 것이다.
+// 색·세기·위치·그림자 카메라 범위까지 손대지 않았다 — 원본이 이 캐릭터에 맞춰 잡아 둔 값이다.
+// 카메라를 따라 돌리지 않는다(원본도 월드 고정이었다). 자동회전으로 모델이 돌면
+// 빛이 몸을 훑고 지나가는 것이 원본의 보는 맛이다.
+// 주의: 원본은 최상위 그룹을 π 돌려 놔서 이 광원들이 뒤통수를 비추고 있었다.
+// 지금은 정면이 -z 라(게임 규약) 키·언더가 얼굴과 배를 제대로 잡는다.
+const studioAmb = new THREE.AmbientLight(0x6b6070, 0.72);
 scene.add(studioAmb);
-const STUDIO_LIGHTS = [studioKey, studioFill, studioRim, studioHemi, studioAmb];
+const studioKey = new THREE.DirectionalLight(0xfff0e2, 1.15);
+studioKey.position.set(-4, 10, -5);
+studioKey.castShadow = true; studioKey.shadow.mapSize.set(1024, 1024);
+studioKey.shadow.camera.near = 1; studioKey.shadow.camera.far = 26;
+studioKey.shadow.camera.left = -4; studioKey.shadow.camera.right = 4;
+studioKey.shadow.camera.top = 4.5; studioKey.shadow.camera.bottom = -2;
+studioKey.shadow.bias = -0.0008;
+scene.add(studioKey);
+const studioRim = new THREE.DirectionalLight(0x6f86c0, 0.6);
+studioRim.position.set(5, 3, 5);
+scene.add(studioRim);
+const studioUnder = new THREE.PointLight(0xb07a86, 0.45, 8, 2);
+studioUnder.position.set(0, 0.3, -1.0);
+scene.add(studioUnder);
+const STUDIO_LIGHTS = [studioAmb, studioKey, studioRim, studioUnder];
 const GAME_LIGHTS = [ambientLight, torch, nearLight, viewLight, castleHemi];
 
 // ---------- 막(Act)별 환경 — 0번만 뷰어용이고 나머지는 게임 값 그대로 ----------
 const ACTS = [
-  // 스튜디오: **조명 방향만** 바꾸는 모드다. 계조는 게임과 같은 양으로 둔다 —
-  // 안개 밀도(0.025)도 대기 원근 세기(0.45)도 1막과 같은 값이고, 색조만 중립 회청색으로 바꿨다.
-  // 이렇게 해야 게임 기준으로 역산해 둔 팔레트가 여기서도 같은 색으로 읽힌다.
-  // (한 번 안개·대기를 꺼 봤더니 채도가 0.24 → 0.48로 뛰어서, 게임에서 크림색인 배가
-  //  형광 노란색으로 보였다. 조명만 손보라는 요청이었으니 계조는 건드리지 않는다.)
-  { name: '스튜디오', studio: true, bg: 0x0e0f16, fogD: 0.025, aerial: 0x161824, shadowC: 0x1a1e2a,
-    shadowS: 0.32, aerialS: 0.45, bloom: 0.66, vig: 0.34, floor: 0x020306 },
+  // 스튜디오: 처음 올라온 뷰어의 환경을 그대로 되살린 것.
+  // 그 뷰어는 카메라가 모델에서 6~7칸 거리라 안개가 모델에 닿지 않았고 대기 원근도 없었다.
+  // 그래서 여기서도 둘 다 끈다 — 안 그러면 같은 조명을 넣어도 원본처럼 보이지 않는다.
+  // 대신 게임(1/2/3막)보다 채도가 높게 나온다. 색 판단은 막 모드에서 할 것.
+  { name: '스튜디오', studio: true, bg: 0x11101a, fogD: 0.0, aerial: 0x11101a, shadowC: 0x1a1826,
+    shadowS: 0.20, aerialS: 0.0, bloom: 0.68, vig: 0.34, floor: 0x090b0a },
   { name: '1막', floor: 0x0d1109, bg: 0x070a06, fogD: 0.025, aerial: 0x1a2416, shadowC: 0x203a2c, shadowS: 0.42,
     bloom: 0.62, amb: 0x1a1e12, ambI: 0.88, moon: false,
     hemi: 0x3a4030, hemiG: 0x14160c, hemiI: 0.35 },
@@ -565,8 +553,8 @@ function applyAct(i) {
   quadMat.uniforms.uBloomStr.value = 0.85;
   quadMat.uniforms.uAerialStr.value = (a.aerialS !== undefined) ? a.aerialS : 0.45;
   quadMat.uniforms.uVig.value = (a.vig !== undefined) ? a.vig : 0.5;
-  if (discMat) discMat.color.setHex(a.floor);
   bloomMat.uniforms.uThresh.value = a.bloom;
+  if (discMat) discMat.color.setHex(a.floor);
   for (const L of STUDIO_LIGHTS) L.visible = !!a.studio;
   for (const L of GAME_LIGHTS) L.visible = !a.studio;
   if (a.studio) { castleMoon.visible = false; return; }
@@ -806,9 +794,9 @@ function fleshMat(y, vary = 1) {
   i = Math.max(0, Math.min(bandMats.length - 1, i));
   return bandMats[i];
 }
-const bellyMat  = getLowPolyMat(0x6a5e3a);   // 팽팽한 크림색 배
-const bellyLit  = getLowPolyMat(0x786c48);   // 배 하이라이트
-const bellyDk   = getLowPolyMat(0x322a1c);   // 배 음영/주름
+const bellyMat  = getLowPolyMat(0x685119);   // 팽팽한 크림색 배
+const bellyLit  = getLowPolyMat(0x766626);   // 배 하이라이트
+const bellyDk   = getLowPolyMat(0x302613);   // 배 음영/주름
 const bellyGrn  = getLowPolyMat(0x3b4417);   // 배 아래 변색(누런 초록빛)
 const mouthMat  = getLowPolyMat(0x2e1422);   // 입속
 const gumMat    = getLowPolyMat(0x4c1c2c);   // 잇몸
@@ -889,14 +877,14 @@ function addSpike(parent, x, y, z, h, rx, rz) {
 // ============================================================
 
 // 배 부피(이 안쪽에는 살덩이를 배치하지 않음)
-const BELLY_C = { x: 0, y: 1.26, z: -0.54 };
+const BELLY_C = { x: 0, y: 1.38, z: -0.52 };
 function inBelly(x, y, z) {
-  const a = (x - BELLY_C.x) / 1.00, b = (y - BELLY_C.y) / 0.88, c = (z - BELLY_C.z) / 0.90;
+  const a = (x - BELLY_C.x) / 0.86, b = (y - BELLY_C.y) / 0.86, c = (z - BELLY_C.z) / 0.80;
   return a * a + b * b + c * c < 1.0;
 }
 // 얼굴 앞(입) 공간 — 살덩이가 얼굴을 덮지 않도록 비움
 function inFace(x, y, z) {
-  const a = x / 0.90, b = (y - 3.06) / 0.80, c = (z + 0.78) / 0.94;
+  const a = x / 0.74, b = (y - 2.84) / 0.64, c = (z + 0.66) / 0.80;
   return a * a + b * b + c * c < 1.0;
 }
 // 팔이 늘어질 통로 — 몸통 옆구리를 비워 팔이 실루엣에서 분리되게
@@ -914,35 +902,35 @@ coreLow.scale.set(1.0, 0.72, 0.9); coreLow.position.set(0, 0.78, 0.10); jitterGe
 const bodyLumps = [];
 // 엉덩이·허리(넓게 퍼진 하단)
 bodyLumps.push(...tumorShell(torsoGrp, {
-  cx: 0, cy: 0.80, cz: 0.10, rx: 1.02, ry: 0.54, rz: 0.86,
-  count: 76, rMin: 0.15, rMax: 0.26, skip: (x, y, z) => skipAll(x, y, z) || y < 0.24
+  cx: 0, cy: 0.80, cz: 0.10, rx: 0.92, ry: 0.52, rz: 0.80,
+  count: 46, rMin: 0.20, rMax: 0.34, skip: (x, y, z) => skipAll(x, y, z) || y < 0.26
 }));
 // 몸통 중단
 bodyLumps.push(...tumorShell(torsoGrp, {
-  cx: 0, cy: 1.55, cz: 0.10, rx: 1.04, ry: 0.62, rz: 0.84,
-  count: 80, rMin: 0.15, rMax: 0.26, skip: skipAll
+  cx: 0, cy: 1.55, cz: 0.10, rx: 0.90, ry: 0.58, rz: 0.78,
+  count: 46, rMin: 0.19, rMax: 0.33, skip: skipAll
 }));
 // 어깨(가장 넓은 부분)
 bodyLumps.push(...tumorShell(torsoGrp, {
-  cx: 0, cy: 2.24, cz: 0.08, rx: 1.20, ry: 0.58, rz: 0.82,
-  count: 84, rMin: 0.15, rMax: 0.25, skip: skipAll
+  cx: 0, cy: 2.26, cz: 0.08, rx: 1.00, ry: 0.54, rz: 0.76,
+  count: 52, rMin: 0.19, rMax: 0.32, skip: skipAll
 }));
 // 어깨 위 봉우리(머리 양옆으로 솟은 분홍 살덩이)
 [-1, 1].forEach(s => {
   bodyLumps.push(...tumorShell(torsoGrp, {
-    cx: s * 0.86, cy: 2.62, cz: 0.12, rx: 0.46, ry: 0.32, rz: 0.44,
-    count: 32, rMin: 0.13, rMax: 0.22, skip: inFace
+    cx: s * 0.64, cy: 2.80, cz: 0.12, rx: 0.36, ry: 0.30, rz: 0.36,
+    count: 18, rMin: 0.17, rMax: 0.28, skip: inFace
   }));
 });
 // 가슴(입 아래 ~ 배 위 사이의 분홍 살 띠)
 bodyLumps.push(...tumorShell(torsoGrp, {
-  cx: 0, cy: 2.32, cz: -0.62, rx: 0.74, ry: 0.32, rz: 0.34,
-  count: 30, rMin: 0.13, rMax: 0.21, skip: inFace
+  cx: 0, cy: 2.22, cz: -0.54, rx: 0.62, ry: 0.28, rz: 0.30,
+  count: 16, rMin: 0.17, rMax: 0.27, skip: inFace
 }));
 // 등 상단 혹(뒤로 부풀어 오른 살)
 bodyLumps.push(...tumorShell(torsoGrp, {
-  cx: 0, cy: 2.10, cz: 0.70, rx: 0.68, ry: 0.48, rz: 0.28,
-  count: 30, rMin: 0.14, rMax: 0.23
+  cx: 0, cy: 2.10, cz: 0.66, rx: 0.60, ry: 0.44, rz: 0.26,
+  count: 18, rMin: 0.18, rMax: 0.30
 }));
 
 // 감염 정맥/발진
@@ -953,59 +941,84 @@ addSeam(torsoGrp, [0.68, 2.10, 0.48], [0.88, 1.52, 0.36], 0.024, bandMats[2]);
 });
 // 어깨·등의 검은 가시
 addSpike(torsoGrp, -0.90, 2.62, 0.34, 0.30, -0.5, 0.8);
-addSpike(torsoGrp, -0.62, 2.86, 0.30, 0.26, -0.5, 0.4);
+addSpike(torsoGrp, -0.56, 2.98, 0.30, 0.26, -0.5, 0.4);
 addSpike(torsoGrp, 0.92, 2.56, 0.30, 0.26, -0.5, -0.8);
-addSpike(torsoGrp, 0.66, 2.84, 0.32, 0.24, -0.5, -0.35);
-addSpike(torsoGrp, -0.22, 3.10, 0.52, 0.24, -0.7, 0.15);
-addSpike(torsoGrp, 0.30, 3.06, 0.56, 0.22, -0.7, -0.15);
+addSpike(torsoGrp, 0.60, 2.96, 0.32, 0.24, -0.5, -0.35);
+addSpike(torsoGrp, -0.18, 3.02, 0.46, 0.22, -0.7, 0.15);
+addSpike(torsoGrp, 0.26, 2.96, 0.52, 0.20, -0.7, -0.15);
 addSpike(torsoGrp, -1.02, 2.10, 0.42, 0.22, -0.3, 1.1);
 addSpike(torsoGrp, 1.04, 2.02, 0.40, 0.20, -0.3, -1.1);
 
 // ---------- 거대한 크림색 배 ----------
 const bellyGrp = new THREE.Group(); bodyGrp.add(bellyGrp);
-// ===== 배: 매끈한 크림색 알 =====
-//  원화의 배는 몸통의 울퉁불퉁한 살덩이와 정반대로 '매끈한 알' 한 덩어리다 — 그 대비가
-//  이 캐릭터의 핵심이라 표면을 거의 흔들지 않는다(jitter 0.012. 살덩이는 0.30이다).
-//  예전에는 여기에 갈비뼈 같은 이빨 우리를 씌워 뒀는데 원화에 없는 요소이고, 알의 매끈함을
-//  통째로 가려서 실루엣이 '이빨 뭉치'로 읽혔다.
-//  1페이즈: 좌우 반쪽이 맞물려 알 하나로 보인다(가운데 이음선만 희미하게).
-//  2페이즈: 반쪽이 바깥으로 열리며 안쪽 입(bellyMawGrp)이 드러난다.
-const CAGE_PIVOT = { x: 0.72, y: BELLY_C.y, z: BELLY_C.z + 0.40 };
-const BELLY_R = { x: 0.97, y: 0.84, z: 0.86 };
-function makeBellyHalf(sgn) {
+// ===== 배를 감싼 갈비뼈 같은 이빨 우리 =====
+//  1페이즈: 좌우 이빨이 가운데서 지그재그로 맞물려 배를 덮는다
+//  2페이즈: 이빨과 뱃가죽이 한 짝씩 통째로 바깥·앞으로 열리며 뱃속이 드러난다
+const BELLY_MID = new THREE.Vector3(BELLY_C.x, BELLY_C.y, BELLY_C.z + 0.10);
+// 표면을 타고 도는 칼날형 이빨 조각(방향 = 길이축, 표면 법선 = 두께축)
+function blade(parent, from, to, w0, w1, thick, mat, org) {
+  const a = new THREE.Vector3(...from), b = new THREE.Vector3(...to);
+  const dir = b.clone().sub(a); const len = dir.length(); dir.normalize();
+  const mid = a.clone().add(b).multiplyScalar(0.5);
+  const nrm = mid.clone().sub(org).normalize();
+  const xA = new THREE.Vector3().crossVectors(dir, nrm).normalize();
+  const zA = new THREE.Vector3().crossVectors(xA, dir).normalize();
+  const g = new THREE.CylinderGeometry(1, 1, len, 5);
+  const pos = g.attributes.position;                    // 위쪽은 w1, 아래쪽은 w0 로 테이퍼
+  for (let i = 0; i < pos.count; i++) {
+    const yy = pos.getY(i), f = (yy + len / 2) / len;
+    const w = w0 + (w1 - w0) * f;
+    pos.setXYZ(i, pos.getX(i) * w, yy, pos.getZ(i) * w * (thick / w0));
+  }
+  jitterGeometry(g, w0 * 0.12);
+  const m = sh(new THREE.Mesh(g, mat));
+  m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xA, dir, zA));
+  m.position.copy(mid);
+  parent.add(m); return m;
+}
+const CAGE_PIVOT = { x: 0.62, y: BELLY_C.y, z: BELLY_C.z + 0.34 };
+const FANG_ROWS = 9;
+function makeCageHalf(sgn) {
   const g = new THREE.Group();
   g.position.set(sgn * CAGE_PIVOT.x, CAGE_PIVOT.y, CAGE_PIVOT.z);
   bellyGrp.add(g);
-  // three의 sphere는 phi=0 에서 -x, phi=PI 에서 +x 를 지난다 → 좌우로 반씩 자른다.
-  // 열렸을 때 껍질 안쪽이 보여야 하므로 DoubleSide.
-  const geo = new THREE.SphereGeometry(1, 26, 18, sgn > 0 ? Math.PI / 2 : -Math.PI / 2, Math.PI);
-  const mat = bellyMat.clone(); mat.side = THREE.DoubleSide; markOrganic(mat);
-  const shell = sh(new THREE.Mesh(geo, mat));
-  shell.scale.set(BELLY_R.x, BELLY_R.y, BELLY_R.z);
-  shell.position.set(-sgn * CAGE_PIVOT.x, 0, BELLY_C.z - CAGE_PIVOT.z);
-  jitterGeometry(shell.geometry, 0.012);   // 살덩이와 달리 거의 매끈하게
-  g.add(shell);
-  // 알 아래쪽의 누런 변색(원화에서 배 밑동이 탁하다)
-  const low = sh(new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12, sgn > 0 ? Math.PI / 2 : -Math.PI / 2, Math.PI), bellyDk));
-  low.scale.set(BELLY_R.x * 0.86, BELLY_R.y * 0.26, BELLY_R.z * 0.86);
-  low.position.set(-sgn * CAGE_PIVOT.x, -BELLY_R.y * 0.74, BELLY_C.z - CAGE_PIVOT.z + 0.02);
-  jitterGeometry(low.geometry, 0.02); g.add(low);
-  // 표면을 도는 옅은 균열(원화의 얇은 면 분할선). 알 껍질 바로 위에 얹는다.
-  const P = (ax, ay) => {
-    const px = Math.sin(ax) * (sgn > 0 ? 1 : -1), pz = -Math.cos(ax);
-    return [ -sgn * CAGE_PIVOT.x + px * BELLY_R.x * Math.cos(ay) * 1.005,
-             ay * BELLY_R.y * 1.02,
-             BELLY_C.z - CAGE_PIVOT.z + pz * BELLY_R.z * Math.cos(ay) * 1.005 ];
-  };
-  [[0.30, 0.42, 0.62, 0.02], [0.75, 0.18, 0.95, -0.30], [0.45, -0.24, 0.30, -0.58]].forEach(c => {
-    addSeam(g, P(c[0], c[1]), P(c[2], c[3]), 0.016, bellyDk);
-  });
+  const org = new THREE.Vector3(BELLY_MID.x - sgn * CAGE_PIVOT.x, 0, BELLY_MID.z - CAGE_PIVOT.z);
+  // 이빨 뒤를 받치는 어두운 뱃가죽(이빨 사이로 이것만 비친다)
+  const skin = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.72, 1), gutMat));
+  skin.scale.set(0.60, 1.02, 0.55);
+  skin.position.set(-sgn * 0.32, 0, -0.26);
+  jitterGeometry(skin.geometry, 0.05); g.add(skin);
+  for (let r = 0; r < FANG_ROWS; r++) {
+    // 좌우를 반 칸씩 어긋나게 놓아 가운데서 지그재그로 맞물리게 한다
+    const u = (r + (sgn > 0 ? 0.26 : 0.74)) / FANG_ROWS;
+    const y = 2.06 - u * 1.48;                       // 위 2.06 → 아래 0.58
+    const k = Math.sin(Math.PI * (0.13 + 0.74 * u)); // 배 단면(가운데가 가장 두껍다)
+    const hw = 0.30 + 0.56 * k;
+    const zf = -0.44 - 0.66 * k;                     // 뱃가죽보다 앞
+    // 갈비뼈처럼 가운데가 앞으로 불룩하게 휘도록 두 마디로 나눠 붙인다
+    const W = 0.102 + 0.060 * k, TH = 0.068;
+    const P = (x, yy, z) => [x - sgn * CAGE_PIVOT.x, yy - CAGE_PIVOT.y, z - CAGE_PIVOT.z];
+    const base = P(sgn * hw * 1.06, y, -0.14);
+    const midP = P(sgn * hw * 0.42, y - 0.02, zf - 0.06);
+    const tipP = P(-sgn * (0.13 + 0.06 * k), y - 0.07 * k, zf + 0.26);
+    const mat = r % 2 ? fangMat : fangDk;
+    blade(g, base, midP, W, W * 0.88, TH, mat, org);
+    blade(g, midP, tipP, W * 0.88, 0.014, TH, mat, org);
+    // 이빨 뿌리를 덮는 뼈판
+    const root = lump(0.11 + 0.05 * k, fangDk, 0);
+    root.scale.set(0.75, 1.35, 0.9);
+    root.position.set(base[0], base[1], base[2] + 0.05); g.add(root);
+  }
+  // 옆구리를 따라 흐르는 뼈 줄기(이빨 뿌리를 잇는다)
+  const spine = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.06, 1.60, 6), fangDk));
+  spine.position.set(sgn * (0.84 - CAGE_PIVOT.x), 0, -0.14 - CAGE_PIVOT.z);
+  spine.rotation.z = -sgn * 0.10; jitterGeometry(spine.geometry, 0.03); g.add(spine);
   return g;
 }
-const cageR = makeBellyHalf(1), cageL = makeBellyHalf(-1);
-// 좌우가 맞물리는 가운데 이음선 — 닫혀 있을 때만 보이는 아주 얇은 골
-const cageSeam = sh(new THREE.Mesh(new THREE.BoxGeometry(0.035, BELLY_R.y * 1.55, 0.05), bellyDk));
-cageSeam.position.set(0, BELLY_C.y, BELLY_C.z - BELLY_R.z * 0.97);
+const cageR = makeCageHalf(1), cageL = makeCageHalf(-1);
+// 좌우 이빨이 맞물리는 가운데 골(닫혀 있을 때 세로로 난 어두운 틈)
+const cageSeam = sh(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.92, 0.09), gutMat));
+cageSeam.position.set(0, BELLY_C.y - 0.02, BELLY_C.z - 0.22); jitterGeometry(cageSeam.geometry, 0.04);
 bellyGrp.add(cageSeam);
 
 // 배 속 두 번째 입(닫혀 있을 땐 배에 가려 보이지 않는다)
@@ -1045,19 +1058,19 @@ bellyLow2.scale.set(1.5, 0.5, 0.9); bellyLow2.position.set(0, 0.66, -0.60); jitt
 });
 
 // ---------- 머리(어깨에 파묻힌 채 입을 쩍 벌림) ----------
-const HEAD_Y = 3.10;
-const headGrp = new THREE.Group(); headGrp.position.set(0, HEAD_Y, -0.56); headGrp.scale.setScalar(1.22); bodyGrp.add(headGrp);
+const HEAD_Y = 2.86;
+const headGrp = new THREE.Group(); headGrp.position.set(0, HEAD_Y, -0.48); bodyGrp.add(headGrp);
 // 두개골 살덩이(분홍, 뇌처럼 울룩불룩)
-tumorShell(headGrp, { cx: 0, cy: 0.28, cz: 0.12, rx: 0.62, ry: 0.36, rz: 0.50, count: 58, rMin: 0.12, rMax: 0.20, yBase: HEAD_Y });
+tumorShell(headGrp, { cx: 0, cy: 0.30, cz: 0.14, rx: 0.58, ry: 0.34, rz: 0.46, count: 32, rMin: 0.16, rMax: 0.26, yBase: HEAD_Y });
 const headCore = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.52, 1), bandMats[6]));
-headCore.scale.set(1.18, 0.80, 0.92); headCore.position.set(0, 0.22, 0.12); jitterGeometry(headCore.geometry, 0.06); headGrp.add(headCore);
+headCore.scale.set(1.15, 0.85, 0.90); headCore.position.set(0, 0.24, 0.12); jitterGeometry(headCore.geometry, 0.06); headGrp.add(headCore);
 // 뿔처럼 튀어나온 뾰족 살(원화 머리 옆 돌기)
 addSpike(headGrp, -0.52, 0.34, -0.02, 0.22, -0.2, 1.0);
 addSpike(headGrp, 0.54, 0.30, 0.02, 0.20, -0.2, -1.0);
 
 // 입속(검붉은 구멍) — 얼굴 안쪽으로 파인 공동
 const maw = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.40, 1), mouthMat));
-maw.scale.set(1.48, 1.02, 0.62); maw.position.set(0, -0.19, -0.14); jitterGeometry(maw.geometry, 0.035); headGrp.add(maw);
+maw.scale.set(1.05, 0.95, 0.55); maw.position.set(0, -0.20, -0.16); jitterGeometry(maw.geometry, 0.035); headGrp.add(maw);
 
 // 입술/잇몸 띠: 이빨과 같은 호(弧)를 따라 혹을 늘어놓아 입 테두리를 만듦
 // (예전처럼 링을 비스듬히 얹으면 입술이 이빨 앞으로 튀어나와 어긋나 보임)
@@ -1075,39 +1088,39 @@ function lipArc(parent, n, xSpan, y, z0, zCurve, r, mat, sy, sz) {
 // 윗턱(입 위 덮개 + 윗입술 + 윗니)
 const upperJaw = new THREE.Group(); headGrp.add(upperJaw);
 // 눈과 입 사이의 주둥이 살(이빨보다 앞으로 나오지 않게 얕게)
-const upMass = lump(0.44, bandMats[6], 1); upMass.scale.set(1.55, 0.52, 0.80); upMass.position.set(0, 0.07, -0.17); upperJaw.add(upMass);
+const upMass = lump(0.40, bandMats[6], 1); upMass.scale.set(1.3, 0.55, 0.78); upMass.position.set(0, 0.06, -0.17); upperJaw.add(upMass);
 // 윗입술 띠 — 이빨이 매달릴 테두리
-lipArc(upperJaw, 13, 0.54, -0.03, -0.46, 0.17, 0.090, bandMats[6], 0.80, 0.82);
+lipArc(upperJaw, 9, 0.38, -0.03, -0.46, 0.15, 0.095, bandMats[6], 0.80, 0.82);
 // 잇몸(입술 안쪽, 이빨 뿌리 뒤)
-lipArc(upperJaw, 11, 0.48, -0.11, -0.40, 0.14, 0.058, gumMat, 0.90, 0.80);
+lipArc(upperJaw, 7, 0.32, -0.11, -0.40, 0.12, 0.060, gumMat, 0.90, 0.80);
 // 윗니(입술 아래로 늘어진 누런 송곳니)
-for (let i = 0; i < 11; i++) {
-  const fx = (i - 5) / 5;
+for (let i = 0; i < 7; i++) {
+  const fx = (i - 3) / 3;
   const h = 0.20 + (i % 2) * 0.08 + (1 - Math.abs(fx)) * 0.06;
   const t = sh(new THREE.Mesh(new THREE.ConeGeometry(0.072, h, 4), teethMat));
   t.rotation.x = Math.PI + 0.20; t.rotation.z = fx * 0.28;
-  t.position.set(fx * 0.50, -0.16, -0.50 + fx * fx * 0.16);
+  t.position.set(fx * 0.34, -0.16, -0.50 + fx * fx * 0.14);
   upperJaw.add(t);
 }
 // 아래턱(열고 닫히는 피벗)
 const jawGrp = new THREE.Group(); jawGrp.position.set(0, -0.10, 0.08); headGrp.add(jawGrp);
-const lowMass = lump(0.40, bandMats[5], 1); lowMass.scale.set(1.52, 0.48, 0.74); lowMass.position.set(0, -0.26, -0.20); jawGrp.add(lowMass);
-const lowMass2 = lump(0.30, bandMats[4], 1); lowMass2.scale.set(1.45, 0.58, 0.82); lowMass2.position.set(0, -0.34, -0.06); jawGrp.add(lowMass2);
+const lowMass = lump(0.36, bandMats[5], 1); lowMass.scale.set(1.3, 0.50, 0.72); lowMass.position.set(0, -0.26, -0.20); jawGrp.add(lowMass);
+const lowMass2 = lump(0.26, bandMats[4], 1); lowMass2.scale.set(1.3, 0.6, 0.8); lowMass2.position.set(0, -0.34, -0.06); jawGrp.add(lowMass2);
 // 아랫입술 띠 + 잇몸
-lipArc(jawGrp, 12, 0.50, -0.15, -0.46, 0.15, 0.084, bandMats[5], 0.80, 0.82);
-lipArc(jawGrp, 10, 0.44, -0.08, -0.40, 0.13, 0.053, gumMat, 0.90, 0.80);
+lipArc(jawGrp, 8, 0.34, -0.15, -0.46, 0.13, 0.088, bandMats[5], 0.80, 0.82);
+lipArc(jawGrp, 6, 0.28, -0.08, -0.40, 0.11, 0.055, gumMat, 0.90, 0.80);
 // 아랫니(위로 솟은 송곳니 — 윗니와 어긋나게 배치)
-for (let i = 0; i < 10; i++) {
-  const fx = (i - 4.5) / 4.5;
+for (let i = 0; i < 6; i++) {
+  const fx = (i - 2.5) / 2.5;
   const h = 0.16 + (i % 2) * 0.07 + (1 - Math.abs(fx)) * 0.05;
   const t = sh(new THREE.Mesh(new THREE.ConeGeometry(0.066, h, 4), teethMat));
   t.rotation.x = -0.20; t.rotation.z = -fx * 0.28;
-  t.position.set(fx * 0.46, -0.06, -0.50 + fx * fx * 0.14);
+  t.position.set(fx * 0.30, -0.06, -0.50 + fx * fx * 0.12);
   jawGrp.add(t);
 }
 // 혀
 const tongue = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.19, 1), tongueMat));
-tongue.scale.set(1.35, 0.42, 1.30); tongue.position.set(0, -0.14, -0.26); jitterGeometry(tongue.geometry, 0.03); jawGrp.add(tongue);
+tongue.scale.set(0.95, 0.45, 1.25); tongue.position.set(0, -0.14, -0.26); jitterGeometry(tongue.geometry, 0.03); jawGrp.add(tongue);
 // 흘러내리는 침
 const drools = [];
 [[-0.20, -0.32], [0.06, -0.28], [0.26, -0.34]].forEach((p, i) => {
@@ -1118,10 +1131,10 @@ const drools = [];
 // 살에 파묻힌 작은 눈(입 바로 위, 탐욕의 노란 빛)
 const eyes = [];
 [-1, 1].forEach(s => {
-  const brow = lump(0.14, bandMats[6], 0); brow.scale.set(1.6, 0.7, 0.7); brow.position.set(s * 0.32, 0.24, -0.38); headGrp.add(brow);
-  const socket = lump(0.09, bandMats[2], 0); socket.scale.set(1.2, 1.0, 0.8); socket.position.set(s * 0.30, 0.15, -0.42); headGrp.add(socket);
+  const brow = lump(0.13, bandMats[6], 0); brow.scale.set(1.5, 0.7, 0.7); brow.position.set(s * 0.24, 0.23, -0.38); headGrp.add(brow);
+  const socket = lump(0.09, bandMats[2], 0); socket.scale.set(1.2, 1.0, 0.8); socket.position.set(s * 0.22, 0.14, -0.42); headGrp.add(socket);
   const glow = new THREE.Mesh(new THREE.IcosahedronGeometry(0.050, 0), eyeMat);
-  glow.position.set(s * 0.30, 0.15, -0.47); headGrp.add(glow); eyes.push(glow);
+  glow.position.set(s * 0.22, 0.14, -0.47); headGrp.add(glow); eyes.push(glow);
 });
 
 // 위액이 뿜어져 나올 입 위치
@@ -1131,21 +1144,21 @@ const mouthAnchor = new THREE.Object3D(); mouthAnchor.position.set(0, -0.30, -0.
 function createArm(isRight) {
   const sign = isRight ? 1 : -1;
   const SY = 2.34; // 어깨 높이
-  const armGrp = new THREE.Group(); armGrp.position.set(sign * 1.42, SY, -0.10); bodyGrp.add(armGrp);
+  const armGrp = new THREE.Group(); armGrp.position.set(sign * 1.28, SY, -0.10); bodyGrp.add(armGrp);
   // 위팔
-  const upper = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.40, 0.35, 0.9, 7), bandMats[3]));
+  const upper = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.28, 0.9, 7), bandMats[3]));
   upper.position.y = -0.45; jitterGeometry(upper.geometry, 0.05); armGrp.add(upper);
-  tumorShell(armGrp, { cx: 0, cy: -0.42, cz: 0, rx: 0.33, ry: 0.44, rz: 0.33, count: 26, rMin: 0.14, rMax: 0.22, yBase: SY });
+  tumorShell(armGrp, { cx: 0, cy: -0.42, cz: 0, rx: 0.26, ry: 0.42, rz: 0.26, count: 12, rMin: 0.19, rMax: 0.28, yBase: SY });
   // 팔꿈치
   const elbowGrp = new THREE.Group(); elbowGrp.position.y = -0.88; armGrp.add(elbowGrp);
-  const elbow = lump(0.34, bandMats[2], 1); elbowGrp.add(elbow);
+  const elbow = lump(0.28, bandMats[2], 1); elbowGrp.add(elbow);
   // 아래팔
-  const fore = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.31, 0.85, 7), bandMats[2]));
+  const fore = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.25, 0.85, 7), bandMats[2]));
   fore.position.y = -0.45; jitterGeometry(fore.geometry, 0.05); elbowGrp.add(fore);
-  tumorShell(elbowGrp, { cx: 0, cy: -0.44, cz: 0, rx: 0.30, ry: 0.42, rz: 0.30, count: 24, rMin: 0.13, rMax: 0.21, yBase: SY - 0.88 });
+  tumorShell(elbowGrp, { cx: 0, cy: -0.44, cz: 0, rx: 0.24, ry: 0.40, rz: 0.24, count: 11, rMin: 0.18, rMax: 0.26, yBase: SY - 0.88 });
   // 손(뭉툭한 살덩이 + 뾰족한 발톱)
   const handGrp = new THREE.Group(); handGrp.position.y = -0.88; elbowGrp.add(handGrp);
-  const fist = lump(0.30, bandMats[2], 1); fist.scale.set(1.15, 0.9, 1.1); handGrp.add(fist);
+  const fist = lump(0.24, bandMats[2], 1); fist.scale.set(1.15, 0.9, 1.1); handGrp.add(fist);
   for (let f = 0; f < 4; f++) {
     const fx = (f - 1.5) * 0.13;
     const fing = lump(0.085, bandMats[1], 0); fing.scale.set(0.8, 0.8, 1.5);
@@ -1305,10 +1318,10 @@ makeLabel('+X', 3.3, 0.12, 0, '#e0a0a0'); makeLabel('+Z', 0, 0.12, 3.3, '#a0b0e0
 // ---------- 바닥 ----------
 // 게임 던전 바닥과 같은 무광 돌(?srough 기본 1.0). 카메라가 25.4 떨어져 있어 넓게 깔아야
 // 화면 아래가 비지 않는다.
-const disc = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 0.05, 48), getLowPolyMat(0x0d1109));
+const disc = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.4, 0.05, 48), getLowPolyMat(0x0d1109));
 disc.material.roughness = 1.0;
 disc.position.y = 0.0; disc.receiveShadow = true; scene.add(disc);
-discMat = disc.material; applyAct(actIdx);   // 바닥이 생겼으니 현재 막 색을 다시 입힌다
+discMat = disc.material; applyAct(actIdx);   // 바닥이 생겼으니 현재 모드 색을 다시 입힌다
 
 // ---------- 살 재질에 유기체 표식 ----------
 // 게임에서 살로 된 몬스터는 skinMat에 markOrganic이 자동으로 걸리지만, 이 구울처럼 전용 빌더가
@@ -1437,7 +1450,7 @@ applyShadowMode(true);   // 시작은 스튜디오 모드 — 형태를 보라�
 updateVer();
 const clock = new THREE.Clock();
 const lerp = (o, key, tgt, k, dt) => { o[key] += (tgt - o[key]) * Math.min(1, dt * k); };
-const JAW_IDLE = -0.78, JAW_ROAR = -1.26;
+const JAW_IDLE = -0.62, JAW_ROAR = -1.18;
 jawGrp.rotation.x = JAW_IDLE;
 
 function animate() {
