@@ -466,6 +466,7 @@ function updateCam() {
 // (= 플레이어가 몬스터 주위를 돌면서 보는 것과 같다).
 const PLAYER_DIST = 3.0;   // 몬스터와 플레이어 사이 거리(근접 교전 간격)
 let discMat = null;   // 바닥 재질 — 아래에서 만든다(모드마다 색이 다르다)
+let studioGrp = null; // 스튜디오 조명 그룹 — 아래에서 만든다(카메라를 따라 돈다)
 const ambientLight = new THREE.AmbientLight(0x1a1e12, 0.88);
 scene.add(ambientLight);
 const torch = new THREE.PointLight(0xffc488, 1.6, TILE * 4.5, 2.0);
@@ -481,6 +482,9 @@ const lightTarget = new THREE.Object3D(); scene.add(lightTarget); viewLight.targ
 // 게임의 갱신식 그대로: 횃불 +2.5 / 근접광 +1.2 / 시야광 +3.0, 시야광은 플레이어가 보는 쪽 5칸.
 // 플레이어는 카메라와 몬스터 사이에 서서 몬스터를 바라본다.
 function updateLightRig() {
+  // 스튜디오 리그는 카메라를 따라 돈다(턴테이블) — 어느 각도에서 봐도 조명 관계가 같다.
+  // GAME_YAW 를 빼는 이유: 기본 시점에서 회전이 0 이어야 원본 뷰어와 똑같은 빛 배치가 된다.
+  if (studioGrp) studioGrp.rotation.y = camYaw - GAME_YAW;
   const px = Math.sin(camYaw) * PLAYER_DIST, pz = Math.cos(camYaw) * PLAYER_DIST;
   torch.position.set(px, 2.5, pz);
   nearLight.position.set(px, 1.2, pz);
@@ -501,12 +505,16 @@ scene.add(castleHemi);
 // ---------- 스튜디오 조명(뷰어 전용) ----------
 // 처음 올라온 뷰어(glutton_ghoul_viewer v3)의 조명을 값 그대로 가져온 것이다.
 // 색·세기·위치·그림자 카메라 범위까지 손대지 않았다 — 원본이 이 캐릭터에 맞춰 잡아 둔 값이다.
-// 카메라를 따라 돌리지 않는다(원본도 월드 고정이었다). 자동회전으로 모델이 돌면
-// 빛이 몸을 훑고 지나가는 것이 원본의 보는 맛이다.
+// 원본은 월드 고정이었지만 여기서는 카메라를 따라 돌린다(아래 updateLightRig) —
+// 돌려서 뒤를 볼 때도 같은 조명으로 보여야 형태를 판단할 수 있기 때문이다.
+// 기본 시점에서는 회전이 0 이라 빛 배치가 원본과 정확히 같다.
 // 주의: 원본은 최상위 그룹을 π 돌려 놔서 이 광원들이 뒤통수를 비추고 있었다.
 // 지금은 정면이 -z 라(게임 규약) 키·언더가 얼굴과 배를 제대로 잡는다.
 const studioAmb = new THREE.AmbientLight(0x6b6070, 0.72);
 scene.add(studioAmb);
+// 방향이 있는 것만 그룹에 담아 카메라를 따라 돌린다(환경광은 방향이 없어 씬 직속).
+// 방향광의 target 은 기본값(월드 원점)을 그대로 둔다 — 그룹이 돌아도 빛은 계속 모델을 향한다.
+studioGrp = new THREE.Group(); scene.add(studioGrp);
 const studioKey = new THREE.DirectionalLight(0xfff0e2, 1.15);
 studioKey.position.set(-4, 10, -5);
 studioKey.castShadow = true; studioKey.shadow.mapSize.set(1024, 1024);
@@ -514,13 +522,13 @@ studioKey.shadow.camera.near = 1; studioKey.shadow.camera.far = 26;
 studioKey.shadow.camera.left = -4; studioKey.shadow.camera.right = 4;
 studioKey.shadow.camera.top = 4.5; studioKey.shadow.camera.bottom = -2;
 studioKey.shadow.bias = -0.0008;
-scene.add(studioKey);
+studioGrp.add(studioKey);
 const studioRim = new THREE.DirectionalLight(0x6f86c0, 0.6);
 studioRim.position.set(5, 3, 5);
-scene.add(studioRim);
+studioGrp.add(studioRim);
 const studioUnder = new THREE.PointLight(0xb07a86, 0.45, 8, 2);
 studioUnder.position.set(0, 0.3, -1.0);
-scene.add(studioUnder);
+studioGrp.add(studioUnder);
 const STUDIO_LIGHTS = [studioAmb, studioKey, studioRim, studioUnder];
 const GAME_LIGHTS = [ambientLight, torch, nearLight, viewLight, castleHemi];
 
