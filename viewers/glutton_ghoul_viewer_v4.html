@@ -737,7 +737,16 @@ const _shadowCasters = [];
 function sh(o) { o.castShadow = false; o.receiveShadow = true; _shadowCasters.push(o); return o; }
 // ===== 거대 구울 팔레트 =====
 // 원화 그라데이션: 발밑 청회색 → 자주 → 상부 분홍 → 머리 꼭대기 밝은 분홍
-const bandCols = [0x69707f, 0x79798d, 0x8a7d97, 0x9c7f9a, 0xb0839c, 0xc98aa4, 0xe097aa, 0xffb0bc];
+//
+// 값이 원화보다 훨씬 어두운데, 이건 실수가 아니라 이 게임 조명의 응답 곡선 때문이다.
+// 프로브를 놓고 재 보면 베이스 0x60 위로는 출력이 사실상 평평하다(0x60→116, 0xf0→132).
+// 근접 교전 거리에서 광원이 세서 그 위는 전부 클리핑되기 때문이다.
+// 그래서 예전 팔레트(0x69~0xff)는 8단이 통째로 죽은 구간에 들어가 화면에서 같은 회색으로 뭉갰다
+// (실측: 8단 출력이 #74746c ~ #7e7e72, 채도 0.05~0.20).
+// 지금 값은 목표 '출력색'을 정해 두고 파이프라인을 통과시켜 역산한 것이다 — 오차 3/255 이내.
+// **밝게 고치고 싶어도 올리지 말 것.** 올리는 만큼 화면에서는 그냥 색이 빠진다.
+// 다시 잡아야 하면 감으로 고치지 말고 viewers/README.md 의 역산 절차를 따를 것.
+const bandCols = [0x161f29, 0x1c2530, 0x2b2a40, 0x3d2f4d, 0x5d325d, 0x85397f, 0x8c458c, 0x8c528c];
 const bandMats = bandCols.map(c => getLowPolyMat(c));
 const H_LO = 0.1, H_HI = 3.3;
 function fleshMat(y, vary = 1) {
@@ -746,26 +755,26 @@ function fleshMat(y, vary = 1) {
   i = Math.max(0, Math.min(bandMats.length - 1, i));
   return bandMats[i];
 }
-const bellyMat  = getLowPolyMat(0xf6dfa2);   // 팽팽한 크림색 배
-const bellyLit  = getLowPolyMat(0xfff0c4);   // 배 하이라이트
-const bellyDk   = getLowPolyMat(0xd2b476);   // 배 음영/주름
-const bellyGrn  = getLowPolyMat(0xc4c088);   // 배 아래 변색(누런 초록빛)
-const mouthMat  = getLowPolyMat(0x7a2634);   // 입속
-const gumMat    = getLowPolyMat(0xa84552);   // 잇몸
-const tongueMat = getLowPolyMat(0xc86b78);   // 혀
-const teethMat  = getLowPolyMat(0xd9c076);   // 누런 이빨
-const clawMat   = getLowPolyMat(0x555c69);   // 발톱/손톱
-const spikeMat  = getLowPolyMat(0x35333f);   // 검은 가시
-const sludgeMat = getLowPolyMat(0x8e8592);   // 바닥 찌꺼기
-const soreMat   = new THREE.MeshStandardMaterial({ color: 0xd9606f, emissive: 0xc03048, emissiveIntensity: 0.28, roughness: 0.6, flatShading: true });
-const eyeMat    = new THREE.MeshStandardMaterial({ color: 0xffdc8a, emissive: 0xffa020, emissiveIntensity: 1.2, roughness: 0.4 });
-const droolMat  = new THREE.MeshStandardMaterial({ color: 0xe6dcc0, transparent: true, opacity: 0.55, roughness: 0.3, flatShading: true });
-const bileMat   = new THREE.MeshStandardMaterial({ color: 0xa9c24a, emissive: 0x6d8f22, emissiveIntensity: 0.75, roughness: 0.45, flatShading: true });   // 위액
-const bilePool  = new THREE.MeshStandardMaterial({ color: 0x8aa838, emissive: 0x5c7c16, emissiveIntensity: 0.55, roughness: 0.6, flatShading: true, transparent: true, opacity: 0.92 });
-const mawInner  = new THREE.MeshStandardMaterial({ color: 0x6e1f2c, emissive: 0x8a1020, emissiveIntensity: 0.35, roughness: 0.6, flatShading: true });   // 배 속
-const gutMat    = getLowPolyMat(0x4e1f29);   // 이빨 사이로 비치는 어두운 뱃속
-const fangMat   = getLowPolyMat(0xf2ecd8);   // 배를 감싼 상아빛 이빨
-const fangDk    = getLowPolyMat(0xd6cdb0);
+const bellyMat  = getLowPolyMat(0x685119);   // 팽팽한 크림색 배
+const bellyLit  = getLowPolyMat(0x766626);   // 배 하이라이트
+const bellyDk   = getLowPolyMat(0x302613);   // 배 음영/주름
+const bellyGrn  = getLowPolyMat(0x3b4417);   // 배 아래 변색(누런 초록빛)
+const mouthMat  = getLowPolyMat(0x2e1422);   // 입속
+const gumMat    = getLowPolyMat(0x4c1c2c);   // 잇몸
+const tongueMat = getLowPolyMat(0x7c2543);   // 혀
+const teethMat  = getLowPolyMat(0x453d20);   // 누런 이빨
+const clawMat   = getLowPolyMat(0x0e1220);   // 발톱/손톱
+const spikeMat  = getLowPolyMat(0x100f1f);   // 검은 가시
+const sludgeMat = getLowPolyMat(0x2a2730);   // 바닥 찌꺼기
+const soreMat   = new THREE.MeshStandardMaterial({ color: 0x7a1c2c, emissive: 0xc03048, emissiveIntensity: 0.28, roughness: 0.6, flatShading: true });
+const eyeMat    = new THREE.MeshStandardMaterial({ color: 0x6a5a2a, emissive: 0xffa020, emissiveIntensity: 1.2, roughness: 0.4 });
+const droolMat  = new THREE.MeshStandardMaterial({ color: 0x8e8a70, transparent: true, opacity: 0.55, roughness: 0.3, flatShading: true });
+const bileMat   = new THREE.MeshStandardMaterial({ color: 0x4e5c1c, emissive: 0x6d8f22, emissiveIntensity: 0.75, roughness: 0.45, flatShading: true });   // 위액
+const bilePool  = new THREE.MeshStandardMaterial({ color: 0x3c4a16, emissive: 0x5c7c16, emissiveIntensity: 0.55, roughness: 0.6, flatShading: true, transparent: true, opacity: 0.92 });
+const mawInner  = new THREE.MeshStandardMaterial({ color: 0x360d18, emissive: 0x8a1020, emissiveIntensity: 0.35, roughness: 0.6, flatShading: true });   // 배 속
+const gutMat    = getLowPolyMat(0x140811);   // 이빨 사이로 비치는 어두운 뱃속
+const fangMat   = getLowPolyMat(0x40392e);   // 배를 감싼 상아빛 이빨
+const fangDk    = getLowPolyMat(0x21201c);
 
 // 최상위 그룹은 돌리지 않는다 — 게임 몬스터가 rotation.y = 0 일 때와 똑같은 자세로 세워 두어야
 // 뷰어에서 본 것이 게임에서 그대로 나온다(게임은 atan2(dx,dz)+π 로 로컬 -z 를 표적에 맞춘다).
