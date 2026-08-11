@@ -971,14 +971,14 @@ function blade(parent, from, to, w0, w1, thick, mat, org) {
   const nrm = mid.clone().sub(org).normalize();
   const xA = new THREE.Vector3().crossVectors(dir, nrm).normalize();
   const zA = new THREE.Vector3().crossVectors(xA, dir).normalize();
-  const g = new THREE.CylinderGeometry(1, 1, len, 5);
+  const g = new THREE.CylinderGeometry(1, 1, len, 8);   // 5각이면 각져 보인다 — 8각으로 둥글게
   const pos = g.attributes.position;                    // 위쪽은 w1, 아래쪽은 w0 로 테이퍼
   for (let i = 0; i < pos.count; i++) {
     const yy = pos.getY(i), f = (yy + len / 2) / len;
     const w = w0 + (w1 - w0) * f;
     pos.setXYZ(i, pos.getX(i) * w, yy, pos.getZ(i) * w * (thick / w0));
   }
-  jitterGeometry(g, w0 * 0.12);
+  jitterGeometry(g, w0 * 0.05);   // 요철을 줄여야 곡선이 매끄럽게 읽힌다
   const m = sh(new THREE.Mesh(g, mat));
   m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xA, dir, zA));
   m.position.copy(mid);
@@ -986,6 +986,7 @@ function blade(parent, from, to, w0, w1, thick, mat, org) {
 }
 const CAGE_PIVOT = { x: 0.62, y: BELLY_C.y, z: BELLY_C.z + 0.34 };
 const FANG_ROWS = 9;
+const RIB_SEG = 5;   // 갈비뼈 한 줄을 몇 마디로 나눠 곡선을 낼지
 function makeCageHalf(sgn) {
   const g = new THREE.Group();
   g.position.set(sgn * CAGE_PIVOT.x, CAGE_PIVOT.y, CAGE_PIVOT.z);
@@ -1003,24 +1004,34 @@ function makeCageHalf(sgn) {
     const k = Math.sin(Math.PI * (0.13 + 0.74 * u)); // 배 단면(가운데가 가장 두껍다)
     const hw = 0.30 + 0.56 * k;
     const zf = -0.44 - 0.66 * k;                     // 뱃가죽보다 앞
-    // 갈비뼈처럼 가운데가 앞으로 불룩하게 휘도록 두 마디로 나눠 붙인다
+    // 갈비뼈처럼 가운데가 앞으로 불룩하게 휜다.
+    // 예전에는 두 마디(base→mid, mid→tip)를 그대로 이어 붙여서 가운데가 각지게 꺾였다.
+    // 지금은 그 세 점을 지나는 2차 베지에를 RIB_SEG 마디로 잘라 곡선으로 만든다.
+    // (베지에 제어점은 곡선이 midP 를 실제로 지나도록 C = 2M − (P0+P2)/2 로 역산한다)
     const W = 0.102 + 0.060 * k, TH = 0.068;
     const P = (x, yy, z) => [x - sgn * CAGE_PIVOT.x, yy - CAGE_PIVOT.y, z - CAGE_PIVOT.z];
     const base = P(sgn * hw * 1.06, y, -0.14);
     const midP = P(sgn * hw * 0.42, y - 0.02, zf - 0.06);
     const tipP = P(-sgn * (0.13 + 0.06 * k), y - 0.07 * k, zf + 0.26);
     const mat = r % 2 ? fangMat : fangDk;
-    blade(g, base, midP, W, W * 0.88, TH, mat, org);
-    blade(g, midP, tipP, W * 0.88, 0.014, TH, mat, org);
+    const C = [0, 1, 2].map(i => 2 * midP[i] - (base[i] + tipP[i]) / 2);
+    const pt = t => { const u = 1 - t;
+      return [0, 1, 2].map(i => u * u * base[i] + 2 * u * t * C[i] + t * t * tipP[i]); };
+    for (let sgi = 0; sgi < RIB_SEG; sgi++) {
+      const t0 = sgi / RIB_SEG, t1 = (sgi + 1) / RIB_SEG;
+      // 뿌리는 굵고 끝으로 갈수록 뾰족하게 — 마디 경계에서 폭이 이어지도록 같은 식으로 뽑는다
+      const wAt = t => W + (0.014 - W) * (t * t);
+      blade(g, pt(t0), pt(t1), wAt(t0), wAt(t1), TH, mat, org);
+    }
     // 이빨 뿌리를 덮는 뼈판
-    const root = lump(0.11 + 0.05 * k, fangDk, 0);
+    const root = lump(0.11 + 0.05 * k, fangDk, 1);   // detail 1 = 구면 노멀이라 덜 각진다
     root.scale.set(0.75, 1.35, 0.9);
     root.position.set(base[0], base[1], base[2] + 0.05); g.add(root);
   }
   // 옆구리를 따라 흐르는 뼈 줄기(이빨 뿌리를 잇는다)
-  const spine = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.06, 1.60, 6), fangDk));
+  const spine = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.06, 1.60, 9), fangDk));
   spine.position.set(sgn * (0.84 - CAGE_PIVOT.x), 0, -0.14 - CAGE_PIVOT.z);
-  spine.rotation.z = -sgn * 0.10; jitterGeometry(spine.geometry, 0.03); g.add(spine);
+  spine.rotation.z = -sgn * 0.10; jitterGeometry(spine.geometry, 0.015); g.add(spine);
   return g;
 }
 const cageR = makeCageHalf(1), cageL = makeCageHalf(-1);
@@ -1169,8 +1180,12 @@ function createArm(isRight) {
   // 만들어져 있으므로 z축으로 90° 돌리면 손등이 ±x, 즉 몸 바깥을 향한다
   // (팔을 늘어뜨린 짐승의 손 모양 — 손바닥이 몸통을 마주 본다).
   // 손가락은 그만큼 세로로 늘어서므로, 아래 fx 간격이 화면에서 상하로 벌어지게 된다.
+  // 손가락은 아래(-y)를 향하게. 손은 -z 가 손가락 방향이라 x축으로 -90° 돌리면 -z 가 -y 로 간다.
+  // three 의 기본 오일러 순서 XYZ 는 Rz 를 먼저 먹이므로 손등(+y)은 Rz 로 ±x 에 놓인 뒤
+  // Rx 가 x 성분을 건드리지 않아 그대로 바깥을 향한다 — 두 회전이 서로를 망치지 않는다.
   const handGrp = new THREE.Group(); handGrp.position.y = -0.88;
   handGrp.rotation.z = -sign * Math.PI / 2;
+  handGrp.rotation.x = -Math.PI / 2;
   handGrp.scale.setScalar(1.5);   // 아래팔(반지름 0.25)보다 확실히 굵어야 손으로 읽힌다
   elbowGrp.add(handGrp);
   const fist = lump(0.24, bandMats[2], 1); fist.scale.set(1.15, 0.9, 1.1); handGrp.add(fist);
