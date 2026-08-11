@@ -4160,7 +4160,7 @@ let townPTrees = null;
 let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v726'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v728'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -7480,8 +7480,10 @@ for(let i=0; i<4; i++) {
     displaceWallSides(baseGeo, 0.28); // 옆면 암반 들고나기
     const baseMesh = new THREE.Mesh(baseGeo, (i % 2) ? matWallBase2 : matWallBase); baseMesh.castShadow = true; baseMesh.receiveShadow = true; grp.add(baseMesh);
     
+    const rockCols = []; // 벽 상자 밖으로 튀어나온 바위의 발자국(로컬 좌표) — 충돌용
     for(let r=0; r<4; r++) {
-        const rockGeo = new THREE.IcosahedronGeometry(TILE * (0.34 + Math.random()*0.26), 1);
+        const rockR = TILE * (0.34 + Math.random()*0.26);
+        const rockGeo = new THREE.IcosahedronGeometry(rockR, 1);
 
         const rockMesh = new THREE.Mesh(rockGeo, matWallRock);
         const rx = (Math.random()-0.5)*TILE*0.8, ry = (Math.random()-0.5)*TILE*0.45, rz = (Math.random()-0.5)*TILE*0.8;
@@ -7489,7 +7491,11 @@ for(let i=0; i<4; i++) {
         rockMesh.scale.set(1, 0.7 + Math.random()*0.5, 1); // 눌린 바위(자연스러운 돌출)
         rockMesh.castShadow = true; rockMesh.receiveShadow = true;
         grp.add(rockMesh);
+        // y는 눌리기만 하므로 수평 반경(rockR)은 그대로. 충돌은 정사각형이라 원에 내접시킨다
+        // (0.72r → 모서리 ≈ 1.02r). ci는 타일마다 이 바위를 다시 찾기 위한 자식 인덱스.
+        rockCols.push({ x: rx, z: rz, r: rockR, h: rockR * 0.72, ci: grp.children.length - 1 });
     }
+    grp.userData.rockCols = rockCols;
     // 윗면 이끼(어두운 초록 덩어리) — 절반 확률
     if (Math.random() < 0.55) {
         const mossN = 1 + Math.floor(Math.random() * 2);
@@ -8258,6 +8264,60 @@ const walls = [];
 // 플레이어(moveWithCollision)·적(moveEntityXZ)·투사체 충돌이 전부 일관 적용됨.
 function addDecorCollider(x, z, r) { walls.push({ x, z, halfW: r, halfD: r, isDecor: true }); }
 
+// 1막 벽 타일에 박힌 바위: 복도 쪽으로 튀어나온 만큼 벽 안으로 밀어 넣고, 그 자리에 충돌체를 얹는다.
+// 벽 콜라이더는 타일 정사각형(TILE/2)뿐인데 벽 패턴의 바위는 그 밖으로 중앙값 1.6, 최대 2.5까지
+// 튀어나온다 — 눈에는 바위가 막고 있는데 몸은 그대로 통과했다.
+// 바위를 그 자리에 두고 콜라이더만 등록하면 1칸 복도(폭 TILE)가 닫힌다.
+// 양쪽 벽이 다 튀어나오므로 여유폭 = TILE - 2·침범 - 2·반지름이기 때문.
+// 그래서 콜라이더가 아니라 **바위 자체**를 벽 안으로 밀어 넣는다. 콜라이더는 밀어 넣은 위치에
+// 그대로 얹으므로 보이는 것과 막히는 것이 항상 일치한다(콜라이더만 당기면 큰 바위는 겉면이
+// 통과돼서 어긋난다). 반경은 최대 TILE*0.6=3.0이고 좁은 쪽 허용 끝이 3.1이라, 어떤 바위든
+// 밀어 넣기만 하면 들어간다 — 크기를 줄일 필요가 없다(줄이면 큰 바위가 얇은 판처럼 느껴진다).
+// 허용치는 방향별로 남은 폭을 보고 정한다. 옆 칸이 깊이도 2칸이고 좌우로도 트여 있을 때만
+// (= 방 안쪽) WROCK_ROOM까지, 그 외(1칸 복도·문간)는 WROCK_TIGHT까지.
+// 깊이만 보면 문간을 방으로 오인한다 — 문 옆 벽은 안쪽으로 깊지만 통로 자체는 1칸이다
+// (실측: 깊이만 보면 seed 5150에서 오크 반경 0.575에 바닥 67칸이 고립, 좌우까지 보면 0칸).
+// 0.12(=0.6)도 실측값이다 — 1막 30개 층 × 6시드를 flood fill 했을 때 플레이어(0.5)와
+// 1막 최대 몬스터 오크(0.575) 모두 고립 0칸인 값이 0.12이고, 0.16부터 층이 막힌다.
+const WROCK = !/[?&]wrock=0/.test(location.search);
+const WROCK_TIGHT = TILE * (parseFloat((location.search.match(/[?&]wrockmax=([\d.]+)/) || [])[1]) || 0.12);
+const WROCK_ROOM = TILE * (parseFloat((location.search.match(/[?&]wrockroom=([\d.]+)/) || [])[1]) || 0.42); // 트인 쪽 — 돌아갈 공간이 있으니 바위 모양대로 둔다
+function fitWallRocks(tile, pat, wx, wz, rotY, isF, gx, gy) {
+  const cols = pat.userData.rockCols;
+  if (!WROCK || !cols) return;
+  const c = Math.round(Math.cos(rotY)), s = Math.round(Math.sin(rotY)); // 회전은 90° 배수
+  const half = TILE / 2;
+  // 네 방향의 여유: 벽이면 제한 없음(어차피 벽 속), 방 안쪽이면 넉넉히, 나머지는 좁게
+  const cap = (dx, dy) => {
+    if (!isF(gx + dx, gy + dy)) return Infinity;
+    const px = dy, pz = dx; // 진행 방향에 수직
+    const open = isF(gx + dx * 2, gy + dy * 2) &&
+                 isF(gx + dx + px, gy + dy + pz) && isF(gx + dx - px, gy + dy - pz);
+    return open ? WROCK_ROOM : WROCK_TIGHT;
+  };
+  const capPX = cap(1, 0), capNX = cap(-1, 0), capPZ = cap(0, 1), capNZ = cap(0, -1);
+  // 양쪽이 다 빡빡하면(큰 바위) 가운데로 — 어느 한쪽만 지키다 반대쪽이 터지지 않게.
+  const clamp = (v, capP, capN, r) => {
+    const hi = half + capP - r, lo = -(half + capN - r);
+    return lo > hi ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, v));
+  };
+  for (const rk of cols) {
+    // rotation.y 적용: 로컬 (x,z) → 월드 오프셋
+    const ox = rk.x * c + rk.z * s, oz = -rk.x * s + rk.z * c;
+    const fx = clamp(ox, capPX, capNX, rk.r), fz = clamp(oz, capPZ, capNZ, rk.r);
+    if (fx !== ox || fz !== oz) {
+      // 밀어 넣기: 월드 오프셋을 로컬로 되돌려(90° 회전의 역변환) 메시 위치를 갱신
+      const m = tile.children[rk.ci];
+      if (m) m.position.set(fx * c - fz * s, m.position.y, fx * s + fz * c);
+    }
+    // 바닥 쪽으로 실제로 삐져나온 바위만 등록(옆 벽칸에 파묻힌 건 walls 순회만 늘린다)
+    const h = rk.h;
+    if (!((fx + h > half + 0.2 && capPX !== Infinity) || (-fx + h > half + 0.2 && capNX !== Infinity) ||
+          (fz + h > half + 0.2 && capPZ !== Infinity) || (-fz + h > half + 0.2 && capNZ !== Infinity))) continue;
+    walls.push({ x: wx + fx, z: wz + fz, halfW: h, halfD: h, isDecor: true });
+  }
+}
+
 // ===== 횃불 점광원 풀(2막·3막) =====
 // 예전에는 makeCastleTorch가 만들어지는 순서대로 cavernLightBudget(6)을 소진해, 큰 층에서는
 // 앞쪽 방 6개만 밝고 나머지는 불꽃·빛번짐만 있고 실제 광원이 없었다(실측 55층: 횃불 17개 중 6개).
@@ -8509,6 +8569,7 @@ function buildDungeonMesh(dgn) {
   const mossPatchMat = getLowPolyMat(0x3a4a1c); mossPatchMat.map = texMosses[1]; // 어두운 이끼 얼룩(도트 이끼)
   const { grid } = dgn;
   wallGrid = grid; // 시야 판정용으로 전역 보관
+  const isFloorCell = (cx, cy) => cx >= 0 && cy >= 0 && cx < MAP_W && cy < MAP_H && grid[cy][cx] === 1;
   const mossSpots = []; // 이끼 패치 위치(풀 집중 배치용)
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
@@ -8544,11 +8605,14 @@ function buildDungeonMesh(dgn) {
         let near = false;
         for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1 && !near; dx++) { const nx = x + dx, ny = y + dy; if (nx >= 0 && ny >= 0 && nx < MAP_W && ny < MAP_H && grid[ny][nx] === 1) near = true; }
         if (near) {
-          const wGrp = wallPatterns[Math.floor(Math.random() * wallPatterns.length)].clone();
+          const wPat = wallPatterns[Math.floor(Math.random() * wallPatterns.length)];
+          const wGrp = wPat.clone();
           const baseY = TILE * 0.35; // 벽 중심 높이
-          wGrp.position.set(wx, baseY, wz); wGrp.rotation.y = (Math.floor(Math.random() * 4)) * Math.PI / 2;
+          const wRot = (Math.floor(Math.random() * 4)) * Math.PI / 2;
+          wGrp.position.set(wx, baseY, wz); wGrp.rotation.y = wRot;
           if (Math.random() < GFX.vineChance1) { const vn = 2 + Math.floor(Math.random() * 3); for (let vk = 0; vk < vn; vk++) wGrp.add(makeVineMesh()); } // 벽마다 덩굴(2막의 약 3배 무성)
           wallGroup.add(wGrp); walls.push({ x: wx, z: wz, halfW: TILE / 2, halfD: TILE / 2 });
+          fitWallRocks(wGrp, wPat, wx, wz, wRot, isFloorCell, x, y); // 벽에 박힌 바위도 막히게
         }
       }
     }
