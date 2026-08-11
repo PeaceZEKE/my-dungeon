@@ -6,10 +6,18 @@
 <title>거대 구울(폭식 구울) 뷰어 v4</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  html, body { width:100%; height:100%; height:100dvh; overflow:hidden; background:#070a06; font-family: sans-serif; overscroll-behavior:none; }
-  #app { width:100vw; height:100vh; display:block; touch-action: none; }
+  /* 페이지가 스크롤될 여지를 아예 없앤다.
+     예전에는 body가 100dvh인데 캔버스가 100vh였다. 모바일에서 100vh는 '주소창이 숨은 상태'의
+     큰 높이라 캔버스가 body보다 커지고, 그 상태에서 버튼에 포커스가 가면 브라우저가 그 버튼을
+     보이게 하려고 문서를 스크롤한다(overflow:hidden도 이 스크롤은 못 막는다).
+     그러면 캔버스가 위로 밀려 캐릭터 윗부분만 보인다 — 아랫줄 버튼에서만 나던 증상의 정체다. */
+  html, body { position:fixed; inset:0; width:100%; height:100%; overflow:hidden; background:#070a06; font-family: sans-serif; overscroll-behavior:none; }
+  #app { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action: none; }
   .ui { position:fixed; left:0; right:0; bottom:0; display:flex; gap:8px; justify-content:center; flex-wrap:wrap; padding:12px; pointer-events:none; }
-  .btn { pointer-events:auto; background:rgba(20,24,34,0.85); color:#e2e8f0; border:1px solid #4a5568; border-radius:8px; padding:10px 14px; font-size:13px; font-weight:bold; cursor:pointer; }
+  /* touch-action:manipulation — 버튼을 연달아 누를 때 더블탭 확대로 잡히는 것을 막는다.
+     확대되면 화면이 탭한 지점(=아래쪽) 기준으로 잘려 역시 캐릭터 위쪽만 보인다. */
+  .btn { pointer-events:auto; touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+         background:rgba(20,24,34,0.85); color:#e2e8f0; border:1px solid #4a5568; border-radius:8px; padding:10px 14px; font-size:13px; font-weight:bold; cursor:pointer; }
   .btn:active { background:#2d3748; }
   .btn.on { border-color:#d7a0b0; color:#f5d8e0; }
   #ver { position:fixed; right:10px; top:10px; color:#718096; font-size:11px; text-align:right; line-height:1.5; }
@@ -51,6 +59,14 @@
 //            노멀 패스(피부 표식 포함) · 블룸 · 포스트 셰이더 전문 · 픽셀 스냅 · 막별 환경 · 조명 리그
 // ============================================================
 const canvas = document.getElementById('app');
+
+// 실제로 보이는 영역 크기. 모바일 인앱 뷰어·주소창 때문에 window.innerHeight 가 눈에 보이는
+// 높이보다 클 수 있는데, 그대로 쓰면 캔버스 아래쪽이 화면 밖으로 나가고 화면 한가운데 맞춰 둔
+// 캐릭터가 위로 치우쳐 보인다. visualViewport 가 있으면 그쪽이 진짜 보이는 크기다.
+function viewW() { const v = window.visualViewport; return Math.max(1, Math.round(v ? v.width : window.innerWidth)); }
+function viewH() { const v = window.visualViewport; return Math.max(1, Math.round(v ? v.height : window.innerHeight)); }
+// 어떤 경로로든 문서가 스크롤되면 즉시 되돌린다(포커스 이동·인앱 뷰어 제스처 등).
+window.addEventListener('scroll', () => { if (window.scrollX || window.scrollY) window.scrollTo(0, 0); }, { passive: true });
 
 // ---------- 플래그 (게임과 같은 이름·같은 기본값). 쓰는 곳보다 위에 둘 것 — TDZ ----------
 const PX_MODE = !/[?&]px=0/.test(location.search);   // 픽셀아트 렌더(기본 켜짐)
@@ -134,12 +150,12 @@ function computeLowRes(w, h) {
   }
   return [Math.max(320, Math.floor(w / PIXEL_SCALE)), Math.max(240, Math.floor(h / PIXEL_SCALE))];
 }
-const _lr0 = computeLowRes(window.innerWidth, window.innerHeight);
+const _lr0 = computeLowRes(viewW(), viewH());
 let lowResW = _lr0[0], lowResH = _lr0[1];
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(1);
-renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setSize(viewW(), viewH());
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = PX_MODE ? THREE.BasicShadowMap : THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -404,7 +420,7 @@ const GAME_DIST = 26.46;
 // 게임에서 몬스터는 늘 플레이어를 바라보고, 플레이어는 카메라와 몬스터 사이에 있다 —
 // 즉 카메라는 몬스터 정면(로컬 -z) 쪽에서 내려다본다. 그 배치를 그대로 재현한다.
 const GAME_YAW = Math.PI;
-const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 200);
+const camera = new THREE.PerspectiveCamera(30, viewW() / viewH(), 0.1, 200);
 const BASE_FOV = 30, BASE_ASPECT = 16 / 9;
 // 확대는 '카메라를 당기는' 게 아니라 'FOV를 좁히는' 방식이어야 한다.
 // 카메라를 가까이 옮기면 뷰 깊이가 램프(20~33) 밖으로 나가 깊이 기반 조명이 통째로 달라지고,
@@ -415,7 +431,7 @@ const BASE_FOV = 30, BASE_ASPECT = 16 / 9;
 let camZoom = 3.5;
 let baseFov = BASE_FOV;
 function applyAdaptiveFOV() {
-  const aspect = window.innerWidth / window.innerHeight;
+  const aspect = viewW() / viewH();
   camera.aspect = aspect;
   if (aspect >= BASE_ASPECT) baseFov = BASE_FOV;
   else {
@@ -1319,6 +1335,14 @@ canvas.addEventListener('touchmove', e => {
 }, { passive: false });
 canvas.addEventListener('touchend', e => { if (e.touches.length === 0) { dragging = false; pinching = false; } }, { passive: false });
 
+// 버튼에 포커스가 남지 않게 한다. 포커스된 요소가 보이는 영역 밖에 걸쳐 있으면 브라우저가
+// 그걸 보이게 하려고 문서를 스크롤해서, 캔버스가 밀리고 캐릭터 윗부분만 남는다.
+// mousedown 을 막으면 포커스 자체가 안 잡히고, 그래도 잡히는 경우를 대비해 클릭 뒤 blur 한다.
+for (const el of document.querySelectorAll('.btn')) {
+  el.addEventListener('mousedown', e => e.preventDefault());
+  el.addEventListener('click', () => { el.blur(); if (window.scrollX || window.scrollY) window.scrollTo(0, 0); });
+}
+
 document.getElementById('spinBtn').addEventListener('click', e => { autoSpin = !autoSpin; e.target.textContent = '자동회전: ' + (autoSpin ? '켬' : '끔'); });
 document.getElementById('walkBtn').addEventListener('click', e => { walking = !walking; e.target.classList.toggle('on', walking); });
 document.getElementById('roarBtn').addEventListener('click', e => { roaring = !roaring; e.target.classList.toggle('on', roaring); if (!roaring) roarPhase = 0; });
@@ -1345,8 +1369,8 @@ document.getElementById('resetBtn').addEventListener('click', () => {
 
 function onResize() {
   applyAdaptiveFOV();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  const lr = computeLowRes(window.innerWidth, window.innerHeight);
+  renderer.setSize(viewW(), viewH());
+  const lr = computeLowRes(viewW(), viewH());
   lowResW = lr[0]; lowResH = lr[1];
   rt.setSize(lowResW, lowResH);
   // r128의 setSize는 depthTexture를 안 줄인다 — 손으로 맞추지 않으면 리사이즈 후 외곽선이 깨진다.
@@ -1360,7 +1384,11 @@ function onResize() {
 }
 window.addEventListener('resize', onResize);
 window.addEventListener('orientationchange', () => setTimeout(onResize, 250));
-if (window.visualViewport) window.visualViewport.addEventListener('resize', onResize);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', onResize);
+  // 어떤 이유로든 확대되어 화면이 잘려 보이면(더블탭 확대 등) 다시 맞춘다.
+  window.visualViewport.addEventListener('scroll', onResize);
+}
 
 if (('ontouchstart' in window) || navigator.maxTouchPoints > 0) {
   document.getElementById('hint').textContent = '한 손가락: 회전 · 두 손가락: 확대축소';
