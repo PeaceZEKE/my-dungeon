@@ -4160,7 +4160,7 @@ let townPTrees = null;
 let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v727'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v728'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -7491,8 +7491,9 @@ for(let i=0; i<4; i++) {
         rockMesh.scale.set(1, 0.7 + Math.random()*0.5, 1); // 눌린 바위(자연스러운 돌출)
         rockMesh.castShadow = true; rockMesh.receiveShadow = true;
         grp.add(rockMesh);
-        // y는 눌리기만 하므로 수평 반경은 그대로. 충돌은 정사각형이라 원에 내접시킨다(0.72r → 모서리 ≈ 1.02r).
-        rockCols.push({ x: rx, z: rz, h: rockR * 0.72 });
+        // y는 눌리기만 하므로 수평 반경(rockR)은 그대로. 충돌은 정사각형이라 원에 내접시킨다
+        // (0.72r → 모서리 ≈ 1.02r). ci는 타일마다 이 바위를 다시 찾기 위한 자식 인덱스.
+        rockCols.push({ x: rx, z: rz, r: rockR, h: rockR * 0.72, ci: grp.children.length - 1 });
     }
     grp.userData.rockCols = rockCols;
     // 윗면 이끼(어두운 초록 덩어리) — 절반 확률
@@ -8263,23 +8264,25 @@ const walls = [];
 // 플레이어(moveWithCollision)·적(moveEntityXZ)·투사체 충돌이 전부 일관 적용됨.
 function addDecorCollider(x, z, r) { walls.push({ x, z, halfW: r, halfD: r, isDecor: true }); }
 
-// 1막 벽 타일에 박힌 바위 충돌체.
+// 1막 벽 타일에 박힌 바위: 복도 쪽으로 튀어나온 만큼 벽 안으로 밀어 넣고, 그 자리에 충돌체를 얹는다.
 // 벽 콜라이더는 타일 정사각형(TILE/2)뿐인데 벽 패턴의 바위는 그 밖으로 중앙값 1.6, 최대 2.5까지
 // 튀어나온다 — 눈에는 바위가 막고 있는데 몸은 그대로 통과했다.
-// 튀어나온 만큼을 바위별 작은 AABB로 등록하되 두 가지를 지킨다.
-//  · 바닥 쪽으로 나온 바위만 등록(옆 벽칸으로 파묻힌 건 헛일이고 walls 순회만 늘린다)
-//  · 벽면 밖 침범을 방향별로 제한 — 1칸 복도(TILE)는 양쪽 벽이 다 튀어나오므로,
-//    제한이 없으면 통로가 통째로 막힌다(여유폭 = TILE - 2·침범 - 2·반지름).
-// 제한은 그 방향에 실제로 남은 폭을 보고 정한다. 옆 칸이 깊이도 2칸이고 좌우로도 트여
-// 있을 때만(= 방 안쪽) WROCK_ROOM까지 허용하고, 그 외(1칸 복도·문간)는 WROCK_TIGHT까지만.
+// 바위를 그 자리에 두고 콜라이더만 등록하면 1칸 복도(폭 TILE)가 닫힌다.
+// 양쪽 벽이 다 튀어나오므로 여유폭 = TILE - 2·침범 - 2·반지름이기 때문.
+// 그래서 콜라이더가 아니라 **바위 자체**를 벽 안으로 밀어 넣는다. 콜라이더는 밀어 넣은 위치에
+// 그대로 얹으므로 보이는 것과 막히는 것이 항상 일치한다(콜라이더만 당기면 큰 바위는 겉면이
+// 통과돼서 어긋난다). 반경은 최대 TILE*0.6=3.0이고 좁은 쪽 허용 끝이 3.1이라, 어떤 바위든
+// 밀어 넣기만 하면 들어간다 — 크기를 줄일 필요가 없다(줄이면 큰 바위가 얇은 판처럼 느껴진다).
+// 허용치는 방향별로 남은 폭을 보고 정한다. 옆 칸이 깊이도 2칸이고 좌우로도 트여 있을 때만
+// (= 방 안쪽) WROCK_ROOM까지, 그 외(1칸 복도·문간)는 WROCK_TIGHT까지.
 // 깊이만 보면 문간을 방으로 오인한다 — 문 옆 벽은 안쪽으로 깊지만 통로 자체는 1칸이다
 // (실측: 깊이만 보면 seed 5150에서 오크 반경 0.575에 바닥 67칸이 고립, 좌우까지 보면 0칸).
 // 0.12(=0.6)도 실측값이다 — 1막 30개 층 × 6시드를 flood fill 했을 때 플레이어(0.5)와
 // 1막 최대 몬스터 오크(0.575) 모두 고립 0칸인 값이 0.12이고, 0.16부터 층이 막힌다.
 const WROCK = !/[?&]wrock=0/.test(location.search);
 const WROCK_TIGHT = TILE * (parseFloat((location.search.match(/[?&]wrockmax=([\d.]+)/) || [])[1]) || 0.12);
-const WROCK_ROOM = TILE * (parseFloat((location.search.match(/[?&]wrockroom=([\d.]+)/) || [])[1]) || 0.42); // 트인 쪽 — 돌아갈 공간이 있으니 바위 모양대로 막는다
-function addWallRockCols(pat, wx, wz, rotY, isF, gx, gy) {
+const WROCK_ROOM = TILE * (parseFloat((location.search.match(/[?&]wrockroom=([\d.]+)/) || [])[1]) || 0.42); // 트인 쪽 — 돌아갈 공간이 있으니 바위 모양대로 둔다
+function fitWallRocks(tile, pat, wx, wz, rotY, isF, gx, gy) {
   const cols = pat.userData.rockCols;
   if (!WROCK || !cols) return;
   const c = Math.round(Math.cos(rotY)), s = Math.round(Math.sin(rotY)); // 회전은 90° 배수
@@ -8293,23 +8296,25 @@ function addWallRockCols(pat, wx, wz, rotY, isF, gx, gy) {
     return open ? WROCK_ROOM : WROCK_TIGHT;
   };
   const capPX = cap(1, 0), capNX = cap(-1, 0), capPZ = cap(0, 1), capNZ = cap(0, -1);
+  // 양쪽이 다 빡빡하면(큰 바위) 가운데로 — 어느 한쪽만 지키다 반대쪽이 터지지 않게.
+  const clamp = (v, capP, capN, r) => {
+    const hi = half + capP - r, lo = -(half + capN - r);
+    return lo > hi ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, v));
+  };
   for (const rk of cols) {
     // rotation.y 적용: 로컬 (x,z) → 월드 오프셋
-    let ox = rk.x * c + rk.z * s, oz = -rk.x * s + rk.z * c;
+    const ox = rk.x * c + rk.z * s, oz = -rk.x * s + rk.z * c;
+    const fx = clamp(ox, capPX, capNX, rk.r), fz = clamp(oz, capPZ, capNZ, rk.r);
+    if (fx !== ox || fz !== oz) {
+      // 밀어 넣기: 월드 오프셋을 로컬로 되돌려(90° 회전의 역변환) 메시 위치를 갱신
+      const m = tile.children[rk.ci];
+      if (m) m.position.set(fx * c - fz * s, m.position.y, fx * s + fz * c);
+    }
+    // 바닥 쪽으로 실제로 삐져나온 바위만 등록(옆 벽칸에 파묻힌 건 walls 순회만 늘린다)
     const h = rk.h;
-    // 바닥 쪽으로 실제로 삐져나오는지 — 삐져나온 방향 중 하나라도 바닥칸이어야 등록
-    // (옆 벽칸으로 파묻힌 바위는 등록해 봐야 walls 순회만 늘린다)
-    if (!((ox + h > half + 0.2 && capPX !== Infinity) || (-ox + h > half + 0.2 && capNX !== Infinity) ||
-          (oz + h > half + 0.2 && capPZ !== Infinity) || (-oz + h > half + 0.2 && capNZ !== Infinity))) continue;
-    // 침범 제한: 크기는 그대로 두고 중심을 타일 쪽으로 당긴다(줄이면 바위가 얇아 보인다).
-    // 양쪽이 다 빡빡하면(큰 바위) 가운데로 — 어느 한쪽만 지키다 반대쪽이 터지지 않게.
-    const clamp = (v, capP, capN) => {
-      const hi = half + capP - h, lo = -(half + capN - h);
-      return lo > hi ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, v));
-    };
-    ox = clamp(ox, capPX, capNX);
-    oz = clamp(oz, capPZ, capNZ);
-    walls.push({ x: wx + ox, z: wz + oz, halfW: h, halfD: h, isDecor: true });
+    if (!((fx + h > half + 0.2 && capPX !== Infinity) || (-fx + h > half + 0.2 && capNX !== Infinity) ||
+          (fz + h > half + 0.2 && capPZ !== Infinity) || (-fz + h > half + 0.2 && capNZ !== Infinity))) continue;
+    walls.push({ x: wx + fx, z: wz + fz, halfW: h, halfD: h, isDecor: true });
   }
 }
 
@@ -8607,7 +8612,7 @@ function buildDungeonMesh(dgn) {
           wGrp.position.set(wx, baseY, wz); wGrp.rotation.y = wRot;
           if (Math.random() < GFX.vineChance1) { const vn = 2 + Math.floor(Math.random() * 3); for (let vk = 0; vk < vn; vk++) wGrp.add(makeVineMesh()); } // 벽마다 덩굴(2막의 약 3배 무성)
           wallGroup.add(wGrp); walls.push({ x: wx, z: wz, halfW: TILE / 2, halfD: TILE / 2 });
-          addWallRockCols(wPat, wx, wz, wRot, isFloorCell, x, y); // 벽에 박힌 바위도 막히게
+          fitWallRocks(wGrp, wPat, wx, wz, wRot, isFloorCell, x, y); // 벽에 박힌 바위도 막히게
         }
       }
     }
