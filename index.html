@@ -4158,9 +4158,14 @@ let townPTrees = null;
 // 마을·던전 각각 하나씩(씬이 다르다). 배치가 바뀔 때만 setCells를 부른다.
 // 선언을 잔디 코드 옆이 아니라 여기 두는 이유도 TDZ다 — buildTownScene이 언제 불릴지에 기대지 않는다.
 let townPGrass = null, dgnPGrass = null;
+// 원거리 캐스터(마법사류: 원거리 고블린·스켈레톤 마법사·오크 주술사·궁중 마법사)의
+// 유지 거리와 발사 사거리. 둘 다 TILE 배수. 사거리가 유지 거리보다 넉넉해야 제자리에서 쏜다.
+// (혼령 wraith는 자체 히트앤런 상태기계를 쓰므로 여기 영향을 받지 않는다.)
+const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])[1]) || 1.8;
+const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v729'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v730'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -17918,18 +17923,28 @@ function update(dt) {
     const meleeStop = (player.radius + e.radius) + 0.6;
     let nx = 0, nz = 0; // 이동 변위(이번 프레임)
     if (e.isRanged) {
-      const KEEP = TILE * 1.3;           // 유지 거리(사거리 2타일 안에서 더 가까이 — 멀리 안 돌게)
-      const KEEP_BAND = TILE * 0.4;      // 카이팅 허용 폭(이 안이면 정지)
-      // 목표 지점: 플레이어 위치 + (surroundAngle 방향 × KEEP)
+      const KEEP = TILE * MAGE_KEEP;     // 유지 거리(캐스터가 붙지 않게 — 발사 사거리 안쪽으로)
+      const KEEP_BAND = TILE * 0.25;     // 카이팅 허용 폭(이 안이면 정지). 넓으면 안쪽으로 붙어 선다
       const ang = (e.surroundAngle !== undefined) ? e.surroundAngle : 0;
-      const targetX = player.obj.position.x + Math.cos(ang) * KEEP;
-      const targetZ = player.obj.position.z + Math.sin(ang) * KEEP;
-      const tdx = targetX - e.obj.position.x, tdz = targetZ - e.obj.position.z;
-      const tdist = Math.hypot(tdx, tdz);
-      if (tdist > KEEP_BAND) {
-        // 목표 지점이 멀면 그 방향으로 이동
-        const sp = e.speed * slowMul * dt;
-        nx = (tdx / tdist) * sp; nz = (tdz / tdist) * sp;
+      const sp = e.speed * slowMul * dt;
+      if (d < KEEP - KEEP_BAND) {
+        // 너무 가까움: 접선 성분 없이 곧장 물러난다. 플레이어가 더 빠르므로(6.5 대 ~3)
+        // 포위 지점으로 비스듬히 가면 도망 속도를 그만큼 까먹어 계속 붙어 있게 된다.
+        const u = d || 1;
+        const perpX = -dz / u, perpZ = dx / u;          // 옆으로 살짝 흘리며 물러나 벽 구석에 몰리지 않게
+        const drift = Math.sin(e.phase * 0.7 + (e.surroundAngle || 0)) * 0.35;
+        nx = (-dx / u + perpX * drift) * sp;
+        nz = (-dz / u + perpZ * drift) * sp;
+      } else {
+        // 목표 지점: 플레이어 위치 + (surroundAngle 방향 × KEEP)
+        const targetX = player.obj.position.x + Math.cos(ang) * KEEP;
+        const targetZ = player.obj.position.z + Math.sin(ang) * KEEP;
+        const tdx = targetX - e.obj.position.x, tdz = targetZ - e.obj.position.z;
+        const tdist = Math.hypot(tdx, tdz);
+        if (tdist > KEEP_BAND) {
+          // 목표 지점이 멀면 그 방향으로 이동
+          nx = (tdx / tdist) * sp; nz = (tdz / tdist) * sp;
+        }
       }
       // 각도가 더 빠르게 변하게 해서 신속하게 포위(원형 카이팅)
       e.surroundAngle = ang + dt * 0.6;
@@ -18124,8 +18139,10 @@ function update(dt) {
       
       let eArmRX = -eSin * 0.5, eArmRZ = 0, eArmLX = eSin * 0.5, eArmLZ = 0;
       if (e.isRanged) {
-        // 원거리: 사거리(약 10유닛=2타일) 안이면 지팡이를 휘둘러 화염구 발사
-        const RANGE = TILE * 2;
+        // 원거리: 사거리 안이면 지팡이를 휘둘러 화염구 발사.
+        // 유지 거리(MAGE_KEEP)보다 넉넉히 커야 한다 — 작으면 서 있는 자리에서 못 쏴서
+        // 결국 플레이어에게 붙으러 들어온다. 화염구는 속도 11·수명 3.0이라 33까지 날아간다.
+        const RANGE = TILE * MAGE_RANGE;
         if (d <= RANGE && e.attackCd <= 0) { e.attackCd = 2.2; e.swingTimer = 0.5; e.castPending = true; e.castPending2 = (e.type === 'courtmage'); }
         if (e.swingTimer > 0) {
           const t = 1 - (e.swingTimer / 0.5);
