@@ -4160,7 +4160,7 @@ let townPTrees = null;
 let townPGrass = null, dgnPGrass = null;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v728'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v729'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -6274,8 +6274,12 @@ function buildTownScene() {
     const wm = makeWindowMat(); windowMats.push(wm);
     g.add(box(0.55, 0.55, 0.1, wm, 0, 3.5, -1.55));
     // 회전 날개(앞 -Z, Z축 회전)
-    const blades = new THREE.Group(); blades.position.set(0, 5.0, -1.55);
-    const hub = cyl(0.24, 0.24, 0.45, 8, M.woodD); hub.rotation.x = Math.PI / 2; blades.add(hub);
+    // 탑은 아래로 갈수록 굵은 원뿔(y=1.1에서 반지름 1.86)이라, 날개면이 -1.55에 있으면
+    // 아래로 내려온 살대가 탑 속으로 0.37 파고든다. 축을 2.1까지 빼서 원뿔 밖으로 내보낸다.
+    const blades = new THREE.Group(); blades.position.set(0, 5.0, -2.1);
+    // 빼낸 만큼 축(굴대)을 길게 — 짧으면 날개가 탑에서 떨어져 떠 보인다.
+    // 원기둥 축이 z와 나란하고 z로만 밀었으므로 날개가 돌아도 굴대는 제자리로 보인다.
+    const hub = cyl(0.24, 0.24, 1.0, 8, M.woodD, 0, 0, 0.38); hub.rotation.x = Math.PI / 2; blades.add(hub);
     for (let i = 0; i < 4; i++) {
       const arm = new THREE.Group();
       arm.add(box(0.16, 3.8, 0.12, M.woodD, 0, 2.0, 0));            // 살대
