@@ -129,9 +129,9 @@ function fitDistance() {
   const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
   return Math.min(17, Math.max(4.5, Math.max((FIT_H / 2) / Math.tan(vFov / 2), (FIT_W / 2) / Math.tan(hFov / 2))));
 }
-// 모델 정면은 로컬 -z 이고 ghoulObj 를 π 돌려 놓으므로 월드 정면은 +z 다.
-// 여기에 +π 를 더하면 카메라가 -z 쪽에 서서 등을 비춘다(예전 값이 그랬다) — 배와 입이 보이도록 0.5 로 둔다.
-const CAM_YAW0 = 0.5, CAM_PITCH0 = 0.06;
+// 게임과 같이 캐릭터 정면은 로컬 -z 이고, 최상위 그룹을 돌리지 않으므로 월드 정면도 -z 다.
+// 정면을 보려면 카메라가 -z 쪽에 서야 하므로 yaw 에 π 를 더한다.
+const CAM_YAW0 = 0.5 + Math.PI, CAM_PITCH0 = 0.06;
 let camDist = fitDistance(), camYaw = CAM_YAW0, camPitch = CAM_PITCH0;
 const target = new THREE.Vector3(0, 1.7, 0);
 function updateCam() {
@@ -210,7 +210,11 @@ const gutMat    = getLowPolyMat(0x4e1f29);   // 이빨 사이로 비치는 어�
 const fangMat   = getLowPolyMat(0xf2ecd8);   // 배를 감싼 상아빛 이빨
 const fangDk    = getLowPolyMat(0xd6cdb0);
 
-const ghoulObj = new THREE.Group(); ghoulObj.rotation.y = Math.PI; scene.add(ghoulObj);
+// 최상위 그룹은 돌리지 않는다 — 게임 몬스터가 rotation.y = 0 일 때와 똑같은 자세로 세워 두어야
+// 뷰어에서 본 것이 게임에서 그대로 나온다(게임은 atan2(dx,dz)+π 로 로컬 -z 를 표적에 맞춘다).
+// 예전에는 여기 π 가 있어서 정면이 +z 로 갔고, 그 바람에 -z 쪽에 놓인 키·언더 라이트가
+// 얼굴과 배가 아니라 뒤통수와 등을 비추고 있었다(정면 평균 휘도 102 → 123).
+const ghoulObj = new THREE.Group(); scene.add(ghoulObj);
 const bodyGrp = new THREE.Group(); ghoulObj.add(bodyGrp);
 
 // ===== 살덩이 헬퍼 =====
