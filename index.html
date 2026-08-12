@@ -4165,7 +4165,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v738'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v739'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // SSAO 세기. 노멀 버퍼는 px 모드에서만 채워지므로 ?px=0에서는 켤 수 없다(끄고 안내만 남긴다).
 const _ssaoM = location.search.match(/[?&]ssao=([\d.]+)/);
 // 세기가 큰 이유: 표본에 거리 가중치(가까울수록 세게)를 곱하므로 합이 훨씬 작아진다.
@@ -4670,7 +4670,9 @@ const PIXEL_SCALE = 2;
 // 기본 모드는 창 크기의 1/2이라 기기마다 픽셀 크기가 달라진다 — 4K에서는 내부 1920×1080이라
 // 사실상 픽셀아트가 아니고, 좁은 폰에서는 하한에 걸려 뭉갠다.
 // 픽셀아트 모드(?px=1)는 세로를 고정하고 가로만 화면비로 유도해, 어떤 기기에서도 같은 픽셀 크기를 낸다.
-const PX_FIXED_H = 360;
+// 값이 작을수록 픽셀이 커진다. 720 기준으로 보면 360 = 배율 2, 240 = 배율 3이다
+// (예전 모드의 PIXEL_SCALE과 같은 뜻 — 그쪽은 ?px=0에서만 쓰인다).
+const PX_FIXED_H = parseInt((location.search.match(/[?&]pxh=(\d+)/) || [])[1], 10) || 240;
 function computeLowRes(w, h) {
   if (PX_MODE) {
     const lh = PX_FIXED_H;
