@@ -4165,7 +4165,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v734'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v735'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // SSAO 세기. 노멀 버퍼는 px 모드에서만 채워지므로 ?px=0에서는 켤 수 없다(끄고 안내만 남긴다).
 const _ssaoM = location.search.match(/[?&]ssao=([\d.]+)/);
 // 세기가 큰 이유: 표본에 거리 가중치(가까울수록 세게)를 곱하고 가림 판정도 완만하게 올리므로
@@ -6130,7 +6130,9 @@ function buildTownScene() {
   function makeBlacksmith(x, z) {
     const g = new THREE.Group();
     g.add(box(5.2, 3.0, 4.4, M.plasterC, 0, 1.5, 0));
-    g.add(box(5.2, 0.5, 4.4, M.stoneD, 0, 0.25, 0)); // 석재 기단
+    // 석재 기단은 몸통보다 0.1씩 넓게 — 같은 크기(5.2×4.4)면 옆면이 몸통과 정확히 겹쳐
+    // 깊이 싸움이 나서 벽 밑동 0.5구간이 회벽↔석재로 깜빡인다(교회 기단도 같은 규칙).
+    g.add(box(5.4, 0.5, 4.6, M.stoneD, 0, 0.25, 0)); // 석재 기단
     const roof = gable(6.2, 1.6, 5.0, M.tileA); roof.position.y = 3.0; g.add(roof);
     // 굴뚝(큰 돌)
     g.add(box(1.0, 3.2, 1.0, M.stoneD, 1.6, 3.4, 1.2));
