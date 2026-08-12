@@ -4168,8 +4168,10 @@ let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하�
 const GAME_VERSION = 'v732'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // SSAO 세기. 노멀 버퍼는 px 모드에서만 채워지므로 ?px=0에서는 켤 수 없다(끄고 안내만 남긴다).
 const _ssaoM = location.search.match(/[?&]ssao=([\d.]+)/);
-const SSAO_STR = PX_MODE ? (_ssaoM ? parseFloat(_ssaoM[1]) : 1.2) : 0;   // ?ssao=0 이면 끔
-const SSAO_RADIUS = parseFloat((location.search.match(/[?&]ssaor=([\d.]+)/) || [])[1]) || 2.5;
+// 세기가 큰 이유: 표본에 거리 가중치(가까울수록 세게)를 곱하므로 합이 훨씬 작아진다.
+// 가중치 없던 판의 1.2와 대략 같은 깊이가 5.0 근처다(범위는 절반으로 줄어든 채).
+const SSAO_STR = PX_MODE ? (_ssaoM ? parseFloat(_ssaoM[1]) : 5.0) : 0;   // ?ssao=0 이면 끔
+const SSAO_RADIUS = parseFloat((location.search.match(/[?&]ssaor=([\d.]+)/) || [])[1]) || 1.6;
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -5106,11 +5108,18 @@ const quadMat = new THREE.ShaderMaterial({
         if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) continue;
         float sd = texture2D(tDepth, suv).x;
         if (sd > 0.9999) continue;                       // 하늘은 가리는 것이 아니다
-        float sz = viewPosAt(suv, sd).z;
-        // 표본보다 앞에 면이 있으면 가려진 것. 깊이 차가 반경보다 크면 무관한 물체다.
-        float range = smoothstep(0.0, 1.0, uAORadius / max(0.0001, abs(vp.z - sz)));
-        occ += (sz >= sp.z + 0.02 ? 1.0 : 0.0) * range;
+        vec3 sPos = viewPosAt(suv, sd);
+        // 표본보다 앞에 면이 있으면 가려진 것.
+        float hit = sPos.z >= sp.z + 0.02 ? 1.0 : 0.0;
+        // 거리 가중치: 가까운 가림만 세게 친다. 이게 없으면 반경 안의 모든 가림이 같은 무게라
+        // 물체 주위가 넓게 퍼져 어두워진다(AO는 방향이 없어서 사방으로 번진다).
+        // 제곱으로 떨어뜨려 밑동에 붙는 접촉 그림자에 가깝게 만든다. 반경 밖은 0이라
+        // 예전의 range smoothstep은 필요 없다(거리 가중치가 그 역할까지 한다).
+        float w = 1.0 - clamp(length(sPos - vp) / uAORadius, 0.0, 1.0);
+        occ += hit * w * w;
       }
+      // 고정 표본 수로 나눈다(가중치 합으로 나누면 먼 가림만 있어도 완전히 어두워져
+      // 거리 가중치가 무의미해진다).
       return clamp(1.0 - occ / float(AO_SAMPLES) * uAOStr, 0.0, 1.0);
     }
     float linearizeDepth(float d) {
