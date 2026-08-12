@@ -4165,7 +4165,11 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v731'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v732'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+// SSAO 세기. 노멀 버퍼는 px 모드에서만 채워지므로 ?px=0에서는 켤 수 없다(끄고 안내만 남긴다).
+const _ssaoM = location.search.match(/[?&]ssao=([\d.]+)/);
+const SSAO_STR = PX_MODE ? (_ssaoM ? parseFloat(_ssaoM[1]) : 1.2) : 0;   // ?ssao=0 이면 끔
+const SSAO_RADIUS = parseFloat((location.search.match(/[?&]ssaor=([\d.]+)/) || [])[1]) || 2.5;
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -4986,7 +4990,16 @@ const quadMat = new THREE.ShaderMaterial({
     uPxNormalBias: { value: new THREE.Vector3(1, 1, 1) }, // 어느 쪽 면이 빛을 받은 것으로 칠지
     uQuant: { value: 32.0 },      // 채널당 색 단계 수(2 이하면 양자화 끔). 낮출수록 레트로해진다
     uDither: { value: 0.9 },      // 디더링 세기(0=밴딩 그대로, 1=베이어 패턴으로 완전히 흩음)
-    uQuantGamma: { value: 2.2 }   // 단계를 나눌 공간(1=밝기 균등, 2.2≈지각 균등 — 어두운 쪽에 단계를 몰아줌)
+    uQuantGamma: { value: 2.2 },  // 단계를 나눌 공간(1=밝기 균등, 2.2≈지각 균등 — 어두운 쪽에 단계를 몰아줌)
+    // === SSAO(?ssao=N) ===
+    // 이 게임은 포스트에 깊이 텍스처와 노멀 버퍼가 이미 있어(구름 그림자·모서리 하이라이트용)
+    // 렌더 타깃을 새로 만들지 않고 그 둘만으로 화면공간 AO를 낸다.
+    // 노멀 버퍼는 MeshNormalMaterial이 채우므로 '뷰 공간'이다 — 위치도 뷰 공간으로 맞춘다
+    // (월드로 올리면 좌표가 커져 정밀도가 떨어진다). 그래서 uInvVP가 아니라 uInvP·uProj를 쓴다.
+    uAOStr: { value: SSAO_STR }, // 0이면 셰이더가 통째로 건너뛴다
+    uAORadius: { value: SSAO_RADIUS }, // 가리기를 볼 반경(월드 단위. TILE=5)
+    uProj: { value: new THREE.Matrix4() },
+    uInvP: { value: new THREE.Matrix4() }
   },
   vertexShader: `
     varying vec2 vUv;
@@ -5034,6 +5047,8 @@ const quadMat = new THREE.ShaderMaterial({
     uniform vec2 uSubpixel;
     uniform float uPxNormalStr;
     uniform vec3 uPxNormalBias;
+    uniform float uAOStr, uAORadius;
+    uniform mat4 uProj, uInvP;
     varying vec2 vUv;
     vec3 nrmAt(vec2 o) { return texture2D(tNormal, vUv + uSubpixel + o * uTexel).rgb * 2.0 - 1.0; }
     // 피부 표식: 노멀 패스 2패스에서 피부만 순수 빨강(1,0,0)으로 덮어 둔다.
@@ -5061,6 +5076,43 @@ const quadMat = new THREE.ShaderMaterial({
     float bayer2(vec2 a) { a = floor(a); return fract(a.x / 2.0 + a.y * a.y * 0.75); }
     float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
     float bayer8(vec2 a) { return bayer4(0.5 * a) * 0.25 + bayer2(a); }
+    // 깊이 → 뷰 공간 좌표. 앞쪽이 z<0 (OpenGL 관례)이라 '더 가까움 = z가 더 큼'이다.
+    vec3 viewPosAt(vec2 uvv, float dep) {
+      vec4 ndc = vec4(uvv * 2.0 - 1.0, dep * 2.0 - 1.0, 1.0);
+      vec4 pv = uInvP * ndc;
+      return pv.xyz / pv.w;
+    }
+    // 노멀 반구에 표본을 뿌려 '그 방향이 막혀 있는지'를 센다.
+    // 표본 방향은 상수 배열 대신 황금각 나선으로 계산한다 — 상수 배열을 동적 인덱싱하면
+    // ANGLE이 헬퍼 함수를 만들어 셰이더 경고가 난다(위 베이어 주석과 같은 이유).
+    // 난수 회전을 안 넣는 이유: 이 게임은 카메라를 텍셀 격자에 스냅하므로 시간축 누적이
+    // 어긋나 노이즈를 지울 수단이 없다. 결정적인 패턴이 지글거림보다 낫다.
+    const int AO_SAMPLES = 10;
+    float ssao(vec2 uvv, float rawDep, vec3 n) {
+      vec3 vp = viewPosAt(uvv, rawDep);
+      vec3 t = normalize(abs(n.z) < 0.99 ? cross(vec3(0.0, 0.0, 1.0), n) : cross(vec3(1.0, 0.0, 0.0), n));
+      vec3 b = cross(n, t);
+      float occ = 0.0;
+      for (int i = 0; i < AO_SAMPLES; i++) {
+        float fi = float(i) + 0.5;
+        float a = fi * 2.39996323;                       // 황금각
+        float rr = sqrt(fi / float(AO_SAMPLES));
+        vec2 disk = vec2(cos(a), sin(a)) * rr;
+        vec3 dir = t * disk.x + b * disk.y + n * sqrt(max(0.0, 1.0 - rr * rr));
+        // 표본을 껍질에만 두면 접촉 그림자가 안 생긴다 — 안쪽에도 깔리게 길이를 섞는다.
+        vec3 sp = vp + dir * uAORadius * mix(0.25, 1.0, fi / float(AO_SAMPLES));
+        vec4 off = uProj * vec4(sp, 1.0);
+        vec2 suv = (off.xy / off.w) * 0.5 + 0.5;
+        if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) continue;
+        float sd = texture2D(tDepth, suv).x;
+        if (sd > 0.9999) continue;                       // 하늘은 가리는 것이 아니다
+        float sz = viewPosAt(suv, sd).z;
+        // 표본보다 앞에 면이 있으면 가려진 것. 깊이 차가 반경보다 크면 무관한 물체다.
+        float range = smoothstep(0.0, 1.0, uAORadius / max(0.0001, abs(vp.z - sz)));
+        occ += (sz >= sp.z + 0.02 ? 1.0 : 0.0) * range;
+      }
+      return clamp(1.0 - occ / float(AO_SAMPLES) * uAOStr, 0.0, 1.0);
+    }
     float linearizeDepth(float d) {
       float z = d * 2.0 - 1.0;
       return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear));
@@ -5085,6 +5137,18 @@ const quadMat = new THREE.ShaderMaterial({
         acc += texture2D(tColor, uv + vec2(0.0,  br.y * 1.8)).rgb * 0.0625;
         acc += texture2D(tColor, uv + vec2(0.0, -br.y * 1.8)).rgb * 0.0625;
         col.rgb = acc;
+      }
+      // === SSAO ===
+      // 외곽선·모서리 하이라이트보다 '먼저' 곱한다. 나중에 곱하면 이미 어두워진 외곽선을
+      // 한 번 더 눌러서 경계가 새까맣게 뭉갠다(둘 다 같은 자리를 어둡게 하기 때문).
+      if (uAOStr > 0.001) {
+        float rawD = texture2D(tDepth, uv).x;
+        vec3 nAO = nrmAt(vec2(0.0));
+        // 피부·식생은 노멀 자리에 표식색이 들어 있어 진짜 노멀이 없다 → 그 픽셀은 건너뛴다.
+        // 바닥·벽은 그대로 계산되므로 캐릭터 발밑 접지 그림자는 남는다(바닥 픽셀이 캐릭터 깊이를 본다).
+        if (rawD < 0.9999 && !isSkinTag(nAO) && !isVegTag(nAO)) {
+          col.rgb *= ssao(uv, rawD, normalize(nAO));
+        }
       }
       float c  = linearizeDepth(texture2D(tDepth, uv).x);
       // 상하좌우 이웃과의 깊이 차로 경계 검출 (Sobel 간략화)
@@ -5361,6 +5425,12 @@ function renderWithPost(sceneToRender) {
   if (quadMat.uniforms.uCloudStr.value > 0.001) {
     _invVP.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).invert();
     quadMat.uniforms.uInvVP.value.copy(_invVP);
+  }
+  // SSAO는 뷰 공간에서 계산하므로 투영 행렬과 그 역행렬만 있으면 된다(카메라 스냅과 무관하지만
+  // 화면비·FOV가 바뀔 수 있으므로 여기서 같이 갱신한다).
+  if (quadMat.uniforms.uAOStr.value > 0.001) {
+    quadMat.uniforms.uProj.value.copy(camera.projectionMatrix);
+    quadMat.uniforms.uInvP.value.copy(camera.projectionMatrix).invert();
   }
   renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
   releasePixelSnap(); // 추적 로직이 스냅된 위치를 물려받지 않도록 원래 위치로 되돌린다
