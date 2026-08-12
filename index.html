@@ -4165,14 +4165,14 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v737'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v738'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // SSAO 세기. 노멀 버퍼는 px 모드에서만 채워지므로 ?px=0에서는 켤 수 없다(끄고 안내만 남긴다).
 const _ssaoM = location.search.match(/[?&]ssao=([\d.]+)/);
 // 세기가 큰 이유: 표본에 거리 가중치(가까울수록 세게)를 곱하므로 합이 훨씬 작아진다.
 // 가중치 없던 판의 1.2와 대략 같은 깊이가 5.0 근처다(범위는 절반으로 줄어든 채).
-// 실측으로 12를 골랐다: 벽 밑동 AO 항이 0.52까지 내려가 눈에 확실히 보이면서
-// 화면에서 완전히 뭉개지는(항 0.35 미만) 픽셀은 0.2% 남짓이다.
-const SSAO_STR = PX_MODE ? (_ssaoM ? parseFloat(_ssaoM[1]) : 12.0) : 0;   // ?ssao=0 이면 끔
+// 세기는 예전 값 5.0으로 되돌렸다(사용자 지시). 12까지 올려 본 적이 있는데
+// 벽 밑동 AO 항이 0.52까지 내려가 너무 진했다 — 필요하면 ?ssao=12로 다시 볼 것.
+const SSAO_STR = PX_MODE ? (_ssaoM ? parseFloat(_ssaoM[1]) : 5.0) : 0;   // ?ssao=0 이면 끔
 // 반경 2.4: 1.6이면 밑동 그림자가 0.4 안에서 끝나 거의 안 보이고, 3.6이면 벽 중턱까지
 // 얼룩덜룩하게 번진다(단면이 단조롭게 안 떨어진다).
 const SSAO_RADIUS = parseFloat((location.search.match(/[?&]ssaor=([\d.]+)/) || [])[1]) || 2.4;
