@@ -4165,12 +4165,12 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v733'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v734'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // SSAO 세기. 노멀 버퍼는 px 모드에서만 채워지므로 ?px=0에서는 켤 수 없다(끄고 안내만 남긴다).
 const _ssaoM = location.search.match(/[?&]ssao=([\d.]+)/);
-// 세기가 큰 이유: 표본에 거리 가중치(가까울수록 세게)를 곱하므로 합이 훨씬 작아진다.
-// 가중치 없던 판의 1.2와 대략 같은 깊이가 5.0 근처다(범위는 절반으로 줄어든 채).
-const SSAO_STR = PX_MODE ? (_ssaoM ? parseFloat(_ssaoM[1]) : 5.0) : 0;   // ?ssao=0 이면 끔
+// 세기가 큰 이유: 표본에 거리 가중치(가까울수록 세게)를 곱하고 가림 판정도 완만하게 올리므로
+// 합이 훨씬 작아진다. 가중치·완만화가 없던 판의 1.2와 대략 같은 깊이가 7 근처다.
+const SSAO_STR = PX_MODE ? (_ssaoM ? parseFloat(_ssaoM[1]) : 7.0) : 0;   // ?ssao=0 이면 끔
 const SSAO_RADIUS = parseFloat((location.search.match(/[?&]ssaor=([\d.]+)/) || [])[1]) || 1.6;
 // AO를 건물·벽(과 거기 붙은 바닥)에만 걸지 여부. 끄면 모든 물체가 가림으로 계산된다.
 const SSAO_ARCH = !/[?&]ssaoarch=0/.test(location.search);
@@ -5109,8 +5109,14 @@ const quadMat = new THREE.ShaderMaterial({
     const int AO_SAMPLES = 10;
     float ssao(vec2 uvv, float rawDep, vec3 n) {
       vec3 vp = viewPosAt(uvv, rawDep);
-      vec3 t = normalize(abs(n.z) < 0.99 ? cross(vec3(0.0, 0.0, 1.0), n) : cross(vec3(1.0, 0.0, 0.0), n));
-      vec3 b = cross(n, t);
+      // 접선 기저는 분기 없이 만든다(Duff의 방법). 예전처럼 abs(n.z) < 0.99로 축을 갈아타면
+      // 카메라를 정면으로 보는 면(=건물 벽)에서 n.z가 딱 그 경계에 걸린다. 노멀 버퍼는 8비트라
+      // 이웃 픽셀끼리 경계를 넘나들며 표본 패턴이 90° 돌아가고, 그 자리가 검게 반짝인다.
+      float sgn = n.z >= 0.0 ? 1.0 : -1.0;
+      float ta = -1.0 / (sgn + n.z);
+      float tb = n.x * n.y * ta;
+      vec3 t = vec3(1.0 + sgn * n.x * n.x * ta, sgn * tb, -sgn * n.x);
+      vec3 b = vec3(tb, sgn + n.y * n.y * ta, -n.y);
       float occ = 0.0;
       for (int i = 0; i < AO_SAMPLES; i++) {
         float fi = float(i) + 0.5;
@@ -5132,8 +5138,12 @@ const quadMat = new THREE.ShaderMaterial({
           if (ta < 0.25 || ta > 0.75) continue;
         }
         vec3 sPos = viewPosAt(suv, sd);
-        // 표본보다 앞에 면이 있으면 가려진 것.
-        float hit = sPos.z >= sp.z + 0.02 ? 1.0 : 0.0;
+        // 표본보다 앞에 면이 있으면 가려진 것 — 단 이걸 0/1로 끊으면 안 된다.
+        // 표본이 10개뿐이라 하나가 뒤집힐 때마다 AO가 uAOStr/10(=0.5)씩 튀고,
+        // 카메라를 텍셀에 스냅하므로 걸을 때마다 그 튐이 검은 반짝임으로 보인다
+        // (실측: 이웃 픽셀과 0.15 넘게 차이 나는 곳이 AO 영역의 16.9%, 최대 0.67).
+        // 깊이 차로 완만하게 올려 주면 이웃끼리 값이 이어져 반짝임이 사라진다.
+        float hit = smoothstep(0.0, 0.45, sPos.z - sp.z - 0.02);
         // 거리 가중치: 가까운 가림만 세게 친다. 이게 없으면 반경 안의 모든 가림이 같은 무게라
         // 물체 주위가 넓게 퍼져 어두워진다(AO는 방향이 없어서 사방으로 번진다).
         // 제곱으로 떨어뜨려 밑동에 붙는 접촉 그림자에 가깝게 만든다. 반경 밖은 0이라
