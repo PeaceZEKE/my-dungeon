@@ -4165,13 +4165,15 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v732'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v733'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // SSAO 세기. 노멀 버퍼는 px 모드에서만 채워지므로 ?px=0에서는 켤 수 없다(끄고 안내만 남긴다).
 const _ssaoM = location.search.match(/[?&]ssao=([\d.]+)/);
 // 세기가 큰 이유: 표본에 거리 가중치(가까울수록 세게)를 곱하므로 합이 훨씬 작아진다.
 // 가중치 없던 판의 1.2와 대략 같은 깊이가 5.0 근처다(범위는 절반으로 줄어든 채).
 const SSAO_STR = PX_MODE ? (_ssaoM ? parseFloat(_ssaoM[1]) : 5.0) : 0;   // ?ssao=0 이면 끔
 const SSAO_RADIUS = parseFloat((location.search.match(/[?&]ssaor=([\d.]+)/) || [])[1]) || 1.6;
+// AO를 건물·벽(과 거기 붙은 바닥)에만 걸지 여부. 끄면 모든 물체가 가림으로 계산된다.
+const SSAO_ARCH = !/[?&]ssaoarch=0/.test(location.search);
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -4927,6 +4929,20 @@ const skinTagMaterial = new THREE.ShaderMaterial({
 // 노멀 버퍼의 '알파'를 외곽선 스위치로 쓴다 — 알파 0이면 그 픽셀엔 외곽선을 안 그린다.
 // 알파를 쓰는 이유: RGB(=노멀)를 그대로 남길 수 있어서, 나뭇잎은 모서리 하이라이트를 유지한 채
 // 검은 선만 뺄 수 있다. 잔디는 노멀이 의미 없으므로 초록 표식(0,1,0)까지 얹어 하이라이트도 뺀다.
+// ===== 건축물(건물·벽) 표식 =====
+// SSAO를 건물·벽과 그에 붙은 바닥에만 걸기 위한 표식. 노멀 버퍼의 알파를 0.5로 찍는다.
+// 알파를 쓰는 이유: RGB(=진짜 노멀)를 그대로 남겨야 모서리 하이라이트가 유지된다.
+// 값 0.5를 고른 이유: 외곽선 스위치가 step(0.5, a)라 0.5는 통과한다 → 건축물 외곽선은 그대로.
+// (식생 0.0 = 외곽선 없음 / 건축물 0.5 = 외곽선 있음 + AO 가림 / 그 외 1.0)
+const ARCH_TAG_LAYER = 3;
+const archNormalMaterial = new THREE.MeshNormalMaterial();
+archNormalMaterial.onBeforeCompile = function (shader) {
+  shader.fragmentShader = shader.fragmentShader.replace(
+    'packNormalToRGB( normal ), opacity', 'packNormalToRGB( normal ), 0.5');
+};
+archNormalMaterial.customProgramCacheKey = function () { return 'archNormalA05'; };
+// 그룹 통째로 표식을 붙인다(메시마다 userData를 봐야 _hideNonSolid가 골라낼 수 있다).
+function markArch(o) { if (o) o.traverse(m => { if (m.isMesh) (m.userData || (m.userData = {}))._arch = true; }); return o; }
 const VEG_NO_OUTLINE = !/[?&]vout=1/.test(location.search);
 const VEG_TAG_LAYER = 2;
 // 나뭇잎용: 진짜 노멀을 그대로 쓰되 알파만 0으로.
@@ -5000,6 +5016,7 @@ const quadMat = new THREE.ShaderMaterial({
     // (월드로 올리면 좌표가 커져 정밀도가 떨어진다). 그래서 uInvVP가 아니라 uInvP·uProj를 쓴다.
     uAOStr: { value: SSAO_STR }, // 0이면 셰이더가 통째로 건너뛴다
     uAORadius: { value: SSAO_RADIUS }, // 가리기를 볼 반경(월드 단위. TILE=5)
+    uAOArch: { value: SSAO_ARCH ? 1.0 : 0.0 },
     uProj: { value: new THREE.Matrix4() },
     uInvP: { value: new THREE.Matrix4() }
   },
@@ -5049,7 +5066,7 @@ const quadMat = new THREE.ShaderMaterial({
     uniform vec2 uSubpixel;
     uniform float uPxNormalStr;
     uniform vec3 uPxNormalBias;
-    uniform float uAOStr, uAORadius;
+    uniform float uAOStr, uAORadius, uAOArch;
     uniform mat4 uProj, uInvP;
     varying vec2 vUv;
     vec3 nrmAt(vec2 o) { return texture2D(tNormal, vUv + uSubpixel + o * uTexel).rgb * 2.0 - 1.0; }
@@ -5108,6 +5125,12 @@ const quadMat = new THREE.ShaderMaterial({
         if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) continue;
         float sd = texture2D(tDepth, suv).x;
         if (sd > 0.9999) continue;                       // 하늘은 가리는 것이 아니다
+        // 건물·벽만 가림으로 친다. 노멀 버퍼 알파가 표식이다(건축물 0.5 / 식생 0 / 그 외 1).
+        // 이렇게 하면 잔디·상자·울타리·캐릭터는 그림자를 안 만들고, 건축물에 붙은 바닥만 어두워진다.
+        if (uAOArch > 0.5) {
+          float ta = texture2D(tNormal, suv).a;
+          if (ta < 0.25 || ta > 0.75) continue;
+        }
         vec3 sPos = viewPosAt(suv, sd);
         // 표본보다 앞에 면이 있으면 가려진 것.
         float hit = sPos.z >= sp.z + 0.02 ? 1.0 : 0.0;
@@ -5303,11 +5326,18 @@ quadMat.uniforms.tBloom.value = rtBloom.texture;
 // 불투명 사각형으로 찍혀서 가짜 외곽선이 잔뜩 생긴다.
 const _normalHidden = [];
 const _normalVeg = [], _normalVegMat = [];
-let _normalSkinCount = 0;
+let _normalSkinCount = 0, _normalArchCount = 0;
 function _hideNonSolid(root) {
-  _normalSkinCount = 0; _normalVeg.length = 0;
+  _normalSkinCount = 0; _normalVeg.length = 0; _normalArchCount = 0;
   root.traverse(o => {
     if (!o.visible) return;
+    // 건축물: 1패스에서 빼고 2패스에서 알파 0.5로 다시 그린다.
+    // 빼고 옮기는 것이라 드로우콜은 안 늘어난다(피부 표식과 같은 요령).
+    if (SSAO_ARCH && o.isMesh && o.userData && o.userData._arch) {
+      o.visible = false; _normalHidden.push(o);
+      o.layers.enable(ARCH_TAG_LAYER); _normalArchCount++;
+      return;
+    }
     const mm = o.material;
     const organic = mm && (Array.isArray(mm) ? mm.some(x => x && x.userData && x.userData._organic)
                                              : (mm.userData && mm.userData._organic));
@@ -5341,6 +5371,19 @@ function renderNormalPass(sceneToRender) {
   renderer.setRenderTarget(rtNormal); renderer.clear(); renderer.render(sceneToRender, camera);
   for (const o of _normalHidden) o.visible = true;
   _normalHidden.length = 0;
+  // 건축물 패스: 알파 0.5를 찍어 SSAO가 '이 픽셀이 건물·벽인지' 알 수 있게 한다.
+  // 1패스에서 빠진 것을 여기서 그리는 것이므로 드로우콜 총량은 같다.
+  if (_normalArchCount > 0) {
+    const prevMask = camera.layers.mask, prevAuto = renderer.autoClear, prevBg = sceneToRender.background;
+    sceneToRender.overrideMaterial = archNormalMaterial;
+    sceneToRender.background = null;   // Color면 three가 강제로 clear해 1패스를 지운다
+    camera.layers.set(ARCH_TAG_LAYER);
+    renderer.autoClear = false;
+    renderer.render(sceneToRender, camera);
+    sceneToRender.background = prevBg;
+    renderer.autoClear = prevAuto;
+    camera.layers.mask = prevMask;
+  }
   // 2패스: 피부만 표식색으로. 레이어로 골라내므로 씬을 다시 훑지 않고, 1패스가 써 둔 깊이로
   // 벽 뒤의 피부는 자동으로 가려진다(clear 하지 않으므로 1패스 결과 위에 덮인다).
   if (_normalSkinCount > 0) {
@@ -5998,7 +6041,7 @@ function buildTownScene() {
     g.userData.fill = fill;
     townScene.add(g); return g;
   }
-  const dungeon = makeDungeonEntrance();
+  const dungeon = markArch(makeDungeonEntrance());
   dungeon.userData.noCollide = true; // 던전 입구는 충돌 제외(입장 가능하게)
 
   // ===== 우물(빌더 — 광장 한 켠으로 이동 배치) =====
@@ -6643,7 +6686,7 @@ function buildTownScene() {
         g.add(box(0.6, 0.6, 1.0, stoneD, -0.55, h + 0.28, 0));
         g.add(box(0.6, 0.6, 1.0, stoneD, 0.55, h + 0.28, 0));
       }
-      g.position.set(x, 0, z); g.rotation.y = phi; townScene.add(g);
+      g.position.set(x, 0, z); g.rotation.y = phi; markArch(g); townScene.add(g);
     }
   }
 
@@ -6655,7 +6698,7 @@ function buildTownScene() {
   const gx = WALL_R * Math.sin(GATE_ANGLE), gz = WALL_R * Math.cos(GATE_ANGLE);
 
   // 멀리 빠진 성문 + 마을을 감싸는 원형 성벽
-  const gate = makeGate(gx, gz);
+  const gate = markArch(makeGate(gx, gz));
   makeRampart(WALL_R, GATE_ANGLE, 0.27);
 
   // 성문 앞 보초 둘 + 마차(입구 느낌) — 게이트 방위에 맞춰 안쪽을 향하게 배치
@@ -6697,7 +6740,7 @@ function buildTownScene() {
   }
 
   // 교회 아치 랜드마크
-  const church = makeChurch(5.5, -13);
+  const church = markArch(makeChurch(5.5, -13));
   buildings.push(church);
   // 교회 정문 앞에 성직자 배치(능력 강화 담당) — 중심 쪽으로 조금 나와서, 중심을 향하게
   {
@@ -6707,9 +6750,9 @@ function buildTownScene() {
   }
 
   // 측면 — 대장간/상점/여관
-  buildings.push(makeBlacksmith(-13, 0));
-  buildings.push(makeShop(13.5, 0));
-  buildings.push(makeInn(12, -8));
+  buildings.push(markArch(makeBlacksmith(-13, 0)));
+  buildings.push(markArch(makeShop(13.5, 0)));
+  buildings.push(markArch(makeInn(12, -8)));
   // 여관 주인: 여관 앞(중심 쪽)에 세워 캐릭터 변경 안내
   {
     const iAng = Math.atan2(12, -8), iR = Math.hypot(12, -8) - 4.5;
@@ -6718,15 +6761,15 @@ function buildTownScene() {
   }
 
   // 빽빽한 주택(타운하우스 느낌으로 키 다양화 · 장미/청록/모브 지붕)
-  cottages.push(makeCottage({ x: -12, z: 7,    w: 2.9, d: 3.0, wh: 3.0, rh: 1.3, wall: C.plasterB, roof: C.tileA, chimney: true }));
-  cottages.push(makeCottage({ x: -6,  z: 12,   w: 3.2, d: 3.4, wh: 2.4, rh: 1.5, wall: C.plasterA, roof: C.tileC, chimney: true }));
-  cottages.push(makeCottage({ x: 8,   z: 12,   w: 3.0, d: 3.2, wh: 2.7, rh: 1.4, wall: C.plasterC, roof: C.tileB, chimney: false }));
-  cottages.push(makeCottage({ x: 12.5, z: 7,   w: 2.8, d: 3.0, wh: 3.1, rh: 1.3, wall: C.plasterA, roof: C.tileA, chimney: true }));
-  cottages.push(makeCottage({ x: -2.5, z: 14,  w: 3.0, d: 3.2, wh: 2.3, rh: 1.5, wall: C.plasterB, roof: C.thatch, chimney: true }));
+  cottages.push(markArch(makeCottage({ x: -12, z: 7,    w: 2.9, d: 3.0, wh: 3.0, rh: 1.3, wall: C.plasterB, roof: C.tileA, chimney: true })));
+  cottages.push(markArch(makeCottage({ x: -6,  z: 12,   w: 3.2, d: 3.4, wh: 2.4, rh: 1.5, wall: C.plasterA, roof: C.tileC, chimney: true })));
+  cottages.push(markArch(makeCottage({ x: 8,   z: 12,   w: 3.0, d: 3.2, wh: 2.7, rh: 1.4, wall: C.plasterC, roof: C.tileB, chimney: false })));
+  cottages.push(markArch(makeCottage({ x: 12.5, z: 7,   w: 2.8, d: 3.0, wh: 3.1, rh: 1.3, wall: C.plasterA, roof: C.tileA, chimney: true })));
+  cottages.push(markArch(makeCottage({ x: -2.5, z: 14,  w: 3.0, d: 3.2, wh: 2.3, rh: 1.5, wall: C.plasterB, roof: C.thatch, chimney: true })));
   buildings.push(...cottages);
 
   // 방앗간 + 등록 배열
-  const windmill = makeWindmill(-17, -9);
+  const windmill = markArch(makeWindmill(-17, -9));
   const windmills = [windmill];
   const gates = [gate];
 
@@ -8026,6 +8069,7 @@ function buildCastleMesh(dgn) {
     if (Math.random() < GFX.vineChance2) { const vn2 = 1 + Math.floor(Math.random() * 2); for (let vk = 0; vk < vn2; vk++) wt.add(makeVineMesh(CAS_WALL_H * 0.9)); } // 2막 늘어진 덩굴
     wallGroup.add(wt); walls.push({ x: wxf(x), z: wzf(y), halfW: TILE / 2, halfD: TILE / 2 });
   }
+  markArch(wallGroup);   // 2·3막 성벽 타일
   buildGrass(grid, null, true); // 2막: 석판 틈 사이 잡초
   // 복도 붉은 카펫(러너) — 복도 타일은 grid===1이므로 corridorTiles로 깐다
   for (const { x, y } of corridorTiles) {
@@ -8698,6 +8742,7 @@ function buildDungeonMesh(dgn) {
       }
     }
   }
+  markArch(wallGroup);   // 1막 벽 타일(장식은 뒤에 붙으므로 여기서 벽만 잡힌다)
   // 이끼 동굴 장식 배치(방·복도 기준)
   buildCavernDecor(dgn);
   buildGrass(grid, mossSpots); // 1막 숲 동굴: 끝 밝은 풀밭(이끼 위 집중)
