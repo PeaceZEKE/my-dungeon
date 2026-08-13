@@ -4165,7 +4165,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v748'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v749'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // SSAO 세기. 노멀 버퍼는 px 모드에서만 채워지므로 ?px=0에서는 켤 수 없다(끄고 안내만 남긴다).
 const _ssaoM = location.search.match(/[?&]ssao=([\d.]+)/);
 // 세기가 큰 이유: 표본에 거리 가중치(가까울수록 세게)를 곱하므로 합이 훨씬 작아진다.
@@ -8538,6 +8538,34 @@ function makeFleshTumorMass(parent, x, z) {
 function makeFloorVeins(parent, wx, wz, dy) {
   const yOff = dy || 0;
   const n = 2 + Math.floor(Math.random() * 3);
+  if (COR_V2) {
+    // 곧은 원기둥을 눕히면 성냥개비가 흩어진 것처럼 보인다(실측: 길이 2.64에 반지름 0.05).
+    // 바닥을 기는 핏줄은 굽이치고, 끝으로 갈수록 가늘어지고, 밑동에서 갈라져야 한다.
+    for (let i = 0; i < n; i++) {
+      const a0 = Math.random() * Math.PI * 2;
+      const x0 = wx + (Math.random() - 0.5) * TILE * 0.45, z0 = wz + (Math.random() - 0.5) * TILE * 0.45;
+      const branch = (ang, len, r0) => {
+        const P = 4, pts = [];
+        let a = ang;
+        for (let k = 0; k <= P; k++) {
+          const t = k / P;
+          a += (Math.random() - 0.5) * 0.9;                    // 조금씩 방향을 틀며 기어간다
+          pts.push(new THREE.Vector3(x0 + Math.cos(a) * len * t,
+                                     0.055 + yOff + Math.sin(t * 5.0) * 0.012,
+                                     z0 + Math.sin(a) * len * t));
+        }
+        const g = makeTaperedTube(new THREE.CatmullRomCurve3(pts), 8, r0, 4, 0.16);
+        const m = new THREE.Mesh(g, corMatFleshB); m.receiveShadow = true; parent.add(m);
+      };
+      const len = TILE * (0.32 + Math.random() * 0.4);
+      branch(a0, len, 0.055 + Math.random() * 0.03);
+      if (Math.random() < 0.6) branch(a0 + (Math.random() < 0.5 ? 1 : -1) * (0.7 + Math.random() * 0.8),
+                                      len * (0.45 + Math.random() * 0.3), 0.04);
+      const node = new THREE.Mesh(new THREE.IcosahedronGeometry(0.07 + Math.random() * 0.05, 0), corMatFlesh);
+      node.position.set(x0, 0.06 + yOff, z0); node.scale.y = 0.6; parent.add(node);
+    }
+    return;
+  }
   for (let i = 0; i < n; i++) {
     const len = TILE * (0.4 + Math.random() * 0.55);
     const v = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.075, len, 4), corMatFleshB);
