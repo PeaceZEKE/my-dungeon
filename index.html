@@ -4165,7 +4165,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v740'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v741'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // SSAO 세기. 노멀 버퍼는 px 모드에서만 채워지므로 ?px=0에서는 켤 수 없다(끄고 안내만 남긴다).
 const _ssaoM = location.search.match(/[?&]ssao=([\d.]+)/);
 // 세기가 큰 이유: 표본에 거리 가중치(가까울수록 세게)를 곱하므로 합이 훨씬 작아진다.
@@ -4178,6 +4178,10 @@ const SSAO_STR = PX_MODE ? (_ssaoM ? parseFloat(_ssaoM[1]) : 5.0) : 0;   // ?ssa
 const SSAO_RADIUS = parseFloat((location.search.match(/[?&]ssaor=([\d.]+)/) || [])[1]) || 2.4;
 // AO를 건물·벽(과 거기 붙은 바닥)에만 걸지 여부. 끄면 모든 물체가 가림으로 계산된다.
 const SSAO_ARCH = !/[?&]ssaoarch=0/.test(location.search);
+// 이 게임의 캐릭터는 진짜 그림자를 안 진다 — 발밑 블롭이 대신한다(몬스터 빌더 주석 참고).
+// 궁수 리그만 메시 전부에 castShadow를 켜 두어서, 던전 횃불(플레이어 바로 옆의 점광원)에
+// 몸 전체가 크게 늘어난 그림자로 찍혔다(실측: 기사 60×19픽셀 → 궁수 135×80).
+const ARCHER_SHADOW = /[?&]ashadow=1/.test(location.search);   // 1이면 예전(그림자 짐)
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -12216,7 +12220,7 @@ function applyMageLook() {
 player.archerRig = null;
 player.archerLimbs = null;
 function buildArcherRig() {
-  const sh = o => { o.castShadow = true; o.receiveShadow = true; return o; };
+  const sh = o => { o.castShadow = ARCHER_SHADOW; o.receiveShadow = true; return o; };
   // 색 팔레트(원화 기반)
   const skin = markOrganic(getLowPolyMat(0xf2cfa8, false)), skinSh = markOrganic(getLowPolyMat(0xddb389, false));
   const hairMat = getLowPolyMat(0xd8c878, false), hairDark = getLowPolyMat(0xbfa85c, false);
