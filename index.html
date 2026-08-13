@@ -4165,7 +4165,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v742'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v743'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // SSAO 세기. 노멀 버퍼는 px 모드에서만 채워지므로 ?px=0에서는 켤 수 없다(끄고 안내만 남긴다).
 const _ssaoM = location.search.match(/[?&]ssao=([\d.]+)/);
 // 세기가 큰 이유: 표본에 거리 가중치(가까울수록 세게)를 곱하므로 합이 훨씬 작아진다.
@@ -8352,25 +8352,50 @@ function makeCorruptWallTile() {
 }
 // 원화에서 공간을 가로지르는 굵은 장밋빛 힘줄. 벽 위에서 출발해 바닥으로 늘어진다.
 // 튜브 하나가 5×10×2 = 100삼각형이라 방당 두어 개면 부담이 없다.
-const corMatSinew = applyCutoutShader(getLowPolyMat(COR.paleB));
+// 색이 밝으면 위쪽 모서리에 하이라이트가 한 줄 앉아 각목처럼 보인다 — 중간 톤 장미색으로.
+const corMatSinew = applyCutoutShader(getLowPolyMat(0xa86e7c));
 corMatSinew.map = texFleshWets[1]; corMatSinew.needsUpdate = true;
 function makeSinewArc(parent, x0, z0, x1, z1) {
-  const h = CAS_WALL_H * (0.6 + Math.random() * 0.3);
-  const mx = (x0 + x1) / 2 + (Math.random() - 0.5) * TILE * 0.5;
-  const mz = (z0 + z1) / 2 + (Math.random() - 0.5) * TILE * 0.5;
-  const curve = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(x0, h, z0),
-    new THREE.Vector3(mx, h * (0.55 + Math.random() * 0.25), mz),
-    new THREE.Vector3((mx + x1) / 2, h * 0.22, (mz + z1) / 2),
-    new THREE.Vector3(x1, 0.12, z1),
-  ]);
-  const geo = new THREE.TubeGeometry(curve, 10, 0.22 + Math.random() * 0.12, 5, false);
-  const m = new THREE.Mesh(geo, corMatSinew); m.castShadow = true; parent.add(m);
+  const h = CAS_WALL_H * (0.55 + Math.random() * 0.3);
+  // 늘어진 가닥이 되려면 가운데가 푹 꺼져야 한다(현수선). 예전엔 벽에서 바닥까지 완만한
+  // 사선이라 곡률이 안 보였고, 굵기까지 일정해서 쓰러진 각목처럼 보였다.
+  const sag = h * (0.18 + Math.random() * 0.12);
+  const wob = (t) => (Math.random() - 0.5) * TILE * 0.25 * t;
+  const pts = [];
+  const N = 5;
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const x = x0 + (x1 - x0) * t + wob(1), z = z0 + (z1 - z0) * t + wob(1);
+    // 벽 끝은 높이 h, 반대 끝은 바닥. 그 사이를 4t(1-t)만큼 아래로 늘어뜨린다.
+    const y = h * (1 - t) * (1 - t) + 0.1 - sag * 4 * t * (1 - t);
+    pts.push(new THREE.Vector3(x, Math.max(0.1, y), z));
+  }
+  const curve = new THREE.CatmullRomCurve3(pts);
+  const SEG = 12, RAD = 6, r0 = 0.30 + Math.random() * 0.14;
+  const geo = new THREE.TubeGeometry(curve, SEG, r0, RAD, false);
+  // TubeGeometry는 굵기가 일정하다 — 링마다 중심에서의 거리를 줄여 끝으로 갈수록 가늘게 한다.
+  // 정점 순서는 (SEG+1)개 링 × (RAD+1)개다.
+  {
+    const pos = geo.attributes.position, ring = RAD + 1, c = new THREE.Vector3();
+    for (let i = 0; i <= SEG; i++) {
+      curve.getPoint(i / SEG, c);
+      const k = 1 - 0.72 * (i / SEG);            // 밑동 1.0 → 끝 0.28
+      for (let j = 0; j <= RAD; j++) {
+        const id = i * ring + j;
+        pos.setXYZ(id, c.x + (pos.getX(id) - c.x) * k,
+                       c.y + (pos.getY(id) - c.y) * k,
+                       c.z + (pos.getZ(id) - c.z) * k);
+      }
+    }
+    pos.needsUpdate = true; geo.computeVertexNormals();
+  }
+  const m = new THREE.Mesh(geo, corMatSinew); m.castShadow = false; m.receiveShadow = true; parent.add(m);
   // 가닥을 따라 붙은 결절 몇 개
   const list = [];
   for (let i = 1; i <= 3; i++) {
-    const pt = curve.getPoint(i / 4.5);
-    list.push({ x: pt.x, y: pt.y, z: pt.z, r: 0.16 + Math.random() * 0.12, sy: 0.85, t: 2 });
+    const pt = curve.getPoint(i / 5);
+    const k = 1 - 0.6 * (i / 5);
+    list.push({ x: pt.x, y: pt.y, z: pt.z, r: (0.20 + Math.random() * 0.12) * k, sy: 0.85, t: 2 });
   }
   const nod = new THREE.Mesh(mergeCoral(list), corMatCoral); nod.castShadow = false; parent.add(nod);
 }
@@ -8537,7 +8562,7 @@ function buildCorruptMesh(dgn) {
         // 방 한가운데까지 끌고 오면 긴 막대가 화면을 가로질러 어색하다 — 벽에서 한두 칸만 뻗는다
         const wx0 = wxf(ex), wz0 = wzf(ey);
         const ang = Math.atan2(cz - wz0, cx - wx0) + (Math.random() - 0.5) * 0.8;
-        const reach = TILE * (0.9 + Math.random() * 0.8);
+        const reach = TILE * (0.6 + Math.random() * 0.55);
         makeSinewArc(wallGroup, wx0, wz0, wx0 + Math.cos(ang) * reach, wz0 + Math.sin(ang) * reach);
       }
     }
