@@ -4165,7 +4165,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v745'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v747'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // SSAO 세기. 노멀 버퍼는 px 모드에서만 채워지므로 ?px=0에서는 켤 수 없다(끄고 안내만 남긴다).
 const _ssaoM = location.search.match(/[?&]ssao=([\d.]+)/);
 // 세기가 큰 이유: 표본에 거리 가중치(가까울수록 세게)를 곱하므로 합이 훨씬 작아진다.
@@ -8161,6 +8161,15 @@ if (COR_V2) Object.assign(COR, {
   flesh: 0xa82c42, fleshB: 0x7d2036, fleshC: 0xc4485c,
   pale: 0xe9bfc4, paleB: 0xd49fae,
 });
+// 3막 바닥은 평평한 판이 아니라 주저앉은 포석이다 — 윗면만 사인파로 울퉁불퉁하게 만든다.
+// `displaceFloorTop`은 가장자리를 페이드로 평평하게 남기므로 인접 타일과 틈·단차가 안 생긴다.
+// 분할을 4→6으로 올려야 굴곡이 각지지 않는다.
+const corFloorGeos = [];
+for (let i = 0; i < 6; i++) {
+  const g = new THREE.BoxGeometry(TILE, 0.4, TILE, 6, 1, 6);
+  displaceFloorTop(g, 0.11 + i * 0.015, i * 2.7, i * 1.9 + 0.8);
+  corFloorGeos.push(g);
+}
 const corFloorMats = []; // 뼈빛 3색 × 석판 변형 4장 = 12종(텍스처는 2막과 공유 — 흑백이라 팔레트만 다르게 입혀짐)
 texFlagstones.forEach(t => { [COR.floor, COR.floorB, COR.floorDark].forEach(c => { const m = getLowPolyMat(c); m.map = t; m.needsUpdate = true; corFloorMats.push(m); }); });
 const corMatWall = applyCutoutShader(getLowPolyMat(COR.wall));
@@ -8198,7 +8207,9 @@ const corruptPulses = []; // 맥동 종양/발광 {mesh, glow, light, ph, baseI}
 // 색은 정점색으로 넣는다. 안쪽은 진홍, 바깥·위로 갈수록 분홍→크림이라 덩어리 윤곽이 살아난다.
 // 맵을 안 씌운다: 알갱이마다 구 전체 UV가 들어가서 젖은 살 텍스처가 알갱이 하나하나에
 // 체커처럼 반복돼 결정 조각처럼 보였다. 정점색이면 충분하다.
-const CORAL_ROUGH = parseFloat((location.search.match(/[?&]crough=([\d.]+)/) || [])[1]) || 0.34;
+// 러프니스는 예전 값(0.9)으로 되돌렸다(사용자 지시). 0.34까지 낮춰 본 적이 있는데
+// 하이라이트가 흰빛을 얹어 색이 바랬다 — 다시 보려면 ?crough=0.34.
+const CORAL_ROUGH = parseFloat((location.search.match(/[?&]crough=([\d.]+)/) || [])[1]) || 0.9;
 const corMatCoral = applyCutoutShader(getLowPolyMat(0xffffff));
 corMatCoral.vertexColors = true;
 // 산호는 젖은 살이다 — 피부와 같은 취급을 하되 무광 처리만 뺀다.
@@ -8247,6 +8258,21 @@ function mergeCoral(list) {
   if (uv) g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   return g;
 }
+// 산호는 숨을 쉰다(느리게 부풀었다 줄어든다). 스케일로 하려면 지오메트리가 자기 중심에
+// 있어야 제자리에서 부푼다 — 벽 산호처럼 원점에서 떨어진 덩어리를 그냥 스케일하면
+// 타일 원점 쪽으로 미끄러진다. 그래서 중심을 빼서 굽고 메시를 그 자리에 놓는다.
+const corruptBreath = [];   // {m, ph, amp}
+function coralMesh(list, mat) {
+  let cx = 0, cy = 0, cz = 0;
+  for (const b of list) { cx += b.x; cy += b.y; cz += b.z; }
+  const n = list.length || 1; cx /= n; cy /= n; cz /= n;
+  for (const b of list) { b.x -= cx; b.y -= cy; b.z -= cz; }
+  const m = new THREE.Mesh(mergeCoral(list), mat || corMatCoral);
+  m.position.set(cx, cy, cz);
+  m.castShadow = false; m.receiveShadow = true;
+  corruptBreath.push({ m, ph: Math.random() * 10, amp: 0.030 + Math.random() * 0.035 });
+  return m;
+}
 // 알갱이 목록 만들기: 큰 엽(lobe) 몇 개 + 그 표면에 붙은 작은 알갱이들
 // s는 덩어리의 대략적인 '지름'이다(TILE=5 기준으로 잡을 것 — 원화의 종양은 타일을 덮을 만큼 크다).
 // 알갱이를 잘게 많이 쓰면 삼각형만 늘고 멀리서는 뭉개진다. 크게·적게가 낫다.
@@ -8276,10 +8302,9 @@ function makeFleshClump(s) {
   const g = new THREE.Group();
   if (COR_V2) {
     // 크기 기준을 바꿨다 — 예전 s는 반지름에 가까웠는데 지금은 지름이라 1.7배를 곱해 맞춘다.
-    const m = new THREE.Mesh(mergeCoral(coralBlobs(s * 1.7)), corMatCoral);
-    // 그림자는 끈다. 이 게임의 그림자 광원은 점광원(큐브 6면)이라 캐스터 하나가 여러 번 그려진다 —
-    // 산호를 캐스터로 두면 삼각형이 세 배로 뛴다(실측 170k → 526k). 발밑 접지는 AO·블롭이 맡는다.
-    m.castShadow = false; m.receiveShadow = true; g.add(m); return g;
+    // 그림자는 끈다(coralMesh 안에서). 이 게임의 그림자 광원은 점광원(큐브 6면)이라 캐스터 하나가
+    // 여러 번 그려져서, 산호를 캐스터로 두면 삼각형이 세 배로 뛴다(실측 170k → 526k).
+    g.add(coralMesh(coralBlobs(s * 1.7))); return g;
   }
   const n = 4 + Math.floor(Math.random() * 4);
   for (let i = 0; i < n; i++) {
@@ -8310,8 +8335,7 @@ function addWallFlesh(grp) {
       const sz = TILE * (0.5 + Math.random() * 0.26);
       coralBlobs(sz, list, along ? u : face, y, along ? face : u);
     }
-    const m = new THREE.Mesh(mergeCoral(list), corMatCoral);
-    m.castShadow = false; m.receiveShadow = true; grp.add(m);
+    grp.add(coralMesh(list));
     // 끝에서 늘어진 살가닥 하나
     if (Math.random() < 0.6) {
       const len = 0.6 + Math.random() * 1.0;
@@ -8344,6 +8368,30 @@ function makeCorruptWallTile() {
   const coreGeo = new THREE.BoxGeometry(TILE * 0.96, CAS_WALL_H, TILE * 0.96, 2, 3, 2);
   const core = new THREE.Mesh(coreGeo, Math.random() < 0.5 ? corMatWallCoreA : corMatWallCoreB); core.position.y = CAS_WALL_H / 2; core.castShadow = true; core.receiveShadow = true; grp.add(core); // 민짜 면에도 뼈빛 석조 쌓기
   const courses = 4, ch = CAS_WALL_H / courses;
+  if (COR_V2) {
+    // 벽돌을 균등 분할하면 줄눈 간격이 자로 잰 듯 일정해진다. 폭과 간격을 따로 뽑고
+    // 높이·돌출·기울기까지 흔들어 오래 주저앉은 석축처럼 만든다.
+    for (let c = 0; c < courses; c++) {
+      const yBase = ch * (c + 0.5);
+      let bx = -TILE / 2 + Math.random() * TILE * 0.1;
+      let bi = 0;
+      while (bx < TILE / 2 - TILE * 0.12) {
+        const bw = TILE * (0.17 + Math.random() * 0.24);
+        if (bx + bw > TILE / 2) break;
+        const bh = ch * (0.66 + Math.random() * 0.24);
+        const bg = new THREE.BoxGeometry(bw, bh, TILE * 0.5, 2, 1, 1);
+        jitterGeometry(bg, 0.05);                       // 면이 반듯하지 않게
+        const bm = new THREE.Mesh(bg, corBlockMats[(c + bi) % corBlockMats.length]);
+        bm.position.set(bx + bw / 2, yBase + (Math.random() - 0.5) * ch * 0.16,
+                        TILE * 0.26 + (Math.random() - 0.5) * 0.13);   // 튀어나온 정도도 제각각
+        bm.rotation.z = (Math.random() - 0.5) * 0.05;
+        bm.rotation.y = (Math.random() - 0.5) * 0.05;
+        bm.castShadow = true; bm.receiveShadow = true; grp.add(bm);
+        bx += bw + TILE * (0.012 + Math.random() * 0.05);   // 줄눈 간격이 제각각
+        bi++;
+      }
+    }
+  } else
   for (let c = 0; c < courses; c++) {
     const offset = (c % 2) * (TILE * 0.22), nb = 3;
     for (let b = 0; b < nb; b++) {
@@ -8413,7 +8461,7 @@ function makeCoralVineOnPillar(g, h) {
     const t = i / 5, pt = curve.getPoint(t);
     list.push({ x: pt.x, y: pt.y, z: pt.z, r: (0.13 + Math.random() * 0.09) * (1 - 0.45 * t), sy: 0.85, t: 2 });
   }
-  const nod = new THREE.Mesh(mergeCoral(list), corMatCoral); nod.castShadow = false; g.add(nod);
+  g.add(coralMesh(list));
 }
 // 벽을 타고 내려와 바닥에 널브러지거나(up=false), 바닥을 뚫고 나와 벽을 타고 오르는(up=true) 덩굴.
 // 공중을 가로지르면 쓰러진 각목처럼 보인다 — 벽면과 바닥면에 붙어 있어야 덩굴로 읽힌다.
@@ -8448,7 +8496,7 @@ function makeSinewArc(parent, wx, wz, nx, nz, up) {
     const t = i / 5, pt = curve.getPoint(t);
     list.push({ x: pt.x, y: pt.y, z: pt.z, r: (0.20 + Math.random() * 0.12) * (1 - 0.6 * t), sy: 0.85, t: 2 });
   }
-  const nod = new THREE.Mesh(mergeCoral(list), corMatCoral); nod.castShadow = false; parent.add(nod);
+  parent.add(coralMesh(list));
 }
 // 발광 종양(광원): 살덩이 더미 속에서 따뜻한 병든 빛이 새어나옴 — 횃불 대체 광원
 function makeGlowTumor(parent, x, y, z) {
@@ -8461,7 +8509,7 @@ function makeGlowTumor(parent, x, y, z) {
   const glowSp = makeGlowSprite(0xff9a68, 2.3, 0.45); glowSp.position.y = 0.6; g.add(glowSp); // 빛번짐
   // 2막 횃불과 같은 방식 — 광원은 공용 풀에서 가까운 것에 붙인다(assignTorchLights).
   g.position.set(x, y, z); parent.add(g);
-  corruptPulses.push({ mesh: clump, glow: nod, light: null, sprite: glowSp, ph: Math.random() * 10, baseI: 1.4,
+  corruptPulses.push({ mesh: COR_V2 ? null : clump, glow: nod, light: null, sprite: glowSp, ph: Math.random() * 10, baseI: 1.4,
                        lit: true, wx: x, wy: y + 0.7, wz: z, lcol: 0xff8a55, ldist: 15 });
 }
 // 바닥 거대 종양 더미: 방 안 장식 — 큰 살덩이 + 발광 결절
@@ -8473,9 +8521,9 @@ function makeFleshTumorMass(parent, x, z) {
     const nod = new THREE.Mesh(new THREE.IcosahedronGeometry(0.2 + Math.random() * 0.12, 0), getGlowMat(COR.glow));
     nod.position.set((Math.random() - 0.5) * 1.2, 0.5 + Math.random() * 0.4, (Math.random() - 0.5) * 1.2); g.add(nod);
     const nsp = makeGlowSprite(0xff9a68, 1.5, 0.38); nsp.position.copy(nod.position); g.add(nsp);
-    corruptPulses.push({ mesh: big, glow: nod, light: null, sprite: nsp, ph: Math.random() * 10, baseI: 0 });
+    corruptPulses.push({ mesh: COR_V2 ? null : big, glow: nod, light: null, sprite: nsp, ph: Math.random() * 10, baseI: 0 });
   } else {
-    corruptPulses.push({ mesh: big, glow: null, light: null, ph: Math.random() * 10, baseI: 0 });
+    corruptPulses.push({ mesh: COR_V2 ? null : big, glow: null, light: null, ph: Math.random() * 10, baseI: 0 });
   }
   g.position.set(x, 0.1, z); parent.add(g);
 }
@@ -8556,8 +8604,13 @@ function buildCorruptMesh(dgn) {
   // 바닥(뼈빛 석조) + 핏줄·발광 균열
   for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
     if (grid[y][x] > 0) {
-      const f = new THREE.Mesh(casFloorGeos[(x + y) % casFloorGeos.length], corFloorMats[(x * 2 + y) % corFloorMats.length]);
-      f.position.set(wxf(x), -0.2, wzf(y)); f.receiveShadow = true; floorGroup.add(f);
+      const fg = COR_V2 ? corFloorGeos[(x * 3 + y * 5) % corFloorGeos.length]
+                        : casFloorGeos[(x + y) % casFloorGeos.length];
+      const f = new THREE.Mesh(fg, corFloorMats[(x * 2 + y) % corFloorMats.length]);
+      // 타일마다 살짝 내려앉고 돌아가 있어야 격자가 자로 잰 듯 보이지 않는다.
+      f.position.set(wxf(x), -0.2 + (COR_V2 ? (Math.random() - 0.5) * 0.11 : 0), wzf(y));
+      if (COR_V2) f.rotation.y = Math.floor(Math.random() * 4) * Math.PI / 2;
+      f.receiveShadow = true; floorGroup.add(f);
       if (grid[y][x] === 1 && Math.random() < 0.13) makeFloorVeins(floorGroup, wxf(x), wzf(y));
       if (grid[y][x] === 1 && Math.random() < 0.045) {
         // 발광 균열: 살 속 빛이 바닥 틈으로 샘
@@ -8869,7 +8922,7 @@ function buildDungeonMesh(dgn) {
   // 이끼 동굴 장식 애니메이션 대상 초기화(층마다 새로)
   cavernShrooms.length = 0; cavernWaters.length = 0; cavernShafts.length = 0;
   castleTorches.length = 0;
-  corruptPulses.length = 0; // 3막 맥동 종양 정리
+  corruptPulses.length = 0; corruptBreath.length = 0; // 3막 맥동 종양·산호 숨쉬기 정리
   // 막(Act)별 분위기 전환: 1막=이끼 동굴 / 2막=무너진 성 / 3막=부패한 성(잠식)
   if (currentAct() === 3) {
     // 부패한 성: 병든 청록 달빛(차가운 그림자) + 살덩이의 따뜻한 발광 대비 + 떠다니는 분홍 포자
@@ -15079,7 +15132,7 @@ function updateSpikeTraps(dt) {
 }
 // 이끼 동굴 장식 애니메이션: 발광 버섯 맥동, 물웅덩이 잔물결, 빛줄기 먼지
 function updateCavernDecor(dt) {
-  if (cavernShrooms.length === 0 && cavernWaters.length === 0 && cavernShafts.length === 0 && castleTorches.length === 0 && corruptPulses.length === 0 && !castleDust.visible) return;
+  if (cavernShrooms.length === 0 && cavernWaters.length === 0 && cavernShafts.length === 0 && castleTorches.length === 0 && corruptPulses.length === 0 && corruptBreath.length === 0 && !castleDust.visible) return;
   const t = performance.now() / 1000;
   // 2막 떠다니는 먼지: 위로 상승 + 좌우 흔들림(천장 닿으면 바닥에서 재생성)
   if (castleDust.visible) {
@@ -15108,6 +15161,11 @@ function updateCavernDecor(dt) {
     if (cp.glow) { const g = 1.0 + Math.sin(t * 2.2 + cp.ph) * 0.3; cp.glow.scale.setScalar(g); }
     if (cp.light) cp.light.intensity = cp.baseI * (1.0 + Math.sin(t * 2.2 + cp.ph) * 0.3 + Math.sin(t * 5.1 + cp.ph) * 0.12);
     if (cp.sprite) cp.sprite.material.opacity = 0.3 + (1.0 + Math.sin(t * 2.2 + cp.ph) * 0.5) * 0.14; // 빛번짐 명멸
+  }
+  // 산호 숨쉬기: 느리게 부풀었다 줄어든다. 부풀면 조금 낮아져야(y 반대로) 점성 있게 보인다.
+  for (const cb of corruptBreath) {
+    const b2 = 1 + Math.sin(t * 1.15 + cb.ph) * cb.amp + Math.sin(t * 2.6 + cb.ph * 1.7) * cb.amp * 0.35;
+    cb.m.scale.set(b2, 2 - b2, b2);
   }
   for (const sh of cavernShrooms) {
     const f = 1.0 + Math.sin(t * 2.0 + sh.ph) * 0.3 + Math.sin(t * 5 + sh.ph) * 0.1;
