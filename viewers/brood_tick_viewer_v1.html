@@ -899,7 +899,7 @@ const sacRimMat  = getLowPolyMat(0x100a12);   // 주머니 아래쪽 짙은 부�
 const eggMat     = new THREE.MeshStandardMaterial({ color: 0x1d0d16, emissive: 0x3a1020, emissiveIntensity: 0.30, roughness: 0.6, flatShading: true });
 const legMat     = getLowPolyMat(0x151d2a);   // 다리(가늘고 창백)
 const legTipMat  = getLowPolyMat(0x06080d);   // 다리 끝(어두운 발톱)
-const oozeMat    = new THREE.MeshStandardMaterial({ color: 0x191c11, transparent: true, opacity: 0.5, roughness: 0.3, flatShading: true });
+const oozeMat    = new THREE.MeshStandardMaterial({ color: 0x242a16, transparent: true, opacity: 0.66, roughness: 0.3, flatShading: true });
 const poolMat    = new THREE.MeshStandardMaterial({ color: 0x11150c, roughness: 0.55, flatShading: true, transparent: true, opacity: 0.85 });
 const mawMat     = getLowPolyMat(0x090606);   // 입 안쪽
 [sacMat, sacRimMat, eggMat, mawMat].forEach(markOrganic);   // 살·알은 유기체(하이라이트 제외)
@@ -1005,18 +1005,55 @@ const jawGrp = new THREE.Group(); jawGrp.position.set(0, -0.30, -0.10); headGrp.
 });
 
 // ---------- 늘어지는 점액 ----------
-const oozes = [];
-[[-0.30, 1.70, -1.30, 0.92], [0.24, 1.66, -1.42, 1.24], [-0.05, 1.58, -1.14, 0.72],
- [-0.72, 1.36, -0.42, 1.05], [0.78, 1.30, -0.30, 0.85], [0.10, 1.44, 0.92, 1.10]].forEach(p => {
-  const d = new THREE.Mesh(new THREE.ConeGeometry(0.045, p[3], 4), oozeMat);
-  d.rotation.x = Math.PI; d.position.set(p[0], p[1] - p[3] / 2, p[2]);
-  bodyGrp.add(d); oozes.push(d);
-});
-// 바닥에 고인 자국
-[[-0.5, 0.03, -1.1, 0.5], [0.7, 0.03, -0.6, 0.4], [0.1, 0.03, 1.0, 0.55], [-1.2, 0.03, 0.3, 0.35]].forEach(p => {
+// 가닥 하나 = 위가 굵고 아래로 가늘어지는 실 + 끝에 맺힌 방울.
+// 원뿔 하나로 두면 고드름처럼 뾰족해서 '흐르는 것'으로 안 읽힌다.
+//
+// 가닥마다 메시를 두지 않고 **뭉치 단위로 묶어 병합**한다. 가닥 6개를 개별로 두던 예전보다
+// 가닥은 3배로 늘면서 드로우콜은 6 → 4 로 줄어든다(뭉치 하나가 한 콜).
+// 대신 흔들림도 뭉치 단위다 — 뭉치마다 위상을 달리 줘서 한 덩어리로 안 보이게 한다.
+function oozeStrand(parent, x, y, z, len) {
+  const r0 = 0.030 + rnd() * 0.014;
+  const g = new THREE.CylinderGeometry(r0, 0.009, len, 4);
+  g.translate(0, -len / 2, 0);                       // 매달린 위쪽 끝이 원점
+  const m = new THREE.Mesh(g, oozeMat);
+  m.position.set(x, y, z); parent.add(m);
+  const bead = new THREE.Mesh(new THREE.IcosahedronGeometry(0.042 + rnd() * 0.028, 0), oozeMat);
+  bead.scale.set(1, 1.35, 1);
+  bead.position.set(x, y - len - 0.01, z); parent.add(bead);
+}
+const oozeGroups = [];
+function oozeCluster(ox, oy, oz, list) {
+  const g = new THREE.Group(); g.position.set(ox, oy, oz); bodyGrp.add(g);
+  list.forEach(p => oozeStrand(g, p[0], p[1], p[2], p[3]));
+  oozeGroups.push({ g, ph: rnd() * 6.28 });
+  return g;
+}
+// 입 아래가 가장 촘촘하고 길다(원화의 머리 밑)
+oozeCluster(0, 1.66, -1.50, [
+  [-0.30, 0, 0.10, 1.34], [-0.14, 0.04, -0.14, 1.08], [0.02, -0.02, 0.16, 1.46],
+  [0.18, 0.03, -0.10, 0.92], [0.34, -0.04, 0.06, 1.20], [-0.42, -0.06, -0.06, 0.78],
+  [0.44, 0.02, 0.14, 0.66],
+]);
+// 몸 앞 좌우 옆구리
+oozeCluster(-0.80, 1.30, -0.36, [
+  [0, 0, 0, 1.02], [-0.16, -0.05, 0.18, 0.74], [0.14, 0.04, -0.14, 0.86], [-0.06, -0.02, -0.24, 0.58],
+]);
+oozeCluster(0.84, 1.26, -0.28, [
+  [0, 0, 0, 0.90], [0.18, -0.04, 0.16, 0.66], [-0.12, 0.03, -0.16, 1.00], [0.08, -0.02, -0.26, 0.52],
+]);
+// 주머니 뒤쪽 아래
+oozeCluster(0.06, 1.20, 0.86, [
+  [0, 0, 0, 0.94], [-0.28, -0.04, 0.14, 0.70], [0.26, 0.02, -0.10, 0.82], [0.04, -0.06, 0.30, 0.56],
+]);
+// 바닥에 고인 자국 — 가닥이 늘었으니 자국도 늘린다.
+// 움직이지 않으므로 한 그룹에 담아 병합한다(7개가 드로우콜 1개).
+const poolGrp = new THREE.Group(); bugObj.add(poolGrp);
+[[-0.5, 0.03, -1.1, 0.5], [0.7, 0.03, -0.6, 0.4], [0.1, 0.03, 1.0, 0.55], [-1.2, 0.03, 0.3, 0.35],
+ [0.05, 0.03, -1.5, 0.62], [1.05, 0.03, 0.45, 0.34], [-0.85, 0.03, -0.35, 0.42]].forEach(p => {
   const m = new THREE.Mesh(new THREE.CylinderGeometry(p[3], p[3] * 0.9, 0.035, 9), poolMat);
-  m.position.set(p[0], p[1], p[2]); m.rotation.y = rnd() * 3; bugObj.add(m);
+  m.position.set(p[0], p[1], p[2]); m.rotation.y = rnd() * 3; poolGrp.add(m);
 });
+mergeStatic(poolGrp);
 
 // ---------- 다리 6개 ----------
 // 마디는 밑동이 원점에 오도록 굽는다 — 관절 그룹을 (0, len, 0) 에 두면 그대로 이어진다.
@@ -1068,7 +1105,8 @@ mergeStatic(headGrp, [jawGrp]);
 mergeStatic(jawGrp);
 mergeStatic(sacGrp, eggs);
 legs.forEach(L => { mergeStatic(L.kneeGrp); mergeStatic(L.femurGrp, [L.kneeGrp]); mergeStatic(L.root, [L.femurGrp]); });
-mergeStatic(bodyGrp, [sacGrp, headGrp, ...legs.map(L => L.root), ...oozes]);
+oozeGroups.forEach(o => mergeStatic(o.g));   // 뭉치마다 한 덩어리로 — 드로우콜 1개
+mergeStatic(bodyGrp, [sacGrp, headGrp, ...legs.map(L => L.root), ...oozeGroups.map(o => o.g)]);
 // ===== 위치 파악용 그리드 + 좌표 숫자 (토글) =====
 const gridGroup = new THREE.Group(); gridGroup.visible = false; scene.add(gridGroup);
 const grid = new THREE.GridHelper(6, 12, 0x556070, 0x2e3640); grid.position.y = 0.03; gridGroup.add(grid);
@@ -1290,7 +1328,9 @@ function animate() {
   bodyGrp.position.y = breath * 0.030;
   eyeGlowMat.emissiveIntensity = 0.45 + Math.sin(t * 2.6) * 0.14 + Math.sin(t * 0.9) * 0.08;
   eggMat.emissiveIntensity = 0.26 + Math.sin(t * 1.4) * 0.08;
-  oozes.forEach((d, i) => { d.rotation.z = Math.sin(t * 1.15 + i) * 0.10; d.rotation.x = Math.PI + Math.sin(t * 0.8 + i) * 0.05; });
+  // 점액은 뭉치째 흔들린다. 뭉치 원점이 매달린 위쪽이라 회전하면 아래 끝이 크게 움직인다.
+  oozeGroups.forEach(o => { o.g.rotation.z = Math.sin(t * 1.05 + o.ph) * 0.055;
+                            o.g.rotation.x = Math.sin(t * 0.82 + o.ph * 1.7) * 0.042; });
 
   // ---- 이동: 삼각보행. 세 다리가 한 조로 들렸다 놓인다 ----
   if (walking) walkPhase += dt * 2.6;
