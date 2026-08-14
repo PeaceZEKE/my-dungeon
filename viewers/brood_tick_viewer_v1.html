@@ -911,10 +911,12 @@ const bodyGrp = new THREE.Group(); bugObj.add(bodyGrp);   // 몸통 전체(걸�
 // 방향 벡터만 주면 위치·기울기가 따라오므로, 원화처럼 주머니를 감싸다 만 배치가 쉽게 나온다.
 // (예전처럼 좌표를 손으로 찍으면 판이 주머니 위에 우산처럼 떠서 '버섯 쓴 벌레'가 된다)
 const _sacPos = new THREE.Vector3(0, 0, 0);
+const PLATE_DIRS = [];   // 이음선 그물을 여기서 뽑는다
 function shellPlate(dx, dy, dz, r, sx, sz, mat, jit) {
   const d = new THREE.Vector3(dx, dy, dz).normalize();
+  PLATE_DIRS.push({ d: d.clone(), r });
   const m = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), mat));
-  m.scale.set(sx, 0.30, sz);
+  m.scale.set(sx, 0.24, sz);   // 납작할수록 원화의 구겨진 판에 가깝고, 금빛 이음선도 표면에 붙는다
   m.position.copy(d).multiplyScalar(SAC_R * 0.97).add(_sacPos);
   m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d);
   jitterGeometry(m.geometry, r * (jit === undefined ? 0.20 : jit));
@@ -964,18 +966,41 @@ shellPlate( 0.92, -0.32,  0.06, 0.62, 0.95, 0.90, chitinDk);
 shellPlate(-0.15, -0.30,  0.94, 0.66, 1.00, 0.95, chitinDk);
 shellPlate(-0.55,  0.86, -0.55, 0.60, 0.95, 0.90, chitinLit);
 shellPlate( 0.58,  0.84, -0.52, 0.60, 0.95, 0.90, chitinLit);
-// 판 사이를 흐르는 금빛 이음선(주머니 표면을 따라 돈다)
-function seamOn(a, b, w) {
-  const A = new THREE.Vector3(...a).normalize().multiplyScalar(SAC_R * 1.0).add(_sacPos);
-  const B = new THREE.Vector3(...b).normalize().multiplyScalar(SAC_R * 1.0).add(_sacPos);
-  addSeam(bodyGrp, A.toArray(), B.toArray(), w, seamMat);
+// ---------- 판 사이를 흐르는 금빛 이음선 ----------
+// 원화의 금빛은 굵은 선 몇 개가 아니라 판 경계를 따라 촘촘히 흐르는 그물이다.
+// 좌표를 손으로 찍는 대신 **판 배치에서 인접한 쌍을 뽑아** 그 사이를 잇는다 —
+// 판을 옮기면 이음선도 따라온다.
+//
+// 두 가지를 지켜야 선으로 읽힌다.
+//  · 직선으로 이으면 긴 선이 구를 가로질러 표면 안으로 파고든다. 큰 원을 따라 잘게 나눠 긋는다.
+//  · 반지름은 판 두께 위로 올려야 한다(판 겉면이 SAC_R 의 약 1.12배다). 밑으로 두면 판에 묻힌다.
+// 전부 seamMat 하나라 병합 뒤 드로우콜은 1개다 — 개수를 늘려도 콜은 안 는다.
+const SEAM_R = SAC_R * 1.165;   // 실측: 1.155 면 판에 묻히고 1.225 면 철사처럼 뜬다
+function seamArc(A, B, w) {
+  const n = Math.max(2, Math.round(A.angleTo(B) / 0.30));
+  let prev = null;
+  for (let i = 0; i <= n; i++) {
+    const v = A.clone().lerp(B, i / n).normalize().multiplyScalar(SEAM_R).add(_sacPos);
+    if (prev) addSeam(bodyGrp, prev.toArray(), v.toArray(), w, seamMat);
+    prev = v;
+  }
 }
-seamOn([-0.62, 0.80, 0.05], [0.66, 0.78, 0.02], 0.030);
-seamOn([0.05, 1.00, 0.10], [-0.10, 0.30, 1.00], 0.028);
-seamOn([-0.95, 0.24, 0.42], [-0.90, -0.28, 0.10], 0.026);
-seamOn([0.98, 0.20, 0.38], [0.92, -0.32, 0.06], 0.026);
-seamOn([-0.55, 0.86, -0.55], [-0.95, 0.24, 0.42], 0.026);
-seamOn([0.58, 0.84, -0.52], [0.98, 0.20, 0.38], 0.026);
+let _seamCount = 0;
+for (let i = 0; i < PLATE_DIRS.length; i++) {
+  for (let j = i + 1; j < PLATE_DIRS.length; j++) {
+    const a = PLATE_DIRS[i], b = PLATE_DIRS[j];
+    if (a.d.angleTo(b.d) > 0.98) continue;              // 붙어 있는 판끼리만 잇는다
+    seamArc(a.d, b.d, 0.013 + rnd() * 0.007);
+    _seamCount++;
+  }
+}
+// 그물이 끊긴 곳을 잇는 잔가지 몇 개(판 중심에서 이웃 방향으로 짧게 뻗는다)
+[[[0.05, 1.00, 0.10], [0.40, 0.72, 0.55]], [[0.05, 1.00, 0.10], [-0.45, 0.70, -0.50]],
+ [[-0.95, 0.24, 0.42], [-0.70, 0.10, 0.90]], [[0.98, 0.20, 0.38], [0.72, 0.06, 0.86]],
+ [[-0.20, 0.72, 0.80], [0.30, 0.30, 1.05]], [[-0.62, 0.80, 0.05], [-1.00, 0.55, 0.30]],
+ [[0.66, 0.78, 0.02], [1.02, 0.52, 0.26]]].forEach(p => {
+  seamArc(new THREE.Vector3(...p[0]).normalize(), new THREE.Vector3(...p[1]).normalize(), 0.012 + rnd() * 0.005);
+});
 
 // ---------- 머리 — 황금 홑눈 뭉치 ----------
 const HEAD = { x: 0, y: 2.02, z: -1.62 };
