@@ -4158,9 +4158,26 @@ let townPTrees = null;
 // 마을·던전 각각 하나씩(씬이 다르다). 배치가 바뀔 때만 setCells를 부른다.
 // 선언을 잔디 코드 옆이 아니라 여기 두는 이유도 TDZ다 — buildTownScene이 언제 불릴지에 기대지 않는다.
 let townPGrass = null, dgnPGrass = null;
+// 원거리 캐스터(마법사류: 원거리 고블린·스켈레톤 마법사·오크 주술사·궁중 마법사)의
+// 유지 거리와 발사 사거리. 둘 다 TILE 배수. 사거리가 유지 거리보다 넉넉해야 제자리에서 쏜다.
+// (혼령 wraith는 자체 히트앤런 상태기계를 쓰므로 여기 영향을 받지 않는다.)
+const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])[1]) || 1.8;
+const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v726'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v740'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+// SSAO 세기. 노멀 버퍼는 px 모드에서만 채워지므로 ?px=0에서는 켤 수 없다(끄고 안내만 남긴다).
+const _ssaoM = location.search.match(/[?&]ssao=([\d.]+)/);
+// 세기가 큰 이유: 표본에 거리 가중치(가까울수록 세게)를 곱하므로 합이 훨씬 작아진다.
+// 가중치 없던 판의 1.2와 대략 같은 깊이가 5.0 근처다(범위는 절반으로 줄어든 채).
+// 세기는 예전 값 5.0으로 되돌렸다(사용자 지시). 12까지 올려 본 적이 있는데
+// 벽 밑동 AO 항이 0.52까지 내려가 너무 진했다 — 필요하면 ?ssao=12로 다시 볼 것.
+const SSAO_STR = PX_MODE ? (_ssaoM ? parseFloat(_ssaoM[1]) : 5.0) : 0;   // ?ssao=0 이면 끔
+// 반경 2.4: 1.6이면 밑동 그림자가 0.4 안에서 끝나 거의 안 보이고, 3.6이면 벽 중턱까지
+// 얼룩덜룩하게 번진다(단면이 단조롭게 안 떨어진다).
+const SSAO_RADIUS = parseFloat((location.search.match(/[?&]ssaor=([\d.]+)/) || [])[1]) || 2.4;
+// AO를 건물·벽(과 거기 붙은 바닥)에만 걸지 여부. 끄면 모든 물체가 가림으로 계산된다.
+const SSAO_ARCH = !/[?&]ssaoarch=0/.test(location.search);
 console.log('DUNGEON ' + GAME_VERSION + (AD_TEST ? ' (adtest)' : '') + (DEV_MODE ? ' (dev)' : '') + (PX_MODE ? ' (px)' : ''));
 // 개발자 버튼 숨김: 일반 접속에서는 시작 화면에서 아예 제거한다(?dev=1 또는 ?adtest=1 에서만 노출)
 if (!DEV_MODE) {
@@ -4653,7 +4670,9 @@ const PIXEL_SCALE = 2;
 // 기본 모드는 창 크기의 1/2이라 기기마다 픽셀 크기가 달라진다 — 4K에서는 내부 1920×1080이라
 // 사실상 픽셀아트가 아니고, 좁은 폰에서는 하한에 걸려 뭉갠다.
 // 픽셀아트 모드(?px=1)는 세로를 고정하고 가로만 화면비로 유도해, 어떤 기기에서도 같은 픽셀 크기를 낸다.
-const PX_FIXED_H = 360;
+// 값이 작을수록 픽셀이 커진다. 720 기준으로 보면 360 = 배율 2, 288 = 배율 2.5, 240 = 배율 3이다
+// (예전 모드의 PIXEL_SCALE과 같은 뜻 — 그쪽은 ?px=0에서만 쓰인다).
+const PX_FIXED_H = parseInt((location.search.match(/[?&]pxh=(\d+)/) || [])[1], 10) || 288;
 function computeLowRes(w, h) {
   if (PX_MODE) {
     const lh = PX_FIXED_H;
@@ -4916,6 +4935,20 @@ const skinTagMaterial = new THREE.ShaderMaterial({
 // 노멀 버퍼의 '알파'를 외곽선 스위치로 쓴다 — 알파 0이면 그 픽셀엔 외곽선을 안 그린다.
 // 알파를 쓰는 이유: RGB(=노멀)를 그대로 남길 수 있어서, 나뭇잎은 모서리 하이라이트를 유지한 채
 // 검은 선만 뺄 수 있다. 잔디는 노멀이 의미 없으므로 초록 표식(0,1,0)까지 얹어 하이라이트도 뺀다.
+// ===== 건축물(건물·벽) 표식 =====
+// SSAO를 건물·벽과 그에 붙은 바닥에만 걸기 위한 표식. 노멀 버퍼의 알파를 0.5로 찍는다.
+// 알파를 쓰는 이유: RGB(=진짜 노멀)를 그대로 남겨야 모서리 하이라이트가 유지된다.
+// 값 0.5를 고른 이유: 외곽선 스위치가 step(0.5, a)라 0.5는 통과한다 → 건축물 외곽선은 그대로.
+// (식생 0.0 = 외곽선 없음 / 건축물 0.5 = 외곽선 있음 + AO 가림 / 그 외 1.0)
+const ARCH_TAG_LAYER = 3;
+const archNormalMaterial = new THREE.MeshNormalMaterial();
+archNormalMaterial.onBeforeCompile = function (shader) {
+  shader.fragmentShader = shader.fragmentShader.replace(
+    'packNormalToRGB( normal ), opacity', 'packNormalToRGB( normal ), 0.5');
+};
+archNormalMaterial.customProgramCacheKey = function () { return 'archNormalA05'; };
+// 그룹 통째로 표식을 붙인다(메시마다 userData를 봐야 _hideNonSolid가 골라낼 수 있다).
+function markArch(o) { if (o) o.traverse(m => { if (m.isMesh) (m.userData || (m.userData = {}))._arch = true; }); return o; }
 const VEG_NO_OUTLINE = !/[?&]vout=1/.test(location.search);
 const VEG_TAG_LAYER = 2;
 // 나뭇잎용: 진짜 노멀을 그대로 쓰되 알파만 0으로.
@@ -4981,7 +5014,17 @@ const quadMat = new THREE.ShaderMaterial({
     uPxNormalBias: { value: new THREE.Vector3(1, 1, 1) }, // 어느 쪽 면이 빛을 받은 것으로 칠지
     uQuant: { value: 32.0 },      // 채널당 색 단계 수(2 이하면 양자화 끔). 낮출수록 레트로해진다
     uDither: { value: 0.9 },      // 디더링 세기(0=밴딩 그대로, 1=베이어 패턴으로 완전히 흩음)
-    uQuantGamma: { value: 2.2 }   // 단계를 나눌 공간(1=밝기 균등, 2.2≈지각 균등 — 어두운 쪽에 단계를 몰아줌)
+    uQuantGamma: { value: 2.2 },  // 단계를 나눌 공간(1=밝기 균등, 2.2≈지각 균등 — 어두운 쪽에 단계를 몰아줌)
+    // === SSAO(?ssao=N) ===
+    // 이 게임은 포스트에 깊이 텍스처와 노멀 버퍼가 이미 있어(구름 그림자·모서리 하이라이트용)
+    // 렌더 타깃을 새로 만들지 않고 그 둘만으로 화면공간 AO를 낸다.
+    // 노멀 버퍼는 MeshNormalMaterial이 채우므로 '뷰 공간'이다 — 위치도 뷰 공간으로 맞춘다
+    // (월드로 올리면 좌표가 커져 정밀도가 떨어진다). 그래서 uInvVP가 아니라 uInvP·uProj를 쓴다.
+    uAOStr: { value: SSAO_STR }, // 0이면 셰이더가 통째로 건너뛴다
+    uAORadius: { value: SSAO_RADIUS }, // 가리기를 볼 반경(월드 단위. TILE=5)
+    uAOArch: { value: SSAO_ARCH ? 1.0 : 0.0 },
+    uProj: { value: new THREE.Matrix4() },
+    uInvP: { value: new THREE.Matrix4() }
   },
   vertexShader: `
     varying vec2 vUv;
@@ -5029,6 +5072,8 @@ const quadMat = new THREE.ShaderMaterial({
     uniform vec2 uSubpixel;
     uniform float uPxNormalStr;
     uniform vec3 uPxNormalBias;
+    uniform float uAOStr, uAORadius, uAOArch;
+    uniform mat4 uProj, uInvP;
     varying vec2 vUv;
     vec3 nrmAt(vec2 o) { return texture2D(tNormal, vUv + uSubpixel + o * uTexel).rgb * 2.0 - 1.0; }
     // 피부 표식: 노멀 패스 2패스에서 피부만 순수 빨강(1,0,0)으로 덮어 둔다.
@@ -5056,6 +5101,58 @@ const quadMat = new THREE.ShaderMaterial({
     float bayer2(vec2 a) { a = floor(a); return fract(a.x / 2.0 + a.y * a.y * 0.75); }
     float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
     float bayer8(vec2 a) { return bayer4(0.5 * a) * 0.25 + bayer2(a); }
+    // 깊이 → 뷰 공간 좌표. 앞쪽이 z<0 (OpenGL 관례)이라 '더 가까움 = z가 더 큼'이다.
+    vec3 viewPosAt(vec2 uvv, float dep) {
+      vec4 ndc = vec4(uvv * 2.0 - 1.0, dep * 2.0 - 1.0, 1.0);
+      vec4 pv = uInvP * ndc;
+      return pv.xyz / pv.w;
+    }
+    // 노멀 반구에 표본을 뿌려 '그 방향이 막혀 있는지'를 센다.
+    // 표본 방향은 상수 배열 대신 황금각 나선으로 계산한다 — 상수 배열을 동적 인덱싱하면
+    // ANGLE이 헬퍼 함수를 만들어 셰이더 경고가 난다(위 베이어 주석과 같은 이유).
+    // 난수 회전을 안 넣는 이유: 이 게임은 카메라를 텍셀 격자에 스냅하므로 시간축 누적이
+    // 어긋나 노이즈를 지울 수단이 없다. 결정적인 패턴이 지글거림보다 낫다.
+    const int AO_SAMPLES = 10;
+    float ssao(vec2 uvv, float rawDep, vec3 n, float recvArch) {
+      vec3 vp = viewPosAt(uvv, rawDep);
+      vec3 t = normalize(abs(n.z) < 0.99 ? cross(vec3(0.0, 0.0, 1.0), n) : cross(vec3(1.0, 0.0, 0.0), n));
+      vec3 b = cross(n, t);
+      float occ = 0.0;
+      for (int i = 0; i < AO_SAMPLES; i++) {
+        float fi = float(i) + 0.5;
+        float a = fi * 2.39996323;                       // 황금각
+        float rr = sqrt(fi / float(AO_SAMPLES));
+        vec2 disk = vec2(cos(a), sin(a)) * rr;
+        vec3 dir = t * disk.x + b * disk.y + n * sqrt(max(0.0, 1.0 - rr * rr));
+        // 표본을 껍질에만 두면 접촉 그림자가 안 생긴다 — 안쪽에도 깔리게 길이를 섞는다.
+        vec3 sp = vp + dir * uAORadius * mix(0.25, 1.0, fi / float(AO_SAMPLES));
+        vec4 off = uProj * vec4(sp, 1.0);
+        vec2 suv = (off.xy / off.w) * 0.5 + 0.5;
+        if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) continue;
+        float sd = texture2D(tDepth, suv).x;
+        if (sd > 0.9999) continue;                       // 하늘은 가리는 것이 아니다
+        // 건물·벽만 가림으로 친다. 노멀 버퍼 알파가 표식이다(건축물 0.5 / 식생 0 / 그 외 1).
+        // 이렇게 하면 잔디·상자·울타리·캐릭터는 그림자를 안 만들고, 건축물에 붙은 바닥만 어두워진다.
+        // 단 '받는 쪽'이 건축물이면 가림은 아무거나 인정한다 — 벽 밑동을 어둡게 하는 것은
+        // 바닥인데, 바닥은 건축물 표식이 없어서 이 조건을 빼면 벽 밑동 AO가 정확히 0이 된다.
+        if (uAOArch > 0.5 && recvArch < 0.5) {
+          float ta = texture2D(tNormal, suv).a;
+          if (ta < 0.25 || ta > 0.75) continue;
+        }
+        vec3 sPos = viewPosAt(suv, sd);
+        // 표본보다 앞에 면이 있으면 가려진 것.
+        float hit = sPos.z >= sp.z + 0.02 ? 1.0 : 0.0;
+        // 거리 가중치: 가까운 가림만 세게 친다. 이게 없으면 반경 안의 모든 가림이 같은 무게라
+        // 물체 주위가 넓게 퍼져 어두워진다(AO는 방향이 없어서 사방으로 번진다).
+        // 제곱으로 떨어뜨려 밑동에 붙는 접촉 그림자에 가깝게 만든다. 반경 밖은 0이라
+        // 예전의 range smoothstep은 필요 없다(거리 가중치가 그 역할까지 한다).
+        float w = 1.0 - clamp(length(sPos - vp) / uAORadius, 0.0, 1.0);
+        occ += hit * w * w;
+      }
+      // 고정 표본 수로 나눈다(가중치 합으로 나누면 먼 가림만 있어도 완전히 어두워져
+      // 거리 가중치가 무의미해진다).
+      return clamp(1.0 - occ / float(AO_SAMPLES) * uAOStr, 0.0, 1.0);
+    }
     float linearizeDepth(float d) {
       float z = d * 2.0 - 1.0;
       return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear));
@@ -5080,6 +5177,20 @@ const quadMat = new THREE.ShaderMaterial({
         acc += texture2D(tColor, uv + vec2(0.0,  br.y * 1.8)).rgb * 0.0625;
         acc += texture2D(tColor, uv + vec2(0.0, -br.y * 1.8)).rgb * 0.0625;
         col.rgb = acc;
+      }
+      // === SSAO ===
+      // 외곽선·모서리 하이라이트보다 '먼저' 곱한다. 나중에 곱하면 이미 어두워진 외곽선을
+      // 한 번 더 눌러서 경계가 새까맣게 뭉갠다(둘 다 같은 자리를 어둡게 하기 때문).
+      if (uAOStr > 0.001) {
+        float rawD = texture2D(tDepth, uv).x;
+        vec3 nAO = nrmAt(vec2(0.0));
+        // 피부·식생은 노멀 자리에 표식색이 들어 있어 진짜 노멀이 없다 → 그 픽셀은 건너뛴다.
+        // 바닥·벽은 그대로 계산되므로 캐릭터 발밑 접지 그림자는 남는다(바닥 픽셀이 캐릭터 깊이를 본다).
+        if (rawD < 0.9999 && !isSkinTag(nAO) && !isVegTag(nAO)) {
+          float na = texture2D(tNormal, uv).a;                 // 이 픽셀이 건축물인가(0.5 표식)
+          float recvArch = (na > 0.25 && na < 0.75) ? 1.0 : 0.0;
+          col.rgb *= ssao(uv, rawD, normalize(nAO), recvArch);
+        }
       }
       float c  = linearizeDepth(texture2D(tDepth, uv).x);
       // 상하좌우 이웃과의 깊이 차로 경계 검출 (Sobel 간략화)
@@ -5225,11 +5336,18 @@ quadMat.uniforms.tBloom.value = rtBloom.texture;
 // 불투명 사각형으로 찍혀서 가짜 외곽선이 잔뜩 생긴다.
 const _normalHidden = [];
 const _normalVeg = [], _normalVegMat = [];
-let _normalSkinCount = 0;
+let _normalSkinCount = 0, _normalArchCount = 0;
 function _hideNonSolid(root) {
-  _normalSkinCount = 0; _normalVeg.length = 0;
+  _normalSkinCount = 0; _normalVeg.length = 0; _normalArchCount = 0;
   root.traverse(o => {
     if (!o.visible) return;
+    // 건축물: 1패스에서 빼고 2패스에서 알파 0.5로 다시 그린다.
+    // 빼고 옮기는 것이라 드로우콜은 안 늘어난다(피부 표식과 같은 요령).
+    if (SSAO_ARCH && o.isMesh && o.userData && o.userData._arch) {
+      o.visible = false; _normalHidden.push(o);
+      o.layers.enable(ARCH_TAG_LAYER); _normalArchCount++;
+      return;
+    }
     const mm = o.material;
     const organic = mm && (Array.isArray(mm) ? mm.some(x => x && x.userData && x.userData._organic)
                                              : (mm.userData && mm.userData._organic));
@@ -5263,6 +5381,19 @@ function renderNormalPass(sceneToRender) {
   renderer.setRenderTarget(rtNormal); renderer.clear(); renderer.render(sceneToRender, camera);
   for (const o of _normalHidden) o.visible = true;
   _normalHidden.length = 0;
+  // 건축물 패스: 알파 0.5를 찍어 SSAO가 '이 픽셀이 건물·벽인지' 알 수 있게 한다.
+  // 1패스에서 빠진 것을 여기서 그리는 것이므로 드로우콜 총량은 같다.
+  if (_normalArchCount > 0) {
+    const prevMask = camera.layers.mask, prevAuto = renderer.autoClear, prevBg = sceneToRender.background;
+    sceneToRender.overrideMaterial = archNormalMaterial;
+    sceneToRender.background = null;   // Color면 three가 강제로 clear해 1패스를 지운다
+    camera.layers.set(ARCH_TAG_LAYER);
+    renderer.autoClear = false;
+    renderer.render(sceneToRender, camera);
+    sceneToRender.background = prevBg;
+    renderer.autoClear = prevAuto;
+    camera.layers.mask = prevMask;
+  }
   // 2패스: 피부만 표식색으로. 레이어로 골라내므로 씬을 다시 훑지 않고, 1패스가 써 둔 깊이로
   // 벽 뒤의 피부는 자동으로 가려진다(clear 하지 않으므로 1패스 결과 위에 덮인다).
   if (_normalSkinCount > 0) {
@@ -5356,6 +5487,12 @@ function renderWithPost(sceneToRender) {
   if (quadMat.uniforms.uCloudStr.value > 0.001) {
     _invVP.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).invert();
     quadMat.uniforms.uInvVP.value.copy(_invVP);
+  }
+  // SSAO는 뷰 공간에서 계산하므로 투영 행렬과 그 역행렬만 있으면 된다(카메라 스냅과 무관하지만
+  // 화면비·FOV가 바뀔 수 있으므로 여기서 같이 갱신한다).
+  if (quadMat.uniforms.uAOStr.value > 0.001) {
+    quadMat.uniforms.uProj.value.copy(camera.projectionMatrix);
+    quadMat.uniforms.uInvP.value.copy(camera.projectionMatrix).invert();
   }
   renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
   releasePixelSnap(); // 추적 로직이 스냅된 위치를 물려받지 않도록 원래 위치로 되돌린다
@@ -5914,7 +6051,7 @@ function buildTownScene() {
     g.userData.fill = fill;
     townScene.add(g); return g;
   }
-  const dungeon = makeDungeonEntrance();
+  const dungeon = markArch(makeDungeonEntrance());
   dungeon.userData.noCollide = true; // 던전 입구는 충돌 제외(입장 가능하게)
 
   // ===== 우물(빌더 — 광장 한 켠으로 이동 배치) =====
@@ -5993,7 +6130,9 @@ function buildTownScene() {
   function makeBlacksmith(x, z) {
     const g = new THREE.Group();
     g.add(box(5.2, 3.0, 4.4, M.plasterC, 0, 1.5, 0));
-    g.add(box(5.2, 0.5, 4.4, M.stoneD, 0, 0.25, 0)); // 석재 기단
+    // 석재 기단은 몸통보다 0.1씩 넓게 — 같은 크기(5.2×4.4)면 옆면이 몸통과 정확히 겹쳐
+    // 깊이 싸움이 나서 벽 밑동 0.5구간이 회벽↔석재로 깜빡인다(교회 기단도 같은 규칙).
+    g.add(box(5.4, 0.5, 4.6, M.stoneD, 0, 0.25, 0)); // 석재 기단
     const roof = gable(6.2, 1.6, 5.0, M.tileA); roof.position.y = 3.0; g.add(roof);
     // 굴뚝(큰 돌)
     g.add(box(1.0, 3.2, 1.0, M.stoneD, 1.6, 3.4, 1.2));
@@ -6274,8 +6413,12 @@ function buildTownScene() {
     const wm = makeWindowMat(); windowMats.push(wm);
     g.add(box(0.55, 0.55, 0.1, wm, 0, 3.5, -1.55));
     // 회전 날개(앞 -Z, Z축 회전)
-    const blades = new THREE.Group(); blades.position.set(0, 5.0, -1.55);
-    const hub = cyl(0.24, 0.24, 0.45, 8, M.woodD); hub.rotation.x = Math.PI / 2; blades.add(hub);
+    // 탑은 아래로 갈수록 굵은 원뿔(y=1.1에서 반지름 1.86)이라, 날개면이 -1.55에 있으면
+    // 아래로 내려온 살대가 탑 속으로 0.37 파고든다. 축을 2.1까지 빼서 원뿔 밖으로 내보낸다.
+    const blades = new THREE.Group(); blades.position.set(0, 5.0, -2.1);
+    // 빼낸 만큼 축(굴대)을 길게 — 짧으면 날개가 탑에서 떨어져 떠 보인다.
+    // 원기둥 축이 z와 나란하고 z로만 밀었으므로 날개가 돌아도 굴대는 제자리로 보인다.
+    const hub = cyl(0.24, 0.24, 1.0, 8, M.woodD, 0, 0, 0.38); hub.rotation.x = Math.PI / 2; blades.add(hub);
     for (let i = 0; i < 4; i++) {
       const arm = new THREE.Group();
       arm.add(box(0.16, 3.8, 0.12, M.woodD, 0, 2.0, 0));            // 살대
@@ -6555,7 +6698,7 @@ function buildTownScene() {
         g.add(box(0.6, 0.6, 1.0, stoneD, -0.55, h + 0.28, 0));
         g.add(box(0.6, 0.6, 1.0, stoneD, 0.55, h + 0.28, 0));
       }
-      g.position.set(x, 0, z); g.rotation.y = phi; townScene.add(g);
+      g.position.set(x, 0, z); g.rotation.y = phi; markArch(g); townScene.add(g);
     }
   }
 
@@ -6567,7 +6710,7 @@ function buildTownScene() {
   const gx = WALL_R * Math.sin(GATE_ANGLE), gz = WALL_R * Math.cos(GATE_ANGLE);
 
   // 멀리 빠진 성문 + 마을을 감싸는 원형 성벽
-  const gate = makeGate(gx, gz);
+  const gate = markArch(makeGate(gx, gz));
   makeRampart(WALL_R, GATE_ANGLE, 0.27);
 
   // 성문 앞 보초 둘 + 마차(입구 느낌) — 게이트 방위에 맞춰 안쪽을 향하게 배치
@@ -6609,7 +6752,7 @@ function buildTownScene() {
   }
 
   // 교회 아치 랜드마크
-  const church = makeChurch(5.5, -13);
+  const church = markArch(makeChurch(5.5, -13));
   buildings.push(church);
   // 교회 정문 앞에 성직자 배치(능력 강화 담당) — 중심 쪽으로 조금 나와서, 중심을 향하게
   {
@@ -6619,9 +6762,9 @@ function buildTownScene() {
   }
 
   // 측면 — 대장간/상점/여관
-  buildings.push(makeBlacksmith(-13, 0));
-  buildings.push(makeShop(13.5, 0));
-  buildings.push(makeInn(12, -8));
+  buildings.push(markArch(makeBlacksmith(-13, 0)));
+  buildings.push(markArch(makeShop(13.5, 0)));
+  buildings.push(markArch(makeInn(12, -8)));
   // 여관 주인: 여관 앞(중심 쪽)에 세워 캐릭터 변경 안내
   {
     const iAng = Math.atan2(12, -8), iR = Math.hypot(12, -8) - 4.5;
@@ -6630,15 +6773,15 @@ function buildTownScene() {
   }
 
   // 빽빽한 주택(타운하우스 느낌으로 키 다양화 · 장미/청록/모브 지붕)
-  cottages.push(makeCottage({ x: -12, z: 7,    w: 2.9, d: 3.0, wh: 3.0, rh: 1.3, wall: C.plasterB, roof: C.tileA, chimney: true }));
-  cottages.push(makeCottage({ x: -6,  z: 12,   w: 3.2, d: 3.4, wh: 2.4, rh: 1.5, wall: C.plasterA, roof: C.tileC, chimney: true }));
-  cottages.push(makeCottage({ x: 8,   z: 12,   w: 3.0, d: 3.2, wh: 2.7, rh: 1.4, wall: C.plasterC, roof: C.tileB, chimney: false }));
-  cottages.push(makeCottage({ x: 12.5, z: 7,   w: 2.8, d: 3.0, wh: 3.1, rh: 1.3, wall: C.plasterA, roof: C.tileA, chimney: true }));
-  cottages.push(makeCottage({ x: -2.5, z: 14,  w: 3.0, d: 3.2, wh: 2.3, rh: 1.5, wall: C.plasterB, roof: C.thatch, chimney: true }));
+  cottages.push(markArch(makeCottage({ x: -12, z: 7,    w: 2.9, d: 3.0, wh: 3.0, rh: 1.3, wall: C.plasterB, roof: C.tileA, chimney: true })));
+  cottages.push(markArch(makeCottage({ x: -6,  z: 12,   w: 3.2, d: 3.4, wh: 2.4, rh: 1.5, wall: C.plasterA, roof: C.tileC, chimney: true })));
+  cottages.push(markArch(makeCottage({ x: 8,   z: 12,   w: 3.0, d: 3.2, wh: 2.7, rh: 1.4, wall: C.plasterC, roof: C.tileB, chimney: false })));
+  cottages.push(markArch(makeCottage({ x: 12.5, z: 7,   w: 2.8, d: 3.0, wh: 3.1, rh: 1.3, wall: C.plasterA, roof: C.tileA, chimney: true })));
+  cottages.push(markArch(makeCottage({ x: -2.5, z: 14,  w: 3.0, d: 3.2, wh: 2.3, rh: 1.5, wall: C.plasterB, roof: C.thatch, chimney: true })));
   buildings.push(...cottages);
 
   // 방앗간 + 등록 배열
-  const windmill = makeWindmill(-17, -9);
+  const windmill = markArch(makeWindmill(-17, -9));
   const windmills = [windmill];
   const gates = [gate];
 
@@ -7480,8 +7623,10 @@ for(let i=0; i<4; i++) {
     displaceWallSides(baseGeo, 0.28); // 옆면 암반 들고나기
     const baseMesh = new THREE.Mesh(baseGeo, (i % 2) ? matWallBase2 : matWallBase); baseMesh.castShadow = true; baseMesh.receiveShadow = true; grp.add(baseMesh);
     
+    const rockCols = []; // 벽 상자 밖으로 튀어나온 바위의 발자국(로컬 좌표) — 충돌용
     for(let r=0; r<4; r++) {
-        const rockGeo = new THREE.IcosahedronGeometry(TILE * (0.34 + Math.random()*0.26), 1);
+        const rockR = TILE * (0.34 + Math.random()*0.26);
+        const rockGeo = new THREE.IcosahedronGeometry(rockR, 1);
 
         const rockMesh = new THREE.Mesh(rockGeo, matWallRock);
         const rx = (Math.random()-0.5)*TILE*0.8, ry = (Math.random()-0.5)*TILE*0.45, rz = (Math.random()-0.5)*TILE*0.8;
@@ -7489,7 +7634,11 @@ for(let i=0; i<4; i++) {
         rockMesh.scale.set(1, 0.7 + Math.random()*0.5, 1); // 눌린 바위(자연스러운 돌출)
         rockMesh.castShadow = true; rockMesh.receiveShadow = true;
         grp.add(rockMesh);
+        // y는 눌리기만 하므로 수평 반경(rockR)은 그대로. 충돌은 정사각형이라 원에 내접시킨다
+        // (0.72r → 모서리 ≈ 1.02r). ci는 타일마다 이 바위를 다시 찾기 위한 자식 인덱스.
+        rockCols.push({ x: rx, z: rz, r: rockR, h: rockR * 0.72, ci: grp.children.length - 1 });
     }
+    grp.userData.rockCols = rockCols;
     // 윗면 이끼(어두운 초록 덩어리) — 절반 확률
     if (Math.random() < 0.55) {
         const mossN = 1 + Math.floor(Math.random() * 2);
@@ -7932,6 +8081,7 @@ function buildCastleMesh(dgn) {
     if (Math.random() < GFX.vineChance2) { const vn2 = 1 + Math.floor(Math.random() * 2); for (let vk = 0; vk < vn2; vk++) wt.add(makeVineMesh(CAS_WALL_H * 0.9)); } // 2막 늘어진 덩굴
     wallGroup.add(wt); walls.push({ x: wxf(x), z: wzf(y), halfW: TILE / 2, halfD: TILE / 2 });
   }
+  markArch(wallGroup);   // 2·3막 성벽 타일
   buildGrass(grid, null, true); // 2막: 석판 틈 사이 잡초
   // 복도 붉은 카펫(러너) — 복도 타일은 grid===1이므로 corridorTiles로 깐다
   for (const { x, y } of corridorTiles) {
@@ -8258,6 +8408,60 @@ const walls = [];
 // 플레이어(moveWithCollision)·적(moveEntityXZ)·투사체 충돌이 전부 일관 적용됨.
 function addDecorCollider(x, z, r) { walls.push({ x, z, halfW: r, halfD: r, isDecor: true }); }
 
+// 1막 벽 타일에 박힌 바위: 복도 쪽으로 튀어나온 만큼 벽 안으로 밀어 넣고, 그 자리에 충돌체를 얹는다.
+// 벽 콜라이더는 타일 정사각형(TILE/2)뿐인데 벽 패턴의 바위는 그 밖으로 중앙값 1.6, 최대 2.5까지
+// 튀어나온다 — 눈에는 바위가 막고 있는데 몸은 그대로 통과했다.
+// 바위를 그 자리에 두고 콜라이더만 등록하면 1칸 복도(폭 TILE)가 닫힌다.
+// 양쪽 벽이 다 튀어나오므로 여유폭 = TILE - 2·침범 - 2·반지름이기 때문.
+// 그래서 콜라이더가 아니라 **바위 자체**를 벽 안으로 밀어 넣는다. 콜라이더는 밀어 넣은 위치에
+// 그대로 얹으므로 보이는 것과 막히는 것이 항상 일치한다(콜라이더만 당기면 큰 바위는 겉면이
+// 통과돼서 어긋난다). 반경은 최대 TILE*0.6=3.0이고 좁은 쪽 허용 끝이 3.1이라, 어떤 바위든
+// 밀어 넣기만 하면 들어간다 — 크기를 줄일 필요가 없다(줄이면 큰 바위가 얇은 판처럼 느껴진다).
+// 허용치는 방향별로 남은 폭을 보고 정한다. 옆 칸이 깊이도 2칸이고 좌우로도 트여 있을 때만
+// (= 방 안쪽) WROCK_ROOM까지, 그 외(1칸 복도·문간)는 WROCK_TIGHT까지.
+// 깊이만 보면 문간을 방으로 오인한다 — 문 옆 벽은 안쪽으로 깊지만 통로 자체는 1칸이다
+// (실측: 깊이만 보면 seed 5150에서 오크 반경 0.575에 바닥 67칸이 고립, 좌우까지 보면 0칸).
+// 0.12(=0.6)도 실측값이다 — 1막 30개 층 × 6시드를 flood fill 했을 때 플레이어(0.5)와
+// 1막 최대 몬스터 오크(0.575) 모두 고립 0칸인 값이 0.12이고, 0.16부터 층이 막힌다.
+const WROCK = !/[?&]wrock=0/.test(location.search);
+const WROCK_TIGHT = TILE * (parseFloat((location.search.match(/[?&]wrockmax=([\d.]+)/) || [])[1]) || 0.12);
+const WROCK_ROOM = TILE * (parseFloat((location.search.match(/[?&]wrockroom=([\d.]+)/) || [])[1]) || 0.42); // 트인 쪽 — 돌아갈 공간이 있으니 바위 모양대로 둔다
+function fitWallRocks(tile, pat, wx, wz, rotY, isF, gx, gy) {
+  const cols = pat.userData.rockCols;
+  if (!WROCK || !cols) return;
+  const c = Math.round(Math.cos(rotY)), s = Math.round(Math.sin(rotY)); // 회전은 90° 배수
+  const half = TILE / 2;
+  // 네 방향의 여유: 벽이면 제한 없음(어차피 벽 속), 방 안쪽이면 넉넉히, 나머지는 좁게
+  const cap = (dx, dy) => {
+    if (!isF(gx + dx, gy + dy)) return Infinity;
+    const px = dy, pz = dx; // 진행 방향에 수직
+    const open = isF(gx + dx * 2, gy + dy * 2) &&
+                 isF(gx + dx + px, gy + dy + pz) && isF(gx + dx - px, gy + dy - pz);
+    return open ? WROCK_ROOM : WROCK_TIGHT;
+  };
+  const capPX = cap(1, 0), capNX = cap(-1, 0), capPZ = cap(0, 1), capNZ = cap(0, -1);
+  // 양쪽이 다 빡빡하면(큰 바위) 가운데로 — 어느 한쪽만 지키다 반대쪽이 터지지 않게.
+  const clamp = (v, capP, capN, r) => {
+    const hi = half + capP - r, lo = -(half + capN - r);
+    return lo > hi ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, v));
+  };
+  for (const rk of cols) {
+    // rotation.y 적용: 로컬 (x,z) → 월드 오프셋
+    const ox = rk.x * c + rk.z * s, oz = -rk.x * s + rk.z * c;
+    const fx = clamp(ox, capPX, capNX, rk.r), fz = clamp(oz, capPZ, capNZ, rk.r);
+    if (fx !== ox || fz !== oz) {
+      // 밀어 넣기: 월드 오프셋을 로컬로 되돌려(90° 회전의 역변환) 메시 위치를 갱신
+      const m = tile.children[rk.ci];
+      if (m) m.position.set(fx * c - fz * s, m.position.y, fx * s + fz * c);
+    }
+    // 바닥 쪽으로 실제로 삐져나온 바위만 등록(옆 벽칸에 파묻힌 건 walls 순회만 늘린다)
+    const h = rk.h;
+    if (!((fx + h > half + 0.2 && capPX !== Infinity) || (-fx + h > half + 0.2 && capNX !== Infinity) ||
+          (fz + h > half + 0.2 && capPZ !== Infinity) || (-fz + h > half + 0.2 && capNZ !== Infinity))) continue;
+    walls.push({ x: wx + fx, z: wz + fz, halfW: h, halfD: h, isDecor: true });
+  }
+}
+
 // ===== 횃불 점광원 풀(2막·3막) =====
 // 예전에는 makeCastleTorch가 만들어지는 순서대로 cavernLightBudget(6)을 소진해, 큰 층에서는
 // 앞쪽 방 6개만 밝고 나머지는 불꽃·빛번짐만 있고 실제 광원이 없었다(실측 55층: 횃불 17개 중 6개).
@@ -8509,6 +8713,7 @@ function buildDungeonMesh(dgn) {
   const mossPatchMat = getLowPolyMat(0x3a4a1c); mossPatchMat.map = texMosses[1]; // 어두운 이끼 얼룩(도트 이끼)
   const { grid } = dgn;
   wallGrid = grid; // 시야 판정용으로 전역 보관
+  const isFloorCell = (cx, cy) => cx >= 0 && cy >= 0 && cx < MAP_W && cy < MAP_H && grid[cy][cx] === 1;
   const mossSpots = []; // 이끼 패치 위치(풀 집중 배치용)
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
@@ -8528,31 +8733,28 @@ function buildDungeonMesh(dgn) {
           const pebble = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12 + Math.random()*0.16, 0), (Math.random()<0.5)?pebbleMat:pebbleMat2);
           pebble.position.set(wx + (Math.random()-0.5)*TILE*0.8, 0, wz + (Math.random()-0.5)*TILE*0.8); pebble.castShadow = true; floorGroup.add(pebble);
         }
-        // 고인 물웅덩이(에메랄드, 약하게 발광 + 돌 테두리)
+        // 고인 물웅덩이(모양은 makeCavernPool 참고 — 원판이 아니라 불규칙한 외곽선)
         if (Math.random() < 0.05) {
           const poolMat = getLowPolyMat(0x2f5a4e); poolMat.emissive = new THREE.Color(0x2f5a4e); poolMat.emissiveIntensity = 0.3;
-          const pool = new THREE.Mesh(new THREE.CircleGeometry(TILE * 0.32, 12), poolMat);
-          pool.rotation.x = -Math.PI / 2; pool.position.set(wx, 0.015, wz); floorGroup.add(pool);
-          cavernWaters.push({ mesh: pool, ph: Math.random()*10 });
-          for (let a = 0; a < 8; a++) {
-            const ang = a/8*Math.PI*2;
-            const st = new THREE.Mesh(new THREE.IcosahedronGeometry(0.18 + Math.random()*0.12, 0), pebbleMat2);
-            st.position.set(wx + Math.cos(ang)*TILE*0.38, 0.05, wz + Math.sin(ang)*TILE*0.38); st.castShadow = true; floorGroup.add(st);
-          }
+          makeCavernPool(wx, wz, poolMat, pebbleMat2);
         }
       } else {
         let near = false;
         for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1 && !near; dx++) { const nx = x + dx, ny = y + dy; if (nx >= 0 && ny >= 0 && nx < MAP_W && ny < MAP_H && grid[ny][nx] === 1) near = true; }
         if (near) {
-          const wGrp = wallPatterns[Math.floor(Math.random() * wallPatterns.length)].clone();
+          const wPat = wallPatterns[Math.floor(Math.random() * wallPatterns.length)];
+          const wGrp = wPat.clone();
           const baseY = TILE * 0.35; // 벽 중심 높이
-          wGrp.position.set(wx, baseY, wz); wGrp.rotation.y = (Math.floor(Math.random() * 4)) * Math.PI / 2;
+          const wRot = (Math.floor(Math.random() * 4)) * Math.PI / 2;
+          wGrp.position.set(wx, baseY, wz); wGrp.rotation.y = wRot;
           if (Math.random() < GFX.vineChance1) { const vn = 2 + Math.floor(Math.random() * 3); for (let vk = 0; vk < vn; vk++) wGrp.add(makeVineMesh()); } // 벽마다 덩굴(2막의 약 3배 무성)
           wallGroup.add(wGrp); walls.push({ x: wx, z: wz, halfW: TILE / 2, halfD: TILE / 2 });
+          fitWallRocks(wGrp, wPat, wx, wz, wRot, isFloorCell, x, y); // 벽에 박힌 바위도 막히게
         }
       }
     }
   }
+  markArch(wallGroup);   // 1막 벽 타일(장식은 뒤에 붙으므로 여기서 벽만 잡힌다)
   // 이끼 동굴 장식 배치(방·복도 기준)
   buildCavernDecor(dgn);
   buildGrass(grid, mossSpots); // 1막 숲 동굴: 끝 밝은 풀밭(이끼 위 집중)
@@ -9779,6 +9981,87 @@ function makeGlowShroom(x, y, z) {
     cavernShrooms.push({ light: null, sprite: shGlow, ph: Math.random()*10, base: 0.55 });
   }
   g.position.set(x, y, z); floorGroup.add(g);
+}
+
+// 고인 물웅덩이(에메랄드, 약하게 발광 + 돌 테두리).
+// 예전엔 CircleGeometry(R, 12) — 정12각형이라 대놓고 원으로 보였다. 각도마다 반지름이 흔들리는
+// 외곽선으로 바꾼다: r(θ) = R·(1 + Σ aₖ·cos(kθ + φₖ)).
+// 낮은 주파수(2·3·5엽) 몇 개만 겹치면 매끄러우면서도 원으로 안 읽힌다. 주파수를 올리면
+// 톱니처럼 보이고, 진폭 합이 1에 가까워지면 r이 0을 지나 도형이 자기를 파고든다(합 최대 0.42).
+// 테두리 돌도 반드시 '같은 외곽선 위'에 놓아야 한다 — 원둘레에 놓으면 돌이 다시 원을 그려서
+// 웅덩이만 고쳐 봐야 소용이 없다.
+const WPOOL = !/[?&]wpool=0/.test(location.search);
+function makeCavernPool(wx, wz, poolMat, stoneMat) {
+  const R = TILE * (0.33 + Math.random() * 0.08); // 외곽선의 '가장 먼' 반지름(아래 정규화)
+  if (!WPOOL) {
+    // 예전 모양(정12각형 + 원둘레 위의 돌 8개)
+    const p0 = new THREE.Mesh(new THREE.CircleGeometry(R, 12), poolMat);
+    p0.rotation.x = -Math.PI / 2; p0.position.set(wx, 0.015, wz); floorGroup.add(p0);
+    cavernWaters.push({ mesh: p0, ph: Math.random() * 10 });
+    for (let a = 0; a < 8; a++) {
+      const ang = a / 8 * Math.PI * 2;
+      const st = new THREE.Mesh(new THREE.IcosahedronGeometry(0.18 + Math.random() * 0.12, 0), stoneMat);
+      st.position.set(wx + Math.cos(ang) * TILE * 0.38, 0.05, wz + Math.sin(ang) * TILE * 0.38); st.castShadow = true; floorGroup.add(st);
+    }
+    return;
+  }
+  const SEG = 32; // 이보다 낮으면 완만한 구간에서 직선 변이 눈에 띈다(웅덩이당 삼각형 = SEG)
+  const h = [
+    { k: 2, a: 0.07 + Math.random() * 0.07, p: Math.random() * Math.PI * 2 },
+    { k: 3, a: 0.05 + Math.random() * 0.06, p: Math.random() * Math.PI * 2 },
+    { k: 5, a: 0.02 + Math.random() * 0.04, p: Math.random() * Math.PI * 2 },
+  ];
+  // 늘림은 모양을 자연스럽게 하지만, 아래 정규화가 '가장 먼 점'을 R에 맞추므로 길쭉할수록
+  // 넓이가 줄어든다 — 예전 원판보다 눈에 띄게 작아 보이지 않을 만큼만 준다.
+  const ex = 1 + Math.random() * 0.22, ez = 1 - Math.random() * 0.15; // 한쪽으로 늘어진 웅덩이
+  const rot = Math.random() * Math.PI * 2, cr = Math.cos(rot), sr = Math.sin(rot); // 늘어진 방향
+  // 각도 th의 외곽선 위 점(웅덩이 중심 기준 월드 XZ 오프셋). scale로 바깥쪽에 띄운다.
+  const raw = (th) => {
+    let rr = 1;
+    for (const t of h) rr += t.a * Math.cos(t.k * th + t.p);
+    return [Math.cos(th) * rr * ex, Math.sin(th) * rr * ez];
+  };
+  // 정규화: 진폭·늘림이 R 위에 곱으로 얹히면 웅덩이가 타일(반폭 TILE/2) 밖까지 자란다.
+  // 그러면 테두리 돌이 벽에 박혀 벽면에 떠 보인다. 가장 먼 점이 정확히 R이 되도록 맞춰
+  // 예전 원판과 같은 자리를 차지하게 한다(돌까지 최대 R*1.15 + 돌반경 0.3 ≤ TILE/2).
+  let maxRaw = 0;
+  for (let i = 0; i < SEG; i++) { const e = raw(i / SEG * Math.PI * 2); maxRaw = Math.max(maxRaw, Math.hypot(e[0], e[1])); }
+  const norm = R / (maxRaw || 1);
+  const edge = (th, scale) => {
+    const e = raw(th), s = norm * scale;
+    const px = e[0] * s, pz = e[1] * s;
+    return [px * cr - pz * sr, px * sr + pz * cr];
+  };
+  // 삼각형 팬. CircleGeometry와 같은 XY 평면(법선 +Z)에 만들어 rotation.x = -PI/2를 그대로 쓴다.
+  const vn = SEG + 2;
+  const pos = new Float32Array(vn * 3), nrm = new Float32Array(vn * 3), uv = new Float32Array(vn * 2);
+  nrm[2] = 1; uv[0] = 0.5; uv[1] = 0.5;
+  for (let i = 0; i <= SEG; i++) {
+    const e = edge(i / SEG * Math.PI * 2, 1);
+    const o = (i + 1) * 3, u = (i + 1) * 2;
+    pos[o] = e[0]; pos[o + 1] = e[1]; pos[o + 2] = 0;   // XY 평면이라 월드 z가 로컬 y
+    nrm[o + 2] = 1;
+    uv[u] = e[0] / (R * 2) + 0.5; uv[u + 1] = e[1] / (R * 2) + 0.5;
+  }
+  const idx = [];
+  for (let i = 1; i <= SEG; i++) idx.push(i, i + 1, 0); // CircleGeometry와 같은 감김(앞면 +Z)
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geo.setIndex(idx);
+  const pool = new THREE.Mesh(geo, poolMat);
+  pool.rotation.x = -Math.PI / 2; pool.position.set(wx, 0.015, wz); floorGroup.add(pool);
+  cavernWaters.push({ mesh: pool, ph: Math.random() * 10 });
+  // 테두리 돌: 외곽선 바로 바깥에, 각도·크기·자세를 흩어서
+  const n = 7 + Math.floor(Math.random() * 5);
+  for (let a = 0; a < n; a++) {
+    const e = edge((a + (Math.random() - 0.5) * 0.7) / n * Math.PI * 2, 1.04 + Math.random() * 0.08);
+    const st = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12 + Math.random() * 0.15, 0), stoneMat);
+    st.position.set(wx + e[0], 0.04 + Math.random() * 0.04, wz + e[1]);
+    st.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+    st.castShadow = true; floorGroup.add(st);
+  }
 }
 
 // 석순(바닥에서 솟는 바위)
@@ -17850,18 +18133,28 @@ function update(dt) {
     const meleeStop = (player.radius + e.radius) + 0.6;
     let nx = 0, nz = 0; // 이동 변위(이번 프레임)
     if (e.isRanged) {
-      const KEEP = TILE * 1.3;           // 유지 거리(사거리 2타일 안에서 더 가까이 — 멀리 안 돌게)
-      const KEEP_BAND = TILE * 0.4;      // 카이팅 허용 폭(이 안이면 정지)
-      // 목표 지점: 플레이어 위치 + (surroundAngle 방향 × KEEP)
+      const KEEP = TILE * MAGE_KEEP;     // 유지 거리(캐스터가 붙지 않게 — 발사 사거리 안쪽으로)
+      const KEEP_BAND = TILE * 0.25;     // 카이팅 허용 폭(이 안이면 정지). 넓으면 안쪽으로 붙어 선다
       const ang = (e.surroundAngle !== undefined) ? e.surroundAngle : 0;
-      const targetX = player.obj.position.x + Math.cos(ang) * KEEP;
-      const targetZ = player.obj.position.z + Math.sin(ang) * KEEP;
-      const tdx = targetX - e.obj.position.x, tdz = targetZ - e.obj.position.z;
-      const tdist = Math.hypot(tdx, tdz);
-      if (tdist > KEEP_BAND) {
-        // 목표 지점이 멀면 그 방향으로 이동
-        const sp = e.speed * slowMul * dt;
-        nx = (tdx / tdist) * sp; nz = (tdz / tdist) * sp;
+      const sp = e.speed * slowMul * dt;
+      if (d < KEEP - KEEP_BAND) {
+        // 너무 가까움: 접선 성분 없이 곧장 물러난다. 플레이어가 더 빠르므로(6.5 대 ~3)
+        // 포위 지점으로 비스듬히 가면 도망 속도를 그만큼 까먹어 계속 붙어 있게 된다.
+        const u = d || 1;
+        const perpX = -dz / u, perpZ = dx / u;          // 옆으로 살짝 흘리며 물러나 벽 구석에 몰리지 않게
+        const drift = Math.sin(e.phase * 0.7 + (e.surroundAngle || 0)) * 0.35;
+        nx = (-dx / u + perpX * drift) * sp;
+        nz = (-dz / u + perpZ * drift) * sp;
+      } else {
+        // 목표 지점: 플레이어 위치 + (surroundAngle 방향 × KEEP)
+        const targetX = player.obj.position.x + Math.cos(ang) * KEEP;
+        const targetZ = player.obj.position.z + Math.sin(ang) * KEEP;
+        const tdx = targetX - e.obj.position.x, tdz = targetZ - e.obj.position.z;
+        const tdist = Math.hypot(tdx, tdz);
+        if (tdist > KEEP_BAND) {
+          // 목표 지점이 멀면 그 방향으로 이동
+          nx = (tdx / tdist) * sp; nz = (tdz / tdist) * sp;
+        }
       }
       // 각도가 더 빠르게 변하게 해서 신속하게 포위(원형 카이팅)
       e.surroundAngle = ang + dt * 0.6;
@@ -18056,8 +18349,10 @@ function update(dt) {
       
       let eArmRX = -eSin * 0.5, eArmRZ = 0, eArmLX = eSin * 0.5, eArmLZ = 0;
       if (e.isRanged) {
-        // 원거리: 사거리(약 10유닛=2타일) 안이면 지팡이를 휘둘러 화염구 발사
-        const RANGE = TILE * 2;
+        // 원거리: 사거리 안이면 지팡이를 휘둘러 화염구 발사.
+        // 유지 거리(MAGE_KEEP)보다 넉넉히 커야 한다 — 작으면 서 있는 자리에서 못 쏴서
+        // 결국 플레이어에게 붙으러 들어온다. 화염구는 속도 11·수명 3.0이라 33까지 날아간다.
+        const RANGE = TILE * MAGE_RANGE;
         if (d <= RANGE && e.attackCd <= 0) { e.attackCd = 2.2; e.swingTimer = 0.5; e.castPending = true; e.castPending2 = (e.type === 'courtmage'); }
         if (e.swingTimer > 0) {
           const t = 1 - (e.swingTimer / 0.5);
