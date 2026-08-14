@@ -55,7 +55,10 @@ const { chromium } = require(process.env.PW_PATH || '/opt/node22/lib/node_module
       cageR.rotation.y = -1.25; cageL.rotation.y = 1.25; cageSeam.visible = false;
     }
 
-    const root = ghoulObj;
+    // 뷰어마다 루트 이름이 다르다(구울 ghoulObj / 포란충·새끼 bugObj)
+    const root = (typeof ghoulObj !== 'undefined') ? ghoulObj
+               : (typeof bugObj !== 'undefined') ? bugObj : null;
+    if (!root) throw new Error('캐릭터 루트를 못 찾았다 (ghoulObj/bugObj)');
     root.updateMatrixWorld(true);
 
     // flatShading 은 three 렌더러 쪽 설정이라 glTF 에 그런 항목이 없다.

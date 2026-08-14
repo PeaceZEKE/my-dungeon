@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>새끼 포란충 뷰어 v1</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  /* 페이지가 스크롤될 여지를 아예 없앤다.
+     예전에는 body가 100dvh인데 캔버스가 100vh였다. 모바일에서 100vh는 '주소창이 숨은 상태'의
+     큰 높이라 캔버스가 body보다 커지고, 그 상태에서 버튼에 포커스가 가면 브라우저가 그 버튼을
+     보이게 하려고 문서를 스크롤한다(overflow:hidden도 이 스크롤은 못 막는다).
+     그러면 캔버스가 위로 밀려 캐릭터 윗부분만 보인다 — 아랫줄 버튼에서만 나던 증상의 정체다. */
+  html, body { position:fixed; inset:0; width:100%; height:100%; overflow:hidden; background:#070a06; font-family: sans-serif; overscroll-behavior:none; }
+  #app { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action: none; }
+  .ui { position:fixed; left:0; right:0; bottom:0; display:flex; gap:8px; justify-content:center; flex-wrap:wrap; padding:12px; pointer-events:none; }
+  /* touch-action:manipulation — 버튼을 연달아 누를 때 더블탭 확대로 잡히는 것을 막는다.
+     확대되면 화면이 탭한 지점(=아래쪽) 기준으로 잘려 역시 캐릭터 위쪽만 보인다. */
+  .btn { pointer-events:auto; touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+         background:rgba(20,24,34,0.85); color:#e2e8f0; border:1px solid #4a5568; border-radius:8px; padding:10px 14px; font-size:13px; font-weight:bold; cursor:pointer; }
+  .btn:active { background:#2d3748; }
+  .btn.on { border-color:#d7a0b0; color:#f5d8e0; }
+  #ver { position:fixed; right:10px; top:10px; color:#718096; font-size:11px; text-align:right; line-height:1.5; }
+  #hint { position:fixed; left:0; right:0; top:12px; text-align:center; color:#a0aec0; font-size:12px; }
+  @media (max-width: 520px) {
+    .ui { gap:6px; padding:8px 6px calc(8px + env(safe-area-inset-bottom)); }
+    .btn { padding:8px 10px; font-size:12px; border-radius:6px; }
+    #hint { font-size:11px; top:34px; }
+    #ver { font-size:10px; top:8px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="app"></canvas>
+<div id="hint">드래그: 회전 · 휠/핀치: 확대축소</div>
+<div class="ui">
+  <button class="btn" id="spinBtn">자동회전: 켬</button>
+  <button class="btn" id="walkBtn">이동</button>
+  <button class="btn" id="biteBtn">물기</button>
+  <button class="btn" id="spewBtn">분비물</button>
+  <button class="btn" id="deadBtn">죽음</button>
+  <button class="btn" id="actBtn">스튜디오</button>
+  <button class="btn" id="shadowBtn">그림자: 켬</button>
+  <button class="btn" id="gridBtn">그리드</button>
+  <button class="btn" id="resetBtn">게임 시점</button>
+</div>
+<div id="ver"></div>
+
+<!-- 게임 index.html에 동봉된 것과 같은 three.js r128. CDN을 쓰면 여기서 렌더 검증을 못 하고,
+     게임과 버전이 어긋나면 뷰어에서 맞춘 모양이 게임에서 달라진다. -->
+<script src="three.r128.min.js"></script>
+<script>
+// ============================================================
+//  새끼 포란충 — 3막 일반 몹(보스 포란충의 유생).
+//  렌더 환경 — 게임 index.html에서 그대로 옮겨온 것. 구울 뷰어와 같은 파일을 복사한 것이다.
+//  값 하나라도 바꾸면 뷰어에서 본 것과 게임에 넣은 결과가 달라진다.
+//  옮겨온 것: 저해상도 버퍼 크기 · 톤매핑 · 조명 셰이더 청크(?dspec/?dlight/?drough/?spec) ·
+//            노멀 패스(피부 표식 포함) · 블룸 · 포스트 셰이더 전문 · 픽셀 스냅 · 막별 환경 · 조명 리그
+// ============================================================
+const canvas = document.getElementById('app');
+
+// 실제로 보이는 영역 크기. 모바일 인앱 뷰어·주소창 때문에 window.innerHeight 가 눈에 보이는
+// 높이보다 클 수 있는데, 그대로 쓰면 캔버스 아래쪽이 화면 밖으로 나가고 화면 한가운데 맞춰 둔
+// 캐릭터가 위로 치우쳐 보인다. visualViewport 가 있으면 그쪽이 진짜 보이는 크기다.
+function viewW() { const v = window.visualViewport; return Math.max(1, Math.round(v ? v.width : window.innerWidth)); }
+function viewH() { const v = window.visualViewport; return Math.max(1, Math.round(v ? v.height : window.innerHeight)); }
+// 어떤 경로로든 문서가 스크롤되면 즉시 되돌린다(포커스 이동·인앱 뷰어 제스처 등).
+window.addEventListener('scroll', () => { if (window.scrollX || window.scrollY) window.scrollTo(0, 0); }, { passive: true });
+
+// ---------- 플래그 (게임과 같은 이름·같은 기본값). 쓰는 곳보다 위에 둘 것 — TDZ ----------
+const PX_MODE = !/[?&]px=0/.test(location.search);   // 픽셀아트 렌더(기본 켜짐)
+const BLOB_ON = !/[?&]blob=0/.test(location.search); // 발밑 블롭 그림자
+const BLOB_STEPS = (() => { const m = /[?&]blobsteps=([0-9]+)/.exec(location.search); return m ? parseInt(m[1], 10) : 3; })();
+const VIEWER_VERSION = 'v1';
+
+// ===== 깊이 기반 조명 조절(?dspec / ?dlight) — 게임과 동일 =====
+// 램프 구간(20~33)은 게임의 실측값이다. 게임 카메라가 플레이어에서 25.4 떨어져 있어서
+// 화면에 보이는 것이 전부 이 구간에 들어온다 — 그래서 이 뷰어도 카메라 거리를 25.4로 맞춘다.
+// 거리를 줄이면 램프 바깥으로 나가 이 효과가 통째로 사라지고, 게임과 다른 밝기가 나온다.
+let dSpecStr = 2.0, dLightStr = 0.6, dNear = 20.0, dFar = 33.0;
+{
+  const num = (re) => { const m = re.exec(location.search); return m ? parseFloat(m[1]) : null; };
+  const a = num(/[?&]dspec=([0-9.]+)/);  if (a !== null) dSpecStr = a;
+  const b = num(/[?&]dlight=([0-9.]+)/); if (b !== null) dLightStr = b;
+  const c = num(/[?&]dnear=([0-9.]+)/);  if (c !== null) dNear = c;
+  const d = num(/[?&]dfar=([0-9.]+)/);   if (d !== null) dFar = d;
+}
+function _depthLitChunk() {
+  if (!(dSpecStr > 0.001 || dLightStr > 0.001)) return '';
+  const n = dNear.toFixed(1), f = Math.max(dNear + 0.1, dFar).toFixed(1);
+  const s = dSpecStr.toFixed(3), l = dLightStr.toFixed(3);
+  return '\n' + [
+    'float _dz = -vViewPosition.z;',
+    'float _dt = smoothstep(' + n + ', ' + f + ', _dz);',
+    'float _dks = mix(1.0 + ' + s + ', max(0.0, 1.0 - ' + s + ' * 0.6), _dt);',
+    'reflectedLight.directSpecular *= _dks;',
+    'reflectedLight.indirectSpecular *= _dks;',
+    'float _dkl = mix(1.0 + ' + l + ' * 0.35, max(0.0, 1.0 - ' + l + '), _dt);',
+    'reflectedLight.directDiffuse *= _dkl;'
+  ].join('\n');
+}
+// ===== 러프니스 기반 하이라이트 세기(?drough) — 게임과 동일 =====
+let dRoughStr = 1.2, dRoughLo = 0.40, dRoughHi = 0.95;
+{
+  const m = /[?&]drough=([0-9.]+)/.exec(location.search);
+  if (m) dRoughStr = parseFloat(m[1]);
+  const lo = /[?&]droughlo=([0-9.]+)/.exec(location.search); if (lo) dRoughLo = parseFloat(lo[1]);
+  const hi = /[?&]droughhi=([0-9.]+)/.exec(location.search); if (hi) dRoughHi = parseFloat(hi[1]);
+}
+function _roughSpecChunk() {
+  if (!(dRoughStr > 0.001)) return '';
+  const s = dRoughStr.toFixed(3);
+  const lo = dRoughLo.toFixed(2), hi = Math.max(dRoughLo + 0.01, dRoughHi).toFixed(2);
+  return '\n' + [
+    '#ifdef STANDARD',
+    'float _rg = smoothstep(' + lo + ', ' + hi + ', clamp(roughnessFactor, 0.0, 1.0));',
+    'float _kr = mix(1.0 + ' + s + ', max(0.0, 1.0 - ' + s + ' * 0.5), _rg);',
+    'reflectedLight.directSpecular *= _kr;',
+    'reflectedLight.indirectSpecular *= _kr;',
+    '#endif'
+  ].join('\n');
+}
+// ===== 하이라이트 전체 밝기(?spec) — 게임과 동일 =====
+let dSpecGain = 0.85;
+{ const m = /[?&]spec=([0-9.]+)/.exec(location.search); if (m) dSpecGain = parseFloat(m[1]); }
+function _specGainChunk() {
+  if (Math.abs(dSpecGain - 1.0) < 0.001) return '';
+  const g = dSpecGain.toFixed(3);
+  return '\n' + ['reflectedLight.directSpecular *= ' + g + ';', 'reflectedLight.indirectSpecular *= ' + g + ';'].join('\n');
+}
+// 조합 순서도 게임과 같다: 기본 → 러프니스 → 깊이 → 전체 밝기.
+// 반드시 머티리얼을 하나라도 만들기 전에 갈아끼워야 한다 — three의 프로그램 캐시 키에는
+// 청크 내용이 안 들어가서, 나중에 바꾸면 예전 프로그램이 그대로 재사용된다.
+{
+  const _toonBaseChunk = THREE.ShaderChunk.lights_fragment_end;
+  const _roughCode = _roughSpecChunk(), _depthCode = _depthLitChunk(), _gainCode = _specGainChunk();
+  if (_roughCode || _depthCode || _gainCode) {
+    THREE.ShaderChunk.lights_fragment_end = _toonBaseChunk + _roughCode + _depthCode + _gainCode;
+  }
+}
+
+// ---------- 저해상도 버퍼(게임 computeLowRes 그대로) ----------
+const PIXEL_SCALE = 2;
+// 게임과 같은 값·같은 플래그. 작을수록 픽셀이 커진다(720 기준 360=배율 2, 288=2.5, 240=3).
+// v739~v740 에서 게임이 360 → 288 로 올렸다. 여기가 어긋나면 '1.0× = 게임 실제 픽셀 크기'가 거짓말이 된다.
+const PX_FIXED_H = parseInt((location.search.match(/[?&]pxh=(\d+)/) || [])[1], 10) || 288;
+function computeLowRes(w, h) {
+  if (PX_MODE) {
+    const lh = PX_FIXED_H;
+    return [Math.max(64, Math.round(lh * (w / Math.max(1, h)))), lh];
+  }
+  return [Math.max(320, Math.floor(w / PIXEL_SCALE)), Math.max(240, Math.floor(h / PIXEL_SCALE))];
+}
+const _lr0 = computeLowRes(viewW(), viewH());
+let lowResW = _lr0[0], lowResH = _lr0[1];
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(1);
+renderer.setSize(viewW(), viewH());
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = PX_MODE ? THREE.BasicShadowMap : THREE.PCFShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.autoClear = false;
+
+const rt = new THREE.WebGLRenderTarget(lowResW, lowResH, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
+rt.depthTexture = new THREE.DepthTexture(lowResW, lowResH);
+rt.depthTexture.format = THREE.DepthFormat;
+rt.depthTexture.type = THREE.UnsignedIntType;
+
+const rtNormal = new THREE.WebGLRenderTarget(lowResW, lowResH, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
+rtNormal.texture.generateMipmaps = false;
+rtNormal.stencilBuffer = false;
+const normalMaterial = new THREE.MeshNormalMaterial();
+// 피부 표식용. 노멀 버퍼에 순수 빨강을 찍어 두면 포스트 셰이더가 모서리 하이라이트에서 뺀다.
+const SKIN_TAG_LAYER = 1;
+const skinTagMaterial = new THREE.ShaderMaterial({
+  vertexShader: 'void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: 'void main(){ gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); }',
+});
+
+const quadScene = new THREE.Scene();
+const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const quadMat = new THREE.ShaderMaterial({
+  uniforms: {
+    tColor: { value: rt.texture },
+    tDepth: { value: rt.depthTexture },
+    uTexel: { value: new THREE.Vector2(1 / lowResW, 1 / lowResH) },
+    uOutline: { value: new THREE.Color(0x05070c) },
+    uStrength: { value: 1.0 },
+    uSat: { value: 1.14 },
+    uCon: { value: 1.07 },
+    uSplit: { value: new THREE.Vector3(0.045, 0.012, -0.05) },
+    uVig: { value: 0.5 },
+    uFocusY: { value: 0.52 },
+    uFocusW: { value: 0.18 },
+    uBlurMax: { value: 1.5 },
+    uTiltOn: { value: PX_MODE ? 0.0 : 1.0 },
+    tBloom: { value: null },
+    uBloomStr: { value: 0.85 },
+    uAerialColor: { value: new THREE.Color(0x1a2416) },
+    uAerialStr: { value: 0.45 },
+    uAerialDesat: { value: 0.7 },
+    uAerialNear: { value: 0.5 },
+    uAerialFar: { value: 0.8 },
+    uShadowColor: { value: new THREE.Color(0x203a2c) },
+    uShadowStr: { value: 0.42 },
+    uShadowThresh: { value: 0.42 },
+    uShadowSteps: { value: 0.0 },
+    uNear: { value: 0.1 },
+    uFar: { value: 200 },
+    uPx: { value: PX_MODE ? 1.0 : 0.0 },
+    uPxThresh: { value: 0.10 },
+    uPxThreshK: { value: 0.035 },
+    uPxDark: { value: 0.55 },
+    tNormal: { value: rtNormal.texture },
+    uSubpixel: { value: new THREE.Vector2(0, 0) },
+    uPxNormalStr: { value: 0.30 },
+    uPxNormalBias: { value: new THREE.Vector3(1, 1, 1) },
+    uQuant: { value: 32.0 },
+    uDither: { value: 0.9 },
+    uQuantGamma: { value: 2.2 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+  `,
+  // 게임 quadMat 프래그먼트 셰이더 그대로. 구름 그림자(uCloud*)만 뺐다 —
+  // 던전·쉼터에서는 게임도 uCloudStr=0 으로 통째로 건너뛰므로 결과가 같다.
+  fragmentShader: `
+    uniform sampler2D tColor;
+    uniform sampler2D tDepth;
+    uniform vec2 uTexel;
+    uniform vec3 uOutline;
+    uniform float uStrength;
+    uniform float uSat;
+    uniform float uCon;
+    uniform vec3 uSplit;
+    uniform float uVig;
+    uniform float uFocusY;
+    uniform float uFocusW;
+    uniform float uBlurMax;
+    uniform float uTiltOn;
+    uniform sampler2D tBloom;
+    uniform float uBloomStr;
+    uniform vec3 uAerialColor;
+    uniform float uAerialStr;
+    uniform float uAerialDesat;
+    uniform float uAerialNear;
+    uniform float uAerialFar;
+    uniform vec3 uShadowColor;
+    uniform float uShadowStr;
+    uniform float uShadowThresh;
+    uniform float uShadowSteps;
+    uniform float uNear;
+    uniform float uFar;
+    uniform float uPx;
+    uniform float uPxThresh;
+    uniform float uPxThreshK;
+    uniform float uPxDark;
+    uniform float uQuant;
+    uniform float uDither;
+    uniform float uQuantGamma;
+    uniform sampler2D tNormal;
+    uniform vec2 uSubpixel;
+    uniform float uPxNormalStr;
+    uniform vec3 uPxNormalBias;
+    varying vec2 vUv;
+    vec3 nrmAt(vec2 o) { return texture2D(tNormal, vUv + uSubpixel + o * uTexel).rgb * 2.0 - 1.0; }
+    bool isSkinTag(vec3 n) { return n.r > 0.7 && n.g < -0.7 && n.b < -0.7; }
+    bool isVegTag(vec3 n) { return n.g > 0.7 && n.r < -0.7 && n.b < -0.7; }
+    float outlineAt() { return texture2D(tNormal, vUv + uSubpixel).a; }
+    float nEdge(vec2 o, float dep, vec3 n, float dNb) {
+      vec3 m = nrmAt(o);
+      if (isSkinTag(m) || isVegTag(m)) return 0.0;
+      float depthDiff = dNb - dep;
+      float normalDiff = dot(n - m, uPxNormalBias);
+      float normalInd = clamp(smoothstep(-0.01, 0.01, normalDiff), 0.0, 1.0);
+      float depthInd = clamp(sign(depthDiff * 0.25 + 0.0025), 0.0, 1.0);
+      return distance(n, m) * depthInd * normalInd;
+    }
+    float bayer2(vec2 a) { a = floor(a); return fract(a.x / 2.0 + a.y * a.y * 0.75); }
+    float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
+    float bayer8(vec2 a) { return bayer4(0.5 * a) * 0.25 + bayer2(a); }
+    float linearizeDepth(float d) {
+      float z = d * 2.0 - 1.0;
+      return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear));
+    }
+    void main() {
+      vec2 uv = vUv + uSubpixel;
+      vec4 col = texture2D(tColor, uv);
+      float fdy = abs(vUv.y - uFocusY);
+      float blur = smoothstep(uFocusW, uFocusW + 0.28, fdy) * uTiltOn;
+      if (blur > 0.003) {
+        vec2 br = uTexel * (blur * uBlurMax);
+        vec3 acc = col.rgb * 0.25;
+        acc += texture2D(tColor, uv + vec2( br.x,  br.y)).rgb * 0.125;
+        acc += texture2D(tColor, uv + vec2(-br.x,  br.y)).rgb * 0.125;
+        acc += texture2D(tColor, uv + vec2( br.x, -br.y)).rgb * 0.125;
+        acc += texture2D(tColor, uv + vec2(-br.x, -br.y)).rgb * 0.125;
+        acc += texture2D(tColor, uv + vec2( br.x * 1.8, 0.0)).rgb * 0.0625;
+        acc += texture2D(tColor, uv + vec2(-br.x * 1.8, 0.0)).rgb * 0.0625;
+        acc += texture2D(tColor, uv + vec2(0.0,  br.y * 1.8)).rgb * 0.0625;
+        acc += texture2D(tColor, uv + vec2(0.0, -br.y * 1.8)).rgb * 0.0625;
+        col.rgb = acc;
+      }
+      float c  = linearizeDepth(texture2D(tDepth, uv).x);
+      float l = linearizeDepth(texture2D(tDepth, uv + vec2(-uTexel.x, 0.0)).x);
+      float r = linearizeDepth(texture2D(tDepth, uv + vec2( uTexel.x, 0.0)).x);
+      float u = linearizeDepth(texture2D(tDepth, uv + vec2(0.0,  uTexel.y)).x);
+      float dn= linearizeDepth(texture2D(tDepth, uv + vec2(0.0, -uTexel.y)).x);
+      vec3 graded;
+      if (uPx > 0.5) {
+        float d = clamp(l - c, 0.0, 1.0) + clamp(r - c, 0.0, 1.0)
+                + clamp(u - c, 0.0, 1.0) + clamp(dn - c, 0.0, 1.0);
+        float t = uPxThresh + c * uPxThreshK;
+        float dei = floor(smoothstep(t, t * 1.65, d) * 2.0) / 2.0;
+        dei *= uStrength * (1.0 - blur * 0.85);
+        dei *= step(0.5, outlineAt());
+        float nei = 0.0;
+        if (uPxNormalStr > 0.001) {
+          vec3 n = nrmAt(vec2(0.0));
+          if (!isSkinTag(n) && !isVegTag(n)) {
+            nei += nEdge(vec2( 0.0, -1.0), c, n, dn);
+            nei += nEdge(vec2( 0.0,  1.0), c, n, u);
+            nei += nEdge(vec2(-1.0,  0.0), c, n, l);
+            nei += nEdge(vec2( 1.0,  0.0), c, n, r);
+            nei = step(0.1, nei);
+            float lumIn = dot(col.rgb, vec3(0.299, 0.587, 0.114));
+            nei *= smoothstep(0.04, 0.22, lumIn);
+          }
+        }
+        float k = dei > 0.0 ? (1.0 - uPxDark * clamp(dei, 0.0, 1.0))
+                            : (1.0 + uPxNormalStr * nei);
+        graded = col.rgb * k;
+      } else {
+        float edge = abs(c - l) + abs(c - r) + abs(c - u) + abs(c - dn);
+        float thresh = 0.25 + c * 0.05;
+        float line = smoothstep(thresh, thresh * 1.65, edge) * uStrength;
+        line *= (1.0 - blur * 0.85);
+        graded = mix(col.rgb, uOutline, clamp(line, 0.0, 1.0));
+      }
+      float lum = dot(graded, vec3(0.299, 0.587, 0.114));
+      graded = mix(vec3(lum), graded, uSat);
+      graded = (graded - 0.5) * uCon + 0.5;
+      graded += (lum - 0.5) * uSplit;
+      graded = clamp(graded, 0.0, 1.0);
+      float lum2 = dot(graded, vec3(0.299, 0.587, 0.114));
+      float shMask = 1.0 - smoothstep(0.0, uShadowThresh, lum2);
+      if (uShadowSteps > 0.5) shMask = floor(shMask * uShadowSteps + 0.5) / uShadowSteps;
+      graded = mix(graded, max(graded, uShadowColor), shMask * uShadowStr);
+      float aer = smoothstep(uAerialNear, uAerialFar, c) * uAerialStr;
+      float aLum = dot(graded, vec3(0.299, 0.587, 0.114));
+      graded = mix(graded, vec3(aLum), aer * uAerialDesat);
+      graded = mix(graded, uAerialColor, aer * 0.6);
+      graded += texture2D(tBloom, uv).rgb * uBloomStr;
+      vec2 vc = vUv - 0.5;
+      float vig = 1.0 - dot(vc, vc) * uVig;
+      graded *= clamp(vig, 0.0, 1.0);
+      if (uPx > 0.5 && uQuant > 2.5) {
+        vec2 pix = vUv / uTexel;
+        float qstep = 1.0 / (uQuant - 1.0);
+        vec3 e = pow(max(graded, 0.0), vec3(1.0 / uQuantGamma));
+        float th = (bayer8(pix) - 0.5) * qstep * uDither;
+        e = clamp(floor((e + th) / qstep + 0.5) * qstep, 0.0, 1.0);
+        graded = pow(e, vec3(uQuantGamma));
+      }
+      gl_FragColor = vec4(graded, 1.0);
+    }
+  `,
+  depthTest: false, depthWrite: false
+});
+quadScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), quadMat));
+
+// ---------- 블룸(게임과 동일) ----------
+let bloomW = Math.max(160, Math.floor(lowResW / 2)), bloomH = Math.max(120, Math.floor(lowResH / 2));
+const rtBloom = new THREE.WebGLRenderTarget(bloomW, bloomH, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false });
+const bloomScene = new THREE.Scene();
+const bloomMat = new THREE.ShaderMaterial({
+  uniforms: {
+    tColor: { value: rt.texture },
+    uTexel: { value: new THREE.Vector2(1 / bloomW, 1 / bloomH) },
+    uThresh: { value: 0.62 },   // 1막·3막 0.62 / 2막만 0.70 — 막 전환에서 갈아끼운다
+    uRadius: { value: 2.4 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+  fragmentShader: `
+    precision mediump float;
+    uniform sampler2D tColor; uniform vec2 uTexel; uniform float uThresh; uniform float uRadius;
+    varying vec2 vUv;
+    vec3 bright(vec2 uv){ vec3 c = texture2D(tColor, uv).rgb; float l = dot(c, vec3(0.299,0.587,0.114)); float k = max(0.0, l - uThresh) / max(0.001, 1.0 - uThresh); return c * k; }
+    void main(){
+      vec2 r = uTexel * uRadius;
+      vec3 s = bright(vUv) * 0.196;
+      s += bright(vUv + vec2( r.x, 0.0)) * 0.118; s += bright(vUv + vec2(-r.x, 0.0)) * 0.118;
+      s += bright(vUv + vec2(0.0,  r.y)) * 0.118; s += bright(vUv + vec2(0.0, -r.y)) * 0.118;
+      s += bright(vUv + vec2( r.x,  r.y)) * 0.083; s += bright(vUv + vec2(-r.x,  r.y)) * 0.083;
+      s += bright(vUv + vec2( r.x, -r.y)) * 0.083; s += bright(vUv + vec2(-r.x, -r.y)) * 0.083;
+      gl_FragColor = vec4(s, 1.0);
+    }`,
+  depthTest: false, depthWrite: false,
+});
+bloomScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bloomMat));
+quadMat.uniforms.tBloom.value = rtBloom.texture;
+
+// ---------- 씬 · 카메라 (게임 1막 기본값) ----------
+const TILE = 5;   // 게임의 타일 크기 — 조명 사거리가 전부 이 값의 배수다
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x070a06);
+scene.fog = new THREE.FogExp2(0x070a06, 0.025);
+
+// 게임의 쿼터뷰 카메라. 오프셋 (11.07, 20, 11.07) → 거리 25.40 / 수평에서 51.94° 내려봄.
+// 이 거리·각도·FOV가 어긋나면 원근 왜곡도, 깊이 기반 조명(위 dNear/dFar)도 게임과 달라진다.
+const isoOffsetX = 11.07, isoOffsetY = 20, isoOffsetZ = 11.07;
+const GAME_PLAYER_DIST = Math.hypot(isoOffsetX, isoOffsetY, isoOffsetZ);       // 25.40 — 플레이어의 뷰 깊이
+const GAME_PITCH = Math.atan2(isoOffsetY, Math.hypot(isoOffsetX, isoOffsetZ)); // 0.9065 rad = 51.94°
+// 카메라는 플레이어를 보고, 몬스터는 그보다 3칸쯤 뒤에 선다 — 그래서 몬스터의 뷰 깊이는
+// 플레이어보다 1.06 깊다. 게임을 띄워 직접 잰 값이다(플레이어 25.399 / 근접 교전 중인 몬스터 26.46).
+// 깊이 기반 조명 램프가 20~33이라 이 1.06 차이도 밝기로 드러난다 — 25.40으로 두면 뷰어가 7% 밝게 나온다.
+const GAME_DIST = 26.46;
+// 게임에서 몬스터는 늘 플레이어를 바라보고, 플레이어는 카메라와 몬스터 사이에 있다 —
+// 즉 카메라는 몬스터 정면(로컬 -z) 쪽에서 내려다본다. 그 배치를 그대로 재현한다.
+const GAME_YAW = Math.PI;
+const camera = new THREE.PerspectiveCamera(30, viewW() / viewH(), 0.1, 200);
+const BASE_FOV = 30, BASE_ASPECT = 16 / 9;
+// 확대는 '카메라를 당기는' 게 아니라 'FOV를 좁히는' 방식이어야 한다.
+// 카메라를 가까이 옮기면 뷰 깊이가 램프(20~33) 밖으로 나가 깊이 기반 조명이 통째로 달라지고,
+// 원근 왜곡도 게임보다 커진다. FOV만 좁히면 거리·각도가 그대로라 망원 크롭이 되어
+// 조명·왜곡은 게임 그대로이고 화면에 크게만 보인다.
+// 대신 저해상도 버퍼(360줄)에서 차지하는 픽셀 수는 그만큼 늘어난다 — 즉 배율이 1.0일 때가
+// 게임에서 실제로 보이는 픽셀 크기다. 배지에 배율을 항상 띄워 둔다.
+let camZoom = 8.0;   // 보스보다 2.8배 작으므로 기본 배율도 그만큼 높다(1.0 = 게임 실제 크기)
+let baseFov = BASE_FOV;
+function applyAdaptiveFOV() {
+  const aspect = viewW() / viewH();
+  camera.aspect = aspect;
+  if (aspect >= BASE_ASPECT) baseFov = BASE_FOV;
+  else {
+    const baseVRad = BASE_FOV * Math.PI / 180;
+    const baseHorizontal = 2 * Math.atan(Math.tan(baseVRad / 2) * BASE_ASPECT);
+    const newVRad = 2 * Math.atan(Math.tan(baseHorizontal / 2) / aspect);
+    baseFov = Math.min(105, newVRad * 180 / Math.PI);
+  }
+  // 배율은 화면에 비치는 크기 배수 = tan(fov/2) 비율
+  camera.fov = 2 * Math.atan(Math.tan(baseFov * Math.PI / 360) / camZoom) * 180 / Math.PI;
+  camera.updateProjectionMatrix();
+}
+applyAdaptiveFOV();
+const camDist = GAME_DIST;                     // 게임과 같은 거리. 바꾸지 않는다(위 주석 참고)
+let camYaw = GAME_YAW, camPitch = GAME_PITCH;
+const target = new THREE.Vector3(0, 0.78, 0);  // 모델 중간 높이(게임은 발밑을 본다 — 화면 중앙에 두려고 올린 것뿐)
+function updateCam() {
+  camera.position.set(
+    target.x + camDist * Math.cos(camPitch) * Math.sin(camYaw),
+    target.y + camDist * Math.sin(camPitch),
+    target.z + camDist * Math.cos(camPitch) * Math.cos(camYaw)
+  );
+  camera.lookAt(target);
+  updateLightRig();
+}
+
+// ---------- 조명 리그 (게임 던전과 동일) ----------
+// 게임에서 던전을 밝히는 광원은 전부 '플레이어에게' 붙어 있다(횃불·근접광·시야광).
+// 몬스터는 그 빛을 몇 칸 떨어진 곳에서 받는다 — 광원을 몬스터 안에 두면 안쪽에서 밝혀지는
+// 전혀 다른 그림이 나온다. 그래서 플레이어가 서 있을 자리를 만들어 거기에 리그를 얹는다.
+// 카메라는 늘 플레이어 뒤에 있으므로, 카메라를 돌리면 플레이어도 같이 돈다
+// (= 플레이어가 몬스터 주위를 돌면서 보는 것과 같다).
+const PLAYER_DIST = 3.0;   // 몬스터와 플레이어 사이 거리(근접 교전 간격)
+let discMat = null;   // 바닥 재질 — 아래에서 만든다(모드마다 색이 다르다)
+let studioGrp = null; // 스튜디오 조명 그룹 — 아래에서 만든다(카메라를 따라 돈다)
+const ambientLight = new THREE.AmbientLight(0x1a1e12, 0.88);
+scene.add(ambientLight);
+const torch = new THREE.PointLight(0xffc488, 1.6, TILE * 4.5, 2.0);
+torch.castShadow = true; torch.shadow.mapSize.width = 512; torch.shadow.mapSize.height = 512; torch.shadow.bias = -0.002;
+scene.add(torch);
+const nearLight = new THREE.PointLight(0xfff0dd, 1.2, TILE * 1.4, 2.0);
+scene.add(nearLight);
+const viewLight = new THREE.SpotLight(0xffd2a0, 3.0, TILE * 7, Math.PI / 2.7, 0.8, 1.5);
+viewLight.castShadow = true; viewLight.shadow.mapSize.width = 1024; viewLight.shadow.mapSize.height = 1024;
+viewLight.shadow.bias = -0.0015; viewLight.shadow.camera.near = 0.5; viewLight.shadow.camera.far = TILE * 8;
+scene.add(viewLight);
+const lightTarget = new THREE.Object3D(); scene.add(lightTarget); viewLight.target = lightTarget;
+// 게임의 갱신식 그대로: 횃불 +2.5 / 근접광 +1.2 / 시야광 +3.0, 시야광은 플레이어가 보는 쪽 5칸.
+// 플레이어는 카메라와 몬스터 사이에 서서 몬스터를 바라본다.
+function updateLightRig() {
+  // 스튜디오 리그는 카메라를 따라 돈다(턴테이블) — 어느 각도에서 봐도 조명 관계가 같다.
+  // GAME_YAW 를 빼는 이유: 기본 시점에서 회전이 0 이어야 원본 뷰어와 똑같은 빛 배치가 된다.
+  if (studioGrp) studioGrp.rotation.y = camYaw - GAME_YAW;
+  const px = Math.sin(camYaw) * PLAYER_DIST, pz = Math.cos(camYaw) * PLAYER_DIST;
+  torch.position.set(px, 2.5, pz);
+  nearLight.position.set(px, 1.2, pz);
+  viewLight.position.set(px, 3.0, pz);
+  lightTarget.position.set(px - Math.sin(camYaw) * 5, 0, pz - Math.cos(camYaw) * 5);
+}
+updateCam();
+const castleMoon = new THREE.DirectionalLight(0x7e90c8, 0.16);
+castleMoon.position.set(20, 38, 16);
+castleMoon.castShadow = true; castleMoon.shadow.mapSize.set(1024, 1024);
+castleMoon.shadow.camera.near = 1; castleMoon.shadow.camera.far = 200; castleMoon.shadow.bias = -0.0008;
+castleMoon.shadow.camera.left = -12; castleMoon.shadow.camera.right = 12;
+castleMoon.shadow.camera.top = 12; castleMoon.shadow.camera.bottom = -12;
+castleMoon.visible = false; scene.add(castleMoon); scene.add(castleMoon.target);
+const castleHemi = new THREE.HemisphereLight(0x3a4030, 0x14160c, 0.35);
+scene.add(castleHemi);
+
+// ---------- 스튜디오 조명(뷰어 전용) ----------
+// 처음 올라온 뷰어(glutton_ghoul_viewer v3)의 조명을 값 그대로 가져온 것이다.
+// 색·세기·위치·그림자 카메라 범위까지 손대지 않았다 — 원본이 이 캐릭터에 맞춰 잡아 둔 값이다.
+// 원본은 월드 고정이었지만 여기서는 카메라를 따라 돌린다(아래 updateLightRig) —
+// 돌려서 뒤를 볼 때도 같은 조명으로 보여야 형태를 판단할 수 있기 때문이다.
+// 기본 시점에서는 회전이 0 이라 빛 배치가 원본과 정확히 같다.
+// 주의: 원본은 최상위 그룹을 π 돌려 놔서 이 광원들이 뒤통수를 비추고 있었다.
+// 지금은 정면이 -z 라(게임 규약) 키·언더가 얼굴과 배를 제대로 잡는다.
+const studioAmb = new THREE.AmbientLight(0x6b6070, 0.72);
+scene.add(studioAmb);
+// 방향이 있는 것만 그룹에 담아 카메라를 따라 돌린다(환경광은 방향이 없어 씬 직속).
+// 방향광의 target 은 기본값(월드 원점)을 그대로 둔다 — 그룹이 돌아도 빛은 계속 모델을 향한다.
+studioGrp = new THREE.Group(); scene.add(studioGrp);
+const studioKey = new THREE.DirectionalLight(0xfff0e2, 1.15);
+studioKey.position.set(-4, 10, -5);
+studioKey.castShadow = true; studioKey.shadow.mapSize.set(1024, 1024);
+studioKey.shadow.camera.near = 1; studioKey.shadow.camera.far = 26;
+studioKey.shadow.camera.left = -4; studioKey.shadow.camera.right = 4;
+studioKey.shadow.camera.top = 4.5; studioKey.shadow.camera.bottom = -2;
+studioKey.shadow.bias = -0.0008;
+studioGrp.add(studioKey);
+const studioRim = new THREE.DirectionalLight(0x6f86c0, 0.6);
+studioRim.position.set(5, 3, 5);
+studioGrp.add(studioRim);
+const studioUnder = new THREE.PointLight(0xb07a86, 0.45, 8, 2);
+studioUnder.position.set(0, 0.3, -1.0);
+studioGrp.add(studioUnder);
+const STUDIO_LIGHTS = [studioAmb, studioKey, studioRim, studioUnder];
+const GAME_LIGHTS = [ambientLight, torch, nearLight, viewLight, castleHemi];
+
+// ---------- 막(Act)별 환경 — 0번만 뷰어용이고 나머지는 게임 값 그대로 ----------
+const ACTS = [
+  // 스튜디오: 처음 올라온 뷰어의 환경을 그대로 되살린 것.
+  // 그 뷰어는 카메라가 모델에서 6~7칸 거리라 안개가 모델에 닿지 않았고 대기 원근도 없었다.
+  // 그래서 여기서도 둘 다 끈다 — 안 그러면 같은 조명을 넣어도 원본처럼 보이지 않는다.
+  // 대신 게임(1/2/3막)보다 채도가 높게 나온다. 색 판단은 막 모드에서 할 것.
+  { name: '스튜디오', studio: true, bg: 0x11101a, fogD: 0.0, aerial: 0x11101a, shadowC: 0x1a1826,
+    shadowS: 0.20, aerialS: 0.0, bloom: 0.68, vig: 0.34, floor: 0x090b0a },
+  { name: '1막', floor: 0x0d1109, bg: 0x070a06, fogD: 0.025, aerial: 0x1a2416, shadowC: 0x203a2c, shadowS: 0.42,
+    bloom: 0.62, amb: 0x1a1e12, ambI: 0.88, moon: false,
+    hemi: 0x3a4030, hemiG: 0x14160c, hemiI: 0.35 },
+  { name: '2막', floor: 0x101216, bg: 0x090b0e, fogD: 0.013, aerial: 0x16202c, shadowC: 0x222c54, shadowS: 0.42,
+    bloom: 0.70, amb: 0x444a54, ambI: 0.36, moon: true, moonC: 0x8ea0d8, moonI: 0.32,
+    hemi: 0x3a4360, hemiG: 0x141519, hemiI: 0.24 },
+  // 이 캐릭터의 팔레트는 이 3막 값에서 역산했다 — 색 판단은 여기서 할 것
+  { name: '3막', floor: 0x140d12, bg: 0x0b070a, fogD: 0.014, aerial: 0x1e1422, shadowC: 0x3c1a3a, shadowS: 0.25,
+    bloom: 0.62, amb: 0x42363c, ambI: 0.2, moon: true, moonC: 0x8fb0a4, moonI: 0.16,
+    hemi: 0x5a4250, hemiG: 0x161014, hemiI: 0.12 },
+];
+let actIdx = 0;
+function applyAct(i) {
+  const a = ACTS[i];
+  scene.background.setHex(a.bg);
+  scene.fog.color.setHex(a.bg); scene.fog.density = a.fogD;
+  quadMat.uniforms.uAerialColor.value.setHex(a.aerial);
+  quadMat.uniforms.uShadowColor.value.setHex(a.shadowC);
+  quadMat.uniforms.uShadowStr.value = a.shadowS;
+  quadMat.uniforms.uBloomStr.value = 0.85;
+  quadMat.uniforms.uAerialStr.value = (a.aerialS !== undefined) ? a.aerialS : 0.45;
+  quadMat.uniforms.uVig.value = (a.vig !== undefined) ? a.vig : 0.5;
+  bloomMat.uniforms.uThresh.value = a.bloom;
+  if (discMat) discMat.color.setHex(a.floor);
+  for (const L of STUDIO_LIGHTS) L.visible = !!a.studio;
+  for (const L of GAME_LIGHTS) L.visible = !a.studio;
+  if (a.studio) { castleMoon.visible = false; return; }
+  ambientLight.color.setHex(a.amb); ambientLight.intensity = a.ambI;
+  castleMoon.visible = a.moon;
+  if (a.moon) { castleMoon.color.setHex(a.moonC); castleMoon.intensity = a.moonI; }
+  castleHemi.color.setHex(a.hemi); castleHemi.groundColor.setHex(a.hemiG); castleHemi.intensity = a.hemiI;
+}
+applyAct(0);
+
+// ---------- 노멀 패스 (게임과 동일) ----------
+const _normalHidden = [];
+let _normalSkinCount = 0;
+function _hideNonSolid(root) {
+  _normalSkinCount = 0;
+  root.traverse(o => {
+    if (!o.visible) return;
+    const mm = o.material;
+    const organic = mm && (Array.isArray(mm) ? mm.some(x => x && x.userData && x.userData._organic)
+                                             : (mm.userData && mm.userData._organic));
+    if (o.isSprite || o.isPoints || organic || (o.userData && o.userData.fx) || (mm && mm.transparent)) {
+      o.visible = false; _normalHidden.push(o);
+      if (organic) { o.layers.enable(SKIN_TAG_LAYER); _normalSkinCount++; }
+    }
+  });
+}
+function renderNormalPass(sceneToRender) {
+  _normalHidden.length = 0;
+  _hideNonSolid(sceneToRender);
+  const prevOverride = sceneToRender.overrideMaterial;
+  sceneToRender.overrideMaterial = normalMaterial;
+  renderer.setRenderTarget(rtNormal); renderer.clear(); renderer.render(sceneToRender, camera);
+  for (const o of _normalHidden) o.visible = true;
+  _normalHidden.length = 0;
+  if (_normalSkinCount > 0) {
+    // scene.background가 Color면 three가 autoClear와 무관하게 강제 clear한다 → 2패스 동안 null.
+    const prevMask = camera.layers.mask, prevAuto = renderer.autoClear, prevBg = sceneToRender.background;
+    sceneToRender.overrideMaterial = skinTagMaterial;
+    sceneToRender.background = null;
+    camera.layers.set(SKIN_TAG_LAYER);
+    renderer.autoClear = false;
+    renderer.render(sceneToRender, camera);
+    sceneToRender.background = prevBg;
+    renderer.autoClear = prevAuto;
+    camera.layers.mask = prevMask;
+  }
+  sceneToRender.overrideMaterial = prevOverride;
+}
+
+// ---------- 픽셀 스냅 (게임과 동일) ----------
+// 게임은 카메라가 플레이어를 쫓느라 시선이 흔들려서 고정 쿼터니언을 쓴다.
+// 뷰어는 카메라를 사용자가 돌리므로, 그 시점의 카메라 축을 그대로 격자 기준으로 삼는다.
+const _pxRight = new THREE.Vector3(), _pxUp = new THREE.Vector3();
+const _pxSaveP = new THREE.Vector3();
+let _pxSnapped = false;
+function applyPixelSnap() {
+  _pxSnapped = false;
+  if (!PX_MODE) { quadMat.uniforms.uSubpixel.value.set(0, 0); return; }
+  const wpt = 2.0 * camDist * Math.tan(camera.fov * Math.PI / 360.0) / lowResH;
+  if (!(wpt > 0)) { quadMat.uniforms.uSubpixel.value.set(0, 0); return; }
+  _pxRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+  _pxUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+  _pxSaveP.copy(camera.position); _pxSnapped = true;
+  const ax = camera.position.dot(_pxRight), ay = camera.position.dot(_pxUp);
+  const dx = ax - Math.round(ax / wpt) * wpt;
+  const dy = ay - Math.round(ay / wpt) * wpt;
+  camera.position.addScaledVector(_pxRight, -dx).addScaledVector(_pxUp, -dy);
+  camera.updateMatrixWorld(true);
+  quadMat.uniforms.uSubpixel.value.set(dx / wpt / lowResW, dy / wpt / lowResH);
+}
+function releasePixelSnap() {
+  if (!_pxSnapped) return;
+  camera.position.copy(_pxSaveP);
+  camera.updateMatrixWorld(true); _pxSnapped = false;
+}
+function renderWithPost(sceneToRender) {
+  applyPixelSnap();
+  renderer.setRenderTarget(rt); renderer.clear(); renderer.render(sceneToRender, camera);
+  if (PX_MODE && quadMat.uniforms.uPxNormalStr.value > 0.001) renderNormalPass(sceneToRender);
+  if (quadMat.uniforms.uBloomStr.value > 0.001) {
+    renderer.setRenderTarget(rtBloom); renderer.clear(); renderer.render(bloomScene, quadCam);
+  }
+  renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
+  releasePixelSnap();
+}
+
+// ---------- 발밑 블롭 그림자 (게임과 동일) ----------
+// 게임 몬스터는 진짜 그림자를 던지지 않는다(그림자 패스 비용 때문에 castShadow를 전부 끈다).
+// 대신 발밑에 타원 한 장을 깐다 — 보스는 지름 2.3.
+const BLOB_TEX_S = 64;
+const blobTexData = new Uint8Array(BLOB_TEX_S * BLOB_TEX_S * 4);
+for (let by = 0; by < BLOB_TEX_S; by++) for (let bx = 0; bx < BLOB_TEX_S; bx++) {
+  const dx = (bx + 0.5) / BLOB_TEX_S - 0.5, dy = (by + 0.5) / BLOB_TEX_S - 0.5;
+  const d = Math.min(1, Math.hypot(dx, dy) * 2);
+  let a = d >= 1 ? 0 : (d < 0.55 ? 255 : Math.pow(1 - (d - 0.55) / 0.45, 0.85) * 255);
+  if (BLOB_STEPS > 0) a = Math.round((a / 255) * BLOB_STEPS) / BLOB_STEPS * 255;
+  const bi = (by * BLOB_TEX_S + bx) * 4;
+  blobTexData[bi] = 0; blobTexData[bi + 1] = 0; blobTexData[bi + 2] = 0; blobTexData[bi + 3] = a;
+}
+const blobTex = new THREE.DataTexture(blobTexData, BLOB_TEX_S, BLOB_TEX_S, THREE.RGBAFormat);
+blobTex.magFilter = THREE.NearestFilter; blobTex.minFilter = THREE.LinearFilter; blobTex.needsUpdate = true;
+const blobMatShared = new THREE.MeshBasicMaterial({ map: blobTex, color: 0x000000, transparent: true, opacity: 0.72, depthWrite: false });
+function makeBlobShadow(diameter) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blobMatShared);
+  m.rotation.x = -Math.PI / 2; m.position.y = 0.03;
+  m.scale.set(diameter, diameter, 1); m.renderOrder = -1;
+  return m;
+}
+
+// ===== 게임과 동일한 머티리얼/헬퍼 =====
+// 러프니스·메탈니스까지 게임 값 그대로여야 한다 — ?drough 램프(0.40~0.95)가 러프니스를 읽어
+// 하이라이트 배수를 정하므로, 0.9와 0.94는 서로 다른 밝기로 나온다.
+function getLowPolyMat(colorHex, isMetal = false) {
+  return new THREE.MeshStandardMaterial({
+    color: colorHex, flatShading: true,
+    roughness: isMetal ? 0.6 : 0.9,
+    metalness: isMetal ? 0.3 : 0.0
+  });
+}
+// ===== 유기체(피부·살) 표식 — 게임과 동일 =====
+// 이걸 걸어야 ① 하이라이트가 빠지고 ② 노멀이 부드러워지고 ③ 노멀 패스에서 피부로 표식된다.
+// 게임에서는 살로 된 몬스터의 skinMat에 자동으로 걸리지만, 전용 빌더가 자기 재질을 따로
+// 만들면 빠진다 — 이 구울처럼 재질을 직접 만드는 경우엔 반드시 손으로 걸어야 한다.
+const ORGANIC_MATTE = !/[?&]organic=0/.test(location.search);
+let ORGANIC_SMOOTH = 80;
+{ const m = /[?&]osmooth=([0-9.]+)/.exec(location.search); if (m) ORGANIC_SMOOTH = parseFloat(m[1]); }
+function markOrganic(m) {
+  if (!m) return m;
+  m.userData = m.userData || {}; m.userData._skin = true;
+  if (ORGANIC_SMOOTH > 0 && m.flatShading) { m.flatShading = false; m.needsUpdate = true; }
+  if (!ORGANIC_MATTE) return m;
+  if (m.onBeforeCompile && m.onBeforeCompile._organicMark) return m;
+  const prev = m.onBeforeCompile;
+  const fn = function (shader) {
+    if (prev) prev.call(this, shader);
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <lights_fragment_end>',
+      '#include <lights_fragment_end>\n\treflectedLight.directSpecular = vec3(0.0);\n\treflectedLight.indirectSpecular = vec3(0.0);'
+    );
+  };
+  fn._organicMark = true;
+  m.onBeforeCompile = fn;
+  m.userData._organic = true;
+  if (m.roughness !== undefined) m.roughness = 1.0;
+  m.needsUpdate = true;
+  return m;
+}
+function _smoothSkinGeo(geo, cosLimit) {
+  const pos = geo.attributes && geo.attributes.position;
+  const nrm = geo.attributes && geo.attributes.normal;
+  if (!pos || !nrm || pos.count !== nrm.count) return geo;
+  if (geo.userData && geo.userData._skinSmoothed) return geo;
+  const n = pos.count;
+  const buckets = new Map();
+  for (let i = 0; i < n; i++) {
+    const k = Math.round(pos.getX(i) * 1000) + ',' + Math.round(pos.getY(i) * 1000) + ',' + Math.round(pos.getZ(i) * 1000);
+    const a = buckets.get(k); if (a) a.push(i); else buckets.set(k, [i]);
+  }
+  const out = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { out[i * 3] = nrm.getX(i); out[i * 3 + 1] = nrm.getY(i); out[i * 3 + 2] = nrm.getZ(i); }
+  for (const arr of buckets.values()) {
+    if (arr.length < 2) continue;
+    for (const i of arr) {
+      const nx = nrm.getX(i), ny = nrm.getY(i), nz = nrm.getZ(i);
+      let sx = 0, sy = 0, sz = 0;
+      for (const j of arr) {
+        const jx = nrm.getX(j), jy = nrm.getY(j), jz = nrm.getZ(j);
+        if (nx * jx + ny * jy + nz * jz < cosLimit) continue;
+        sx += jx; sy += jy; sz += jz;
+      }
+      const len = Math.sqrt(sx * sx + sy * sy + sz * sz);
+      if (len < 1e-6) continue;
+      out[i * 3] = sx / len; out[i * 3 + 1] = sy / len; out[i * 3 + 2] = sz / len;
+    }
+  }
+  geo.setAttribute('normal', new THREE.BufferAttribute(out, 3));
+  geo.userData = geo.userData || {}; geo.userData._skinSmoothed = true;
+  return geo;
+}
+function smoothSkinNormals(root) {
+  if (!root || !(ORGANIC_SMOOTH > 0)) return;
+  const cosLimit = Math.cos(Math.min(180, ORGANIC_SMOOTH) * Math.PI / 180);
+  const skinGeos = new Set(), otherGeos = new Set();
+  const isSkin = (o) => {
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    return mats.length > 0 && mats.every(x => x && x.userData && x.userData._skin);
+  };
+  root.traverse(function (o) {
+    if (!o.isMesh || !o.geometry || !o.material) return;
+    (isSkin(o) ? skinGeos : otherGeos).add(o.geometry);
+  });
+  if (!skinGeos.size) return;
+  root.traverse(function (o) {
+    if (!o.isMesh || !o.geometry || !skinGeos.has(o.geometry)) return;
+    let g = o.geometry;
+    if (otherGeos.has(g)) { g = g.clone(); o.geometry = g; }
+    _smoothSkinGeo(g, cosLimit);
+  });
+}
+// 결정적 난수(같은 형태 재현)
+let _seed = 20260730;
+function rnd() { _seed = (_seed * 1664525 + 1013904223) % 4294967296; return _seed / 4294967296; }
+function jitterGeometry(geometry, amount) {
+  const pos = geometry.attributes.position;
+  const offsets = new Map();
+  const key = (x, y, z) => x.toFixed(3) + ',' + y.toFixed(3) + ',' + z.toFixed(3);
+  for (let i = 0; i < pos.count; i++) {
+    const k = key(pos.getX(i), pos.getY(i), pos.getZ(i));
+    let off = offsets.get(k);
+    if (!off) { off = [(rnd() - 0.5) * amount, (rnd() - 0.5) * amount, (rnd() - 0.5) * amount]; offsets.set(k, off); }
+    pos.setXYZ(i, pos.getX(i) + off[0], pos.getY(i) + off[1], pos.getZ(i) + off[2]);
+  }
+  geometry.computeVertexNormals(); return geometry;
+}
+// 게임의 보스 빌더와 같다 — 몬스터는 그림자를 던지지 않고 받기만 한다.
+// (그림자 패스 하나가 캐릭터 삼각형만큼 통째로 드는데, 발밑 블롭이 그 역할을 대신한다.)
+// 모델링 중에 형태를 보려면 '그림자: 스튜디오' 버튼으로 켤 수 있다.
+const _shadowCasters = [];
+function sh(o) { o.castShadow = false; o.receiveShadow = true; _shadowCasters.push(o); return o; }
+// ===== 공용 형태·병합 헬퍼 (구울 뷰어와 같은 코드) =====
+// 울룩불룩한 종양 혹 하나
+function lump(r, mat, detail) {
+  const m = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(r, detail === undefined ? 0 : detail), mat));
+  jitterGeometry(m.geometry, r * 0.30);
+  return m;
+}
+// 타원체 표면을 종양 혹으로 뒤덮음(원화의 컬리플라워 살덩이 질감)
+function tumorShell(parent, o) {
+  const out = [];
+  const n = o.count;
+  for (let i = 0; i < n; i++) {
+    const k = i + 0.5;
+    const phi = Math.acos(1 - 2 * k / n);
+    const th = Math.PI * (1 + Math.sqrt(5)) * k;
+    const ux = Math.sin(phi) * Math.cos(th), uy = Math.cos(phi), uz = Math.sin(phi) * Math.sin(th);
+    const jr = 0.90 + rnd() * 0.18;
+    const x = o.cx + ux * o.rx * jr, y = o.cy + uy * o.ry * jr, z = o.cz + uz * o.rz * jr;
+    if (o.skip && o.skip(x, y, z)) continue;
+    const r = o.rMin + rnd() * (o.rMax - o.rMin);
+    const m = lump(r, o.mat || fleshMat((o.yBase || 0) + y), rnd() > 0.72 ? 1 : 0);
+    m.position.set(x, y, z);
+    m.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
+    m.scale.set(1 + rnd() * 0.35, 0.8 + rnd() * 0.4, 1 + rnd() * 0.35);
+    m.userData.bs = m.scale.clone();
+    parent.add(m); out.push(m);
+  }
+  return out;
+}
+// 가는 균열/정맥 라인
+function addSeam(parent, from, to, w, mat) {
+  const a = new THREE.Vector3(...from), b = new THREE.Vector3(...to);
+  const len = a.distanceTo(b);
+  const seg = sh(new THREE.Mesh(new THREE.BoxGeometry(w, len, w * 0.8), mat));
+  seg.position.copy(a).add(b).multiplyScalar(0.5);
+  seg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+  parent.add(seg);
+}
+// 뾰족한 가시(어깨/등)
+function addSpike(parent, x, y, z, h, rx, rz) {
+  const s = sh(new THREE.Mesh(new THREE.ConeGeometry(h * 0.22, h, 4), spikeMat));
+  s.position.set(x, y, z); s.rotation.set(rx, rnd() * 3, rz); parent.add(s); return s;
+}
+
+
+
+// ============================================================
+//  드로우콜 최적화: 움직이지 않는 살덩이들을 머티리얼별로 하나의 지오메트리로 병합
+//  (게임에 넣을 때 380여 개의 드로우콜 → 20개 미만으로 감소)
+// ============================================================
+function mergeGeos(geos) {
+  const list = geos.map(g => (g.index ? g.toNonIndexed() : g));
+  let n = 0; list.forEach(g => n += g.attributes.position.count);
+  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3);
+  let off = 0;
+  list.forEach(g => {
+    pos.set(g.attributes.position.array, off * 3);
+    nor.set(g.attributes.normal.array, off * 3);
+    off += g.attributes.position.count;
+  });
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  return out;
+}
+function mergeStatic(root, skip) {
+  const skipSet = new Set(skip || []);
+  const byMat = new Map();
+  const walk = (obj, mat4) => {
+    obj.children.slice().forEach(ch => {
+      if (skipSet.has(ch)) return;
+      const local = new THREE.Matrix4().compose(ch.position, ch.quaternion, ch.scale);
+      const m = mat4.clone().multiply(local);
+      if (ch.isMesh) {
+        const g = ch.geometry.clone().applyMatrix4(m);
+        if (!byMat.has(ch.material)) byMat.set(ch.material, []);
+        byMat.get(ch.material).push(g);
+        obj.remove(ch);
+      } else if (ch.isGroup) {
+        walk(ch, m);
+        if (ch.children.length === 0) obj.remove(ch);
+      }
+    });
+  };
+  walk(root, new THREE.Matrix4());
+  byMat.forEach((geos, mat) => {
+    const mesh = new THREE.Mesh(mergeGeos(geos), mat);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    root.add(mesh);
+  });
+}
+// ============================================================
+//  새끼 포란충 — 3막 일반 몹. 보스(brood_tick_viewer_v1)의 유생 단계.
+//  같은 종으로 읽히되 한눈에 '아직 어리다'가 보여야 한다. 보스와 다르게 잡은 것:
+//   · 배는 알주머니가 아니라 **제 노른자 주머니**다 — 알 80개가 아니라 큰 노른자 덩이 하나.
+//     아직 산란을 못 하는 단계라는 뜻이고, 실루엣도 보스와 확실히 갈린다.
+//   · 외골격 판이 위쪽에만 있다(옆구리는 아직 말랑하다). 금빛 이음선도 그만큼 성기다.
+//   · 머리가 몸에 비해 크고 홑눈도 크다(머리/배 반지름 비 0.58 — 보스는 0.38).
+//   · 다리는 짧고 무릎이 몸보다 **낮다**. 보스의 장님거미 같은 높은 무릎은 성체의 특징이다.
+//  크기: 높이 약 1.45 · 발자국 약 1.6×1.7 — 게임 일반 몬스터 크기.
+//  정면은 -z (게임 규약)
+// ============================================================
+
+// ---------- 팔레트 ----------
+// 보스 것을 그대로 쓰면 안 된다. 이 게임의 밝기는 '베이스 색'이 아니라 '그 높이에 빛이 얼마나
+// 오느냐'로 정해지는데, 새끼는 보스보다 2.4배 낮게 앉아 있어 같은 베이스가 훨씬 밝게 나온다.
+// 그래서 3막 환경에서 **이 모델의 실제 높이에** 프로브를 놓고 다시 역산했다(절차는 README).
+// 목표 출력은 보스와 같은 색이다 — 같은 종이 같은 층에서 같은 색으로 보여야 한다.
+// 실측 오차는 홑눈(6/255)을 빼면 전부 2/255 이내다. 베이스가 보스와 크게 다른 것이 정상이다:
+// 예를 들어 위쪽 판(chitinLit)은 보스가 0x7393a2 인데 여기서는 0x151b25 다 — 보스의 그 판은
+// y=3.45 라 빛이 거의 안 닿지만 새끼의 판은 y=1.4 라 훨씬 밝게 받는다. 둘 다 화면 출력은 53/255다.
+const chitinMat  = getLowPolyMat(0x1d262e);   // 각진 외골격 판(창백한 청백)
+const chitinLit  = getLowPolyMat(0x151b25);   // 빛 받는 위쪽 판
+const chitinDk   = getLowPolyMat(0x0a0e15);   // 그늘진 아래쪽 판
+const seamMat    = getLowPolyMat(0x2b2311, true);  // 판 이음선의 금빛(금속)
+const eyeMat     = getLowPolyMat(0x251f07, true);  // 황금 홑눈
+// 홑눈만 색이 아니라 발광 세기로 맞췄다 — 밝기의 대부분이 emissive 라 베이스 색으로는 안 내려간다.
+// 보스 0.55 → 0.196 (배수 0.356). 아래 animate() 의 깜빡임 식에도 같은 배수가 곱해져 있다.
+const eyeGlowMat = new THREE.MeshStandardMaterial({ color: 0x15150d, emissive: 0xffcf60, emissiveIntensity: 0.196, roughness: 0.35, metalness: 0.4 });
+// 껍질 투명도는 보스와 같은 0.50. 속이 알 무더기가 아니라 덩이 하나라 더 잘 비친다.
+const sacMat     = new THREE.MeshStandardMaterial({ color: 0x210f17, roughness: 0.72, flatShading: true, transparent: true, opacity: 0.50 });  // 반투명 노른자 주머니
+const sacRimMat  = getLowPolyMat(0x0f0a11);   // 주머니 아래쪽 짙은 부분
+const eggMat     = new THREE.MeshStandardMaterial({ color: 0x140910, emissive: 0x3a1020, emissiveIntensity: 0.55, roughness: 0.6, flatShading: true });
+const legMat     = getLowPolyMat(0x121923);   // 다리(가늘고 창백)
+const oozeMat    = new THREE.MeshStandardMaterial({ color: 0x242a16, transparent: true, opacity: 0.66, roughness: 0.3, flatShading: true });
+const poolMat    = new THREE.MeshStandardMaterial({ color: 0x11160c, roughness: 0.55, flatShading: true, transparent: true, opacity: 0.85 });
+const mawMat     = getLowPolyMat(0x090606);   // 입 안쪽
+[sacMat, sacRimMat, eggMat, mawMat].forEach(markOrganic);   // 살·노른자는 유기체(하이라이트 제외)
+
+const bugObj = new THREE.Group(); scene.add(bugObj);
+const bodyGrp = new THREE.Group(); bugObj.add(bodyGrp);   // 몸통 전체(걸을 때 출렁임)
+
+// 껍질 조각 하나를 주머니 표면에 '접하게' 붙인다(보스와 같은 방식).
+const _sacPos = new THREE.Vector3(0, 0, 0);
+const PLATE_DIRS = [];   // 이음선 그물을 여기서 뽑는다
+function shellPlate(dx, dy, dz, r, sx, sz, mat, jit) {
+  const d = new THREE.Vector3(dx, dy, dz).normalize();
+  PLATE_DIRS.push({ d: d.clone(), r });
+  const m = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), mat));
+  m.scale.set(sx, 0.24, sz);
+  m.position.copy(d).multiplyScalar(SAC_R * 0.97).add(_sacPos);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d);
+  jitterGeometry(m.geometry, r * (jit === undefined ? 0.20 : jit));
+  bodyGrp.add(m); return m;
+}
+
+// ---------- 배 = 노른자 주머니 ----------
+const SAC_C = { x: 0, y: 0.88, z: 0.14 }, SAC_R = 0.52;
+const sacGrp = new THREE.Group(); sacGrp.position.set(SAC_C.x, SAC_C.y, SAC_C.z); bodyGrp.add(sacGrp);
+// 겉껍질 — 반투명이라 노멀 패스에서 자동으로 빠진다(외곽선이 안 생긴다)
+const sacShell = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(SAC_R, 2), sacMat));
+sacShell.scale.set(1.0, 0.96, 1.08); jitterGeometry(sacShell.geometry, 0.04); sacGrp.add(sacShell);
+// 속 — 보스는 알 80개지만 새끼는 아직 제 노른자를 안고 있다.
+// 큰 덩이 하나 + 떨어져 나온 작은 알갱이 몇 개. 한 그룹에 담아 병합해 드로우콜 1개로 쓴다.
+const eggGrp = new THREE.Group(); sacGrp.add(eggGrp);
+{
+  const yolk = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(SAC_R * 0.62, 1), eggMat));
+  yolk.scale.set(1.04, 0.90, 1.0); yolk.position.set(0, -0.04, 0.02);
+  jitterGeometry(yolk.geometry, SAC_R * 0.10); eggGrp.add(yolk);
+  for (let i = 0; i < 7; i++) {
+    const k = i + 0.5, n = 7;
+    const phi = Math.acos(1 - 2 * k / n), th = Math.PI * (1 + Math.sqrt(5)) * k;
+    const rr = SAC_R * (0.62 + rnd() * 0.20);
+    const e = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.055 + rnd() * 0.05, 0), eggMat));
+    e.position.set(Math.sin(phi) * Math.cos(th) * rr, Math.cos(phi) * rr * 0.86, Math.sin(phi) * Math.sin(th) * rr);
+    e.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
+    eggGrp.add(e);
+  }
+}
+mergeStatic(eggGrp);
+
+// 주머니 아래로 처진 짙은 살
+const sacLow = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(SAC_R * 0.80, 1), sacRimMat));
+sacLow.scale.set(1.02, 0.50, 1.0); sacLow.position.set(0, -SAC_R * 0.70, 0.01);
+jitterGeometry(sacLow.geometry, 0.04); sacGrp.add(sacLow);
+
+// ---------- 주머니를 감싼 각진 외골격 판 ----------
+// 보스는 13장이 주머니를 거의 다 감싸지만, 새끼는 등 쪽 6장뿐이다 — 옆구리·배가 말랑하게
+// 드러나 있어야 '아직 굳지 않은 껍질'로 읽힌다(삼각형도 그만큼 싸다).
+_sacPos.set(SAC_C.x, SAC_C.y, SAC_C.z);
+shellPlate( 0.04,  1.00,  0.06, 0.34, 1.10, 1.05, chitinLit);
+shellPlate(-0.62,  0.80,  0.08, 0.27, 1.05, 1.00, chitinLit);
+shellPlate( 0.64,  0.78,  0.04, 0.27, 1.05, 1.00, chitinLit);
+shellPlate(-0.18,  0.66,  0.76, 0.27, 1.05, 1.00, chitinMat);
+shellPlate( 0.24,  0.62,  0.80, 0.25, 1.00, 0.95, chitinMat);
+shellPlate( 0.02,  0.34,  1.00, 0.20, 0.95, 0.90, chitinDk);
+// ---------- 판 사이를 흐르는 금빛 이음선 ----------
+// 보스와 같은 방식(판 인접쌍을 큰 원으로 잇는다)이되 실이 훨씬 가늘다 —
+// 금빛은 껍질이 굳으면서 짙어지는 것이라, 새끼는 겨우 비칠 정도여야 한다.
+const SEAM_R = SAC_R * 1.165;
+function seamArc(A, B, w) {
+  const n = Math.max(2, Math.round(A.angleTo(B) / 0.30));
+  let prev = null;
+  for (let i = 0; i <= n; i++) {
+    const v = A.clone().lerp(B, i / n).normalize().multiplyScalar(SEAM_R).add(_sacPos);
+    if (prev) addSeam(bodyGrp, prev.toArray(), v.toArray(), w, seamMat);
+    prev = v;
+  }
+}
+let _seamCount = 0;
+for (let i = 0; i < PLATE_DIRS.length; i++) {
+  for (let j = i + 1; j < PLATE_DIRS.length; j++) {
+    const a = PLATE_DIRS[i], b = PLATE_DIRS[j];
+    if (a.d.angleTo(b.d) > 1.02) continue;              // 붙어 있는 판끼리만 잇는다
+    seamArc(a.d, b.d, 0.006 + rnd() * 0.004);
+    _seamCount++;
+  }
+}
+
+// ---------- 가슴마디 — 머리와 배를 잇는다 ----------
+// 없으면 옆에서 봤을 때 머리가 몸에서 떨어져 떠 보인다. 앞다리 밑동(z=-0.34)이
+// 붙을 자리이기도 하다. 정적이라 bodyGrp 에 넣어 그대로 병합된다.
+{
+  const thx = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.26, 1), chitinMat));
+  thx.scale.set(0.95, 0.80, 1.12); thx.position.set(0, 0.80, -0.40);
+  jitterGeometry(thx.geometry, 0.05); bodyGrp.add(thx);
+  const collar = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.19, 0), chitinDk));
+  collar.scale.set(1.05, 0.85, 0.55); collar.position.set(0, 0.78, -0.56);
+  bodyGrp.add(collar);
+}
+
+// ---------- 머리 — 황금 홑눈 뭉치 ----------
+// 새끼는 머리가 몸에 비해 크고 홑눈도 크다. 대신 개수는 적다(홑눈은 자라면서 늘어난다).
+const HEAD = { x: 0, y: 0.74, z: -0.62 };
+const headGrp = new THREE.Group(); headGrp.position.set(HEAD.x, HEAD.y, HEAD.z); bodyGrp.add(headGrp);
+const headCore = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.30, 1), chitinMat));
+headCore.scale.set(1.08, 0.94, 1.0); jitterGeometry(headCore.geometry, 0.06); headGrp.add(headCore);
+const eyeBalls = [];
+for (let i = 0; i < 12; i++) {
+  const k = i + 0.5, n = 12;
+  const phi = Math.acos(1 - 2 * k / n), th = Math.PI * (1 + Math.sqrt(5)) * k;
+  const ux = Math.sin(phi) * Math.cos(th), uy = Math.cos(phi) * 0.85, uz = Math.sin(phi) * Math.sin(th);
+  if (uz > 0.35) continue;                       // 뒤통수에는 안 붙인다
+  // 크기 폭이 넓으면 제일 큰 놈이 머리 밖으로 튀어나와 포도송이처럼 보인다(실측: 0.145 = 머리 반지름의 절반)
+  const r = 0.055 + rnd() * 0.052;
+  const e = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), i % 3 === 0 ? eyeGlowMat : eyeMat));
+  e.position.set(ux * 0.26, uy * 0.23, uz * 0.25 - 0.06);
+  headGrp.add(e); eyeBalls.push(e);
+}
+// 입(아래쪽 어두운 구멍) + 좌우 턱
+const maw = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.13, 1), mawMat));
+maw.scale.set(1.1, 0.7, 0.7); maw.position.set(0, -0.18, -0.12); headGrp.add(maw);
+const jawGrp = new THREE.Group(); jawGrp.position.set(0, -0.16, -0.06); headGrp.add(jawGrp);
+[-1, 1].forEach(s => {
+  const j = sh(new THREE.Mesh(new THREE.ConeGeometry(0.040, 0.32, 4), legMat));
+  j.position.set(s * 0.11, -0.10, -0.16); j.rotation.set(-0.5, 0, s * 0.42);
+  jawGrp.add(j);
+});
+
+// ---------- 늘어지는 점액 ----------
+// 보스는 네 뭉치가 바닥까지 늘어지지만, 새끼는 입 밑 한 뭉치뿐이고 짧다.
+function oozeStrand(parent, x, y, z, len) {
+  const r0 = 0.016 + rnd() * 0.008;
+  const g = new THREE.CylinderGeometry(r0, 0.005, len, 4);
+  g.translate(0, -len / 2, 0);                       // 매달린 위쪽 끝이 원점
+  const m = new THREE.Mesh(g, oozeMat);
+  m.position.set(x, y, z); parent.add(m);
+  const bead = new THREE.Mesh(new THREE.IcosahedronGeometry(0.022 + rnd() * 0.014, 0), oozeMat);
+  bead.scale.set(1, 1.35, 1);
+  bead.position.set(x, y - len - 0.01, z); parent.add(bead);
+}
+const oozeGroups = [];
+function oozeCluster(ox, oy, oz, list) {
+  const g = new THREE.Group(); g.position.set(ox, oy, oz); bodyGrp.add(g);
+  list.forEach(p => oozeStrand(g, p[0], p[1], p[2], p[3]));
+  oozeGroups.push({ g, ph: rnd() * 6.28 });
+  return g;
+}
+oozeCluster(0, 0.55, -0.58, [
+  [-0.13, 0, 0.05, 0.37], [-0.02, 0.03, -0.07, 0.27], [0.09, -0.02, 0.06, 0.42], [0.17, 0.02, -0.05, 0.23],
+]);
+// 바닥에 고인 자국 — 보스보다 적고 작다. 한 그룹에 담아 병합(드로우콜 1개).
+const poolGrp = new THREE.Group(); bugObj.add(poolGrp);
+[[-0.22, 0.018, -0.52, 0.20], [0.30, 0.018, -0.20, 0.15], [0.02, 0.018, 0.42, 0.18]].forEach(p => {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(p[3], p[3] * 0.9, 0.02, 10), poolMat);
+  m.position.set(p[0], p[1], p[2]); m.rotation.y = rnd() * 3; poolGrp.add(m);
+});
+mergeStatic(poolGrp);
+
+// ---------- 다리 6개 ----------
+function boneSeg(len, rBase, rTip, mat) {
+  const g = new THREE.CylinderGeometry(rTip, rBase, len, 5);
+  g.translate(0, len / 2, 0);
+  return sh(new THREE.Mesh(g, mat));
+}
+// 보스와 같은 방식으로 푼다. 다만 무릎각(0.75)이 커서 무릎이 몸보다 **낮게** 선다 —
+// 여기가 성체와 갈리는 지점이다(보스는 0.62로 무릎이 배보다 높이 솟는다).
+//   무릎 높이 = ATTACH_Y + FEMUR·cos(0.75) = 0.62 + 0.40·0.7317 = 0.913  (배 위쪽은 1.40)
+//   발끝 높이 = 무릎 높이 − (TIBIA + 발톱 0.12)·cos(0.75+2.189) = 0  ← 여기서 TIBIA가 나온다
+const FEMUR = 0.40, TIBIA = 0.812;
+// [부착 x, y, z, 다리 평면 요(앞뒤로 벌리는 각)]
+const LEG_SPEC = [
+  [0.30, 0.62, -0.34,  0.66],
+  [0.36, 0.62,  0.04,  0.02],
+  [0.31, 0.62,  0.40, -0.50],
+];
+const legs = [];
+[1, -1].forEach(side => LEG_SPEC.forEach((L, i) => {
+  const root = new THREE.Group();
+  root.position.set(side * L[0], L[1], L[2]);
+  root.rotation.y = side * L[3];              // 다리 평면을 앞/뒤로 돌린다
+  bodyGrp.add(root);
+  const femurGrp = new THREE.Group();
+  femurGrp.rotation.z = -side * 0.75;
+  root.add(femurGrp);
+  femurGrp.add(boneSeg(FEMUR, 0.052, 0.038, legMat));
+  // 밑동 관절은 다리와 함께 움직이지 않는다 — 몸통에 직접 붙여 드로우콜을 아낀다
+  const coxa = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.070, 0), chitinDk));
+  coxa.scale.set(1.0, 0.8, 1.0); jitterGeometry(coxa.geometry, 0.02);
+  coxa.position.copy(root.position); bodyGrp.add(coxa);
+  // 무릎에서 꺾여 바닥으로 내려간다
+  const kneeGrp = new THREE.Group(); kneeGrp.position.y = FEMUR;
+  kneeGrp.rotation.z = -side * 2.189;
+  femurGrp.add(kneeGrp);
+  kneeGrp.add(boneSeg(TIBIA, 0.036, 0.010, legMat));
+  // 발톱 — 보스처럼 따로 어두운 재질을 쓰지 않는다. 이 크기에서는 안 보이는데
+  // 재질만 하나 더 늘어 다리마다 드로우콜이 붙는다.
+  const tip = sh(new THREE.Mesh(new THREE.ConeGeometry(0.019, 0.14, 4), legMat));
+  tip.position.y = TIBIA + 0.05; tip.rotation.x = Math.PI; kneeGrp.add(tip);
+  legs.push({ root, femurGrp, kneeGrp, side, idx: i,
+              baseFemur: femurGrp.rotation.z, baseKnee: kneeGrp.rotation.z,
+              phase: (i + (side > 0 ? 0 : 1.5)) * (Math.PI / 1.5) });   // 삼각보행 위상
+}));
+
+// ---------- 드로우콜 병합(움직이는 그룹은 제외) ----------
+mergeStatic(headGrp, [jawGrp]);
+mergeStatic(jawGrp);
+mergeStatic(sacGrp, [eggGrp]);
+legs.forEach(L => { mergeStatic(L.kneeGrp); mergeStatic(L.femurGrp, [L.kneeGrp]); });
+oozeGroups.forEach(o => mergeStatic(o.g));
+mergeStatic(bodyGrp, [sacGrp, headGrp, ...legs.map(L => L.root), ...oozeGroups.map(o => o.g)]);
+// 게임의 일반 몬스터는 진짜 그림자 대신 발밑 블롭 한 장을 깐다(보스 2.3 / 이 크기는 1.5)
+if (BLOB_ON) bugObj.add(makeBlobShadow(1.5));
+
+// ===== 위치 파악용 그리드 + 좌표 숫자 (토글) =====
+const gridGroup = new THREE.Group(); gridGroup.visible = false; scene.add(gridGroup);
+const grid = new THREE.GridHelper(3, 12, 0x556070, 0x2e3640); grid.position.y = 0.03; gridGroup.add(grid);
+function axisLine(from, to, color) {
+  const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...from), new THREE.Vector3(...to)]);
+  return new THREE.Line(g, new THREE.LineBasicMaterial({ color }));
+}
+gridGroup.add(axisLine([-1.6, 0.04, 0], [1.6, 0.04, 0], 0xc0504a));
+gridGroup.add(axisLine([0, 0.04, -1.6], [0, 0.04, 1.6], 0x4a6ac0));
+gridGroup.add(axisLine([0, 0, 0], [0, 1.7, 0], 0x4aa05a));
+function makeLabel(text, x, y, z, color = '#cfd8e0') {
+  const cv = document.createElement('canvas'); cv.width = 128; cv.height = 64;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = color; ctx.font = 'bold 40px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, 64, 32);
+  const tex = new THREE.CanvasTexture(cv);
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+  spr.position.set(x, y, z); spr.scale.set(0.24, 0.12, 1); gridGroup.add(spr);
+}
+for (let i = -3; i <= 3; i++) {
+  if (i !== 0) { const v = i * 0.5; makeLabel(v.toFixed(1), v, 0.06, 0.11, '#d08a84'); makeLabel(v.toFixed(1), 0.13, 0.06, v, '#8a9ad0'); }
+}
+for (let i = 1; i <= 6; i++) { const y = i * 0.25; makeLabel(y.toFixed(2), 0.11, y, 0, '#8ad08a'); }
+makeLabel('+X', 1.7, 0.10, 0, '#e0a0a0'); makeLabel('+Z', 0, 0.10, 1.7, '#a0b0e0'); makeLabel('+Y', 0.14, 1.8, 0, '#a0e0a0');
+
+
+// ---------- 바닥 ----------
+// 게임 던전 바닥과 같은 무광 돌(?srough 기본 1.0).
+const disc = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.4, 0.05, 48), getLowPolyMat(0x0d1109));
+disc.material.roughness = 1.0;
+disc.position.y = 0.0; disc.receiveShadow = true; scene.add(disc);
+discMat = disc.material; applyAct(actIdx);   // 바닥이 생겼으니 현재 모드 색을 다시 입힌다
+
+// ===== 인터랙션 =====
+let autoSpin = true, walking = false, walkPhase = 0;
+let bitePhase = -1, spewPhase = -1, deadPhase = -1, sacSwell = 1;
+let studioShadow = false;
+
+const verEl = document.getElementById('ver');
+function updateVer() {
+  const real = Math.abs(camZoom - 1) < 0.02;
+  verEl.innerHTML = 'brood_tick_larva_viewer ' + VIEWER_VERSION + (PX_MODE ? ' · px' : ' · px=0')
+    + '<br>' + ACTS[actIdx].name + ' · 거리 ' + camDist.toFixed(1) + ' (게임과 동일)'
+    + '<br>' + camZoom.toFixed(1) + '× '
+    + (real ? '<span style="color:#8ad08a">게임 실제 크기</span>' : '<span style="color:#d08a84">확대</span>');
+}
+
+let dragging = false, lastX = 0, lastY = 0, pinchD = 0, pinching = false;
+const ZOOM_MIN = 1.0, ZOOM_MAX = 28.0;   // 1.0 = 게임에서 실제로 보이는 픽셀 크기
+canvas.addEventListener('mousedown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  camYaw -= (e.clientX - lastX) * 0.01;
+  camPitch = Math.max(-1.2, Math.min(1.4, camPitch + (e.clientY - lastY) * 0.01));
+  lastX = e.clientX; lastY = e.clientY; updateCam();
+});
+window.addEventListener('mouseup', () => dragging = false);
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  camZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, camZoom * Math.exp(-e.deltaY * 0.0015)));
+  applyAdaptiveFOV(); updateVer();
+}, { passive: false });
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (e.touches.length === 1) { dragging = true; pinching = false; lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; }
+  else if (e.touches.length === 2) { pinching = true; dragging = false; pinchD = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); }
+}, { passive: false });
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (pinching && e.touches.length === 2) {
+    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    camZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, camZoom * (d / Math.max(1, pinchD))));
+    pinchD = d; applyAdaptiveFOV(); updateVer();
+  } else if (dragging && e.touches.length === 1) {
+    const t = e.touches[0];
+    camYaw -= (t.clientX - lastX) * 0.01;
+    camPitch = Math.max(-1.2, Math.min(1.4, camPitch + (t.clientY - lastY) * 0.01));
+    lastX = t.clientX; lastY = t.clientY; updateCam();
+  }
+}, { passive: false });
+canvas.addEventListener('touchend', e => { if (e.touches.length === 0) { dragging = false; pinching = false; } }, { passive: false });
+
+// 버튼에 포커스가 남지 않게 한다. 포커스된 요소가 보이는 영역 밖에 걸쳐 있으면 브라우저가
+// 그걸 보이게 하려고 문서를 스크롤해서, 캔버스가 밀리고 캐릭터 윗부분만 남는다.
+// mousedown 을 막으면 포커스 자체가 안 잡히고, 그래도 잡히는 경우를 대비해 클릭 뒤 blur 한다.
+for (const el of document.querySelectorAll('.btn')) {
+  el.addEventListener('mousedown', e => e.preventDefault());
+  el.addEventListener('click', () => { el.blur(); if (window.scrollX || window.scrollY) window.scrollTo(0, 0); });
+}
+
+document.getElementById('spinBtn').addEventListener('click', e => { autoSpin = !autoSpin; e.target.textContent = '자동회전: ' + (autoSpin ? '켬' : '끔'); });
+document.getElementById('walkBtn').addEventListener('click', e => { walking = !walking; e.target.classList.toggle('on', walking); });
+const idleAtk = () => bitePhase < 0 && spewPhase < 0 && deadPhase < 0;
+document.getElementById('biteBtn').addEventListener('click', () => { if (idleAtk()) bitePhase = 0; });
+document.getElementById('spewBtn').addEventListener('click', () => { if (idleAtk()) spewPhase = 0; });
+// 죽음은 토글이다 — 누르면 쓰러지고 한 번 더 누르면 원래 자세로 돌아온다(형태 확인용)
+document.getElementById('deadBtn').addEventListener('click', e => {
+  if (deadPhase >= 0) {
+    deadPhase = -1;
+    bodyGrp.rotation.set(0, 0, 0); bodyGrp.position.x = 0; headGrp.rotation.x = 0; jawGrp.rotation.x = 0; sacSwell = 1;
+    eyeGlowMat.emissiveIntensity = 0.196; eggMat.emissiveIntensity = 0.55;
+    for (const L of legs) { L.femurGrp.rotation.z = L.baseFemur; L.kneeGrp.rotation.z = L.baseKnee; }
+  } else {
+    deadPhase = 0; bitePhase = -1; spewPhase = -1;
+    bugObj.position.z = 0;
+  }
+  e.target.classList.toggle('on', deadPhase >= 0);
+});
+// 게임은 몬스터 그림자를 끄고 블롭으로 대신한다(성능). 스튜디오에서는 형태가 읽히도록 켠다.
+function applyShadowMode(on) {
+  studioShadow = on;
+  for (const o of _shadowCasters) o.castShadow = on;
+  bugObj.traverse(o => { if (o.isMesh && o !== disc && o.material !== blobMatShared) o.castShadow = on; });
+  const el = document.getElementById('shadowBtn');
+  el.textContent = '그림자: ' + (on ? '켬' : '끔');
+  el.classList.toggle('on', on);
+}
+document.getElementById('actBtn').addEventListener('click', e => {
+  actIdx = (actIdx + 1) % ACTS.length; applyAct(actIdx); e.target.textContent = ACTS[actIdx].name;
+  applyShadowMode(!!ACTS[actIdx].studio);   // 막으로 넘어가면 게임과 같이 그림자를 끈다
+  updateVer();
+});
+document.getElementById('shadowBtn').addEventListener('click', () => applyShadowMode(!studioShadow));
+document.getElementById('gridBtn').addEventListener('click', e => { gridGroup.visible = !gridGroup.visible; e.target.classList.toggle('on', gridGroup.visible); });
+document.getElementById('resetBtn').addEventListener('click', () => {
+  camZoom = 8.0; camYaw = GAME_YAW; camPitch = GAME_PITCH; applyAdaptiveFOV(); updateCam(); updateVer();
+});
+
+function onResize() {
+  applyAdaptiveFOV();
+  renderer.setSize(viewW(), viewH());
+  const lr = computeLowRes(viewW(), viewH());
+  lowResW = lr[0]; lowResH = lr[1];
+  rt.setSize(lowResW, lowResH);
+  // r128의 setSize는 depthTexture를 안 줄인다 — 손으로 맞추지 않으면 리사이즈 후 외곽선이 깨진다.
+  rt.depthTexture.image.width = lowResW; rt.depthTexture.image.height = lowResH; rt.depthTexture.needsUpdate = true;
+  rtNormal.setSize(lowResW, lowResH);
+  bloomW = Math.max(160, Math.floor(lowResW / 2)); bloomH = Math.max(120, Math.floor(lowResH / 2));
+  rtBloom.setSize(bloomW, bloomH);
+  bloomMat.uniforms.uTexel.value.set(1 / bloomW, 1 / bloomH);
+  quadMat.uniforms.uTexel.value.set(1 / lowResW, 1 / lowResH);
+  updateCam();
+}
+window.addEventListener('resize', onResize);
+window.addEventListener('orientationchange', () => setTimeout(onResize, 250));
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', onResize);
+  // 어떤 이유로든 확대되어 화면이 잘려 보이면(더블탭 확대 등) 다시 맞춘다.
+  window.visualViewport.addEventListener('scroll', onResize);
+}
+
+if (('ontouchstart' in window) || navigator.maxTouchPoints > 0) {
+  document.getElementById('hint').textContent = '한 손가락: 회전 · 두 손가락: 확대축소';
+}
+applyShadowMode(true);   // 시작은 스튜디오 모드 — 형태를 보라고 그림자를 켠 채로 연다
+updateVer();
+// ---------- 분비물 방울 (미리 만들어 두고 재사용) ----------
+// 보스는 18방울을 넓게 뿜지만 새끼는 6방울을 짧게 뱉는다.
+const spit = [];
+for (let i = 0; i < 6; i++) {
+  const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.040 + rnd() * 0.022, 0), oozeMat);
+  m.visible = false; scene.add(m);
+  spit.push({ m, st: 0, v: new THREE.Vector3(), life: 0, base: 1, delay: (i / 6) * 0.26 + rnd() * 0.03 });
+}
+const _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
+function launchSpit(d) {
+  headGrp.getWorldPosition(d.m.position); d.m.position.y -= 0.14;
+  headGrp.getWorldQuaternion(_q);
+  const fwd = _v.set(0, 0, -1).applyQuaternion(_q); fwd.y = 0; fwd.normalize();
+  const dir = fwd.clone().applyAxisAngle(_up, (rnd() - 0.5) * 0.7);
+  const sp = 1.5 + rnd() * 0.9;
+  d.v.set(dir.x * sp, 0.9 + rnd() * 0.4, dir.z * sp);
+  d.m.material = oozeMat; d.m.scale.setScalar(1); d.m.visible = true; d.st = 1;
+}
+function updateBits(dt) {
+  for (const d of spit) {
+    if (d.st === 1) {
+      d.v.y -= 9.2 * dt; d.m.position.addScaledVector(d.v, dt);
+      d.m.rotation.x += dt * 7;
+      if (d.m.position.y <= 0.04) {
+        d.m.position.y = 0.035; d.m.material = poolMat;
+        d.base = 0.9 + rnd() * 0.5; d.m.scale.set(d.base, 0.16, d.base);
+        d.st = 2; d.life = 2.0 + rnd() * 0.9;
+      }
+    } else if (d.st === 2) {
+      d.life -= dt;
+      if (d.life < 0.8) { const k = Math.max(0, d.life / 0.8);
+        d.m.scale.set(d.base * (0.35 + 0.65 * k), 0.16 * k, d.base * (0.35 + 0.65 * k)); }
+      if (d.life <= 0) { d.m.visible = false; d.st = 0; }
+    }
+  }
+}
+
+const clock = new THREE.Clock();
+const lerp = (o, key, tgt, k, dt) => { o[key] += (tgt - o[key]) * Math.min(1, dt * k); };
+
+function animate() {
+  const dt = Math.min(0.05, clock.getDelta());
+  const t = clock.elapsedTime;
+  if (autoSpin) { camYaw += dt * 0.32; updateCam(); }
+
+  // ---- 상시: 노른자 주머니가 숨 쉬듯 부풀고, 속의 덩이가 출렁이고, 점액이 흔들린다 ----
+  // 새끼는 보스보다 호흡이 빠르고 폭이 크다(작은 몸일수록 대사가 빠르다).
+  const breath = Math.sin(t * 1.05);
+  const ss = (1 + breath * 0.045) * sacSwell;
+  sacGrp.scale.set(ss, ss * (1 - breath * 0.020), ss);
+  // 노른자 덩이는 껍질과 다른 속도로 기울고 맥동한다 — 안에서 출렁이는 것처럼 읽힌다
+  eggGrp.rotation.z = Math.sin(t * 0.72) * 0.12;
+  eggGrp.rotation.x = Math.sin(t * 0.55) * 0.09;
+  const ew = 1 + Math.sin(t * 1.30 + 1.2) * 0.038;
+  eggGrp.scale.set(ew, 1 / ew, ew);
+  bodyGrp.position.y = breath * 0.016;
+  eyeGlowMat.emissiveIntensity = 0.160 + Math.sin(t * 2.6) * 0.050 + Math.sin(t * 0.9) * 0.028;
+  eggMat.emissiveIntensity = 0.55 + Math.sin(t * 1.4) * 0.10;
+  oozeGroups.forEach(o => { o.g.rotation.z = Math.sin(t * 1.35 + o.ph) * 0.070;
+                            o.g.rotation.x = Math.sin(t * 1.05 + o.ph * 1.7) * 0.055; });
+
+  // ---- 이동: 삼각보행. 보스보다 보폭이 짧고 빠르다(종종거린다) ----
+  if (walking && deadPhase < 0) walkPhase += dt * 4.2;
+  if (deadPhase < 0) for (const L of legs) {
+    let lift = 0, swing = 0;
+    if (walking) {
+      const s = Math.sin(walkPhase + L.phase);
+      lift = Math.max(0, s) * 0.34;
+      swing = Math.cos(walkPhase + L.phase) * 0.20;
+    }
+    // 발끝이 y=0 에 딱 닿게 풀어 놨으므로, 떨림은 '드는 쪽'으로만 준다(양쪽이면 바닥을 뚫는다)
+    const tremble = -Math.abs(Math.sin(t * 9.1 + L.phase * 2.1)) * 0.012;
+    lerp(L.femurGrp.rotation, 'z', L.baseFemur - L.side * (swing + tremble), 11, dt);
+    lerp(L.kneeGrp.rotation, 'z', L.baseKnee + L.side * lift, 11, dt);
+  }
+  if (walking && deadPhase < 0) {
+    lerp(bodyGrp.rotation, 'z', Math.sin(walkPhase) * 0.045, 8, dt);
+    lerp(bodyGrp.rotation, 'x', Math.sin(walkPhase * 2) * 0.030, 8, dt);
+    bodyGrp.position.y = breath * 0.016 + Math.abs(Math.sin(walkPhase)) * 0.030;
+  } else if (deadPhase < 0 && bitePhase < 0) {
+    lerp(bodyGrp.rotation, 'z', 0, 6, dt);
+    lerp(bodyGrp.rotation, 'x', 0, 6, dt);
+  }
+
+  // ---- 물기: 뒷다리로 버티며 몸을 앞으로 던져 턱을 박는다 ----
+  // 일반 몹의 주 공격이라 사이클이 짧아야 한다(전체 0.95초).
+  if (bitePhase >= 0) {
+    bitePhase += dt;
+    if (bitePhase < 0.28) {                     // 1) 뒤로 웅크린다(예비 동작)
+      const w = bitePhase / 0.28, e = w * w * (3 - 2 * w);
+      bugObj.position.z = 0.16 * e;
+      bodyGrp.rotation.x = -0.16 * e;
+      headGrp.rotation.x = 0.30 * e;
+      jawGrp.rotation.x = -0.55 * e;            // 턱을 벌린다
+      for (const L of legs) L.kneeGrp.rotation.z = L.baseKnee + L.side * 0.20 * e;
+    } else if (bitePhase < 0.42) {              // 2) 앞으로 튀어나가 문다
+      const w = (bitePhase - 0.28) / 0.14, e = w * w;
+      bugObj.position.z = 0.16 - 0.52 * e;
+      bodyGrp.rotation.x = -0.16 + 0.42 * e;
+      headGrp.rotation.x = 0.30 - 0.58 * e;
+      jawGrp.rotation.x = -0.55 + 0.75 * e;     // 턱이 닫히며 물린다
+    } else if (bitePhase < 0.95) {              // 3) 물고 흔든 뒤 제자리로
+      const w = (bitePhase - 0.42) / 0.53;
+      bodyGrp.rotation.y = Math.sin(w * 26) * 0.075 * (1 - w);   // 문 채로 도리질
+      lerp(bugObj.position, 'z', 0, 6, dt);
+      lerp(bodyGrp.rotation, 'x', 0, 6, dt);
+      lerp(headGrp.rotation, 'x', 0, 6, dt);
+      lerp(jawGrp.rotation, 'x', 0, 6, dt);
+      for (const L of legs) lerp(L.kneeGrp.rotation, 'z', L.baseKnee, 6, dt);
+    } else {
+      bitePhase = -1; bugObj.position.z = 0;
+      bodyGrp.rotation.x = 0; bodyGrp.rotation.y = 0;
+      headGrp.rotation.x = 0; jawGrp.rotation.x = 0;
+    }
+  }
+
+  // ---- 분비: 머리를 젖혔다 짧게 뱉는다 ----
+  if (spewPhase >= 0) {
+    spewPhase += dt;
+    if (spewPhase < 0.30) {                     // 1) 머리를 젖혀 모은다
+      const w = spewPhase / 0.30, e = w * w * (3 - 2 * w);
+      headGrp.rotation.x = 0.34 * e;
+      jawGrp.rotation.x = -0.5 * e;
+      sacSwell = 1 + 0.09 * e;
+    } else if (spewPhase < 0.72) {              // 2) 분출
+      lerp(headGrp.rotation, 'x', -0.28, 14, dt);
+      lerp(jawGrp.rotation, 'x', -0.85, 14, dt);
+      sacSwell = 0.94;
+      bodyGrp.rotation.x += Math.sin(t * 30) * 0.005;
+      const sp = spewPhase - 0.30;
+      for (const d of spit) if (d.st === 0 && sp >= d.delay) launchSpit(d);
+    } else if (spewPhase < 1.25) {              // 3) 복귀
+      sacSwell = 1;
+      lerp(headGrp.rotation, 'x', 0, 6, dt);
+      lerp(jawGrp.rotation, 'x', 0, 6, dt);
+    } else { spewPhase = -1; headGrp.rotation.x = 0; jawGrp.rotation.x = 0; sacSwell = 1; }
+  } else if (bitePhase < 0 && deadPhase < 0) {
+    lerp(headGrp.rotation, 'x', Math.sin(t * 1.1) * 0.05, 4, dt);
+    lerp(jawGrp.rotation, 'x', Math.sin(t * 1.9) * 0.09, 4, dt);
+  }
+  updateBits(dt);
+
+  // ---- 죽음: 다리를 안으로 오그리고 옆으로 넘어진다 ----
+  // 벌레의 죽음은 '쓰러진다'가 아니라 '다리가 접힌다'로 읽힌다 — 다리를 먼저 오그린다.
+  if (deadPhase >= 0) {
+    deadPhase += dt;
+    const w = Math.min(1, deadPhase / 0.75), e = w * w * (3 - 2 * w);
+    for (const L of legs) {
+      // 넓적다리를 몸 쪽으로 눕히고 무릎을 최대로 접는다(뒤집힌 벌레 다리)
+      lerp(L.femurGrp.rotation, 'z', L.baseFemur + L.side * 0.70, 6, dt);
+      lerp(L.kneeGrp.rotation, 'z', L.baseKnee - L.side * 1.05, 6, dt);
+    }
+    // 옆으로 넘어간다. bodyGrp 의 원점은 바닥(y=0)이라 그냥 돌리면 몸이 제 발 밖으로
+    // 미끄러진다(실측: 73° 에서 0.86 만큼 옆으로 날아갔다). 다리 밑동 높이(0.62)를
+    // 축으로 삼도록 위치를 함께 보정해야 '그 자리에서 옆으로 넘어가는' 그림이 된다.
+    const th = 1.30 * e, PIV = 0.62;
+    bodyGrp.rotation.z = th;
+    bodyGrp.rotation.x = -0.22 * e;
+    bodyGrp.position.x = PIV * Math.sin(th);
+    bodyGrp.position.y = breath * 0.016 + PIV * (1 - Math.cos(th)) - 0.16 * e;
+    headGrp.rotation.x = 0.42 * e;
+    jawGrp.rotation.x = -0.30 * e;
+    sacSwell = 1 - 0.16 * e;                     // 주머니가 쭈그러든다
+    // 눈빛과 노른자 발광이 서서히 꺼진다
+    eyeGlowMat.emissiveIntensity = 0.196 * (1 - e);
+    eggMat.emissiveIntensity = 0.55 * (1 - e * 0.8);
+    if (deadPhase > 0.75) {                      // 다 넘어간 뒤에도 다리가 가끔 경련한다
+      const tw = Math.max(0, 1 - (deadPhase - 0.75) / 2.2);
+      const L = legs[(Math.floor(deadPhase * 3.1) % legs.length)];
+      L.kneeGrp.rotation.z += Math.sin(deadPhase * 41) * 0.05 * tw;
+    }
+  }
+
+  // 게임과 같은 렌더 경로: 픽셀 스냅 → 저해상도 색·깊이 → 노멀 패스(피부 표식) → 블룸 → 합성
+  renderWithPost(scene);
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>
