@@ -142,7 +142,9 @@ function _specGainChunk() {
 
 // ---------- 저해상도 버퍼(게임 computeLowRes 그대로) ----------
 const PIXEL_SCALE = 2;
-const PX_FIXED_H = 360;
+// 게임과 같은 값·같은 플래그. 작을수록 픽셀이 커진다(720 기준 360=배율 2, 288=2.5, 240=3).
+// v739~v740 에서 게임이 360 → 288 로 올렸다. 여기가 어긋나면 '1.0× = 게임 실제 픽셀 크기'가 거짓말이 된다.
+const PX_FIXED_H = parseInt((location.search.match(/[?&]pxh=(\d+)/) || [])[1], 10) || 288;
 function computeLowRes(w, h) {
   if (PX_MODE) {
     const lh = PX_FIXED_H;
