@@ -1025,11 +1025,14 @@ function boneSeg(len, rBase, rTip, mat) {
   g.translate(0, len / 2, 0);
   return sh(new THREE.Mesh(g, mat));
 }
-const FEMUR = 1.35, TIBIA = 2.63;   // 발끝이 바닥(y=0)에 닿도록 잰 값 — 길면 다리가 바닥을 뚫는다
+// 다리 기하는 손으로 찍지 않고 푼다: 넓적다리 각(0.62)이 무릎 높이를 정하고,
+// 무릎 → 착지점 벡터에서 무릎 꺾임각과 정강이 길이가 따라 나온다.
+// 발톱 원뿔이 정강이 끝보다 0.23 더 나가므로 그만큼 빼야 발이 바닥을 안 뚫는다.
+const FEMUR = 1.75, TIBIA = 2.81;   // 계산값 3.06 에서 지터·다리별 요 기울기만큼 뺀 실측값(발끝이 y=0 에 닿는다)
 // [부착 x, y, z, 다리 평면 요(앞뒤로 벌리는 각), 무릎 높이 보정]
 const LEG_SPEC = [
-  [0.70, 1.88, -0.86,  0.62],
-  [0.84, 1.82,  0.10,  0.02],
+  [0.70, 1.80, -0.86,  0.62],
+  [0.84, 1.80,  0.10,  0.02],
   [0.72, 1.80,  1.02, -0.54],
 ];
 const legs = [];
@@ -1042,18 +1045,18 @@ const legs = [];
   const femurGrp = new THREE.Group();
   femurGrp.rotation.z = -side * 0.62;   // 작을수록 무릎이 높이 솟는다
   root.add(femurGrp);
-  femurGrp.add(boneSeg(FEMUR, 0.115, 0.075, legMat));
-  const coxa = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.17, 1), chitinDk));
+  femurGrp.add(boneSeg(FEMUR, 0.070, 0.046, legMat));
+  const coxa = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.125, 1), chitinDk));
   coxa.scale.set(1.0, 0.8, 1.0); jitterGeometry(coxa.geometry, 0.04); root.add(coxa);
   // 무릎에서 꺾여 바닥으로 곧게 내려간다
   const kneeGrp = new THREE.Group(); kneeGrp.position.y = FEMUR;
-  kneeGrp.rotation.z = -side * 2.379;   // 무릎에서 꺾어 바닥까지 곧게(역산한 값)
+  kneeGrp.rotation.z = -side * 2.319;   // 무릎에서 꺾어 바닥까지 곧게(위 식으로 역산)
   femurGrp.add(kneeGrp);
-  kneeGrp.add(boneSeg(TIBIA, 0.072, 0.016, legMat));
-  const knob = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.105, 1), chitinDk));
+  kneeGrp.add(boneSeg(TIBIA, 0.044, 0.009, legMat));
+  const knob = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.066, 1), chitinDk));
   jitterGeometry(knob.geometry, 0.03); kneeGrp.add(knob);
   // 발끝 발톱
-  const tip = sh(new THREE.Mesh(new THREE.ConeGeometry(0.032, 0.26, 4), legTipMat));
+  const tip = sh(new THREE.Mesh(new THREE.ConeGeometry(0.021, 0.26, 4), legTipMat));
   tip.position.y = TIBIA + 0.10; tip.rotation.x = Math.PI; kneeGrp.add(tip);
   legs.push({ root, femurGrp, kneeGrp, side, idx: i,
               baseFemur: femurGrp.rotation.z, baseKnee: kneeGrp.rotation.z,
