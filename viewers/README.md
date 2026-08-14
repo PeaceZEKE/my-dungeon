@@ -7,6 +7,7 @@
 |---|---|
 | `three.r128.min.js` | 게임 `index.html`에 동봉된 것과 **같은** three.js r128을 그대로 떼어낸 것 |
 | `glutton_ghoul_viewer_v4.html` | 거대 구울(폭식 구울). 현재의 베이스 |
+| `brood_tick_viewer_v1.html` | 포란충(抱卵蟲) — 3막 첫 보스. 팔레트를 **3막**에서 역산했다 |
 | `build-standalone.js` | three.js를 인라인해 단일 파일을 만든다(사람에게 보낼 때 씀) |
 | `export-glb.js` | 캐릭터를 glTF 바이너리(.glb)로 뽑는다 |
 | `GLTFExporter.js` | three r128 동봉본의 익스포터(위 스크립트가 주입해 쓴다) |
