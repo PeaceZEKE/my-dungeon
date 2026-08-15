@@ -878,8 +878,8 @@ function mergeStatic(root, skip) {
 // ============================================================
 //  새끼 포란충 — 3막 일반 몹. 보스(brood_tick_viewer_v1)의 유생 단계.
 //  같은 종으로 읽히되 한눈에 '아직 어리다'가 보여야 한다. 보스와 다르게 잡은 것:
-//   · 배는 알주머니가 아니라 **제 노른자 주머니**다 — 알 80개가 아니라 큰 노른자 덩이 하나.
-//     아직 산란을 못 하는 단계라는 뜻이고, 실루엣도 보스와 확실히 갈린다.
+//   · **배 속에 알이 없다.** 보스의 배는 알 80개가 비치는 반투명 주머니지만, 새끼는 아직
+//     산란을 못 하는 단계라 그냥 속이 찬 말랑한 배다 — 실루엣도 보스와 확실히 갈린다.
 //   · 외골격 판이 위쪽에만 있다(옆구리는 아직 말랑하다). 금빛 이음선도 그만큼 성기다.
 //   · 머리가 몸에 비해 크고 홑눈도 크다(머리/배 반지름 비 0.58 — 보스는 0.38).
 //   · 다리는 짧고 무릎이 몸보다 **낮다**. 보스의 장님거미 같은 높은 무릎은 성체의 특징이다.
@@ -896,22 +896,23 @@ function mergeStatic(root, skip) {
 // 예를 들어 위쪽 판(chitinLit)은 보스가 0x7393a2 인데 여기서는 0x151b25 다 — 보스의 그 판은
 // y=3.45 라 빛이 거의 안 닿지만 새끼의 판은 y=1.4 라 훨씬 밝게 받는다. 둘 다 화면 출력은 53/255다.
 const chitinMat  = getLowPolyMat(0x1d262e);   // 각진 외골격 판(창백한 청백)
-const chitinLit  = getLowPolyMat(0x151b25);   // 빛 받는 위쪽 판
+const chitinLit  = getLowPolyMat(0x151a24);   // 빛 받는 위쪽 판
 const chitinDk   = getLowPolyMat(0x0a0e15);   // 그늘진 아래쪽 판
-const seamMat    = getLowPolyMat(0x2b2311, true);  // 판 이음선의 금빛(금속)
+const seamMat    = getLowPolyMat(0x211a10, true);  // 판 이음선의 금빛(금속)
 const eyeMat     = getLowPolyMat(0x251f07, true);  // 황금 홑눈
 // 홑눈만 색이 아니라 발광 세기로 맞췄다 — 밝기의 대부분이 emissive 라 베이스 색으로는 안 내려간다.
 // 보스 0.55 → 0.196 (배수 0.356). 아래 animate() 의 깜빡임 식에도 같은 배수가 곱해져 있다.
 const eyeGlowMat = new THREE.MeshStandardMaterial({ color: 0x15150d, emissive: 0xffcf60, emissiveIntensity: 0.196, roughness: 0.35, metalness: 0.4 });
-// 껍질 투명도는 보스와 같은 0.50. 속이 알 무더기가 아니라 덩이 하나라 더 잘 비친다.
-const sacMat     = new THREE.MeshStandardMaterial({ color: 0x210f17, roughness: 0.72, flatShading: true, transparent: true, opacity: 0.50 });  // 반투명 노른자 주머니
-const sacRimMat  = getLowPolyMat(0x0f0a11);   // 주머니 아래쪽 짙은 부분
-const eggMat     = new THREE.MeshStandardMaterial({ color: 0x140910, emissive: 0x3a1020, emissiveIntensity: 0.55, roughness: 0.6, flatShading: true });
+// 보스의 알주머니는 투명도 0.50 짜리 '속이 비치는 통'이지만, 새끼의 배에는 넣을 것이 없다.
+// 빈 통으로 두면 풍선처럼 보이므로 **속이 찬 말랑한 살**로 만든다 — 투명도 0.86 이면
+// 막처럼 살짝 비치는 느낌만 남고 안이 들여다보이지는 않는다. 색은 이 투명도에서 다시 역산했다.
+const sacMat     = new THREE.MeshStandardMaterial({ color: 0x10090d, roughness: 0.72, flatShading: true, transparent: true, opacity: 0.86 });  // 말랑한 배
+const sacRimMat  = getLowPolyMat(0x0f0a11);   // 배 아래쪽 짙은 부분
 const legMat     = getLowPolyMat(0x121923);   // 다리(가늘고 창백)
-const oozeMat    = new THREE.MeshStandardMaterial({ color: 0x242a16, transparent: true, opacity: 0.66, roughness: 0.3, flatShading: true });
+const oozeMat    = new THREE.MeshStandardMaterial({ color: 0x2b3319, transparent: true, opacity: 0.66, roughness: 0.3, flatShading: true });
 const poolMat    = new THREE.MeshStandardMaterial({ color: 0x11160c, roughness: 0.55, flatShading: true, transparent: true, opacity: 0.85 });
 const mawMat     = getLowPolyMat(0x090606);   // 입 안쪽
-[sacMat, sacRimMat, eggMat, mawMat].forEach(markOrganic);   // 살·노른자는 유기체(하이라이트 제외)
+[sacMat, sacRimMat, mawMat].forEach(markOrganic);   // 살은 유기체(하이라이트 제외)
 
 const bugObj = new THREE.Group(); scene.add(bugObj);
 const bodyGrp = new THREE.Group(); bugObj.add(bodyGrp);   // 몸통 전체(걸을 때 출렁임)
@@ -930,35 +931,26 @@ function shellPlate(dx, dy, dz, r, sx, sz, mat, jit) {
   bodyGrp.add(m); return m;
 }
 
-// ---------- 배 = 노른자 주머니 ----------
+// ---------- 배 ----------
 const SAC_C = { x: 0, y: 0.88, z: 0.14 }, SAC_R = 0.52;
 const sacGrp = new THREE.Group(); sacGrp.position.set(SAC_C.x, SAC_C.y, SAC_C.z); bodyGrp.add(sacGrp);
-// 겉껍질 — 반투명이라 노멀 패스에서 자동으로 빠진다(외곽선이 안 생긴다)
+// 살갗 — 반투명이라 노멀 패스에서 자동으로 빠진다(외곽선이 안 생긴다).
+// 속이 안 비치므로 표면이 형태의 전부다 — 지터를 키워 말랑하게 눌린 살로 읽히게 한다.
 const sacShell = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(SAC_R, 2), sacMat));
-sacShell.scale.set(1.0, 0.96, 1.08); jitterGeometry(sacShell.geometry, 0.04); sacGrp.add(sacShell);
-// 속 — 보스는 알 80개지만 새끼는 아직 제 노른자를 안고 있다.
-// 큰 덩이 하나 + 떨어져 나온 작은 알갱이 몇 개. 한 그룹에 담아 병합해 드로우콜 1개로 쓴다.
-const eggGrp = new THREE.Group(); sacGrp.add(eggGrp);
-{
-  const yolk = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(SAC_R * 0.62, 1), eggMat));
-  yolk.scale.set(1.04, 0.90, 1.0); yolk.position.set(0, -0.04, 0.02);
-  jitterGeometry(yolk.geometry, SAC_R * 0.10); eggGrp.add(yolk);
-  for (let i = 0; i < 7; i++) {
-    const k = i + 0.5, n = 7;
-    const phi = Math.acos(1 - 2 * k / n), th = Math.PI * (1 + Math.sqrt(5)) * k;
-    const rr = SAC_R * (0.62 + rnd() * 0.20);
-    const e = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.055 + rnd() * 0.05, 0), eggMat));
-    e.position.set(Math.sin(phi) * Math.cos(th) * rr, Math.cos(phi) * rr * 0.86, Math.sin(phi) * Math.sin(th) * rr);
-    e.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
-    eggGrp.add(e);
-  }
-}
-mergeStatic(eggGrp);
-
-// 주머니 아래로 처진 짙은 살
-const sacLow = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(SAC_R * 0.80, 1), sacRimMat));
-sacLow.scale.set(1.02, 0.50, 1.0); sacLow.position.set(0, -SAC_R * 0.70, 0.01);
-jitterGeometry(sacLow.geometry, 0.04); sacGrp.add(sacLow);
+sacShell.scale.set(1.0, 0.96, 1.08); jitterGeometry(sacShell.geometry, 0.075); sacGrp.add(sacShell);
+// 앞뒤로 작은 마디 하나씩 — 배가 매끈한 공이 아니라 세 마디로 읽힌다.
+// 알을 빼면 속이 안 비쳐서 표면 굴곡 말고는 볼 것이 없다. 유충의 마디는 그 자리를 메우면서
+// '아직 덜 자란 몸'을 같이 말해 준다. 재질이 살갗과 같아 병합 뒤에도 드로우콜은 안 는다.
+[[0.00,  0.00, -0.30, 0.40, 0.96, 0.92, 0.85],
+ [0.00, -0.04,  0.40, 0.36, 0.94, 0.90, 0.86]].forEach(p => {
+  const m = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(p[3], 1), sacMat));
+  m.position.set(p[0], p[1], p[2]); m.scale.set(p[4], p[5], p[6]);
+  jitterGeometry(m.geometry, p[3] * 0.13); sacGrp.add(m);
+});
+// 아래로 처진 짙은 살 — 배 밑을 무겁게 눌러 준다(옆·뒤 실루엣에서 보인다)
+const sacLow = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(SAC_R * 0.86, 1), sacRimMat));
+sacLow.scale.set(1.02, 0.52, 1.0); sacLow.position.set(0, -SAC_R * 0.66, 0.01);
+jitterGeometry(sacLow.geometry, 0.06); sacGrp.add(sacLow);
 
 // ---------- 주머니를 감싼 각진 외골격 판 ----------
 // 보스는 13장이 주머니를 거의 다 감싸지만, 새끼는 등 쪽 6장뿐이다 — 옆구리·배가 말랑하게
@@ -1111,7 +1103,7 @@ const legs = [];
 // ---------- 드로우콜 병합(움직이는 그룹은 제외) ----------
 mergeStatic(headGrp, [jawGrp]);
 mergeStatic(jawGrp);
-mergeStatic(sacGrp, [eggGrp]);
+mergeStatic(sacGrp);
 legs.forEach(L => { mergeStatic(L.kneeGrp); mergeStatic(L.femurGrp, [L.kneeGrp]); });
 oozeGroups.forEach(o => mergeStatic(o.g));
 mergeStatic(bodyGrp, [sacGrp, headGrp, ...legs.map(L => L.root), ...oozeGroups.map(o => o.g)]);
@@ -1219,7 +1211,7 @@ document.getElementById('deadBtn').addEventListener('click', e => {
   if (deadPhase >= 0) {
     deadPhase = -1;
     bodyGrp.rotation.set(0, 0, 0); bodyGrp.position.x = 0; headGrp.rotation.x = 0; jawGrp.rotation.x = 0; sacSwell = 1;
-    eyeGlowMat.emissiveIntensity = 0.196; eggMat.emissiveIntensity = 0.55;
+    eyeGlowMat.emissiveIntensity = 0.196;
     for (const L of legs) { L.femurGrp.rotation.z = L.baseFemur; L.kneeGrp.rotation.z = L.baseKnee; }
   } else {
     deadPhase = 0; bitePhase = -1; spewPhase = -1;
@@ -1324,15 +1316,12 @@ function animate() {
   // 새끼는 보스보다 호흡이 빠르고 폭이 크다(작은 몸일수록 대사가 빠르다).
   const breath = Math.sin(t * 1.05);
   const ss = (1 + breath * 0.045) * sacSwell;
-  sacGrp.scale.set(ss, ss * (1 - breath * 0.020), ss);
-  // 노른자 덩이는 껍질과 다른 속도로 기울고 맥동한다 — 안에서 출렁이는 것처럼 읽힌다
-  eggGrp.rotation.z = Math.sin(t * 0.72) * 0.12;
-  eggGrp.rotation.x = Math.sin(t * 0.55) * 0.09;
-  const ew = 1 + Math.sin(t * 1.30 + 1.2) * 0.038;
-  eggGrp.scale.set(ew, 1 / ew, ew);
+  // 호흡과 다른 주기로 가로/세로가 번갈아 눌린다 — 속이 안 비치므로 말랑함은 이걸로 낸다.
+  // 반드시 sacGrp 에 걸 것: sacShell 은 mergeStatic(sacGrp) 에서 병합돼 참조가 끊긴다.
+  const ew = 1 + Math.sin(t * 1.30 + 1.2) * 0.030;
+  sacGrp.scale.set(ss * ew, ss * (1 - breath * 0.020), ss / ew);
   bodyGrp.position.y = breath * 0.016;
   eyeGlowMat.emissiveIntensity = 0.160 + Math.sin(t * 2.6) * 0.050 + Math.sin(t * 0.9) * 0.028;
-  eggMat.emissiveIntensity = 0.55 + Math.sin(t * 1.4) * 0.10;
   oozeGroups.forEach(o => { o.g.rotation.z = Math.sin(t * 1.35 + o.ph) * 0.070;
                             o.g.rotation.x = Math.sin(t * 1.05 + o.ph * 1.7) * 0.055; });
 
@@ -1438,9 +1427,7 @@ function animate() {
     headGrp.rotation.x = 0.42 * e;
     jawGrp.rotation.x = -0.30 * e;
     sacSwell = 1 - 0.16 * e;                     // 주머니가 쭈그러든다
-    // 눈빛과 노른자 발광이 서서히 꺼진다
-    eyeGlowMat.emissiveIntensity = 0.196 * (1 - e);
-    eggMat.emissiveIntensity = 0.55 * (1 - e * 0.8);
+    eyeGlowMat.emissiveIntensity = 0.196 * (1 - e);   // 눈빛이 서서히 꺼진다
     if (deadPhase > 0.75) {                      // 다 넘어간 뒤에도 다리가 가끔 경련한다
       const tw = Math.max(0, 1 - (deadPhase - 0.75) / 2.2);
       const L = legs[(Math.floor(deadPhase * 3.1) % legs.length)];
