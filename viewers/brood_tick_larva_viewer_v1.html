@@ -883,6 +883,8 @@ function mergeStatic(root, skip) {
 //   · 외골격 판이 위쪽에만 있다(옆구리는 아직 말랑하다). 금빛 이음선도 그만큼 성기다.
 //   · 머리가 몸에 비해 크고 홑눈도 크다(머리/배 반지름 비 0.58 — 보스는 0.38).
 //   · 다리는 짧고 무릎이 몸보다 **낮다**. 보스의 장님거미 같은 높은 무릎은 성체의 특징이다.
+//   · 점액을 흘리지 않는다. 보스는 입 밑·옆구리·뒤에서 네 뭉치가 바닥까지 늘어지고
+//     그 밑에 자국이 고인다.
 //  크기: 높이 약 1.45 · 발자국 약 1.6×1.7 — 게임 일반 몬스터 크기.
 //  정면은 -z (게임 규약)
 // ============================================================
@@ -1025,35 +1027,11 @@ const jawGrp = new THREE.Group(); jawGrp.position.set(0, -0.16, -0.06); headGrp.
   jawGrp.add(j);
 });
 
-// ---------- 늘어지는 점액 ----------
-// 보스는 네 뭉치가 바닥까지 늘어지지만, 새끼는 입 밑 한 뭉치뿐이고 짧다.
-function oozeStrand(parent, x, y, z, len) {
-  const r0 = 0.016 + rnd() * 0.008;
-  const g = new THREE.CylinderGeometry(r0, 0.005, len, 4);
-  g.translate(0, -len / 2, 0);                       // 매달린 위쪽 끝이 원점
-  const m = new THREE.Mesh(g, oozeMat);
-  m.position.set(x, y, z); parent.add(m);
-  const bead = new THREE.Mesh(new THREE.IcosahedronGeometry(0.022 + rnd() * 0.014, 0), oozeMat);
-  bead.scale.set(1, 1.35, 1);
-  bead.position.set(x, y - len - 0.01, z); parent.add(bead);
-}
-const oozeGroups = [];
-function oozeCluster(ox, oy, oz, list) {
-  const g = new THREE.Group(); g.position.set(ox, oy, oz); bodyGrp.add(g);
-  list.forEach(p => oozeStrand(g, p[0], p[1], p[2], p[3]));
-  oozeGroups.push({ g, ph: rnd() * 6.28 });
-  return g;
-}
-oozeCluster(0, 0.55, -0.58, [
-  [-0.13, 0, 0.05, 0.37], [-0.02, 0.03, -0.07, 0.27], [0.09, -0.02, 0.06, 0.42], [0.17, 0.02, -0.05, 0.23],
-]);
-// 바닥에 고인 자국 — 보스보다 적고 작다. 한 그룹에 담아 병합(드로우콜 1개).
-const poolGrp = new THREE.Group(); bugObj.add(poolGrp);
-[[-0.22, 0.018, -0.52, 0.20], [0.30, 0.018, -0.20, 0.15], [0.02, 0.018, 0.42, 0.18]].forEach(p => {
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(p[3], p[3] * 0.9, 0.02, 10), poolMat);
-  m.position.set(p[0], p[1], p[2]); m.rotation.y = rnd() * 3; poolGrp.add(m);
-});
-mergeStatic(poolGrp);
+// 늘어지는 점액과 바닥에 고인 자국은 넣지 않는다(사용자 지시).
+// 보스는 네 뭉치가 바닥까지 늘어지고 그 밑에 자국이 고여 있지만, 새끼는 흘리지 않는다.
+// 자국까지 같이 뺀 이유: 흘리는 것이 없는데 바닥 자국만 남으면 앞뒤가 안 맞는다.
+// oozeMat/poolMat 은 그대로 둔다 — '분비물' 공격의 방울과 그 방울이 바닥에 만드는
+// 임시 자국이 쓰는 재질이다(그쪽은 시간이 지나면 사라진다).
 
 // ---------- 다리 6개 ----------
 function boneSeg(len, rBase, rTip, mat) {
@@ -1105,8 +1083,7 @@ mergeStatic(headGrp, [jawGrp]);
 mergeStatic(jawGrp);
 mergeStatic(sacGrp);
 legs.forEach(L => { mergeStatic(L.kneeGrp); mergeStatic(L.femurGrp, [L.kneeGrp]); });
-oozeGroups.forEach(o => mergeStatic(o.g));
-mergeStatic(bodyGrp, [sacGrp, headGrp, ...legs.map(L => L.root), ...oozeGroups.map(o => o.g)]);
+mergeStatic(bodyGrp, [sacGrp, headGrp, ...legs.map(L => L.root)]);
 // 게임의 일반 몬스터는 진짜 그림자 대신 발밑 블롭 한 장을 깐다(보스 2.3 / 이 크기는 1.5)
 if (BLOB_ON) bugObj.add(makeBlobShadow(1.5));
 
@@ -1322,8 +1299,6 @@ function animate() {
   sacGrp.scale.set(ss * ew, ss * (1 - breath * 0.020), ss / ew);
   bodyGrp.position.y = breath * 0.016;
   eyeGlowMat.emissiveIntensity = 0.160 + Math.sin(t * 2.6) * 0.050 + Math.sin(t * 0.9) * 0.028;
-  oozeGroups.forEach(o => { o.g.rotation.z = Math.sin(t * 1.35 + o.ph) * 0.070;
-                            o.g.rotation.x = Math.sin(t * 1.05 + o.ph * 1.7) * 0.055; });
 
   // ---- 이동: 삼각보행. 보스보다 보폭이 짧고 빠르다(종종거린다) ----
   if (walking && deadPhase < 0) walkPhase += dt * 4.2;
