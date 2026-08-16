@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>부패한 왕 뷰어 v13</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; height:100dvh; overflow:hidden; background:#11131a; font-family: sans-serif; overscroll-behavior:none; }
+  #app { width:100vw; height:100vh; display:block; touch-action: none; }
+  .ui { position:fixed; left:0; right:0; bottom:0; display:flex; gap:8px; justify-content:center; flex-wrap:wrap; padding:12px; pointer-events:none; }
+  .btn { pointer-events:auto; background:rgba(20,24,34,0.85); color:#e2e8f0; border:1px solid #4a5568; border-radius:8px; padding:10px 14px; font-size:13px; font-weight:bold; cursor:pointer; }
+  .btn:active { background:#2d3748; }
+  .btn.on { border-color:#e0c070; color:#f5e6c0; }
+  #ver { position:fixed; right:10px; top:10px; color:#718096; font-size:11px; }
+  #hint { position:fixed; left:0; right:0; top:12px; text-align:center; color:#a0aec0; font-size:12px; }
+  @media (max-width: 520px) {
+    .ui { gap:6px; padding:8px 6px calc(8px + env(safe-area-inset-bottom)); }
+    .btn { padding:8px 10px; font-size:12px; border-radius:6px; }
+    #hint { font-size:11px; top:30px; }
+    #ver { font-size:10px; top:8px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="app"></canvas>
+<div id="hint">드래그: 회전 · 휠/핀치: 확대축소</div>
+<div class="ui">
+  <button class="btn" id="spinBtn">자동회전: 켬</button>
+  <button class="btn" id="walkBtn">이동</button>
+  <button class="btn" id="roarBtn">포효</button>
+  <button class="btn" id="slashBtn">베기</button>
+  <button class="btn" id="guardBtn">방패 방어</button>
+  <button class="btn" id="bgBtn">배경 전환</button>
+  <button class="btn" id="gridBtn">그리드</button>
+  <button class="btn" id="resetBtn">시점 리셋</button>
+</div>
+<div id="ver">corrupted_king_viewer v13</div>
+
+<!-- 게임 index.html에 동봉된 것과 같은 three.js r128. CDN을 쓰면 여기서 렌더 검증을 못 한다. -->
+<script src="three.r128.min.js"></script>
+<script>
+const canvas = document.getElementById('app');
+// === 게임과 동일한 렌더 파이프라인: 저해상도 픽셀화 + 깊이 기반 검은 외곽선 ===
+const PIXEL_SCALE = 3;
+// 저해상도 버퍼는 화면과 같은 가로세로 비율이어야 세로 화면에서 찌그러지지 않는다
+function calcLowRes() {
+  const w = Math.max(1, window.innerWidth), h = Math.max(1, window.innerHeight);
+  const lh = Math.min(600, Math.max(240, Math.floor(h / PIXEL_SCALE)));
+  return [Math.max(1, Math.round(lh * (w / h))), lh];
+}
+let [lowResW, lowResH] = calcLowRes();
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(1);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.autoClear = false;
+
+let rt = new THREE.WebGLRenderTarget(lowResW, lowResH, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
+rt.depthTexture = new THREE.DepthTexture(lowResW, lowResH);
+rt.depthTexture.format = THREE.DepthFormat;
+rt.depthTexture.type = THREE.UnsignedIntType;
+
+const quadScene = new THREE.Scene();
+const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const quadMat = new THREE.ShaderMaterial({
+  uniforms: {
+    tColor: { value: rt.texture },
+    tDepth: { value: rt.depthTexture },
+    uTexel: { value: new THREE.Vector2(1 / lowResW, 1 / lowResH) },
+    uOutline: { value: new THREE.Color(0x06080a) },
+    uStrength: { value: 1.0 },
+    uNear: { value: 0.1 },
+    uFar: { value: 30 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tColor;
+    uniform sampler2D tDepth;
+    uniform vec2 uTexel;
+    uniform vec3 uOutline;
+    uniform float uStrength;
+    uniform float uNear;
+    uniform float uFar;
+    varying vec2 vUv;
+    float linearizeDepth(float d) {
+      float z = d * 2.0 - 1.0;
+      return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear));
+    }
+    void main() {
+      vec4 col = texture2D(tColor, vUv);
+      float c  = linearizeDepth(texture2D(tDepth, vUv).x);
+      float l = linearizeDepth(texture2D(tDepth, vUv + vec2(-uTexel.x, 0.0)).x);
+      float r = linearizeDepth(texture2D(tDepth, vUv + vec2( uTexel.x, 0.0)).x);
+      float u = linearizeDepth(texture2D(tDepth, vUv + vec2(0.0,  uTexel.y)).x);
+      float dn= linearizeDepth(texture2D(tDepth, vUv + vec2(0.0, -uTexel.y)).x);
+      float edge = abs(c - l) + abs(c - r) + abs(c - u) + abs(c - dn);
+      float thresh = 0.05 + c * 0.04;
+      float line = smoothstep(thresh, thresh * 2.2, edge) * uStrength;
+      gl_FragColor = vec4(mix(col.rgb, uOutline, clamp(line, 0.0, 1.0)), 1.0);
+    }
+  `,
+  depthTest: false, depthWrite: false
+});
+quadScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), quadMat));
+
+const scene = new THREE.Scene();
+const bgColors = [0x12121c, 0x1b1722, 0x0e1014, 0x282536];
+let bgIdx = 0; scene.background = new THREE.Color(bgColors[bgIdx]);
+scene.fog = new THREE.Fog(bgColors[bgIdx], 12, 30);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 30);
+// 모델 전체(폭 약 4.0 / 높이 4.4)를 어느 화면 비율에서도 자르지 않는 거리
+const FIT_W = 5.4, FIT_H = 6.8;
+function fitDistance() {
+  const vFov = camera.fov * Math.PI / 180;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+  return Math.min(17, Math.max(4.5, Math.max((FIT_H / 2) / Math.tan(vFov / 2), (FIT_W / 2) / Math.tan(hFov / 2))));
+}
+let camDist = fitDistance(), camYaw = 0.5 + Math.PI, camPitch = 0.05;
+const target = new THREE.Vector3(0, 2.05, 0);
+function updateCam() {
+  scene.fog.near = camDist * 1.15; scene.fog.far = camDist * 2.8;
+  camera.position.set(
+    target.x + camDist * Math.cos(camPitch) * Math.sin(camYaw),
+    target.y + camDist * Math.sin(camPitch),
+    target.z + camDist * Math.cos(camPitch) * Math.cos(camYaw)
+  );
+  camera.lookAt(target);
+}
+updateCam();
+
+// 조명: 원화의 창백한 파스텔 + 황금 반사
+scene.add(new THREE.AmbientLight(0x6a6478, 0.75));
+const key = new THREE.DirectionalLight(0xfff2e4, 1.15); key.position.set(-4, 11, -5);
+key.castShadow = true; key.shadow.mapSize.set(1024, 1024);
+key.shadow.camera.near = 1; key.shadow.camera.far = 28;
+key.shadow.camera.left = -4; key.shadow.camera.right = 4; key.shadow.camera.top = 5.5; key.shadow.camera.bottom = -2;
+key.shadow.bias = -0.0008; scene.add(key);
+const rim = new THREE.DirectionalLight(0x7a90c8, 0.55); rim.position.set(5, 4, 5); scene.add(rim);
+const goldFill = new THREE.PointLight(0xffc070, 0.5, 9, 2); goldFill.position.set(0, 2.4, -1.6); scene.add(goldFill);
+
+// ===== 게임과 동일한 머티리얼/헬퍼 =====
+function getLowPolyMat(colorHex, isMetal = false) {
+  return new THREE.MeshStandardMaterial({ color: colorHex, flatShading: true, roughness: isMetal ? 0.62 : 0.94, metalness: isMetal ? 0.28 : 0.0 });
+}
+let _seed = 77712024;
+function rnd() { _seed = (_seed * 1664525 + 1013904223) % 4294967296; return _seed / 4294967296; }
+function jitterGeometry(geometry, amount) {
+  const pos = geometry.attributes.position;
+  const offsets = new Map();
+  const key = (x, y, z) => x.toFixed(3) + ',' + y.toFixed(3) + ',' + z.toFixed(3);
+  for (let i = 0; i < pos.count; i++) {
+    const k = key(pos.getX(i), pos.getY(i), pos.getZ(i));
+    let off = offsets.get(k);
+    if (!off) { off = [(rnd() - 0.5) * amount, (rnd() - 0.5) * amount, (rnd() - 0.5) * amount]; offsets.set(k, off); }
+    pos.setXYZ(i, pos.getX(i) + off[0], pos.getY(i) + off[1], pos.getZ(i) + off[2]);
+  }
+  geometry.computeVertexNormals(); return geometry;
+}
+function sh(o) { o.castShadow = true; o.receiveShadow = true; return o; }
+
+// ===== 부패한 왕 팔레트 =====
+const fLav    = getLowPolyMat(0xd9cfe6);  // 창백한 라벤더 살
+const fLav2   = getLowPolyMat(0xbeafd0);
+const fMauve  = getLowPolyMat(0xbb92b6);  // 자주빛 종양
+const fPink   = getLowPolyMat(0xd297a8);
+const fDeep   = getLowPolyMat(0x8a6c8c);  // 깊은 그늘
+const fSage   = getLowPolyMat(0x93a08a);  // 부패한 세이지 그린
+const fCream  = getLowPolyMat(0xefe4c6);  // 크림빛 각질
+const fBone   = getLowPolyMat(0xd6c69e);
+const muscle  = getLowPolyMat(0xa8434c);  // 드러난 붉은 근섬유
+const muscleD = getLowPolyMat(0x8a3038);
+const gold    = getLowPolyMat(0xe8bc46, true);   // 황금
+const goldHi  = getLowPolyMat(0xffe293, true);   // 밝은 황금
+const goldRot = getLowPolyMat(0xa78a3e, true);   // 부패해 변색된 황금
+const verdi   = getLowPolyMat(0x82a288, true);   // 녹청
+const leather = getLowPolyMat(0x4a3a34);
+const skin    = getLowPolyMat(0xd6b096);         // 노왕의 피부
+const skinDk  = getLowPolyMat(0xa8836c);
+const hairMat = getLowPolyMat(0xeceae6);         // 백발
+const cloth   = getLowPolyMat(0xdcd2b8);         // 허리천
+const clothDk = getLowPolyMat(0xc7bda2);
+const crystal = new THREE.MeshStandardMaterial({ color: 0xf6f0dc, emissive: 0xffa848, emissiveIntensity: 0.20, roughness: 0.55, flatShading: true });  // 오염 결정
+const crystal2= getLowPolyMat(0xe2dcc2);
+const glowMat = new THREE.MeshStandardMaterial({ color: 0xffe6b4, emissive: 0xff9420, emissiveIntensity: 2.1, roughness: 0.35, flatShading: true });
+const eyeMat  = new THREE.MeshStandardMaterial({ color: 0xffe9b0, emissive: 0xffa832, emissiveIntensity: 1.1, roughness: 0.4 });
+const crackMat= new THREE.MeshStandardMaterial({ color: 0xffbe70, emissive: 0xff7a18, emissiveIntensity: 1.0, roughness: 0.5, flatShading: true });
+
+const POOL_UPPER = [fMauve, fMauve, fPink, fPink, fLav2, fDeep, fCream, fLav];
+const POOL_ARM   = [fLav, fLav2, fMauve, fCream, fPink, fSage, fBone, fLav2];
+const POOL_LEG   = [fLav, fLav2, fCream, fBone, fSage, fMauve, fDeep, fLav];
+
+const kingObj = new THREE.Group(); kingObj.rotation.y = Math.PI; scene.add(kingObj);
+const bodyGrp = new THREE.Group(); kingObj.add(bodyGrp);
+
+// ===== 살덩이 헬퍼 =====
+function lump(r, mat, detail) {
+  const m = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(r, detail === undefined ? 0 : detail), mat));
+  jitterGeometry(m.geometry, r * 0.30);
+  return m;
+}
+function pick(pool) { return pool[Math.floor(rnd() * pool.length)]; }
+// 근육 덩어리 위를 종양 혹으로 뒤덮음
+function tumorShell(parent, o) {
+  const n = o.count;
+  for (let i = 0; i < n; i++) {
+    const k = i + 0.5;
+    const phi = Math.acos(1 - 2 * k / n);
+    const th = Math.PI * (1 + Math.sqrt(5)) * k;
+    const ux = Math.sin(phi) * Math.cos(th), uy = Math.cos(phi), uz = Math.sin(phi) * Math.sin(th);
+    const jr = 0.90 + rnd() * 0.18;
+    const x = o.cx + ux * o.rx * jr, y = o.cy + uy * o.ry * jr, z = o.cz + uz * o.rz * jr;
+    if (o.skip && o.skip(x, y, z)) continue;
+    const r = o.rMin + rnd() * (o.rMax - o.rMin);
+    const m = lump(r, o.mat || pick(o.pool || POOL_UPPER), rnd() > 0.75 ? 1 : 0);
+    m.position.set(x, y, z);
+    m.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
+    m.scale.set(1 + rnd() * 0.3, 0.82 + rnd() * 0.36, 1 + rnd() * 0.3);
+    parent.add(m);
+  }
+}
+// 근육 한 덩이(타원체) — 종양 혹의 바탕이 되는 형태
+function muscleBall(parent, x, y, z, rx, ry, rz, mat) {
+  const m = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), mat || fLav));
+  m.position.set(x, y, z); m.scale.set(rx, ry, rz);
+  jitterGeometry(m.geometry, 0.13);
+  parent.add(m); return m;
+}
+function bone(parent, x, y, z, rTop, rBot, len, mat) {
+  const m = sh(new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBot, len, 7), mat || fLav));
+  m.position.set(x, y, z); jitterGeometry(m.geometry, 0.05); parent.add(m); return m;
+}
+function plate(parent, x, y, z, w, h, d, mat, rx, ry, rz) {
+  const m = sh(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat));
+  m.position.set(x, y, z); m.rotation.set(rx || 0, ry || 0, rz || 0);
+  jitterGeometry(m.geometry, 0.02); parent.add(m); return m;
+}
+function spike(parent, x, y, z, r, h, mat, rx, rz) {
+  const m = sh(new THREE.Mesh(new THREE.ConeGeometry(r, h, 4), mat));
+  m.position.set(x, y, z); m.rotation.set(rx || 0, rnd() * 3, rz || 0); parent.add(m); return m;
+}
+function vein(parent, from, to, w, mat) {
+  const a = new THREE.Vector3(...from), b = new THREE.Vector3(...to);
+  const seg = sh(new THREE.Mesh(new THREE.BoxGeometry(w, a.distanceTo(b), w * 0.8), mat));
+  seg.position.copy(a).add(b).multiplyScalar(0.5);
+  seg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+  parent.add(seg);
+}
+
+// ============================================================
+//  부패한 왕 — 원화 기준
+//  · 거인 같은 근육질 노왕. 전신이 종양처럼 부푼 창백한 살덩이
+//  · 부러진 황금 왕관, 백발과 흰 수염, 굳은 표정
+//  · 오른쪽 어깨에서 터져 나온 발광 오염 결정 덩어리
+//  · 부패한 황금 한손검과 방패
+//  · 정면은 -z 방향, 캐릭터 기준 오른쪽은 -x
+// ============================================================
+
+// ---------- 하체(골반·다리) ----------
+const HIP_Y = 2.00;
+function createLeg(isRight) {
+  const s = isRight ? 1 : -1;              // 캐릭터 오른쪽 = +x(화면 왼쪽)
+  const hipGrp = new THREE.Group(); hipGrp.position.set(s * 0.34, HIP_Y, 0); bodyGrp.add(hipGrp);
+  // 허벅지
+  bone(hipGrp, 0, -0.44, 0, 0.38, 0.29, 0.90, fLav2);
+  muscleBall(hipGrp, 0, -0.30, -0.10, 0.38, 0.36, 0.33, fLav);
+  tumorShell(hipGrp, { cx: 0, cy: -0.40, cz: 0, rx: 0.34, ry: 0.42, rz: 0.31, count: 28, rMin: 0.14, rMax: 0.24, pool: POOL_LEG });
+  plate(hipGrp, s * 0.10, -0.86, -0.14, 0.34, 0.20, 0.30, gold, 0.2, 0, s * 0.15);   // 무릎 황금판
+  // 정강이
+  const kneeGrp = new THREE.Group(); kneeGrp.position.y = -0.92; hipGrp.add(kneeGrp);
+  bone(kneeGrp, 0, -0.38, 0, 0.26, 0.19, 0.78, fLav2);
+  muscleBall(kneeGrp, 0, -0.26, 0.10, 0.23, 0.26, 0.22, fCream);                      // 종아리
+  tumorShell(kneeGrp, { cx: 0, cy: -0.34, cz: 0.02, rx: 0.21, ry: 0.34, rz: 0.21, count: 16, rMin: 0.11, rMax: 0.19, pool: POOL_LEG });
+  // 부츠
+  const footGrp = new THREE.Group(); footGrp.position.y = -0.78; kneeGrp.add(footGrp);
+  const boot = lump(0.24, fCream, 1); boot.scale.set(1.0, 0.72, 1.5); boot.position.set(0, -0.10, -0.10); footGrp.add(boot);
+  plate(footGrp, 0, -0.15, -0.30, 0.30, 0.16, 0.26, gold, 0.15, 0, 0);                // 황금 발끝
+  plate(footGrp, 0, 0.04, 0.02, 0.34, 0.12, 0.34, goldRot, 0, 0, 0);                  // 발목 띠
+  return { hipGrp, kneeGrp, footGrp, s };
+}
+const legR = createLeg(true), legL = createLeg(false);
+
+// 골반
+muscleBall(bodyGrp, 0, 2.14, 0, 0.46, 0.30, 0.34, fLav2);
+tumorShell(bodyGrp, { cx: 0, cy: 2.14, cz: 0, rx: 0.42, ry: 0.24, rz: 0.30, count: 18, rMin: 0.13, rMax: 0.21, pool: POOL_LEG });
+plate(bodyGrp, 0, 2.30, 0, 0.86, 0.14, 0.62, gold);                                    // 황금 허리띠
+plate(bodyGrp, 0, 2.30, -0.34, 0.26, 0.18, 0.10, goldHi);                              // 버클
+[-1, 1].forEach(s => plate(bodyGrp, s * 0.44, 2.06, -0.08, 0.22, 0.40, 0.36, goldRot, 0, 0, s * 0.2)); // 옆구리 판
+
+// 허리천(길게 늘어진 천)
+const clothGrp = new THREE.Group(); clothGrp.position.set(0, 2.26, -0.30); bodyGrp.add(clothGrp);
+plate(clothGrp, 0, -0.34, 0, 0.44, 0.72, 0.09, cloth, 0.04, 0, 0);
+plate(clothGrp, 0, -0.94, -0.03, 0.40, 0.62, 0.08, cloth, 0.06, 0, 0.02);
+plate(clothGrp, 0, -1.46, -0.05, 0.35, 0.52, 0.07, clothDk, 0.05, 0, -0.02);
+plate(clothGrp, 0, 0.02, 0.01, 0.48, 0.14, 0.10, gold);
+plate(clothGrp, 0, -1.72, -0.06, 0.32, 0.07, 0.08, goldRot);
+// 뒤쪽 망토 자락
+plate(bodyGrp, 0, 1.80, 0.34, 0.50, 1.00, 0.08, cloth, -0.05, 0, 0);
+
+// ---------- 몸통(허리 피벗) ----------
+const TORSO_Y = 2.30;
+const torsoGrp = new THREE.Group(); torsoGrp.position.set(0, TORSO_Y, 0); bodyGrp.add(torsoGrp);
+// 복부
+muscleBall(torsoGrp, 0, 0.22, 0, 0.42, 0.26, 0.36, fLav2);
+tumorShell(torsoGrp, { cx: 0, cy: 0.22, cz: 0, rx: 0.39, ry: 0.24, rz: 0.34, count: 26, rMin: 0.12, rMax: 0.20, pool: POOL_UPPER });
+// 복근 6덩이
+for (let r = 0; r < 3; r++) for (let c = 0; c < 2; c++) {
+  const m = lump(0.11, r === 0 ? fPink : fLav, 0);
+  m.scale.set(1.25, 0.9, 0.7); m.position.set((c - 0.5) * 0.24, 0.40 - r * 0.17, -0.30);
+  torsoGrp.add(m);
+}
+// 가슴
+muscleBall(torsoGrp, 0, 0.72, 0.02, 0.68, 0.37, 0.44, fMauve);
+tumorShell(torsoGrp, { cx: 0, cy: 0.74, cz: 0.02, rx: 0.64, ry: 0.35, rz: 0.41, count: 52, rMin: 0.15, rMax: 0.26, pool: POOL_UPPER });
+// 대흉근 두 덩이
+[-1, 1].forEach(s => {
+  const p = lump(0.30, fPink, 1); p.scale.set(1.20, 0.88, 0.78);
+  p.position.set(s * 0.30, 0.68, -0.30); torsoGrp.add(p);
+  tumorShell(torsoGrp, { cx: s * 0.27, cy: 0.70, cz: -0.30, rx: 0.24, ry: 0.18, rz: 0.14, count: 10, rMin: 0.10, rMax: 0.16, pool: POOL_UPPER });
+});
+// 등판(승모근·광배근)
+muscleBall(torsoGrp, 0, 0.66, 0.32, 0.60, 0.35, 0.26, fDeep);
+tumorShell(torsoGrp, { cx: 0, cy: 0.62, cz: 0.32, rx: 0.58, ry: 0.33, rz: 0.16, count: 28, rMin: 0.15, rMax: 0.25, pool: POOL_UPPER });
+// 가슴 한가운데 드러난 붉은 근섬유(부패가 파고든 자리)
+const sternum = lump(0.15, muscle, 1); sternum.scale.set(0.7, 1.5, 0.5); sternum.position.set(0, 0.66, -0.34); torsoGrp.add(sternum);
+[[0, 0.92, -0.30], [-0.10, 0.48, -0.33], [0.12, 0.52, -0.33]].forEach(p => {
+  const m = lump(0.08, muscleD, 0); m.scale.set(1.2, 1.0, 0.6); m.position.set(p[0], p[1], p[2]); torsoGrp.add(m);
+});
+vein(torsoGrp, [0, 0.98, -0.28], [-0.34, 0.74, -0.30], 0.035, muscleD);
+vein(torsoGrp, [0, 0.98, -0.28], [0.32, 0.72, -0.30], 0.035, muscleD);
+// 목
+bone(torsoGrp, 0, 1.06, 0.02, 0.16, 0.19, 0.22, skinDk);
+// 가슴 황금 장식(부패해 변색)
+plate(torsoGrp, 0, 0.98, -0.16, 0.74, 0.10, 0.44, goldRot, 0.3, 0, 0);
+[-1, 1].forEach(s => plate(torsoGrp, s * 0.40, 0.90, -0.22, 0.22, 0.16, 0.22, gold, 0.2, 0, s * 0.3));
+
+// ---------- 팔 ----------
+const SH_Y = 0.86;   // torsoGrp 기준 어깨 높이(월드 3.16)
+function createArm(isRight) {
+  const s = isRight ? 1 : -1;
+  const armGrp = new THREE.Group(); armGrp.position.set(s * 0.84, SH_Y, 0); torsoGrp.add(armGrp);
+  // 삼각근
+  muscleBall(armGrp, s * 0.07, 0.04, 0, 0.35, 0.32, 0.33, fMauve);
+  tumorShell(armGrp, { cx: s * 0.07, cy: 0.02, cz: 0, rx: 0.32, ry: 0.29, rz: 0.30, count: 26, rMin: 0.13, rMax: 0.23, pool: POOL_UPPER });
+  plate(armGrp, s * 0.18, 0.20, 0, 0.42, 0.15, 0.46, gold, 0, 0, s * 0.35);   // 어깨 황금판
+  // 위팔
+  bone(armGrp, 0, -0.40, 0, 0.25, 0.21, 0.72, fLav2);
+  muscleBall(armGrp, 0, -0.34, -0.08, 0.23, 0.24, 0.20, fLav);                    // 이두
+  tumorShell(armGrp, { cx: 0, cy: -0.38, cz: 0, rx: 0.21, ry: 0.32, rz: 0.21, count: 18, rMin: 0.11, rMax: 0.19, pool: POOL_ARM });
+  // 팔꿈치·아래팔
+  const elbowGrp = new THREE.Group(); elbowGrp.position.y = -0.74; armGrp.add(elbowGrp);
+  elbowGrp.add(lump(0.20, fDeep, 1));
+  bone(elbowGrp, 0, -0.32, 0, 0.21, 0.16, 0.64, fLav2);
+  tumorShell(elbowGrp, { cx: 0, cy: -0.30, cz: 0, rx: 0.18, ry: 0.28, rz: 0.18, count: 14, rMin: 0.10, rMax: 0.17, pool: POOL_ARM });
+  plate(elbowGrp, 0, -0.52, -0.02, 0.30, 0.20, 0.30, gold, 0, 0, 0);              // 황금 완갑
+  // 손
+  const handGrp = new THREE.Group(); handGrp.position.y = -0.68; elbowGrp.add(handGrp);
+  const fist = lump(0.17, fLav, 1); fist.scale.set(1.05, 1.0, 1.15); handGrp.add(fist);
+  for (let f = 0; f < 4; f++) {
+    const fg = lump(0.055, fCream, 0); fg.scale.set(0.9, 0.9, 1.5);
+    fg.position.set((f - 1.5) * 0.085, -0.10, -0.13); handGrp.add(fg);
+  }
+  return { armGrp, elbowGrp, handGrp, s };
+}
+const armR = createArm(true), armL = createArm(false);
+armR.armGrp.rotation.set(0.10, 0, 0.22);   // 오른팔: +z 회전이 바깥쪽
+armL.armGrp.rotation.set(0.30, 0, -0.22);  // 왼팔: -z 회전이 바깥쪽
+armR.elbowGrp.rotation.x = -0.30;
+armL.elbowGrp.rotation.x = 1.15;
+
+// ---------- 오른쪽 어깨의 오염원 결정 덩어리 ----------
+const bloomGrp = new THREE.Group(); bloomGrp.position.set(0.90, 1.02, 0.04); bloomGrp.scale.setScalar(1.22); torsoGrp.add(bloomGrp);
+tumorShell(bloomGrp, { cx: 0, cy: 0, cz: 0, rx: 0.30, ry: 0.26, rz: 0.28, count: 22, rMin: 0.13, rMax: 0.23, mat: crystal });
+tumorShell(bloomGrp, { cx: -0.06, cy: 0.16, cz: 0.06, rx: 0.22, ry: 0.18, rz: 0.20, count: 12, rMin: 0.11, rMax: 0.18, mat: crystal2 });
+const glowNodes = [];
+// 발광 핵은 결정 껍질 '바깥면'에 박혀 있어야 보인다(안쪽에 두면 가려진다)
+[[-0.02, 0.10, -0.40, 0.115], [0.20, -0.02, -0.36, 0.098], [-0.28, 0.02, -0.30, 0.092],
+ [0.05, 0.33, -0.20, 0.085], [-0.35, 0.24, -0.08, 0.078], [0.28, 0.26, -0.13, 0.075],
+ [-0.13, -0.21, -0.28, 0.082], [-0.44, 0.03, 0.05, 0.068], [0.13, 0.42, -0.03, 0.062],
+ [0.30, 0.06, 0.22, 0.070], [-0.08, -0.28, 0.10, 0.060]].forEach(p => {
+  const g = lump(p[3], glowMat, 0); g.position.set(p[0], p[1], p[2]); bloomGrp.add(g); glowNodes.push(g);
+});
+// 뻗어 나온 결정 파편
+[[-0.10, 0.34, -0.06, -0.3, 0.4], [0.14, 0.30, 0.04, -0.5, -0.3], [-0.28, 0.20, -0.10, -0.2, 0.9],
+ [0.04, 0.36, 0.14, -0.7, 0.1], [-0.22, 0.06, -0.24, 0.4, 0.6]].forEach(p => {
+  spike(bloomGrp, p[0], p[1], p[2], 0.055, 0.30 + rnd() * 0.16, crystal, p[3], p[4]);
+});
+// 어깨에서 팔·가슴으로 번진 오염
+[[0.56, 0.86, -0.20, 0.11], [0.64, 0.66, -0.10, 0.09], [0.38, 0.94, -0.24, 0.08], [0.70, 0.44, 0.02, 0.075]].forEach(p => {
+  const m = lump(p[3], crystal2, 0); m.position.set(p[0], p[1], p[2]); torsoGrp.add(m);
+});
+const bloomLight = new THREE.PointLight(0xff9a3c, 0.9, 3.4, 2);
+bloomLight.position.set(0.90, 3.30, 0.04); bodyGrp.add(bloomLight);
+
+// ---------- 머리 ----------
+const headGrp = new THREE.Group(); headGrp.position.set(0, 1.42, 0.00); headGrp.scale.setScalar(1.26); torsoGrp.add(headGrp);
+const skull = lump(0.28, skin, 1); skull.scale.set(1.0, 1.12, 1.05); headGrp.add(skull);
+// 이마·광대·코
+const brow = lump(0.135, skin, 0); brow.scale.set(1.75, 0.60, 0.75); brow.position.set(0, 0.095, -0.225); headGrp.add(brow);
+[-1, 1].forEach(sg => { const bw = lump(0.055, hairMat, 0); bw.scale.set(1.6, 0.5, 0.5); bw.position.set(sg * 0.125, 0.075, -0.275); bw.rotation.z = sg * 0.22; headGrp.add(bw); });
+[-1, 1].forEach(s => { const c = lump(0.09, skin, 0); c.scale.set(1.0, 0.8, 0.7); c.position.set(s * 0.16, -0.02, -0.21); headGrp.add(c); });
+const nose = lump(0.055, skin, 0); nose.scale.set(1.0, 1.9, 1.9); nose.position.set(0, -0.03, -0.28); headGrp.add(nose);
+const noseTip = lump(0.04, skin, 0); noseTip.scale.set(1.1, 0.8, 1.1); noseTip.position.set(0, -0.10, -0.31); headGrp.add(noseTip);
+// 굳게 다문 입
+const mouth = sh(new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.022, 0.05), skinDk));
+mouth.position.set(0, -0.165, -0.275); headGrp.add(mouth);
+// 광대 아래 그늘
+[-1, 1].forEach(sg => { const c = lump(0.06, skinDk, 0); c.scale.set(1.1, 0.7, 0.5); c.position.set(sg * 0.155, -0.09, -0.235); headGrp.add(c); });
+// 눈(움푹 들어간 눈두덩 + 흐릿한 빛)
+const eyes = [];
+[-1, 1].forEach(s => {
+  const sock = lump(0.062, skinDk, 0); sock.scale.set(1.4, 0.85, 0.5); sock.position.set(s * 0.118, 0.015, -0.255); headGrp.add(sock);
+  const g = new THREE.Mesh(new THREE.IcosahedronGeometry(0.021, 0), eyeMat);
+  g.position.set(s * 0.118, 0.015, -0.295); headGrp.add(g); eyes.push(g);
+});
+// 백발(뒤로 넘긴 머리)
+tumorShell(headGrp, { cx: 0, cy: 0.16, cz: 0.10, rx: 0.26, ry: 0.16, rz: 0.24, count: 16, rMin: 0.10, rMax: 0.16, mat: hairMat });
+[[0, 0.10, 0.28, 1.5, 0.7, 1.0], [-0.16, 0.04, 0.26, 0.8, 0.9, 0.9], [0.16, 0.04, 0.26, 0.8, 0.9, 0.9]].forEach(p => {
+  const h = lump(0.14, hairMat, 1); h.scale.set(p[3], p[4], p[5]); h.position.set(p[0], p[1], p[2]); headGrp.add(h);
+});
+// 흰 수염
+// 턱선을 감싸는 흰 수염(입은 드러나게)
+[[0, -0.30, -0.14, 1.35, 1.0, 1.05], [0, -0.40, -0.04, 1.15, 0.95, 1.0],
+ [-0.19, -0.20, -0.10, 0.95, 1.15, 0.95], [0.19, -0.20, -0.10, 0.95, 1.15, 0.95],
+ [-0.13, -0.34, -0.18, 0.8, 0.8, 0.8], [0.13, -0.34, -0.18, 0.8, 0.8, 0.8],
+ [0, -0.22, 0.10, 1.2, 1.0, 0.9]].forEach(p => {
+  const b = lump(0.125, hairMat, 1); b.scale.set(p[3], p[4], p[5]); b.position.set(p[0], p[1], p[2]); headGrp.add(b);
+});
+// 콧수염
+[-1, 1].forEach(sg => {
+  const m = lump(0.062, hairMat, 0); m.scale.set(1.5, 0.65, 0.85);
+  m.position.set(sg * 0.062, -0.125, -0.255); m.rotation.z = sg * 0.25; headGrp.add(m);
+});
+// 오른쪽 얼굴로 번진 오염 결정
+[[0.22, 0.14, -0.14, 0.075], [0.26, 0.02, -0.06, 0.065], [0.20, -0.14, -0.12, 0.055]].forEach(p => {
+  const m = lump(p[3], crystal2, 0); m.position.set(p[0], p[1], p[2]); headGrp.add(m);
+});
+
+// 부러진 황금 왕관
+const crownGrp = new THREE.Group(); crownGrp.position.set(0, 0.26, 0.01); crownGrp.rotation.set(0.06, 0, -0.05); headGrp.add(crownGrp);
+const band = sh(new THREE.Mesh(new THREE.TorusGeometry(0.245, 0.045, 4, 14), gold));
+band.rotation.x = Math.PI / 2; band.scale.set(1.06, 1, 0.98); crownGrp.add(band);
+for (let i = 0; i < 9; i++) {
+  const a = (i / 9) * Math.PI * 2;
+  const broken = (i === 3 || i === 7);                     // 부러진 뿔 두 개
+  const h = broken ? 0.09 : (i % 2 ? 0.26 : 0.17);
+  const c = sh(new THREE.Mesh(new THREE.ConeGeometry(0.05, h, 4), broken ? goldRot : gold));
+  c.position.set(Math.sin(a) * 0.245, h / 2 + 0.02, Math.cos(a) * 0.245);
+  c.rotation.set(Math.sin(a) * 0.12, a, -Math.cos(a) * 0.12);
+  crownGrp.add(c);
+  if (i % 3 === 0 && !broken) {
+    const gem = lump(0.035, i === 0 ? muscle : verdi, 0);
+    gem.position.set(Math.sin(a) * 0.25, 0.03, Math.cos(a) * 0.25); crownGrp.add(gem);
+  }
+}
+// 왕관에 자란 오염 결정
+[[0.18, 0.16, 0.08], [0.10, 0.22, -0.14]].forEach(p => {
+  const m = lump(0.06, crystal, 0); m.position.set(p[0], p[1], p[2]); crownGrp.add(m);
+});
+
+// ---------- 부패한 황금 한손검(오른손) ----------
+const swordGrp = new THREE.Group();
+armR.handGrp.add(swordGrp);
+swordGrp.position.set(0, -0.04, -0.04);
+swordGrp.rotation.set(Math.PI + 0.55, 0, -0.14);   // 아래·앞으로 낮게 겨눈 자세
+(function buildSword(g) {
+  bone(g, 0, 0, 0, 0.048, 0.052, 0.26, leather);                 // 손잡이
+  const pom = lump(0.075, goldHi, 1); pom.scale.set(1, 0.85, 1); pom.position.y = -0.17; g.add(pom);
+  plate(g, 0, 0.16, 0, 0.56, 0.09, 0.13, goldHi);                // 십자 가드
+  plate(g, -0.20, 0.16, 0, 0.10, 0.10, 0.13, goldRot, 0, 0, 0.3);
+  plate(g, 0.20, 0.16, 0, 0.10, 0.10, 0.13, goldRot, 0, 0, -0.3);
+  // 검신(부패해 얼룩진 황금)
+  plate(g, 0, 0.62, 0, 0.26, 0.86, 0.07, gold);
+  plate(g, 0, 1.30, 0, 0.21, 0.54, 0.06, goldRot);
+  const tip = sh(new THREE.Mesh(new THREE.ConeGeometry(0.105, 0.30, 4), gold));
+  tip.position.set(0, 1.72, 0); tip.rotation.y = Math.PI / 4; tip.scale.set(1.35, 1.2, 0.55); g.add(tip);
+  // 검신을 타고 오르는 오염 결정과 녹청
+  [[0.10, 0.42, 0.02, 0.075], [-0.10, 0.58, -0.02, 0.065], [0.11, 0.86, 0.01, 0.058],
+   [-0.09, 1.06, 0.0, 0.05], [0.09, 1.28, 0.0, 0.042]].forEach(p => {
+    const m = lump(p[3], rnd() > 0.5 ? crystal : verdi, 0);
+    m.scale.set(1.0, 1.2, 0.7); m.position.set(p[0], p[1], p[2]); g.add(m);
+  });
+  plate(g, 0, 0.68, 0.001, 0.040, 1.46, 0.078, crackMat);        // 검신 중앙의 발광 균열
+})(swordGrp);
+
+// ---------- 부패한 황금 방패(왼팔) ----------
+const shieldGrp = new THREE.Group();
+armL.elbowGrp.add(shieldGrp);
+shieldGrp.position.set(0, -0.84, 0);              // 아래팔 끝(주먹보다 바깥)
+shieldGrp.rotation.set(-Math.PI / 2, 0, 0);        // 방패면 ⟂ 아래팔 축
+// 카이트 실드 외곽선(위는 둥글고 아래로 갈수록 뾰족해지는 물방울 형태)
+function kiteGeometry(hw, top, bot, depth) {
+  const sp = new THREE.Shape();
+  sp.moveTo(0, top);
+  sp.bezierCurveTo(hw * 0.90, top, hw * 1.00, top * 0.42, hw * 0.97, top * 0.10);
+  sp.bezierCurveTo(hw * 0.93, bot * 0.32, hw * 0.54, bot * 0.70, 0, bot);
+  sp.bezierCurveTo(-hw * 0.54, bot * 0.70, -hw * 0.93, bot * 0.32, -hw * 0.97, top * 0.10);
+  sp.bezierCurveTo(-hw * 1.00, top * 0.42, -hw * 0.90, top, 0, top);
+  const g = new THREE.ExtrudeGeometry(sp, {
+    depth: depth, bevelEnabled: true, bevelThickness: depth * 0.4,
+    bevelSize: 0.04, bevelSegments: 1, curveSegments: 5
+  });
+  g.translate(0, 0, -depth / 2);
+  return g;
+}
+(function buildShield(g) {
+  // 방패 정면은 로컬 -z. 팔은 방패 위쪽 1/3 지점을 잡으므로 내용물을 아래로 내린다
+  const inner = new THREE.Group(); inner.position.set(0, -0.45, 0); g.add(inner);
+  const HW = 0.86, TOP = 0.95, BOT = -1.33;          // 1.72 x 2.28 (기존 대비 2배)
+  // 황금 테두리 — 면보다 크게 뒤에 깔아 가장자리가 금테로 보이게
+  const rim = sh(new THREE.Mesh(kiteGeometry(HW, TOP, BOT, 0.17), gold));
+  inner.add(rim);
+  // 방패면
+  const face = sh(new THREE.Mesh(kiteGeometry(HW - 0.09, TOP - 0.09, BOT + 0.15, 0.15), fCream));
+  face.position.z = -0.035; jitterGeometry(face.geometry, 0.022); inner.add(face);
+  // 중앙 보스(방패심)
+  const boss = lump(0.20, goldHi, 1); boss.scale.set(1, 1, 0.55); boss.position.set(0, 0.30, -0.16); inner.add(boss);
+  // 세로 보강대
+  plate(inner, 0, -0.30, -0.13, 0.13, 1.30, 0.07, goldRot, 0, 0, 0);
+  plate(inner, 0, 0.30, -0.13, 1.30, 0.12, 0.07, goldRot, 0, 0, 0);
+  // 부패한 황금 왕관 문장
+  plate(inner, 0, 0.60, -0.14, 0.52, 0.09, 0.06, goldRot);
+  [-1, 0, 1].forEach(i2 => plate(inner, i2 * 0.17, 0.72, -0.14, 0.09, 0.22, 0.06, goldRot));
+  // 아래 뾰족한 끝에서 번져 올라온 오염
+  [[-0.40, -0.72, -0.14, 0.17], [0.30, -0.86, -0.13, 0.15], [-0.06, -1.04, -0.12, 0.14],
+   [0.48, -0.40, -0.14, 0.13], [-0.56, -0.30, -0.14, 0.12], [0.16, -0.60, -0.15, 0.11],
+   [-0.24, -1.26, -0.10, 0.10], [0.62, -0.10, -0.13, 0.10]].forEach(pt => {
+    const m = lump(pt[3], rnd() > 0.45 ? crystal : verdi, 0);
+    m.scale.set(1.1, 1.0, 0.5); m.position.set(pt[0], pt[1], pt[2]); inner.add(m);
+  });
+  // 발광 균열
+  plate(inner, -0.24, -0.52, -0.16, 0.035, 0.80, 0.04, crackMat, 0, 0, 0.42);
+  plate(inner, 0.28, -0.30, -0.16, 0.035, 0.62, 0.04, crackMat, 0, 0, -0.34);
+  plate(inner, 0.02, -0.94, -0.15, 0.030, 0.46, 0.04, crackMat, 0, 0, 0.16);
+  // 뒷면 가죽 손잡이 끈
+  plate(inner, 0, 0.52, 0.11, 0.66, 0.10, 0.09, leather, 0, 0, 0.12);
+  plate(inner, 0, 0.24, 0.11, 0.52, 0.09, 0.09, leather, 0, 0, -0.10);
+})(shieldGrp);
+
+// ---------- 발밑 잔해 ----------
+for (let i = 0; i < 14; i++) {
+  const a = rnd() * Math.PI * 2, d = 1.0 + rnd() * 0.8, r = 0.05 + rnd() * 0.11;
+  const m = lump(r, rnd() > 0.7 ? crystal2 : fSage, 0);
+  m.scale.set(1.3, 0.45, 1.2); m.position.set(Math.sin(a) * d, r * 0.35, Math.cos(a) * d);
+  bodyGrp.add(m);
+}
+
+// ---------- 바닥 ----------
+const disc = sh(new THREE.Mesh(new THREE.CylinderGeometry(3.0, 3.0, 0.05, 48), getLowPolyMat(0x0a0b0d)));
+disc.position.y = 0; disc.receiveShadow = true; scene.add(disc);
+
+// ============================================================
+//  드로우콜 최적화: 움직이지 않는 부위를 머티리얼별로 병합
+// ============================================================
+function mergeGeos(geos) {
+  const list = geos.map(g => (g.index ? g.toNonIndexed() : g));
+  let n = 0; list.forEach(g => n += g.attributes.position.count);
+  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3);
+  let off = 0;
+  list.forEach(g => {
+    pos.set(g.attributes.position.array, off * 3);
+    nor.set(g.attributes.normal.array, off * 3);
+    off += g.attributes.position.count;
+  });
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  return out;
+}
+function mergeStatic(root, skip) {
+  const skipSet = new Set(skip || []);
+  const byMat = new Map();
+  const walk = (obj, mat4) => {
+    obj.children.slice().forEach(ch => {
+      if (skipSet.has(ch) || ch.isLight) return;
+      const m = mat4.clone().multiply(new THREE.Matrix4().compose(ch.position, ch.quaternion, ch.scale));
+      if (ch.isMesh) {
+        const g = ch.geometry.clone().applyMatrix4(m);
+        if (!byMat.has(ch.material)) byMat.set(ch.material, []);
+        byMat.get(ch.material).push(g);
+        obj.remove(ch);
+      } else if (ch.isGroup) {
+        walk(ch, m);
+        if (ch.children.length === 0) obj.remove(ch);
+      }
+    });
+  };
+  walk(root, new THREE.Matrix4());
+  byMat.forEach((geos, mat) => {
+    const mesh = new THREE.Mesh(mergeGeos(geos), mat);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    root.add(mesh);
+  });
+}
+mergeStatic(swordGrp);
+mergeStatic(shieldGrp);
+mergeStatic(crownGrp);
+mergeStatic(headGrp, [crownGrp]);
+mergeStatic(bloomGrp, glowNodes);
+[armR, armL].forEach(a => {
+  mergeStatic(a.handGrp, [swordGrp]);
+  mergeStatic(a.elbowGrp, [a.handGrp, shieldGrp]);
+  mergeStatic(a.armGrp, [a.elbowGrp]);
+});
+[legR, legL].forEach(l => {
+  mergeStatic(l.footGrp);
+  mergeStatic(l.kneeGrp, [l.footGrp]);
+  mergeStatic(l.hipGrp, [l.kneeGrp]);
+});
+mergeStatic(clothGrp);
+mergeStatic(torsoGrp, [headGrp, armR.armGrp, armL.armGrp, bloomGrp]);
+mergeStatic(bodyGrp, [torsoGrp, clothGrp, legR.hipGrp, legL.hipGrp]);
+
+// ===== 위치 파악용 그리드 (토글) =====
+const gridGroup = new THREE.Group(); gridGroup.visible = false; scene.add(gridGroup);
+const grid = new THREE.GridHelper(6, 12, 0x60606f, 0x30343c); grid.position.y = 0.03; gridGroup.add(grid);
+function axisLine(from, to, color) {
+  const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...from), new THREE.Vector3(...to)]);
+  return new THREE.Line(g, new THREE.LineBasicMaterial({ color }));
+}
+gridGroup.add(axisLine([-3.2, 0.04, 0], [3.2, 0.04, 0], 0xc0504a));
+gridGroup.add(axisLine([0, 0.04, -3.2], [0, 0.04, 3.2], 0x4a6ac0));
+gridGroup.add(axisLine([0, 0, 0], [0, 4.4, 0], 0x4aa05a));
+function makeLabel(text, x, y, z, color) {
+  const cv = document.createElement('canvas'); cv.width = 128; cv.height = 64;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = color; ctx.font = 'bold 40px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, 64, 32);
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthTest: false }));
+  spr.position.set(x, y, z); spr.scale.set(0.4, 0.2, 1); gridGroup.add(spr);
+}
+for (let i = -3; i <= 3; i++) if (i !== 0) { makeLabel(i.toFixed(1), i, 0.06, 0.18, '#d08a84'); makeLabel(i.toFixed(1), 0.22, 0.06, i, '#8a9ad0'); }
+for (let i = 1; i <= 8; i++) makeLabel((i * 0.5).toFixed(1), 0.18, i * 0.5, 0, '#8ad08a');
+
+// ===== 인터랙션 =====
+let autoSpin = true, walking = false, walkPhase = 0, roaring = false, roarPhase = 0, slashPhase = -1, guarding = false;
+
+let dragging = false, lastX = 0, lastY = 0, pinchD = 0, pinching = false;
+canvas.addEventListener('mousedown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  camYaw -= (e.clientX - lastX) * 0.01;
+  camPitch = Math.max(-1.2, Math.min(1.3, camPitch + (e.clientY - lastY) * 0.01));
+  lastX = e.clientX; lastY = e.clientY; updateCam();
+});
+window.addEventListener('mouseup', () => dragging = false);
+canvas.addEventListener('wheel', e => { e.preventDefault(); camDist = Math.max(2.5, Math.min(fitDistance() * 2.0, camDist + e.deltaY * 0.01)); updateCam(); }, { passive: false });
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (e.touches.length === 1) { dragging = true; pinching = false; lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; }
+  else if (e.touches.length === 2) { pinching = true; dragging = false; pinchD = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); }
+}, { passive: false });
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (pinching && e.touches.length === 2) {
+    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    camDist = Math.max(2.5, Math.min(fitDistance() * 2.0, camDist - (d - pinchD) * 0.02)); pinchD = d; updateCam();
+  } else if (dragging && e.touches.length === 1) {
+    const t = e.touches[0];
+    camYaw -= (t.clientX - lastX) * 0.01;
+    camPitch = Math.max(-1.2, Math.min(1.3, camPitch + (t.clientY - lastY) * 0.01));
+    lastX = t.clientX; lastY = t.clientY; updateCam();
+  }
+}, { passive: false });
+canvas.addEventListener('touchend', e => { if (e.touches.length === 0) { dragging = false; pinching = false; } }, { passive: false });
+
+document.getElementById('spinBtn').addEventListener('click', e => { autoSpin = !autoSpin; e.target.textContent = '자동회전: ' + (autoSpin ? '켬' : '끔'); });
+document.getElementById('walkBtn').addEventListener('click', e => { walking = !walking; e.target.classList.toggle('on', walking); });
+document.getElementById('roarBtn').addEventListener('click', e => { roaring = !roaring; e.target.classList.toggle('on', roaring); if (!roaring) roarPhase = 0; });
+document.getElementById('slashBtn').addEventListener('click', () => { if (slashPhase < 0) slashPhase = 0; });
+document.getElementById('guardBtn').addEventListener('click', e => { guarding = !guarding; e.target.classList.toggle('on', guarding); });
+document.getElementById('bgBtn').addEventListener('click', () => { bgIdx = (bgIdx + 1) % bgColors.length; const c = new THREE.Color(bgColors[bgIdx]); scene.background = c; scene.fog.color = c; });
+document.getElementById('gridBtn').addEventListener('click', e => { gridGroup.visible = !gridGroup.visible; e.target.classList.toggle('on', gridGroup.visible); });
+document.getElementById('resetBtn').addEventListener('click', () => { camDist = fitDistance(); camYaw = 0.5 + Math.PI; camPitch = 0.05; updateCam(); });
+
+function onResize() {
+  const prevFit = fitDistance();
+  camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  const [w, h] = calcLowRes(); lowResW = w; lowResH = h;
+  rt.setSize(lowResW, lowResH);
+  rt.depthTexture.image.width = lowResW; rt.depthTexture.image.height = lowResH; rt.depthTexture.needsUpdate = true;
+  quadMat.uniforms.uTexel.value.set(1 / lowResW, 1 / lowResH);
+  camDist = Math.max(2.5, camDist * (fitDistance() / prevFit));
+  updateCam();
+}
+window.addEventListener('resize', onResize);
+window.addEventListener('orientationchange', () => setTimeout(onResize, 250));
+if (window.visualViewport) window.visualViewport.addEventListener('resize', onResize);
+
+if (('ontouchstart' in window) || navigator.maxTouchPoints > 0) {
+  document.getElementById('hint').textContent = '한 손가락: 회전 · 두 손가락: 확대축소';
+}
+
+const clock = new THREE.Clock();
+const lerp = (o, k, tgt, sp, dt) => { o[k] += (tgt - o[k]) * Math.min(1, dt * sp); };
+
+// 기본 자세
+const REST = {
+  rArmX: 0.10, rArmZ: 0.22, rElbX: -0.30,
+  lArmX: 0.30, lArmZ: -0.22, lElbX: 1.15
+};
+
+function animate() {
+  const dt = Math.min(0.05, clock.getDelta());
+  const t = clock.elapsedTime;
+  if (autoSpin) { camYaw += dt * 0.3; updateCam(); }
+
+  // 상시: 호흡 · 오염원 맥동 · 눈빛 흔들림
+  const breath = Math.sin(t * 0.9);
+  torsoGrp.scale.set(1 + breath * 0.012, 1 + breath * 0.008, 1 + breath * 0.014);
+  const pulse = 1.1 + Math.sin(t * 2.2) * 0.5 + Math.sin(t * 0.7) * 0.25;
+  glowMat.emissiveIntensity = Math.max(1.1, pulse + 0.9);
+  crackMat.emissiveIntensity = Math.max(0.35, 0.8 + Math.sin(t * 1.7) * 0.4);
+  bloomLight.intensity = 0.6 + Math.max(0, pulse) * 0.35;
+  eyeMat.emissiveIntensity = 0.9 + Math.sin(t * 2.6) * 0.25;
+  glowNodes.forEach((g, i) => g.scale.setScalar(1 + Math.sin(t * 2.4 + i) * 0.10));
+
+  // 이동: 무겁게 성큼성큼
+  if (walking) walkPhase += dt * 2.6;
+  const ws = Math.sin(walkPhase);
+  if (walking) {
+    lerp(legR.hipGrp.rotation, 'x', -ws * 0.52, 10, dt);
+    lerp(legL.hipGrp.rotation, 'x', ws * 0.52, 10, dt);
+    lerp(legR.kneeGrp.rotation, 'x', Math.max(0, ws) * 0.62, 10, dt);
+    lerp(legL.kneeGrp.rotation, 'x', Math.max(0, -ws) * 0.62, 10, dt);
+    lerp(legR.footGrp.rotation, 'x', ws * 0.20, 9, dt);
+    lerp(legL.footGrp.rotation, 'x', -ws * 0.20, 9, dt);
+    bodyGrp.position.y = Math.abs(Math.sin(walkPhase * 2)) * 0.05;
+    lerp(torsoGrp.rotation, 'y', ws * 0.10, 7, dt);
+    lerp(clothGrp.rotation, 'x', -ws * 0.16, 6, dt);
+    if (slashPhase < 0) lerp(armR.armGrp.rotation, 'x', REST.rArmX + ws * 0.32, 8, dt);
+    if (!guarding) lerp(armL.armGrp.rotation, 'x', REST.lArmX - ws * 0.32, 8, dt);
+  } else {
+    lerp(legR.hipGrp.rotation, 'x', 0, 8, dt); lerp(legL.hipGrp.rotation, 'x', 0, 8, dt);
+    lerp(legR.kneeGrp.rotation, 'x', 0, 8, dt); lerp(legL.kneeGrp.rotation, 'x', 0, 8, dt);
+    lerp(legR.footGrp.rotation, 'x', 0, 8, dt); lerp(legL.footGrp.rotation, 'x', 0, 8, dt);
+    lerp(bodyGrp.position, 'y', breath * 0.008, 8, dt);
+    lerp(clothGrp.rotation, 'x', Math.sin(t * 0.6) * 0.02, 5, dt);
+    if (!roaring) lerp(torsoGrp.rotation, 'y', Math.sin(t * 0.45) * 0.03, 5, dt);
+    if (slashPhase < 0) lerp(armR.armGrp.rotation, 'x', REST.rArmX, 7, dt);
+    if (!guarding) lerp(armL.armGrp.rotation, 'x', REST.lArmX, 7, dt);
+  }
+
+  // 방패 방어: 왼팔을 들어 몸 앞을 가림
+  if (guarding) {
+    lerp(armL.armGrp.rotation, 'x', 0.80, 8, dt);
+    lerp(armL.armGrp.rotation, 'z', -0.06, 8, dt);
+    lerp(armL.elbowGrp.rotation, 'x', 0.86, 8, dt);
+  } else {
+    lerp(armL.armGrp.rotation, 'z', REST.lArmZ, 6, dt);
+    lerp(armL.elbowGrp.rotation, 'x', REST.lElbX, 6, dt);
+  }
+
+  // 베기: 검을 머리 위로 들었다가 대각선으로 내려벤다
+  if (slashPhase >= 0) {
+    slashPhase += dt;
+    if (slashPhase < 0.65) {                    // 들어올림
+      const w = slashPhase / 0.65;
+      lerp(armR.armGrp.rotation, 'x', REST.rArmX - 2.05 * w, 9, dt);
+      lerp(armR.armGrp.rotation, 'z', REST.rArmZ + 0.72 * w, 9, dt);
+      lerp(armR.elbowGrp.rotation, 'x', -1.5 * w, 9, dt);
+      lerp(torsoGrp.rotation, 'y', -0.28 * w, 8, dt);
+    } else if (slashPhase < 0.95) {             // 내려베기
+      lerp(armR.armGrp.rotation, 'x', 0.95, 30, dt);
+      lerp(armR.armGrp.rotation, 'z', -0.06, 26, dt);
+      lerp(armR.elbowGrp.rotation, 'x', -0.12, 30, dt);
+      lerp(torsoGrp.rotation, 'y', 0.34, 26, dt);
+      lerp(torsoGrp.rotation, 'x', 0.16, 22, dt);
+    } else if (slashPhase < 1.75) {             // 여운
+      lerp(armR.armGrp.rotation, 'x', REST.rArmX, 5, dt);
+      lerp(armR.armGrp.rotation, 'z', REST.rArmZ, 5, dt);
+      lerp(armR.elbowGrp.rotation, 'x', REST.rElbX, 5, dt);
+      lerp(torsoGrp.rotation, 'y', 0, 5, dt);
+      lerp(torsoGrp.rotation, 'x', 0, 5, dt);
+    } else { slashPhase = -1; }
+  } else {
+    lerp(armR.armGrp.rotation, 'z', REST.rArmZ, 6, dt);
+    lerp(armR.elbowGrp.rotation, 'x', REST.rElbX, 6, dt);
+    if (!roaring) lerp(torsoGrp.rotation, 'x', 0, 6, dt);
+  }
+
+  // 포효: 고개를 젖히고 양팔을 벌린 채 오염원이 폭주
+  if (roaring) {
+    roarPhase += dt;
+    const cyc = roarPhase % 3.0;
+    if (cyc < 0.45) {
+      const w = cyc / 0.45;
+      lerp(headGrp.rotation, 'x', -0.12 * w, 8, dt);
+      lerp(torsoGrp.rotation, 'x', 0.10 * w, 8, dt);
+    } else if (cyc < 2.2) {
+      lerp(headGrp.rotation, 'x', 0.42, 9, dt);
+      lerp(torsoGrp.rotation, 'x', -0.16, 8, dt);
+      torsoGrp.rotation.z = Math.sin(t * 30) * 0.012;
+      if (slashPhase < 0) { lerp(armR.armGrp.rotation, 'z', 0.78, 7, dt); }
+      if (!guarding) { lerp(armL.armGrp.rotation, 'z', -0.78, 7, dt); }
+      glowMat.emissiveIntensity = 2.6;
+      bloomLight.intensity = 1.6;
+      eyeMat.emissiveIntensity = 2.2;
+      crackMat.emissiveIntensity = 1.9;
+    } else {
+      lerp(headGrp.rotation, 'x', 0, 6, dt);
+      lerp(torsoGrp.rotation, 'x', 0, 6, dt);
+      torsoGrp.rotation.z = 0;
+    }
+  } else {
+    lerp(headGrp.rotation, 'x', Math.sin(t * 0.5) * 0.02, 5, dt);
+    lerp(headGrp.rotation, 'y', Math.sin(t * 0.33) * 0.05, 4, dt);
+    torsoGrp.rotation.z = 0;
+  }
+
+  renderer.clear();
+  renderer.setRenderTarget(rt);
+  renderer.clear();
+  renderer.render(scene, camera);
+  renderer.setRenderTarget(null);
+  renderer.render(quadScene, quadCam);
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>
