@@ -549,9 +549,16 @@ const ACTS = [
     bloom: 0.70, amb: 0x444a54, ambI: 0.36, moon: true, moonC: 0x8ea0d8, moonI: 0.32,
     hemi: 0x3a4360, hemiG: 0x141519, hemiI: 0.24 },
   // 이 캐릭터의 팔레트는 이 3막 값에서 역산했다 — 색 판단은 여기서 할 것
-  { name: '3막', floor: 0x140d12, bg: 0x0b070a, fogD: 0.014, aerial: 0x1e1422, shadowC: 0x3c1a3a, shadowS: 0.25,
-    bloom: 0.62, amb: 0x42363c, ambI: 0.2, moon: true, moonC: 0x8fb0a4, moonI: 0.16,
-    hemi: 0x5a4250, hemiG: 0x161014, hemiI: 0.12 },
+  // v742~v749 의 3막 개편 반영. 게임의 `COR_V2`(기본 켜짐 · ?cor=0 이면 예전 톤) 쪽 값이다 —
+  // 자줏빛 그늘/칙칙한 카키에서 **따뜻한 아이보리 석재 ↔ 청록 그늘**로 뒤집혔다.
+  // 바닥색만 게임 상수를 그대로 못 쓴다. 게임의 아이보리 석재(0xb8ae90 등)를 그대로 넣으면
+  // 뷰어 원판이 화면을 가득 채우는 크림색 배경이 되어 캐릭터 색 판단을 망친다 —
+  // 게임 바닥에는 석판 텍스처의 어두운 줄눈·그림자·AO가 얹히기 때문이다.
+  // 그래서 상수가 아니라 **게임 3막 바닥의 실측 출력색([33,47,47], 70층 6종 평균)**을
+  // 목표로 원판 색을 역산했다.
+  { name: '3막', floor: 0x0b1011, bg: 0x0c1517, fogD: 0.014, aerial: 0x14303a, shadowC: 0x1b4a4a, shadowS: 0.40,
+    bloom: 0.62, amb: 0x585a4c, ambI: 0.34, moon: true, moonC: 0x8fb0a4, moonI: 0.24,
+    hemi: 0xa8808a, hemiG: 0x14252a, hemiI: 0.2 },
 ];
 let actIdx = 0;
 function applyAct(i) {
@@ -886,27 +893,33 @@ function mergeStatic(root, skip) {
 // ============================================================
 
 // ---------- 팔레트 ----------
-// 3막 환경(가장 어두움: 환경광 0x42363c 0.2 / 병든 청록 달빛 / 자줏빛 대기)에서
-// 프로브 구로 역산한 값이다(오차 5/255 이내). 밝게 올리지 말 것 — 올린 만큼 화면에서는 색이 빠진다.
-// 절차는 viewers/README.md 의 '색 고르기' 절. 반투명·발광 재질은 프로브가 안 통해 같은 계조로 손으로 맞췄다.
-// chitinLit 만 유독 밝은 이유: y=3.45 로 높아 빛이 거의 안 닿는 자리라 베이스를 올려야 같은 출력이 난다.
-const chitinMat  = getLowPolyMat(0x1e2731);   // 각진 외골격 판(창백한 청백)
-const chitinLit  = getLowPolyMat(0x7393a2);   // 빛 받는 위쪽 판
-const chitinDk   = getLowPolyMat(0x0b1018);   // 그늘진 아래쪽 판
-const seamMat    = getLowPolyMat(0x2a1f08, true);  // 판 이음선의 금빛(금속)
-const eyeMat     = getLowPolyMat(0x3c2c08, true);  // 황금 홑눈
-const eyeGlowMat = new THREE.MeshStandardMaterial({ color: 0x1c1505, emissive: 0xffcf60, emissiveIntensity: 0.55, roughness: 0.35, metalness: 0.4 });
+// 3막 환경에서 역산한 값이다. v742~v749 의 3막 개편(따뜻한 아이보리 석재 ↔ 청록 그늘,
+// 환경광 0.2 → 0.34)에 맞춰 전부 다시 풀었다. 절차는 viewers/README.md 의 '색 고르기' 절.
+//
+// 살(sacMat·sacRimMat·mawMat)의 목표는 예전 출력이 아니라 **게임 자신의 3막 살덩이**다.
+// 새 3막은 어두운 면을 청록으로 끌어당겨서, 예전의 어두운 자홍(휘도 28)은 베이스를 0까지
+// 내려도 도달이 안 된다. 게임도 똑같다 — corMatFleshB(0x7d2036)가 화면에서 [26,32,38] 로
+// R 이 최저가 된다. 반면 밝은 쪽 corMatFlesh(0xa82c42)는 [44,34,41] 로 자홍을 지킨다.
+// 그래서 그 출력을 목표로 삼았다(실측 4개 층 평균).
+//
+// 밝게 올리지 말 것 — 여기서 더 올리면 이번엔 클리핑으로 색이 빠진다.
+const chitinMat  = getLowPolyMat(0x2c2732);   // 각진 외골격 판(창백한 청백)
+const chitinLit  = getLowPolyMat(0x40283c);   // 빛 받는 위쪽 판
+const chitinDk   = getLowPolyMat(0x0d0c13);   // 그늘진 아래쪽 판
+const seamMat    = getLowPolyMat(0x540601, true);  // 판 이음선의 금빛(금속)
+const eyeMat     = getLowPolyMat(0x912704, true);  // 황금 홑눈
+const eyeGlowMat = new THREE.MeshStandardMaterial({ color: 0x470d03, emissive: 0xffcf60, emissiveIntensity: 0.55, roughness: 0.35, metalness: 0.4 });
 // 껍질 투명도 0.50 은 잰 값이다. 알을 껐다 켠 화면 차이로 '얼마나 비치는가'를 재면
 // 0.74→0.62→0.50 까지는 알이 드러나는 면적이 41%→52%→56% 로 늘다가, 그 아래로는
 // 57%→59% 로 정체되면서 주머니 자체의 존재감(평균 밝기)만 빠진다. 여기가 무릎이다.
-const sacMat     = new THREE.MeshStandardMaterial({ color: 0x241019, roughness: 0.72, flatShading: true, transparent: true, opacity: 0.50 });  // 반투명 알주머니
-const sacRimMat  = getLowPolyMat(0x100a12);   // 주머니 아래쪽 짙은 부분
-const eggMat     = new THREE.MeshStandardMaterial({ color: 0x1d0d16, emissive: 0x3a1020, emissiveIntensity: 0.55, roughness: 0.6, flatShading: true });
-const legMat     = getLowPolyMat(0x151d2a);   // 다리(가늘고 창백)
+const sacMat     = new THREE.MeshStandardMaterial({ color: 0x39070e, roughness: 0.72, flatShading: true, transparent: true, opacity: 0.50 });  // 반투명 알주머니
+const sacRimMat  = getLowPolyMat(0x120102);   // 주머니 아래쪽 짙은 부분
+const eggMat     = new THREE.MeshStandardMaterial({ color: 0x1d020b, emissive: 0x3a1020, emissiveIntensity: 0.55, roughness: 0.6, flatShading: true });
+const legMat     = getLowPolyMat(0x171925);   // 다리(가늘고 창백)
 const legTipMat  = getLowPolyMat(0x06080d);   // 다리 끝(어두운 발톱)
-const oozeMat    = new THREE.MeshStandardMaterial({ color: 0x242a16, transparent: true, opacity: 0.66, roughness: 0.3, flatShading: true });
-const poolMat    = new THREE.MeshStandardMaterial({ color: 0x11150c, roughness: 0.55, flatShading: true, transparent: true, opacity: 0.85 });
-const mawMat     = getLowPolyMat(0x090606);   // 입 안쪽
+const oozeMat    = new THREE.MeshStandardMaterial({ color: 0x25170a, transparent: true, opacity: 0.66, roughness: 0.3, flatShading: true });
+const poolMat    = new THREE.MeshStandardMaterial({ color: 0x100a03, roughness: 0.55, flatShading: true, transparent: true, opacity: 0.85 });
+const mawMat     = getLowPolyMat(0x0c0101);   // 입 안쪽
 [sacMat, sacRimMat, eggMat, mawMat].forEach(markOrganic);   // 살·알은 유기체(하이라이트 제외)
 
 const bugObj = new THREE.Group(); scene.add(bugObj);
