@@ -548,9 +548,16 @@ const ACTS = [
   { name: '2막', floor: 0x101216, bg: 0x090b0e, fogD: 0.013, aerial: 0x16202c, shadowC: 0x222c54, shadowS: 0.42,
     bloom: 0.70, amb: 0x444a54, ambI: 0.36, moon: true, moonC: 0x8ea0d8, moonI: 0.32,
     hemi: 0x3a4360, hemiG: 0x141519, hemiI: 0.24 },
-  { name: '3막', floor: 0x140d12, bg: 0x0b070a, fogD: 0.014, aerial: 0x1e1422, shadowC: 0x3c1a3a, shadowS: 0.25,
-    bloom: 0.62, amb: 0x42363c, ambI: 0.2, moon: true, moonC: 0x8fb0a4, moonI: 0.16,
-    hemi: 0x5a4250, hemiG: 0x161014, hemiI: 0.12 },
+  // v742~v749 의 3막 개편 반영. 게임의 `COR_V2`(기본 켜짐 · ?cor=0 이면 예전 톤) 쪽 값이다 —
+  // 자줏빛 그늘/칙칙한 카키에서 **따뜻한 아이보리 석재 ↔ 청록 그늘**로 뒤집혔다.
+  // 바닥색만 게임 상수를 그대로 못 쓴다. 게임의 아이보리 석재(0xb8ae90 등)를 그대로 넣으면
+  // 뷰어 원판이 화면을 가득 채우는 크림색 배경이 되어 캐릭터 색 판단을 망친다 —
+  // 게임 바닥에는 석판 텍스처의 어두운 줄눈·그림자·AO가 얹히기 때문이다.
+  // 그래서 상수가 아니라 **게임 3막 바닥의 실측 출력색([33,47,47], 70층 6종 평균)**을
+  // 목표로 원판 색을 역산했다.
+  { name: '3막', floor: 0x0b1011, bg: 0x0c1517, fogD: 0.014, aerial: 0x14303a, shadowC: 0x1b4a4a, shadowS: 0.40,
+    bloom: 0.62, amb: 0x585a4c, ambI: 0.34, moon: true, moonC: 0x8fb0a4, moonI: 0.24,
+    hemi: 0xa8808a, hemiG: 0x14252a, hemiI: 0.2 },
 ];
 let actIdx = 0;
 function applyAct(i) {
