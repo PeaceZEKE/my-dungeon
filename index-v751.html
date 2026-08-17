@@ -4168,14 +4168,13 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v750'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v751'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(새끼 포란충·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
-// 부패한 왕 팔레트 밝기 배수. 뷰어(corrupted_king_viewer_v13)가 아직 예전 렌더 경로라
-// 거기서 고른 창백한 색이 3막 조명에서 통째로 흰죽처럼 날아간다 — 정식 역산 전 임시 보정이다.
-// 1.0이면 뷰어 값 그대로(보정 끔).
-const CK_DIM = parseFloat((location.search.match(/[?&]ckdim=([\d.]+)/) || [])[1]) || 0.42;
+// 부패한 왕 팔레트를 뷰어 원본으로 되돌린다(비교용). 기본은 3막 조명에서 역산한 값 —
+// 뷰어가 아직 예전 렌더 경로(스튜디오 3점 조명)라 거기서 고른 색은 게임에서 흰죽이 된다.
+const CK_RAW = /[?&]ckraw=1/.test(location.search);
 // SSAO 세기. 노멀 버퍼는 px 모드에서만 채워지므로 ?px=0에서는 켤 수 없다(끄고 안내만 남긴다).
 const _ssaoM = location.search.match(/[?&]ssao=([\d.]+)/);
 // 세기가 큰 이유: 표본에 거리 가중치(가까울수록 세게)를 곱하므로 합이 훨씬 작아진다.
@@ -11908,7 +11907,7 @@ function updateSlashes(dt) {
           if (!s.pierce) { s.hitWallDie = true; break; } // 비관통 소멸
           continue;
         }
-        e.hp -= s.damage;
+        e.hp -= Math.max(1, Math.floor(s.damage * ckGuardMul(e))); // 부패한 왕 방패 방어
         alertRoom(e); // 피격 시 같은 방 몬스터 전체 어그로(멀리서 쏴도 방 전체가 눈치챔)
         const d = Math.hypot(dx, dz) || 1;
         e.kbX = (dx / d) * 14; e.kbZ = (dz / d) * 14;
@@ -12044,8 +12043,11 @@ function spawnIcicleMissile(e, ic) {
   fireballs.push({ mesh: ic, mat: ic.material, vx: dirX * speed, vz: dirZ * speed, damage: Math.floor(e.damage * 0.9), life: 3.2, owner: e, reflected: false, _iqIcicle: true });
 }
 
+// 발사 높이는 리그마다 다르다 — 기본 1.0×스케일이지만 3막 보스는 몸집이 실물 크기라
+// 그대로 두면 점액이 발밑에서 나온다(포란충 머리 y≈2.0 / 탐식 구울 배의 두 번째 입 y≈1.4).
+const PROJ_ORIGIN_Y = { broodtick: 1.9, gluttonghoul: 1.4, stingwasp: 0.95 };
 function spawnFireball(e, angleOffset) {
-  const ox = e.obj.position.x, oz = e.obj.position.z, oy = 1.0 * e.scale;
+  const ox = e.obj.position.x, oz = e.obj.position.z, oy = (PROJ_ORIGIN_Y[e.type] || 1.0) * e.scale;
   const dx = player.obj.position.x - ox, dz = player.obj.position.z - oz;
   const d = Math.hypot(dx, dz) || 1;
   let dirX = dx / d, dirZ = dz / d;
@@ -12056,7 +12058,7 @@ function spawnFireball(e, angleOffset) {
     dirX = rx; dirZ = rz;
   }
   const speed = 11;
-  const projColor = (e.type === 'wraith') ? 0xff8a40 : (e.type === 'servantwraith') ? 0x3fd4c4 : (e.type === 'icequeen') ? 0x88c8ff : (e.type === 'courtmage') ? 0x9040d0 : (e.type === 'stingwasp') ? 0x9fd83a : 0x66ccff; // 혼령 주황 / 시종장 청록 / 얼음여왕 얼음파랑 / 궁중마법사 보라 / 농침벌 독액 연두 / 그 외 파랑
+  const projColor = (e.type === 'wraith') ? 0xff8a40 : (e.type === 'servantwraith') ? 0x3fd4c4 : (e.type === 'icequeen') ? 0x88c8ff : (e.type === 'courtmage') ? 0x9040d0 : (e.type === 'stingwasp') ? 0x9fd83a : (e.type === 'broodtick') ? 0xd8a13a : (e.type === 'gluttonghoul') ? 0x8fd422 : 0x66ccff; // 혼령 주황 / 시종장 청록 / 얼음여왕 얼음파랑 / 궁중마법사 보라 / 농침벌 독액 연두 / 그 외 파랑
   const mat = new THREE.MeshBasicMaterial({ color: projColor, transparent: true, opacity: 0.95, fog: false, depthWrite: false });
   const mesh = new THREE.Mesh(fireballGeo, mat);
   mesh.position.set(ox + dirX*0.6, oy, oz + dirZ*0.6);
@@ -12210,6 +12212,20 @@ function updateFireballs(dt) {
   }
 }
 
+// 부패한 왕의 방패 방어: 방패를 든 동안(ckState==='guard') 정면에서 온 공격의 피해 배수를 돌려준다.
+// 골렘의 '항상 정면 무적'과 달리 시간 제한이 있는 자세라 완전 무효가 아니라 감소로 둔다 —
+// 옆·뒤로 돌거나 자세가 풀릴 때까지 기다리는 두 가지 답이 다 통해야 하기 때문이다.
+// 정면 판정은 리그 정면(로컬 -z)을 직접 쓴다. rotation.y = atan2(dx,dz)+π 규약에서
+// 로컬 -z의 월드 방향은 (-sin, -cos)다(골렘 코드의 (sin, cos)은 그 반대 방향이다).
+function ckGuardMul(e) {
+  if (!e || e.type !== 'corruptking' || !e.ckGuard) return 1;
+  const fx = -Math.sin(e.obj.rotation.y), fz = -Math.cos(e.obj.rotation.y);
+  const px = player.obj.position.x - e.obj.position.x, pz = player.obj.position.z - e.obj.position.z;
+  const l = Math.hypot(px, pz) || 1;
+  if ((fx * px + fz * pz) / l < 0.30) return 1;   // 옆·뒤는 그대로 들어간다
+  if (!e._ckGuardMsg || performance.now() - e._ckGuardMsg > 1800) { toast(_i18n('🛡️ 방패에 막혔다 — 옆이나 뒤를 노려라!'), 1300); e._ckGuardMsg = performance.now(); }
+  return 0.2;
+}
 function flashObj(grpObj, ownerEnemy, strong) {
   // 화상/빙결 등 지속 틴트가 emissive를 관리 중이면 히트 플래시를 건너뜀(충돌로 흰색이 굳는 것 방지)
   if (ownerEnemy && (ownerEnemy._burnTint || ownerEnemy._frozenTint)) return;
@@ -14003,6 +14019,11 @@ function buildGluttonGhoulBody(grp, bodyGrp, headGrp, limbs) {
   [...bandMats, bellyMat, bellyLit, bellyDk, bellyGrn, mouthMat, gumMat, tongueMat,
    soreMat, mawInner, gutMat, sludgeMat].forEach(markOrganic);
 
+  // 보스 패턴에서 쓰는 손잡이(배 개방·턱·팔)
+  limbs._ggCage = [cageR, cageL];
+  limbs._ggJaw = jawGrp;
+  limbs._ggMouth = mouthAnchor;
+
   // ---------- 드로우콜 병합(움직이는 그룹은 제외) ----------
   c3MergeStatic(jawGrp, [tongue, ...drools]);
   c3MergeStatic(headGrp, [jawGrp]);
@@ -14050,38 +14071,53 @@ function buildCorruptKingBody(grp, bodyGrp, headGrp, limbs) {
   const sh = (o) => { o.castShadow = false; o.receiveShadow = true; return o; };   // 캐릭터는 진짜 그림자를 안 진다(블롭이 대신)
   grp.add(bodyGrp);
 
-  // ===== 부패한 왕 팔레트 =====
-  const fLav    = getLowPolyMat(0xd9cfe6);  // 창백한 라벤더 살
-  const fLav2   = getLowPolyMat(0xbeafd0);
-  const fMauve  = getLowPolyMat(0xbb92b6);  // 자주빛 종양
-  const fPink   = getLowPolyMat(0xd297a8);
-  const fDeep   = getLowPolyMat(0x8a6c8c);  // 깊은 그늘
-  const fSage   = getLowPolyMat(0x93a08a);  // 부패한 세이지 그린
-  const fCream  = getLowPolyMat(0xefe4c6);  // 크림빛 각질
-  const fBone   = getLowPolyMat(0xd6c69e);
-  const muscle  = getLowPolyMat(0xa8434c);  // 드러난 붉은 근섬유
-  const muscleD = getLowPolyMat(0x8a3038);
-  const gold    = getLowPolyMat(0xe8bc46, true);   // 황금
-  const goldHi  = getLowPolyMat(0xffe293, true);   // 밝은 황금
-  const goldRot = getLowPolyMat(0xa78a3e, true);   // 부패해 변색된 황금
-  const verdi   = getLowPolyMat(0x82a288, true);   // 녹청
-  const leather = getLowPolyMat(0x4a3a34);
-  const skin    = getLowPolyMat(0xd6b096);         // 노왕의 피부
-  const skinDk  = getLowPolyMat(0xa8836c);
-  const hairMat = getLowPolyMat(0xeceae6);         // 백발
-  const cloth   = getLowPolyMat(0xdcd2b8);         // 허리천
-  const clothDk = getLowPolyMat(0xc7bda2);
-  const crystal = new THREE.MeshStandardMaterial({ color: 0xf6f0dc, emissive: 0xffa848, emissiveIntensity: 0.20, roughness: 0.55, flatShading: true });  // 오염 결정
-  const crystal2= getLowPolyMat(0xe2dcc2);
+  // ===== 부패한 왕 팔레트 — 3막 게임 조명에서 역산한 값 =====
+  // 뷰어(corrupted_king_viewer_v13)는 아직 예전 렌더 경로(스튜디오 3점 조명)라 거기서 고른
+  // 창백한 색을 그대로 넣으면 화면에서 통째로 흰죽이 된다. 실측으로 확인한 것 —
+  // 원본 팔레트는 재질 16종이 전부 출력 휘도 119~157에 몰리고 평균 채도가 0.093이었다
+  // (같은 자리에서 정식 역산된 탐식 구울은 평균 휘도 67 · 채도 0.148).
+  //
+  // 절차는 viewers/README.md '역산 절차' 그대로다. 병합(c3MergeStatic) 뒤라 메시 1 = 재질 1이므로,
+  // 다른 재질의 colorWrite만 끄고(깊이는 남겨 가림 유지) 기준 렌더와 다른 픽셀을 그 재질의
+  // 마스크로 잡은 뒤, base[c] *= ((목표+1)/(출력+1))**0.6 을 22회 돌렸다. 결과 평균 휘도 95 · 채도 0.236.
+  //
+  // **목표는 '원하는 색'이 아니라 파이프라인이 낼 수 있는 색이어야 한다.** 1차에서 원화의 차가운
+  // 라벤더를 목표로 잡았더니 베이스를 순청(0x2027ff)까지 밀어도 파랑이 17/255 모자랐다 —
+  // 3막 포스트(대기 원근·안개)가 따뜻한 올리브로 물들여 파랑을 못 올린다. 그래서 3막 자체의
+  // 대비(따뜻한 크림 ↔ 산호빛 종양)로 목표를 다시 잡았고, 그때 16종 중 13종이 오차 ≤10에 들어왔다.
+  // 베이스가 원본과 전혀 달라 보이는 것이 정상이다(README의 같은 항목 참고).
+  //
+  // ?ckraw=1 이면 뷰어 원본 값으로 되돌린다(비교용).
+  const K  = (solved, raw) => getLowPolyMat(CK_RAW ? raw : solved);
+  const Km = (solved, raw) => getLowPolyMat(CK_RAW ? raw : solved, true);
+  const fLav    = K(0x4f4071, 0xd9cfe6);  // 창백한 살(가장 넓다 — 7,575px)
+  // 아래 넷은 화면 픽셀이 너무 적거나(옷·가죽·근섬유) 역산이 레일에 붙어(fLav2) 값이 위태로워서
+  // 푼 이웃 재질에 맞춰 손으로 골랐다. 레일값(fLav2는 0x080409)은 조명이 조금만 바뀌어도 튄다.
+  const fLav2   = K(0x342a4b, 0xbeafd0);
+  const fMauve  = K(0x5f0225, 0xbb92b6);  // 산호빛 종양
+  const fPink   = K(0xff165c, 0xd297a8);
+  const fDeep   = K(0x250311, 0x8a6c8c);  // 깊은 그늘
+  const fSage   = K(0x0c2c16, 0x93a08a);  // 부패한 세이지 그린
+  const fCream  = K(0xe7c964, 0xefe4c6);  // 크림빛 각질
+  const fBone   = K(0xc98032, 0xd6c69e);
+  const muscle  = K(0xb00c22, 0xa8434c);  // 드러난 붉은 근섬유(손으로 고름 — 화면 픽셀 6개)
+  const muscleD = K(0x7a0616, 0x8a3038);
+  const gold    = Km(0xff790a, 0xe8bc46);   // 황금
+  const goldHi  = Km(0xffa21c, 0xffe293);   // 밝은 황금
+  const goldRot = Km(0x3b2a09, 0xa78a3e);   // 부패해 변색된 황금
+  const verdi   = Km(0x1a4a2e, 0x82a288);   // 녹청(손으로 고름 — 발광 결정 옆이라 블룸이 마스크를 오염시킨다)
+  const leather = K(0x1c120c, 0x4a3a34);    // (손으로 고름 — 화면 픽셀 8개)
+  const skin    = K(0x712b1e, 0xd6b096);    // 노왕의 피부
+  const skinDk  = K(0x23100a, 0xa8836c);
+  const hairMat = K(0xd9ffff, 0xeceae6);    // 백발. 머리 꼭대기라 빛이 거의 안 닿아 출력 103이 천장이다
+  const cloth   = K(0x9e8a44, 0xdcd2b8);    // 허리천(손으로 고름 — 159px라 역산이 레일에 붙었다)
+  const clothDk = K(0x6e5f2f, 0xc7bda2);
+  const crystal = new THREE.MeshStandardMaterial({ color: CK_RAW ? 0xf6f0dc : 0xffe937, emissive: 0xffa848, emissiveIntensity: 0.20, roughness: 0.55, flatShading: true });  // 오염 결정
+  const crystal2= K(0xb37d6d, 0xe2dcc2);
+  // 아래 셋은 밝기의 대부분이 emissive라 color로는 못 내린다(README) — 발광이므로 밝은 게 맞다.
   const glowMat = new THREE.MeshStandardMaterial({ color: 0xffe6b4, emissive: 0xff9420, emissiveIntensity: 2.1, roughness: 0.35, flatShading: true });
   const eyeMat  = new THREE.MeshStandardMaterial({ color: 0xffe9b0, emissive: 0xffa832, emissiveIntensity: 1.1, roughness: 0.4 });
   const crackMat= new THREE.MeshStandardMaterial({ color: 0xffbe70, emissive: 0xff7a18, emissiveIntensity: 1.0, roughness: 0.5, flatShading: true });
-
-  // ⚠ 임시 보정 — 위 팔레트는 3막 조명으로 역산한 값이 아니다(플래그 CK_DIM 주석 참고).
-  // 발광 재질(결정·눈·균열)은 밝기의 대부분이 emissive라 여기서 빼면 안 된다.
-  if (CK_DIM !== 1) [fLav, fLav2, fMauve, fPink, fDeep, fSage, fCream, fBone, muscle, muscleD,
-    gold, goldHi, goldRot, verdi, leather, skin, skinDk, hairMat, cloth, clothDk, crystal2]
-    .forEach(m => m.color.multiplyScalar(CK_DIM));
 
   const POOL_UPPER = [fMauve, fMauve, fPink, fPink, fLav2, fDeep, fCream, fLav];
   const POOL_ARM   = [fLav, fLav2, fMauve, fCream, fPink, fSage, fBone, fLav2];
@@ -18322,7 +18358,7 @@ function dealSwingDamage(multiplier) {
       if (e.hp <= 0) killEnemy(e);
       continue;
     }
-    e.hp -= damage; alertRoom(e);
+    e.hp -= Math.max(1, Math.floor(damage * ckGuardMul(e))); alertRoom(e); // 부패한 왕이 방패를 들고 있으면 정면 피해 감소
     const kbMul = isCrit ? 1.8 : 1.0; // 크리티컬은 넉백 강화
     e.kbX = (dx / d) * 20 * multiplier * kbMul; e.kbZ = (dz / d) * 20 * multiplier * kbMul;
     
@@ -19605,6 +19641,273 @@ function update(dt) {
           }
         }
         continue;
+      }
+    }
+
+    // ===== 포란충(broodtick) 보스: 산란 · 점액 분사 · 몸통 찍기 =====
+    // 느리고 단단한 대신 스스로 병력을 계속 만든다. 오래 끌수록 새끼가 쌓이므로
+    // '보스를 밀 것인가 새끼를 정리할 것인가'가 이 싸움의 선택지다.
+    if (e.isBoss && e.type === 'broodtick' && e.frozen <= 0) {
+      if (e.btState === undefined) { e.btState = 'none'; e.btTimer = 0; e.btBrood = []; e.btSpawnCd = 5.0; }
+      e.specialCd = Math.max(0, e.specialCd - dt);
+      e.btSpawnCd = Math.max(0, e.btSpawnCd - dt);
+      e.btBrood = e.btBrood.filter(m => m && !m.isDead);   // 죽은 새끼는 한도에서 빠진다
+      e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
+
+      if (e.btState === 'lay') {
+        // 산란: 배가 크게 수축했다 풀리면서 새끼가 바닥으로 떨어진다
+        e.btTimer -= dt;
+        const w = 1 - Math.max(0, e.btTimer) / 1.1;
+        const sq = Math.sin(w * Math.PI);
+        if (e.limbs.bug && e.limbs.bug.sacGrp) e.limbs.bug.sacGrp.scale.set(1 + sq * 0.16, 1 - sq * 0.22, 1 + sq * 0.16);
+        if (!e.btLaid && w >= 0.62) {
+          e.btLaid = true;
+          const G = dungeon && dungeon.grid;
+          const onFloor = (tx, tz) => { if (!G) return true; const gx = Math.round(tx / TILE + MAP_W / 2), gy = Math.round(tz / TILE + MAP_H / 2); return gx >= 0 && gy >= 0 && gx < MAP_W && gy < MAP_H && G[gy] && G[gy][gx] === 1; };
+          const count = Math.min(2, 6 - e.btBrood.length);
+          for (let k = 0; k < count; k++) {
+            let sx = e.obj.position.x, sz = e.obj.position.z;
+            for (let t = 0; t < 8; t++) {
+              const ang = Math.random() * Math.PI * 2, r = TILE * (0.9 + Math.random() * 0.8);
+              const tx = e.obj.position.x + Math.cos(ang) * r, tz = e.obj.position.z + Math.sin(ang) * r;
+              if (onFloor(tx, tz)) { sx = tx; sz = tz; break; }
+            }
+            const brood = createAdvancedMonster(sx, sz, 'larva', false, false);
+            brood.awake = true; brood.homeRoom = e.homeRoom;
+            // 새끼는 보스보다 약하게(본체를 잡는 쪽이 이득이어야 한다)
+            brood.hpMax = Math.floor(brood.hpMax * 0.55); brood.hp = brood.hpMax;
+            enemies.push(brood); e.btBrood.push(brood);
+            spawnEffectLight(sx, 0.6, sz, 0xd8a13a, 2, TILE * 1.2, 0.35);
+          }
+          toast(_i18n('🥚 포란충이 새끼를 낳는다!'), 1500);
+        }
+        if (e.btTimer <= 0) { e.btState = 'none'; e.btSpawnCd = 8.0 + Math.random() * 3.0; e.specialCd = 1.2; }
+        updateBugRig(e, dt, false); continue;
+      }
+      if (e.btState === 'spit') {
+        // 점액 분사: 머리를 낮췄다 들면서 부채꼴로 세 발
+        e.btTimer -= dt;
+        const w = 1 - Math.max(0, e.btTimer) / 0.7;
+        if (e.limbs.head) e.limbs.head.rotation.x = Math.sin(w * Math.PI) * 0.5;
+        if (!e.btShot && w >= 0.55) {
+          e.btShot = true;
+          for (const off of [-0.26, 0, 0.26]) spawnFireball(e, off);
+          SFX.hit(0.8);
+        }
+        if (e.btTimer <= 0) { e.btState = 'none'; e.specialCd = 2.6 + Math.random() * 1.6; if (e.limbs.head) e.limbs.head.rotation.x = 0; }
+        updateBugRig(e, dt, false); continue;
+      }
+      if (e.btState === 'slam') {
+        // 몸통 찍기: 긴 다리로 몸을 높이 들었다가 통째로 내려찍는다(예고가 길어 피할 수 있다)
+        e.btTimer -= dt;
+        const w = 1 - Math.max(0, e.btTimer) / 0.9;
+        updateBugRig(e, dt, false);
+        const rise = w < 0.7 ? (w / 0.7) * 1.1 : (1 - (w - 0.7) / 0.3) * 1.1;
+        e.obj.position.y = e.baseY + rise;
+        if (!e.btHit && w >= 0.86) {
+          e.btHit = true;
+          const R = TILE * 2.4;
+          spawnShockwave(e.obj.position.x, e.obj.position.z, R); hitStop = 0.08;
+          const sd = Math.hypot(player.obj.position.x - e.obj.position.x, player.obj.position.z - e.obj.position.z);
+          if (sd < R) {
+            const u = sd || 1;
+            damagePlayer(Math.floor(e.damage * 1.2), e);
+            player.kbX = ((player.obj.position.x - e.obj.position.x) / u) * 16;
+            player.kbZ = ((player.obj.position.z - e.obj.position.z) / u) * 16;
+          }
+        }
+        if (e.btTimer <= 0) { e.btState = 'none'; e.obj.position.y = e.baseY; e.specialCd = 3.2 + Math.random() * 1.5; }
+        continue;
+      }
+      // --- 행동 선택 ---
+      if (e.btSpawnCd <= 0 && e.btBrood.length < 6) { e.btState = 'lay'; e.btTimer = 1.1; e.btLaid = false; updateBugRig(e, dt, false); continue; }
+      if (e.specialCd <= 0) {
+        if (d < TILE * 2.4) { e.btState = 'slam'; e.btTimer = 0.9; e.btHit = false; updateBugRig(e, dt, false); continue; }
+        if (d < TILE * 10) { e.btState = 'spit'; e.btTimer = 0.7; e.btShot = false; updateBugRig(e, dt, false); continue; }
+      }
+    }
+
+    // ===== 탐식 구울(gluttonghoul) 보스: 내려찍기 · 삼키기 돌진 · 배 개방(HP 50%↓) 위액 분사 =====
+    // 1페이즈는 순수 근접 압박, 50%에서 배의 이빨 우리가 열리며 두 번째 입이 드러나고
+    // 위액을 뿜기 시작한다. 개방 순간은 경직이라 딜찬스다.
+    if (e.isBoss && e.type === 'gluttonghoul' && e.frozen <= 0) {
+      if (e.ggState === undefined) { e.ggState = 'none'; e.ggTimer = 0; e.ggOpen = 0; e.ggPhase2 = false; }
+      e.specialCd = Math.max(0, e.specialCd - dt);
+      if (!e.ggPhase2 && e.hp <= e.hpMax * 0.5) {
+        e.ggPhase2 = true; e.ggState = 'open'; e.ggTimer = 1.3;
+        spawnShockwave(e.obj.position.x, e.obj.position.z, TILE * 1.6); hitStop = 0.1;
+        toast(_i18n('🩸 탐식 구울이 배를 연다 — 두 번째 입이 드러났다!'), 2600);
+      }
+      // 배 개방 정도 보간(이빨 우리 좌우가 바깥으로 젖혀진다)
+      e.ggOpen += ((e.ggPhase2 ? 1 : 0) - e.ggOpen) * Math.min(1, dt * 2.4);
+      if (e.limbs._ggCage) { e.limbs._ggCage[0].rotation.y = -e.ggOpen * 1.15; e.limbs._ggCage[1].rotation.y = e.ggOpen * 1.15; }
+
+      if (e.ggState === 'open') {   // 개방 경직(딜찬스)
+        e.ggTimer -= dt;
+        e.obj.rotation.z = Math.sin(e.ggTimer * 24) * 0.05;
+        if (e.ggTimer <= 0) { e.ggState = 'none'; e.obj.rotation.z = 0; e.specialCd = 0.8; }
+        continue;
+      }
+      if (e.ggState === 'slam') {
+        // 양팔을 머리 위로 들었다가 바닥으로 내려찍는다
+        e.ggTimer -= dt;
+        const w = 1 - Math.max(0, e.ggTimer) / 1.0;
+        e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
+        const up = w < 0.62 ? (w / 0.62) : 1 - (w - 0.62) / 0.38;
+        const ax = 0.04 + up * 2.9;
+        e.limbs.armR.rotation.x = ax; e.limbs.armL.rotation.x = ax;
+        if (!e.ggHit && w >= 0.78) {
+          e.ggHit = true;
+          const R = TILE * 2.2;
+          spawnShockwave(e.obj.position.x, e.obj.position.z, R); hitStop = 0.08;
+          const sd = Math.hypot(player.obj.position.x - e.obj.position.x, player.obj.position.z - e.obj.position.z);
+          if (sd < R) {
+            const u = sd || 1;
+            damagePlayer(Math.floor(e.damage * 1.25), e);
+            player.kbX = ((player.obj.position.x - e.obj.position.x) / u) * 18;
+            player.kbZ = ((player.obj.position.z - e.obj.position.z) / u) * 18;
+          }
+        }
+        if (e.ggTimer <= 0) { e.ggState = 'none'; e.limbs.armR.rotation.x = 0.04; e.limbs.armL.rotation.x = 0.04; e.specialCd = (e.ggPhase2 ? 2.4 : 3.6) + Math.random() * 1.5; }
+        continue;
+      }
+      if (e.ggState === 'devour') {
+        // 삼키기: 몸을 뒤로 뺐다가 입을 벌린 채 앞으로 파고든다. 빗나가면 처박힌 채 경직.
+        e.ggTimer -= dt;
+        const T = 1.9, el = T - e.ggTimer;
+        if (el < 0.55) {                       // 예비 — 뒤로 빼고 입을 크게
+          e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
+          if (e.limbs._ggJaw) e.limbs._ggJaw.rotation.x = -0.06 - (el / 0.55) * 0.5;
+        } else if (el < 0.95) {                // 돌진
+          const u = d || 1;
+          const step = e.speed * 9.0 * dt;
+          const ndx = (dx / u) * step, ndz = (dz / u) * step;
+          let bx = false, bz = false;
+          for (const w2 of walls) {
+            if (!bx && Math.abs(e.obj.position.x + ndx - w2.x) < w2.halfW + e.radius && Math.abs(e.obj.position.z - w2.z) < w2.halfD + e.radius) bx = true;
+            if (!bz && Math.abs(e.obj.position.x - w2.x) < w2.halfW + e.radius && Math.abs(e.obj.position.z + ndz - w2.z) < w2.halfD + e.radius) bz = true;
+          }
+          if (!bx) e.obj.position.x += ndx;
+          if (!bz) e.obj.position.z += ndz;
+          if (!e.ggHit && d < e.radius + player.radius + 0.6) {
+            e.ggHit = true;
+            damagePlayer(Math.floor(e.damage * 1.5), e);
+            hitStop = 0.1; SFX.hit(1.4);
+          }
+        } else {                               // 처박힌 채 경직(딜찬스) → 복귀
+          const q = Math.min(1, (el - 0.95) / 0.5);
+          if (e.limbs._ggJaw) e.limbs._ggJaw.rotation.x += (-0.06 - e.limbs._ggJaw.rotation.x) * Math.min(1, dt * 6);
+          e.obj.rotation.x = (1 - q) * 0.34;
+        }
+        if (e.ggTimer <= 0) { e.ggState = 'none'; e.obj.rotation.x = 0; e.specialCd = 3.4 + Math.random() * 1.6; }
+        continue;
+      }
+      if (e.ggState === 'bile') {
+        // 위액 분사(2페이즈 전용): 배의 두 번째 입에서 부채꼴로 뿜는다
+        e.ggTimer -= dt;
+        const w = 1 - Math.max(0, e.ggTimer) / 0.8;
+        e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
+        if (!e.ggShot && w >= 0.5) {
+          e.ggShot = true;
+          for (const off of [-0.34, -0.11, 0.11, 0.34]) spawnFireball(e, off);
+          SFX.hit(0.9);
+        }
+        if (e.ggTimer <= 0) { e.ggState = 'none'; e.specialCd = 2.8 + Math.random() * 1.2; }
+        continue;
+      }
+      // --- 행동 선택 ---
+      if (e.specialCd <= 0) {
+        if (d < TILE * 2.6) { e.ggState = 'slam'; e.ggTimer = 1.0; e.ggHit = false; continue; }
+        if (d < TILE * 9) {
+          // 중거리에서는 2페이즈일 때만 위액이 섞인다. 거리로 가르면 안 된다 —
+          // 시야 밖 적은 TILE*5 밖에서 행동이 멈추므로(위 가시성 게이트) 그보다 먼 조건은 거의 안 걸린다.
+          if (e.ggPhase2 && Math.random() < 0.45) { e.ggState = 'bile'; e.ggTimer = 0.8; e.ggShot = false; continue; }
+          e.ggState = 'devour'; e.ggTimer = 1.9; e.ggHit = false; e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI; continue;
+        }
+      }
+    }
+
+    // ===== 부패한 왕(corruptking) 보스: 방패 방어 · 3연격 · 오염 폭발(HP 50%↓) =====
+    // 골렘과 달리 '항상 정면 무적'이 아니라 시간 제한이 있는 자세다 — 방패를 든 동안만
+    // 정면 피해가 크게 줄고, 자세가 풀리는 틈에 때리거나 옆으로 돌면 된다.
+    if (e.isBoss && e.type === 'corruptking' && e.frozen <= 0) {
+      if (e.ckState === undefined) { e.ckState = 'none'; e.ckTimer = 0; e.ckGuard = false; e.ckRage = false; }
+      e.specialCd = Math.max(0, e.specialCd - dt);
+      if (!e.ckRage && e.hp <= e.hpMax * 0.5) {
+        e.ckRage = true; e.ckState = 'burst'; e.ckTimer = 1.5; e.ckBurst = false;
+        toast(_i18n('👑 부패한 왕의 오염원이 터져 나온다!'), 2600);
+      }
+
+      if (e.ckState === 'guard') {
+        // 방패를 세우고 천천히 전진(정면 피해 감소 — 아래 ckGuardMul이 본다)
+        e.ckTimer -= dt; e.ckGuard = true;
+        e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
+        e.limbs.armL.rotation.x += (0.85 - e.limbs.armL.rotation.x) * Math.min(1, dt * 9);
+        e.limbs.armR.rotation.x += (0.10 - e.limbs.armR.rotation.x) * Math.min(1, dt * 9);
+        if (d > TILE * 1.2) {
+          const u = d || 1, creep = e.speed * 0.55 * dt;
+          e.obj.position.x += (dx / u) * creep; e.obj.position.z += (dz / u) * creep;
+        }
+        e.phase += e.speed * dt * 1.6;
+        const gs = Math.sin(e.phase);
+        e.limbs.legR.rotation.x = gs * 0.4; e.limbs.legL.rotation.x = -gs * 0.4;
+        if (e.ckTimer <= 0) { e.ckState = 'none'; e.ckGuard = false; e.specialCd = 1.0; }
+        continue;
+      }
+      if (e.ckState === 'combo') {
+        // 3연격: 올렸다 내려베기를 세 번, 마지막 한 대가 가장 무겁다
+        e.ckTimer -= dt;
+        const T = 1.65, el = T - e.ckTimer;
+        const seg = Math.min(2, Math.floor(el / 0.55));
+        const w = (el - seg * 0.55) / 0.55;
+        if (w < 0.45) e.limbs.armR.rotation.x = 0.10 + (w / 0.45) * 2.7;      // 들어올림
+        else e.limbs.armR.rotation.x = 2.8 - ((w - 0.45) / 0.55) * 2.2;        // 내려베기
+        if (e.ckHitSeg !== seg && w >= 0.62) {
+          e.ckHitSeg = seg;
+          const R = e.radius + player.radius + 1.2;
+          const sd = Math.hypot(player.obj.position.x - e.obj.position.x, player.obj.position.z - e.obj.position.z);
+          if (sd < R) damagePlayer(Math.floor(e.damage * (seg === 2 ? 1.4 : 0.9)), e);
+          if (seg === 2) { spawnShockwave(e.obj.position.x, e.obj.position.z, TILE * 1.6); hitStop = 0.08; }
+          SFX.hit(seg === 2 ? 1.3 : 0.9);
+        }
+        // 마지막 타까지 천천히 따라간다(도망만으로 전부 흘릴 수는 없게)
+        e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
+        if (d > TILE * 1.4) {
+          const u = d || 1, creep = e.speed * 0.7 * dt;
+          e.obj.position.x += (dx / u) * creep; e.obj.position.z += (dz / u) * creep;
+        }
+        if (e.ckTimer <= 0) { e.ckState = 'none'; e.ckHitSeg = -1; e.limbs.armR.rotation.x = 0.10; e.specialCd = (e.ckRage ? 1.8 : 3.0) + Math.random() * 1.2; }
+        continue;
+      }
+      if (e.ckState === 'burst') {
+        // 오염 폭발: 어깨의 결정을 바닥에 박아 넓은 충격파(2페이즈 진입 연출 겸 광역기)
+        e.ckTimer -= dt;
+        const w = 1 - Math.max(0, e.ckTimer) / 1.5;
+        e.limbs.armR.rotation.x = Math.sin(Math.min(1, w / 0.7) * Math.PI * 0.5) * 2.6;
+        e.obj.position.y = e.baseY + Math.sin(Math.min(1, w / 0.7) * Math.PI) * 0.18;
+        if (!e.ckBurst && w >= 0.72) {
+          e.ckBurst = true;
+          const R = TILE * 3.2;
+          spawnShockwave(e.obj.position.x, e.obj.position.z, R); hitStop = 0.12;
+          spawnEffectLight(e.obj.position.x, 1.4, e.obj.position.z, 0xff9420, 6, TILE * 4, 0.6);
+          const sd = Math.hypot(player.obj.position.x - e.obj.position.x, player.obj.position.z - e.obj.position.z);
+          if (sd < R) {
+            const u = sd || 1;
+            damagePlayer(Math.floor(e.damage * 1.3), e);
+            player.kbX = ((player.obj.position.x - e.obj.position.x) / u) * 22;
+            player.kbZ = ((player.obj.position.z - e.obj.position.z) / u) * 22;
+          }
+          e.damage = Math.floor(e.damage * 1.15); e.speed *= 1.12;   // 분노(이후 공격 강화)
+        }
+        if (e.ckTimer <= 0) { e.ckState = 'none'; e.obj.position.y = e.baseY; e.limbs.armR.rotation.x = 0.10; e.specialCd = 2.0; }
+        continue;
+      }
+      // --- 행동 선택 ---
+      e.ckGuard = false;
+      if (e.specialCd <= 0) {
+        if (e.ckRage && d < TILE * 3.2 && Math.random() < 0.35) { e.ckState = 'burst'; e.ckTimer = 1.5; e.ckBurst = false; continue; }
+        if (d < TILE * 2.4) { e.ckState = 'combo'; e.ckTimer = 1.65; e.ckHitSeg = -1; continue; }
+        if (d < TILE * 9) { e.ckState = 'guard'; e.ckTimer = 1.8 + Math.random() * 0.8; continue; }
       }
     }
 
