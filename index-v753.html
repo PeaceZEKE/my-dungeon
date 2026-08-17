@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v752'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v753'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -4683,9 +4683,9 @@ const PIXEL_SCALE = 2;
 // 기본 모드는 창 크기의 1/2이라 기기마다 픽셀 크기가 달라진다 — 4K에서는 내부 1920×1080이라
 // 사실상 픽셀아트가 아니고, 좁은 폰에서는 하한에 걸려 뭉갠다.
 // 픽셀아트 모드(?px=1)는 세로를 고정하고 가로만 화면비로 유도해, 어떤 기기에서도 같은 픽셀 크기를 낸다.
-// 값이 작을수록 픽셀이 커진다. 720 기준으로 보면 360 = 배율 2, 288 = 배율 2.5, 240 = 배율 3이다
+// 값이 작을수록 픽셀이 커진다. 720 기준으로 보면 360 = 배율 2, 320 = 2.25, 288 = 2.5, 240 = 배율 3이다
 // (예전 모드의 PIXEL_SCALE과 같은 뜻 — 그쪽은 ?px=0에서만 쓰인다).
-const PX_FIXED_H = parseInt((location.search.match(/[?&]pxh=(\d+)/) || [])[1], 10) || 288;
+const PX_FIXED_H = parseInt((location.search.match(/[?&]pxh=(\d+)/) || [])[1], 10) || 320;
 function computeLowRes(w, h) {
   if (PX_MODE) {
     const lh = PX_FIXED_H;
@@ -8172,6 +8172,19 @@ if (COR_V2) Object.assign(COR, {
   flesh: 0xa82c42, fleshB: 0x7d2036, fleshC: 0xc4485c,
   pale: 0xe9bfc4, paleB: 0xd49fae,
 });
+// 3막 석재 밝기 배수(?a3lit=N). 1.0 = v742~v752 값.
+// v742에서 원화의 아이보리를 맞추려고 석재를 통째로 밝게 올렸는데(바닥 0x7a735c → 0xb8ae90,
+// 벽 0xa89f82 → 0xd6caa6), 그 결과 3막 화면이 2막의 두 배 밝아져 던전이 아니라 대낮처럼 보였다.
+// 실측(적 없는 같은 조건, 화면을 위아래 4구간으로 나눈 평균 휘도):
+//   1막 [25,39,35,25] · 2막 [27,44,41,31] · 3막 [64,101,92,61]
+// 갈라 보면 환경광·달빛을 통째로 꺼도 78까지밖에 안 내려간다 — 밝기의 대부분이 '석재가 밝아서'
+// 플레이어 횃불과 포스트 바닥값이 그만큼 세게 되돌아오는 것이다(플레이어 광원 기여: 2막 22 / 3막 53).
+// 그래서 조명이 아니라 **석재 반사율**을 낮춘다. 색조(따뜻한 아이보리)는 그대로 유지된다.
+const COR_LIT = parseFloat((location.search.match(/[?&]a3lit=([\d.]+)/) || [])[1]) || 0.62;
+if (COR_V2 && COR_LIT !== 1) {
+  const dim = (c) => (Math.round(((c >> 16) & 255) * COR_LIT) << 16) | (Math.round(((c >> 8) & 255) * COR_LIT) << 8) | Math.round((c & 255) * COR_LIT);
+  ['floor', 'floorB', 'floorDark', 'wall', 'wallB', 'wallC', 'wallSh', 'rubble', 'rubbleD'].forEach(k => { COR[k] = dim(COR[k]); });
+}
 // 3막 바닥은 평평한 판이 아니라 주저앉은 포석이다 — 윗면만 사인파로 울퉁불퉁하게 만든다.
 // `displaceFloorTop`은 가장자리를 페이드로 평평하게 남기므로 인접 타일과 틈·단차가 안 생긴다.
 // 분할을 4→6으로 올려야 굴곡이 각지지 않는다.
@@ -8985,9 +8998,14 @@ function buildDungeonMesh(dgn) {
     // 부패한 성: 병든 청록 달빛(차가운 그림자) + 살덩이의 따뜻한 발광 대비 + 떠다니는 분홍 포자
     // v742: 원화 대비(따뜻한 크림 석재 ↔ 청록 그늘)를 만들려면 그림자·대기를 청록으로 돌려야 한다.
     // 예전 값(자주 계열)은 2막의 청보라와 명도·채도가 비슷해서 두 막이 같아 보였다. ?cor=0이면 예전 톤.
-    const bg3 = COR_V2 ? 0x0c1517 : 0x0b070a;
+    // 배경·안개: v753에서 어둡게·짙게 바꿨다. 예전 값(0x0c1517 · 0.014)은 3막에서만
+    // 멀리 있는 방·복도가 안개에 안 묻혀 벽 너머까지 다 보였다(실측은 COR_LIT 주석 참고).
+    // ?a3lit=1 이면 밝기 조정 전(v752) 값으로 통째로 되돌린다 — 석재만 되돌리면 반쪽이라
+    // 배경·안개·광원까지 한 스위치로 묶는다.
+    const A3DIM = (COR_V2 && COR_LIT !== 1);
+    const bg3 = COR_V2 ? (A3DIM ? 0x090f10 : 0x0c1517) : 0x0b070a;
     if (scene.background) scene.background.setHex(bg3);
-    if (scene.fog) { scene.fog.color.setHex(bg3); scene.fog.density = 0.014; }
+    if (scene.fog) { scene.fog.color.setHex(bg3); scene.fog.density = A3DIM ? 0.024 : 0.014; }
     quadMat.uniforms.uAerialColor.value.setHex(COR_V2 ? 0x14303a : 0x1e1422);
     quadMat.uniforms.uShadowColor.value.setHex(COR_V2 ? 0x1b4a4a : 0x3c1a3a); // 3막: 청록 그림자
     quadMat.uniforms.uShadowStr.value = COR_V2 ? 0.40 : 0.25;
@@ -8995,13 +9013,16 @@ function buildDungeonMesh(dgn) {
     // 원화의 석재는 밝은 아이보리다 — 환경광이 0.2면 아무리 밝게 칠해도 검게 나온다.
     // 환경광까지 청록으로 두면 아이보리 석재가 통째로 회녹색이 된다. 밝은 쪽은 따뜻하게 두고
     // 청록은 포스트의 uShadowColor가 그늘에만 얹는다 — 원화의 대비가 이 구조다.
+    // 거리와 무관하게 화면 전체를 들어올리는 광원(환경광·달빛·반구광)은 v753에서 한 단씩 낮췄다.
+    // 이 셋을 통째로 꺼도 화면은 78까지밖에 안 내려가므로 이것만으로는 부족하고,
+    // 석재 반사율(COR_LIT)·안개와 함께 내려야 한다.
     ambientLight.color.setHex(COR_V2 ? 0x585a4c : 0x42363c);
-    ambientLight.intensity = COR_V2 ? 0.34 : 0.2;
+    ambientLight.intensity = COR_V2 ? (A3DIM ? 0.26 : 0.34) : 0.2;
     castleMoon.visible = true; castleHemi.visible = true;
-    castleMoon.color.setHex(0x8fb0a4); castleMoon.intensity = COR_V2 ? 0.24 : 0.16;  // 병든 청록 달빛(그림자 색)
+    castleMoon.color.setHex(0x8fb0a4); castleMoon.intensity = COR_V2 ? (A3DIM ? 0.16 : 0.24) : 0.16;  // 병든 청록 달빛(그림자 색)
     castleHemi.color.setHex(COR_V2 ? 0xa8808a : 0x5a4250);
     castleHemi.groundColor.setHex(COR_V2 ? 0x14252a : 0x161014);
-    castleHemi.intensity = COR_V2 ? 0.2 : 0.12; // 창백 분홍 하늘 / 청록 바닥반사
+    castleHemi.intensity = COR_V2 ? (A3DIM ? 0.14 : 0.2) : 0.12; // 창백 분홍 하늘 / 청록 바닥반사
     const half3 = (MAP_W * TILE) * 0.5 + TILE * 2;
     castleMoon.shadow.camera.left = -half3; castleMoon.shadow.camera.right = half3;
     castleMoon.shadow.camera.top = half3; castleMoon.shadow.camera.bottom = -half3;
@@ -16048,8 +16069,9 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
     scale = 1.0; skinMat = getLowPolyMat(0x39070e).clone(); armorMat = getLowPolyMat(0x2c2732).clone();
   } else if (type === 'gluttonghoul') {
     // 80층 보스: 탐식 구울. 근접 압박형 — 배를 감싼 이빨 우리와 늘어진 팔로 내려찍는다.
+    // 스케일 2.0: 뷰어 실물 크기(높이 4.1)의 두 배 — 3막에서 압도적으로 큰 덩치가 이 보스의 정체다(사용자 지시).
     hp = (80 + player.floor * 5.5) * 1.5; dmg = (14 + player.floor * 2.3) * 1.5 * 0.8; sp = 3.0; exp = 30 + player.floor;
-    scale = 1.0; skinMat = getLowPolyMat(0x8c458c).clone(); armorMat = getLowPolyMat(0x685119).clone();
+    scale = 2.0; skinMat = getLowPolyMat(0x8c458c).clone(); armorMat = getLowPolyMat(0x685119).clone();
   } else if (type === 'corruptking') {
     // 90층 보스: 부패한 왕(3막 최종). 검·방패를 든 근접 보스 — 지금까지 중 가장 강하다.
     hp = (95 + player.floor * 6) * 1.5; dmg = (16 + player.floor * 2.5) * 1.5 * 0.8; sp = 3.2; exp = 34 + player.floor;
