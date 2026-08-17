@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v753'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v754'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -13071,11 +13071,29 @@ function c3MergeStatic(root, skip) {
 // 탐식 구울 뷰어에서 게임 조명으로 역산한 값이다(viewers/README.md '색 고르기').
 // 던전 광원이 세서 베이스 0x60 위로는 출력이 거의 평평하다 — 밝게 올리면 그만큼 색이 빠진다.
 const C3_BAND_COLS = [0x161f29, 0x1c2530, 0x2b2a40, 0x3d2f4d, 0x5d325d, 0x85397f, 0x8c458c, 0x8c528c];
+// 살덩이용 지터 — **같은 좌표의 정점을 같은 오프셋으로** 흔든다.
+// 전역 `jitterGeometry`는 정점을 독립적으로 흔드는데, 20면체는 비인덱스라(정점 60개 =
+// 고유 좌표 12개) 삼각형 20장이 제각각 떨어져 나간다. 실측: 지터 뒤 고유 좌표가 12 → 60,
+// 이웃 면 노멀 각도가 49.4°. 그래서 살덩이 혹이 깨진 결정 조각처럼 보였다.
+// 노멀 스무딩(`smoothSkinNormals`)도 이걸 못 되돌린다 — 좌표가 이미 벌어져서 묶이지 않는다.
+// (골렘이 같은 이유로 `jitterGeoShared`를 따로 쓰고, 뷰어의 jitterGeometry도 공유 오프셋 판이다.)
+function c3JitterShared(geometry, amount) {
+  const pos = geometry.attributes.position;
+  const offsets = new Map();
+  const key = (x, y, z) => x.toFixed(3) + ',' + y.toFixed(3) + ',' + z.toFixed(3);
+  for (let i = 0; i < pos.count; i++) {
+    const k = key(pos.getX(i), pos.getY(i), pos.getZ(i));
+    let off = offsets.get(k);
+    if (!off) { off = [(Math.random() - 0.5) * amount, (Math.random() - 0.5) * amount, (Math.random() - 0.5) * amount]; offsets.set(k, off); }
+    pos.setXYZ(i, pos.getX(i) + off[0], pos.getY(i) + off[1], pos.getZ(i) + off[2]);
+  }
+  geometry.computeVertexNormals(); return geometry;
+}
 // 울룩불룩한 종양 혹 하나
 function c3Lump(r, mat, detail) {
   const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, detail === undefined ? 0 : detail), mat);
   m.castShadow = false; m.receiveShadow = true;
-  jitterGeometry(m.geometry, r * 0.30);
+  c3JitterShared(m.geometry, r * 0.30);
   return m;
 }
 // 타원체 표면을 종양 혹으로 뒤덮는다(원화의 콜리플라워 살덩이 질감).
@@ -13648,7 +13666,7 @@ function buildGluttonGhoulBody(grp, bodyGrp, headGrp, limbs) {
   // 울룩불룩한 종양 혹 하나
   function lump(r, mat, detail) {
     const m = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(r, detail === undefined ? 0 : detail), mat));
-    jitterGeometry(m.geometry, r * 0.30);
+    c3JitterShared(m.geometry, r * 0.30);
     return m;
   }
   // 타원체 표면을 종양 혹으로 뒤덮음(원화의 컬리플라워 살덩이 질감)
@@ -13716,9 +13734,9 @@ function buildGluttonGhoulBody(grp, bodyGrp, headGrp, limbs) {
   // ---------- 몸통 코어(살덩이 속을 메우는 덩어리) ----------
   const torsoGrp = new THREE.Group(); bodyGrp.add(torsoGrp);
   const core = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.92, 2), bandMats[3]));
-  core.scale.set(0.95, 1.25, 0.82); core.position.set(0, 1.55, 0.10); jitterGeometry(core.geometry, 0.07); torsoGrp.add(core);
+  core.scale.set(0.95, 1.25, 0.82); core.position.set(0, 1.55, 0.10); c3JitterShared(core.geometry, 0.07); torsoGrp.add(core);
   const coreLow = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.80, 1), bandMats[1]));
-  coreLow.scale.set(1.0, 0.72, 0.9); coreLow.position.set(0, 0.78, 0.10); jitterGeometry(coreLow.geometry, 0.07); torsoGrp.add(coreLow);
+  coreLow.scale.set(1.0, 0.72, 0.9); coreLow.position.set(0, 0.78, 0.10); c3JitterShared(coreLow.geometry, 0.07); torsoGrp.add(coreLow);
 
   // ---------- 몸통 전체를 뒤덮는 종양 살덩이(아래 청회색 → 위 분홍) ----------
   const bodyLumps = [];
@@ -13792,7 +13810,7 @@ function buildGluttonGhoulBody(grp, bodyGrp, headGrp, limbs) {
       const w = w0 + (w1 - w0) * f;
       pos.setXYZ(i, pos.getX(i) * w, yy, pos.getZ(i) * w * (thick / w0));
     }
-    jitterGeometry(g, w0 * 0.05);   // 요철을 줄여야 곡선이 매끄럽게 읽힌다
+    c3JitterShared(g, w0 * 0.05);   // 요철을 줄여야 곡선이 매끄럽게 읽힌다
     const m = sh(new THREE.Mesh(g, mat));
     m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xA, dir, zA));
     m.position.copy(mid);
@@ -13810,7 +13828,7 @@ function buildGluttonGhoulBody(grp, bodyGrp, headGrp, limbs) {
     const skin = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.72, 1), gutMat));
     skin.scale.set(0.60, 1.02, 0.55);
     skin.position.set(-sgn * 0.32, 0, -0.26);
-    jitterGeometry(skin.geometry, 0.05); g.add(skin);
+    c3JitterShared(skin.geometry, 0.05); g.add(skin);
     for (let r = 0; r < FANG_ROWS; r++) {
       // 좌우를 반 칸씩 어긋나게 놓아 가운데서 지그재그로 맞물리게 한다
       const u = (r + (sgn > 0 ? 0.26 : 0.74)) / FANG_ROWS;
@@ -13845,19 +13863,19 @@ function buildGluttonGhoulBody(grp, bodyGrp, headGrp, limbs) {
     // 옆구리를 따라 흐르는 뼈 줄기(이빨 뿌리를 잇는다)
     const spine = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.06, 1.60, 9), fangDk));
     spine.position.set(sgn * (0.84 - CAGE_PIVOT.x), 0, -0.14 - CAGE_PIVOT.z);
-    spine.rotation.z = -sgn * 0.10; jitterGeometry(spine.geometry, 0.015); g.add(spine);
+    spine.rotation.z = -sgn * 0.10; c3JitterShared(spine.geometry, 0.015); g.add(spine);
     return g;
   }
   const cageR = makeCageHalf(1), cageL = makeCageHalf(-1);
   // 좌우 이빨이 맞물리는 가운데 골(닫혀 있을 때 세로로 난 어두운 틈)
   const cageSeam = sh(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.92, 0.09), gutMat));
-  cageSeam.position.set(0, BELLY_C.y - 0.02, BELLY_C.z - 0.22); jitterGeometry(cageSeam.geometry, 0.04);
+  cageSeam.position.set(0, BELLY_C.y - 0.02, BELLY_C.z - 0.22); c3JitterShared(cageSeam.geometry, 0.04);
   bellyGrp.add(cageSeam);
 
   // 배 속 두 번째 입(닫혀 있을 땐 배에 가려 보이지 않는다)
   const bellyMawGrp = new THREE.Group(); bellyMawGrp.position.set(0, BELLY_C.y - 0.04, BELLY_C.z + 0.24); bellyGrp.add(bellyMawGrp);
   const mawCav = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.62, 1), mawInner));
-  mawCav.scale.set(1.02, 1.20, 0.66); jitterGeometry(mawCav.geometry, 0.04); bellyMawGrp.add(mawCav);
+  mawCav.scale.set(1.02, 1.20, 0.66); c3JitterShared(mawCav.geometry, 0.04); bellyMawGrp.add(mawCav);
   for (let i = 0; i < 14; i++) {                       // 안쪽을 향한 이빨 고리
     const a = (i / 14) * Math.PI * 2;
     const t2 = sh(new THREE.Mesh(new THREE.ConeGeometry(0.052, 0.20 + (i % 3) * 0.08, 4), teethMat));
@@ -13867,16 +13885,16 @@ function buildGluttonGhoulBody(grp, bodyGrp, headGrp, limbs) {
   }
   const mawTongue = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 1), tongueMat));
   mawTongue.scale.set(1.1, 0.5, 1.2); mawTongue.position.set(0, -0.18, -0.24);
-  jitterGeometry(mawTongue.geometry, 0.03); bellyMawGrp.add(mawTongue);
+  c3JitterShared(mawTongue.geometry, 0.03); bellyMawGrp.add(mawTongue);
   const mawCores = [];
   [[-0.16, 0.18, -0.26], [0.18, 0.02, -0.28], [-0.04, -0.06, -0.30], [0.10, 0.26, -0.22]].forEach(pp => {
     const c = lump(0.075, soreMat, 0); c.position.set(pp[0], pp[1], pp[2]); bellyMawGrp.add(c); mawCores.push(c);
   });
   // 배 아래 늘어진 살(바닥 쪽으로 처짐, 누런 초록빛 변색)
   const bellyLow = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.50, 1), bellyGrn));
-  bellyLow.scale.set(1.3, 0.62, 0.95); bellyLow.position.set(0, 0.88, -0.56); jitterGeometry(bellyLow.geometry, 0.06); bellyGrp.add(bellyLow);
+  bellyLow.scale.set(1.3, 0.62, 0.95); bellyLow.position.set(0, 0.88, -0.56); c3JitterShared(bellyLow.geometry, 0.06); bellyGrp.add(bellyLow);
   const bellyLow2 = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 1), bellyDk));
-  bellyLow2.scale.set(1.5, 0.5, 0.9); bellyLow2.position.set(0, 0.66, -0.60); jitterGeometry(bellyLow2.geometry, 0.05); bellyGrp.add(bellyLow2);
+  bellyLow2.scale.set(1.5, 0.5, 0.9); bellyLow2.position.set(0, 0.66, -0.60); c3JitterShared(bellyLow2.geometry, 0.05); bellyGrp.add(bellyLow2);
   // 배 표면의 옅은 균열 무늬
   [[[-0.44, 1.72, -1.00], [-0.12, 1.42, -1.12]], [[0.30, 1.78, -0.96], [0.50, 1.40, -1.00]],
    [[-0.06, 1.30, -1.18], [0.22, 1.06, -1.10]], [[-0.50, 1.32, -0.98], [-0.30, 1.02, -1.00]]].forEach(s => {
@@ -13894,14 +13912,14 @@ function buildGluttonGhoulBody(grp, bodyGrp, headGrp, limbs) {
   // 두개골 살덩이(분홍, 뇌처럼 울룩불룩)
   tumorShell(headGrp, { cx: 0, cy: 0.30, cz: 0.14, rx: 0.58, ry: 0.34, rz: 0.46, count: 32, rMin: 0.16, rMax: 0.26, yBase: HEAD_Y });
   const headCore = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.52, 1), bandMats[6]));
-  headCore.scale.set(1.15, 0.85, 0.90); headCore.position.set(0, 0.24, 0.12); jitterGeometry(headCore.geometry, 0.06); headGrp.add(headCore);
+  headCore.scale.set(1.15, 0.85, 0.90); headCore.position.set(0, 0.24, 0.12); c3JitterShared(headCore.geometry, 0.06); headGrp.add(headCore);
   // 뿔처럼 튀어나온 뾰족 살(원화 머리 옆 돌기)
   addSpike(headGrp, -0.52, 0.34, -0.02, 0.22, -0.2, 1.0);
   addSpike(headGrp, 0.54, 0.30, 0.02, 0.20, -0.2, -1.0);
 
   // 입속(검붉은 구멍) — 얼굴 안쪽으로 파인 공동
   const maw = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.40, 1), mouthMat));
-  maw.scale.set(1.05, 0.95, 0.55); maw.position.set(0, -0.20, -0.16); jitterGeometry(maw.geometry, 0.035); headGrp.add(maw);
+  maw.scale.set(1.05, 0.95, 0.55); maw.position.set(0, -0.20, -0.16); c3JitterShared(maw.geometry, 0.035); headGrp.add(maw);
 
   // 입술/잇몸 띠: 이빨과 같은 호(弧)를 따라 혹을 늘어놓아 입 테두리를 만듦
   // (예전처럼 링을 비스듬히 얹으면 입술이 이빨 앞으로 튀어나와 어긋나 보임)
@@ -13951,7 +13969,7 @@ function buildGluttonGhoulBody(grp, bodyGrp, headGrp, limbs) {
   }
   // 혀
   const tongue = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.19, 1), tongueMat));
-  tongue.scale.set(0.95, 0.45, 1.25); tongue.position.set(0, -0.14, -0.26); jitterGeometry(tongue.geometry, 0.03); jawGrp.add(tongue);
+  tongue.scale.set(0.95, 0.45, 1.25); tongue.position.set(0, -0.14, -0.26); c3JitterShared(tongue.geometry, 0.03); jawGrp.add(tongue);
   // 흘러내리는 침
   const drools = [];
   [[-0.20, -0.32], [0.06, -0.28], [0.26, -0.34]].forEach((p, i) => {
@@ -13978,14 +13996,14 @@ function buildGluttonGhoulBody(grp, bodyGrp, headGrp, limbs) {
     const armGrp = new THREE.Group(); armGrp.position.set(sign * 1.28, SY, -0.10); bodyGrp.add(armGrp);
     // 위팔
     const upper = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.28, 0.9, 7), bandMats[3]));
-    upper.position.y = -0.45; jitterGeometry(upper.geometry, 0.05); armGrp.add(upper);
+    upper.position.y = -0.45; c3JitterShared(upper.geometry, 0.05); armGrp.add(upper);
     tumorShell(armGrp, { cx: 0, cy: -0.42, cz: 0, rx: 0.26, ry: 0.42, rz: 0.26, count: 12, rMin: 0.19, rMax: 0.28, yBase: SY });
     // 팔꿈치
     const elbowGrp = new THREE.Group(); elbowGrp.position.y = -0.88; armGrp.add(elbowGrp);
     const elbow = lump(0.28, bandMats[2], 1); elbowGrp.add(elbow);
     // 아래팔
     const fore = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.25, 0.85, 7), bandMats[2]));
-    fore.position.y = -0.45; jitterGeometry(fore.geometry, 0.05); elbowGrp.add(fore);
+    fore.position.y = -0.45; c3JitterShared(fore.geometry, 0.05); elbowGrp.add(fore);
     tumorShell(elbowGrp, { cx: 0, cy: -0.44, cz: 0, rx: 0.24, ry: 0.40, rz: 0.24, count: 11, rMin: 0.18, rMax: 0.26, yBase: SY - 0.88 });
     // 손(뭉툭한 살덩이 + 뾰족한 발톱)
     // 손등이 바깥(좌우)을 보게 손목을 비튼다. 손은 로컬 +y 가 손등, -z 가 손가락 방향으로
@@ -14019,7 +14037,7 @@ function buildGluttonGhoulBody(grp, bodyGrp, headGrp, limbs) {
     const HY = 0.80;
     const legGrp = new THREE.Group(); legGrp.position.set(sign * 0.80, HY, -0.10); bodyGrp.add(legGrp);
     const thigh = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.30, 0.50, 7), bandMats[1]));
-    thigh.position.y = -0.25; jitterGeometry(thigh.geometry, 0.05); legGrp.add(thigh);
+    thigh.position.y = -0.25; c3JitterShared(thigh.geometry, 0.05); legGrp.add(thigh);
     tumorShell(legGrp, { cx: 0, cy: -0.24, cz: 0, rx: 0.30, ry: 0.26, rz: 0.30, count: 14, rMin: 0.14, rMax: 0.22, yBase: HY });
     // 발(넓적한 살덩이 + 발톱)
     const footGrp = new THREE.Group(); footGrp.position.y = -0.52; legGrp.add(footGrp);
@@ -14573,18 +14591,18 @@ function buildRotGhoulBody(grp, bodyGrp, headGrp, limbs) {
   // ---------- 몸통(굽은 등 + 팽팽한 배) ----------
   const torso = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 1), band[3]));
   torso.scale.set(1.0, 1.25, 0.85); torso.position.set(0, 1.02, 0.04);
-  jitterGeometry(torso.geometry, 0.05); bodyGrp.add(torso);
+  c3JitterShared(torso.geometry, 0.05); bodyGrp.add(torso);
   c3TumorShell(bodyGrp, { cx: 0, cy: 1.06, cz: 0.06, rx: 0.34, ry: 0.36, rz: 0.28,
     count: 26, rMin: 0.09, rMax: 0.15, matAt: fleshAt, skip: (x, y, z) => z < -0.16 && y < 1.05 });
   // 등에 솟은 혹(2막 구울의 곱사등을 이 종의 실루엣으로 이어받는다)
   const hump = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.30, 1), band[5]));
-  hump.scale.set(1.05, 0.9, 1.1); hump.position.set(0, 1.30, 0.22); jitterGeometry(hump.geometry, 0.06); bodyGrp.add(hump);
+  hump.scale.set(1.05, 0.9, 1.1); hump.position.set(0, 1.30, 0.22); c3JitterShared(hump.geometry, 0.06); bodyGrp.add(hump);
   c3TumorShell(bodyGrp, { cx: 0, cy: 1.32, cz: 0.24, rx: 0.28, ry: 0.20, rz: 0.24,
     count: 16, rMin: 0.09, rMax: 0.15, matAt: () => band[6] });
   // 팽팽한 배(앞으로 늘어짐)
   const belly = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.30, 1), bellyMat));
   belly.scale.set(1.05, 0.95, 0.85); belly.position.set(0, 0.86, -0.22);
-  jitterGeometry(belly.geometry, 0.05); bodyGrp.add(belly);
+  c3JitterShared(belly.geometry, 0.05); bodyGrp.add(belly);
   // 드러난 갈비뼈 + 발진
   for (let i = 0; i < 3; i++) {
     const rib = sh(new THREE.Mesh(new THREE.TorusGeometry(0.16 - i * 0.02, 0.018, 4, 8, Math.PI), boneMat));
@@ -14603,7 +14621,7 @@ function buildRotGhoulBody(grp, bodyGrp, headGrp, limbs) {
   // ---------- 머리(아래턱이 떨어져 나가 목구멍이 드러난다) ----------
   headGrp.position.set(0, 1.52, -0.12); bodyGrp.add(headGrp); limbs.head = headGrp;
   const skull = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 1), band[6]));
-  skull.scale.set(1.0, 0.95, 1.15); jitterGeometry(skull.geometry, 0.04); headGrp.add(skull);
+  skull.scale.set(1.0, 0.95, 1.15); c3JitterShared(skull.geometry, 0.04); headGrp.add(skull);
   c3TumorShell(headGrp, { cx: 0, cy: 0.06, cz: 0.04, rx: 0.20, ry: 0.16, rz: 0.20,
     count: 14, rMin: 0.07, rMax: 0.11, matAt: () => band[7] });
   const throat = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.14, 1), mouthMat));
@@ -14625,12 +14643,12 @@ function buildRotGhoulBody(grp, bodyGrp, headGrp, limbs) {
   const mkArm = (sign) => {
     const armGrp = new THREE.Group(); armGrp.position.set(sign * 0.34, 1.34, 0.02); bodyGrp.add(armGrp);
     const upper = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.085, 0.44, 6), band[4]));
-    upper.position.y = -0.22; jitterGeometry(upper.geometry, 0.03); armGrp.add(upper);
+    upper.position.y = -0.22; c3JitterShared(upper.geometry, 0.03); armGrp.add(upper);
     c3TumorShell(armGrp, { cx: 0, cy: -0.22, cz: 0, rx: 0.09, ry: 0.20, rz: 0.09, count: 8, rMin: 0.06, rMax: 0.09, matAt: () => band[4] });
     const elbowGrp = new THREE.Group(); elbowGrp.position.y = -0.46; armGrp.add(elbowGrp);
     elbowGrp.add(c3Lump(0.10, band[3], 1));
     const fore = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.070, 0.44, 6), band[3]));
-    fore.position.y = -0.22; jitterGeometry(fore.geometry, 0.03); elbowGrp.add(fore);
+    fore.position.y = -0.22; c3JitterShared(fore.geometry, 0.03); elbowGrp.add(fore);
     const hand = c3Lump(0.10, band[2], 1); hand.position.y = -0.48; hand.scale.set(1.0, 0.9, 1.1); elbowGrp.add(hand);
     for (let f = 0; f < 3; f++) {
       const fx = (f - 1) * 0.06;
@@ -14646,9 +14664,9 @@ function buildRotGhoulBody(grp, bodyGrp, headGrp, limbs) {
   const mkLeg = (sign) => {
     const legGrp = new THREE.Group(); legGrp.position.set(sign * 0.17, 0.70, 0.0); bodyGrp.add(legGrp);
     const thigh = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.10, 0.40, 6), band[1]));
-    thigh.position.y = -0.20; jitterGeometry(thigh.geometry, 0.03); legGrp.add(thigh);
+    thigh.position.y = -0.20; c3JitterShared(thigh.geometry, 0.03); legGrp.add(thigh);
     const shin = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.075, 0.34, 6), band[0]));
-    shin.position.y = -0.55; jitterGeometry(shin.geometry, 0.03); legGrp.add(shin);
+    shin.position.y = -0.55; c3JitterShared(shin.geometry, 0.03); legGrp.add(shin);
     const foot = c3Lump(0.11, band[0], 1); foot.scale.set(1.0, 0.55, 1.5); foot.position.set(0, -0.70, -0.06); legGrp.add(foot);
     for (let f = 0; f < 3; f++) {
       const cl = sh(new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.10, 4), clawMat));
@@ -14711,9 +14729,9 @@ function buildFleshGiantBody(grp, bodyGrp, headGrp, limbs) {
   // ---------- 몸통(퍼진 살무더기) ----------
   const torsoGrp = new THREE.Group(); bodyGrp.add(torsoGrp);
   const core = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.72, 2), band[3]));
-  core.scale.set(1.05, 1.20, 0.90); core.position.set(0, 1.30, 0.06); jitterGeometry(core.geometry, 0.06); torsoGrp.add(core);
+  core.scale.set(1.05, 1.20, 0.90); core.position.set(0, 1.30, 0.06); c3JitterShared(core.geometry, 0.06); torsoGrp.add(core);
   const hip = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.62, 1), band[1]));
-  hip.scale.set(1.10, 0.75, 0.95); hip.position.set(0, 0.68, 0.04); jitterGeometry(hip.geometry, 0.06); torsoGrp.add(hip);
+  hip.scale.set(1.10, 0.75, 0.95); hip.position.set(0, 0.68, 0.04); c3JitterShared(hip.geometry, 0.06); torsoGrp.add(hip);
   const inMaw = (x, y, z) => (Math.abs(x) < 0.34 && y > 1.02 && y < 1.52 && z < -0.30) ||
                              (x > 0.30 && x < 0.86 && y > 1.46 && y < 1.86 && z < -0.10);
   c3TumorShell(torsoGrp, { cx: 0, cy: 0.72, cz: 0.04, rx: 0.72, ry: 0.42, rz: 0.62,
@@ -14737,7 +14755,7 @@ function buildFleshGiantBody(grp, bodyGrp, headGrp, limbs) {
   // ---------- 머리(어깨 살에 파묻힌 작은 머리) ----------
   headGrp.position.set(0, 2.24, -0.30); bodyGrp.add(headGrp); limbs.head = headGrp;
   const skull = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.26, 1), band[6]));
-  skull.scale.set(1.05, 0.90, 0.95); jitterGeometry(skull.geometry, 0.04); headGrp.add(skull);
+  skull.scale.set(1.05, 0.90, 0.95); c3JitterShared(skull.geometry, 0.04); headGrp.add(skull);
   addMaw(headGrp, 0, -0.10, -0.22, 0.16, 0);
   [-1, 1].forEach(sg => {
     const gl = new THREE.Mesh(new THREE.IcosahedronGeometry(0.032, 0), eyeMat);
@@ -14748,12 +14766,12 @@ function buildFleshGiantBody(grp, bodyGrp, headGrp, limbs) {
   const mkArm = (sign) => {
     const armGrp = new THREE.Group(); armGrp.position.set(sign * 0.92, 2.02, -0.04); bodyGrp.add(armGrp);
     const upper = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.23, 0.78, 7), band[3]));
-    upper.position.y = -0.39; jitterGeometry(upper.geometry, 0.04); armGrp.add(upper);
+    upper.position.y = -0.39; c3JitterShared(upper.geometry, 0.04); armGrp.add(upper);
     c3TumorShell(armGrp, { cx: 0, cy: -0.38, cz: 0, rx: 0.22, ry: 0.36, rz: 0.22, count: 12, rMin: 0.15, rMax: 0.22, matAt: () => band[4] });
     const elbowGrp = new THREE.Group(); elbowGrp.position.y = -0.78; armGrp.add(elbowGrp);
     elbowGrp.add(c3Lump(0.24, band[2], 1));
     const fore = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.21, 0.72, 7), band[2]));
-    fore.position.y = -0.38; jitterGeometry(fore.geometry, 0.04); elbowGrp.add(fore);
+    fore.position.y = -0.38; c3JitterShared(fore.geometry, 0.04); elbowGrp.add(fore);
     c3TumorShell(elbowGrp, { cx: 0, cy: -0.38, cz: 0, rx: 0.20, ry: 0.32, rz: 0.20, count: 10, rMin: 0.14, rMax: 0.20, matAt: () => band[2] });
     const fist = c3Lump(0.28, band[1], 1); fist.scale.set(1.15, 0.95, 1.1); fist.position.y = -0.86; elbowGrp.add(fist);
     for (let f = 0; f < 3; f++) {
@@ -14769,7 +14787,7 @@ function buildFleshGiantBody(grp, bodyGrp, headGrp, limbs) {
   const mkLeg = (sign) => {
     const legGrp = new THREE.Group(); legGrp.position.set(sign * 0.44, 0.68, -0.02); bodyGrp.add(legGrp);
     const thigh = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.26, 0.44, 7), band[1]));
-    thigh.position.y = -0.22; jitterGeometry(thigh.geometry, 0.04); legGrp.add(thigh);
+    thigh.position.y = -0.22; c3JitterShared(thigh.geometry, 0.04); legGrp.add(thigh);
     c3TumorShell(legGrp, { cx: 0, cy: -0.22, cz: 0, rx: 0.24, ry: 0.22, rz: 0.24, count: 12, rMin: 0.12, rMax: 0.19, matAt: () => band[0] });
     const foot = c3Lump(0.26, band[0], 1); foot.scale.set(1.05, 0.55, 1.35); foot.position.set(0, -0.52, -0.06); legGrp.add(foot);
     for (let f = 0; f < 3; f++) {
