@@ -842,21 +842,32 @@ function addSpike(parent, x, y, z, h, rx, rz) {
 //  드로우콜 최적화: 움직이지 않는 살덩이들을 머티리얼별로 하나의 지오메트리로 병합
 //  (게임에 넣을 때 380여 개의 드로우콜 → 20개 미만으로 감소)
 // ============================================================
-function mergeGeos(geos) {
+// cols 를 주면 지오메트리마다 그 색을 정점색으로 구워 넣는다.
+// 색만 다른 재질 여러 개를 **하나로 합치면서 색은 그대로 유지**하는 수단이다
+// (게임이 3막 산호 mergeCoral 에서 쓰는 것과 같은 방식).
+function mergeGeos(geos, cols) {
   const list = geos.map(g => (g.index ? g.toNonIndexed() : g));
   let n = 0; list.forEach(g => n += g.attributes.position.count);
   const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3);
+  const col = cols ? new Float32Array(n * 3) : null;
   let off = 0;
-  list.forEach(g => {
+  list.forEach((g, i) => {
     pos.set(g.attributes.position.array, off * 3);
     nor.set(g.attributes.normal.array, off * 3);
+    if (col) {
+      const c = cols[i], cnt = g.attributes.position.count;
+      for (let k = 0; k < cnt; k++) { col[(off + k) * 3] = c.r; col[(off + k) * 3 + 1] = c.g; col[(off + k) * 3 + 2] = c.b; }
+    }
     off += g.attributes.position.count;
   });
   const out = new THREE.BufferGeometry();
   out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  if (col) out.setAttribute('color', new THREE.BufferAttribute(col, 3));
   return out;
 }
+// 재질에 userData.mergeInto 가 있으면 **그 공용 재질로 묶어** 그리고, 원래 색은 정점색으로 넣는다.
+// 드로우콜은 (그룹 × 재질)이라, 같은 그룹에 함께 있던 재질이 하나로 합쳐지는 만큼 콜이 준다.
 function mergeStatic(root, skip) {
   const skipSet = new Set(skip || []);
   const byMat = new Map();
@@ -867,8 +878,10 @@ function mergeStatic(root, skip) {
       const m = mat4.clone().multiply(local);
       if (ch.isMesh) {
         const g = ch.geometry.clone().applyMatrix4(m);
-        if (!byMat.has(ch.material)) byMat.set(ch.material, []);
-        byMat.get(ch.material).push(g);
+        const key = (ch.material.userData && ch.material.userData.mergeInto) || ch.material;
+        if (!byMat.has(key)) byMat.set(key, { geos: [], cols: [], vc: key !== ch.material });
+        const e = byMat.get(key);
+        e.geos.push(g); e.cols.push(ch.material.color);
         obj.remove(ch);
       } else if (ch.isGroup) {
         walk(ch, m);
@@ -877,8 +890,8 @@ function mergeStatic(root, skip) {
     });
   };
   walk(root, new THREE.Matrix4());
-  byMat.forEach((geos, mat) => {
-    const mesh = new THREE.Mesh(mergeGeos(geos), mat);
+  byMat.forEach((e, mat) => {
+    const mesh = new THREE.Mesh(mergeGeos(e.geos, e.vc ? e.cols : null), mat);
     mesh.castShadow = true; mesh.receiveShadow = true;
     root.add(mesh);
   });
@@ -967,6 +980,27 @@ const bootMat    = getLowPolyMat(0x4d4437);
 // 게임은 살로 된 몬스터의 skinMat 에 자동으로 걸지만, 전용 빌더가 자기 재질을 만들면 빠진다.
 // 뺀 것: 황금·녹청·가죽·천·결정·방패면·부츠·백발(각질이라 하이라이트가 있어야 형태가 산다).
 [fLav, fLav2, fMauve, fPink, fDeep, fSage, fCream, fBone, muscle, muscleD, skin, skinDk].forEach(markOrganic);
+
+// ---------- 팔레트 통합: 색만 다른 재질을 하나로 묶는다 ----------
+// 드로우콜은 (병합 그룹 × 재질)이라, 재질 수가 그대로 콜 수가 된다. 이 모델은 살 재질만
+// 8종이라 그것만으로 콜의 절반을 먹고 있었다(132개 중 68개).
+// 색을 버리는 대신 **정점색으로 구워 넣어** 하나로 합친다 — 게임의 3막 산호(mergeCoral)와
+// 같은 방식이고, 색이 그대로라 그림은 바뀌지 않는다(픽셀 단위로 검증했다).
+//
+// 묶을 수 있는 조건: 색 말고 나머지가 같아야 한다. 그래서 세 무리로 나눈다.
+//  · 살   — markOrganic 이 걸린 것(하이라이트 없음·러프니스 1.0·노멀 패스 피부 표식)
+//  · 금속 — getLowPolyMat(_, true) 인 것(러프니스 0.6·메탈니스 0.3)
+//  · 단단 — 그냥 getLowPolyMat(_) 인 것(러프니스 0.9·메탈니스 0)
+// 발광 재질(crystal·glowMat·eyeMat·crackMat)은 emissive 색·세기가 제각각이라 못 묶는다.
+const fleshShared = markOrganic(getLowPolyMat(0xffffff));
+const metalShared = getLowPolyMat(0xffffff, true);
+const hardShared  = getLowPolyMat(0xffffff);
+[fleshShared, metalShared, hardShared].forEach(m => { m.vertexColors = true; m.needsUpdate = true; });
+[fLav, fLav2, fMauve, fPink, fDeep, fSage, fCream, fBone, muscle, muscleD, skin, skinDk]
+  .forEach(m => { m.userData.mergeInto = fleshShared; });
+[gold, goldHi, goldRot, verdi].forEach(m => { m.userData.mergeInto = metalShared; });
+[leather, hairMat, cloth, clothDk, crystal2, shieldFace, bootMat]
+  .forEach(m => { m.userData = m.userData || {}; m.userData.mergeInto = hardShared; });
 
 const POOL_UPPER = [fMauve, fMauve, fPink, fPink, fLav2, fDeep, fCream, fLav];
 const POOL_ARM   = [fLav, fLav2, fMauve, fCream, fPink, fSage, fBone, fLav2];
