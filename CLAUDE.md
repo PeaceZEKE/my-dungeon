@@ -121,6 +121,15 @@ npm의 playwright 버전과 동봉 브라우저 빌드 번호가 어긋나면 `E
 이때 `playwright install`을 받지 말고 `executablePath`로 동봉본을 직접 가리킬 것
 (경로는 환경마다 다르다 — `ls /opt/pw-browsers` 로 확인).
 
+**테스트용 웹서버는 반드시 저장소 루트에서 띄울 것.** 스크래치패드에서 `python3 -m http.server`를
+띄웠더니 거기 굴러다니던 **예전 `index.html`이 서빙돼서**, 방금 넣은 함수가 없다며
+(`… is not a function`) 테스트가 죽었다 — 코드는 멀쩡했는데 한참을 헤맸다.
+띄운 뒤 **버전부터 확인**하면 바로 갈린다:
+
+```bash
+curl -s localhost:8899/index.html | grep -o "GAME_VERSION = 'v[0-9]*'" | head -1
+```
+
 ### 시드는 `addInitScript`로 — 부팅보다 먼저 걸어야 한다
 
 `page.evaluate` 안에서 `Math.random`을 갈아끼우면 **이미 늦다.** 그 시점엔 마을과 부팅 던전이
