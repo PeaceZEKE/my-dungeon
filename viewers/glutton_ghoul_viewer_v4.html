@@ -144,7 +144,7 @@ function _specGainChunk() {
 const PIXEL_SCALE = 2;
 // 게임과 같은 값·같은 플래그. 작을수록 픽셀이 커진다(720 기준 360=배율 2, 288=2.5, 240=3).
 // v739~v740 에서 게임이 360 → 288 로 올렸다. 여기가 어긋나면 '1.0× = 게임 실제 픽셀 크기'가 거짓말이 된다.
-const PX_FIXED_H = parseInt((location.search.match(/[?&]pxh=(\d+)/) || [])[1], 10) || 288;
+const PX_FIXED_H = parseInt((location.search.match(/[?&]pxh=(\d+)/) || [])[1], 10) || 320;
 function computeLowRes(w, h) {
   if (PX_MODE) {
     const lh = PX_FIXED_H;
@@ -555,9 +555,11 @@ const ACTS = [
   // 게임 바닥에는 석판 텍스처의 어두운 줄눈·그림자·AO가 얹히기 때문이다.
   // 그래서 상수가 아니라 **게임 3막 바닥의 실측 출력색([33,47,47], 70층 6종 평균)**을
   // 목표로 원판 색을 역산했다.
-  { name: '3막', floor: 0x0b1011, bg: 0x0c1517, fogD: 0.014, aerial: 0x14303a, shadowC: 0x1b4a4a, shadowS: 0.40,
-    bloom: 0.62, amb: 0x585a4c, ambI: 0.34, moon: true, moonC: 0x8fb0a4, moonI: 0.24,
-    hemi: 0xa8808a, hemiG: 0x14252a, hemiI: 0.2 },
+  // v753 에서 3막을 한 단 더 어둡게 했다(A3DIM — `COR_LIT` 기본 0.62 라 기본 켜짐).
+  // 거리와 무관하게 화면 전체를 들어올리는 광원(환경광·달빛·반구광)을 낮추고 안개를 올렸다.
+  { name: '3막', floor: 0x0b1011, bg: 0x090f10, fogD: 0.024, aerial: 0x14303a, shadowC: 0x1b4a4a, shadowS: 0.40,
+    bloom: 0.62, amb: 0x585a4c, ambI: 0.26, moon: true, moonC: 0x8fb0a4, moonI: 0.16,
+    hemi: 0xa8808a, hemiG: 0x14252a, hemiI: 0.14 },
 ];
 let actIdx = 0;
 function applyAct(i) {
