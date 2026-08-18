@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v755'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v756'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -13020,19 +13020,27 @@ function c3Seam(parent, from, to, w, mat) {
   seg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
   parent.add(seg);
 }
-function c3MergeGeos(geos) {
+// cols를 주면 지오메트리마다 그 색을 정점색으로 구워 넣는다 — 색만 다른 재질 여러 개를
+// **하나로 합치면서 색은 그대로 유지**하는 수단이다(3막 산호 mergeCoral과 같은 방식).
+function c3MergeGeos(geos, cols) {
   const list = geos.map(g => (g.index ? g.toNonIndexed() : g));
   let n = 0; list.forEach(g => n += g.attributes.position.count);
   const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3);
+  const col = cols ? new Float32Array(n * 3) : null;
   let off = 0;
-  list.forEach(g => {
+  list.forEach((g, i) => {
     pos.set(g.attributes.position.array, off * 3);
     nor.set(g.attributes.normal.array, off * 3);
+    if (col) {
+      const c = cols[i], cnt = g.attributes.position.count;
+      for (let k = 0; k < cnt; k++) { col[(off + k) * 3] = c.r; col[(off + k) * 3 + 1] = c.g; col[(off + k) * 3 + 2] = c.b; }
+    }
     off += g.attributes.position.count;
   });
   const out = new THREE.BufferGeometry();
   out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  if (col) out.setAttribute('color', new THREE.BufferAttribute(col, 3));
   return out;
 }
 // 주의: 병합된 메시는 씬에서 제거되므로 그 변수에 scale/rotation을 줘도 아무 일도 안 일어난다.
@@ -13047,8 +13055,12 @@ function c3MergeStatic(root, skip) {
       const m = mat4.clone().multiply(local);
       if (ch.isMesh) {
         const g = ch.geometry.clone().applyMatrix4(m);
-        if (!byMat.has(ch.material)) byMat.set(ch.material, []);
-        byMat.get(ch.material).push(g);
+        // 재질에 userData.mergeInto가 있으면 **그 공용 재질로 묶어** 그리고, 원래 색은 정점색으로 넣는다.
+        // 드로우콜은 (병합 그룹 × 재질)이라, 같은 그룹에 있던 재질이 하나로 합쳐지는 만큼 콜이 준다.
+        const key = (ch.material.userData && ch.material.userData.mergeInto) || ch.material;
+        if (!byMat.has(key)) byMat.set(key, { geos: [], cols: [], vc: key !== ch.material });
+        const e2 = byMat.get(key);
+        e2.geos.push(g); e2.cols.push(ch.material.color);
         obj.remove(ch);
       } else if (ch.isGroup) {
         walk(ch, m);
@@ -13057,8 +13069,8 @@ function c3MergeStatic(root, skip) {
     });
   };
   walk(root, new THREE.Matrix4());
-  byMat.forEach((geos, mat) => {
-    const mesh = new THREE.Mesh(c3MergeGeos(geos), mat);
+  byMat.forEach((e2, mat) => {
+    const mesh = new THREE.Mesh(c3MergeGeos(e2.geos, e2.vc ? e2.cols : null), mat);
     mesh.castShadow = false; mesh.receiveShadow = true;   // 캐릭터는 진짜 그림자를 안 진다(블롭이 대신)
     root.add(mesh);
   });
@@ -14097,15 +14109,18 @@ function buildGluttonGhoulBody(grp, bodyGrp, headGrp, limbs) {
 //  부패한 왕(corruptking) — 90층 보스(3막 최종). 뷰어 corrupted_king_viewer_v14 이식.
 //  · 창백한 라벤더 살에 자주빛 종양, 오른 어깨에서 자란 오염원 결정이 발광한다
 //  · 부러진 황금 왕관 · 부패한 황금 한손검(오른손) · 카이트 방패(왼팔)
-//  v14는 뷰어가 게임 렌더 경로로 옮겨진 뒤 판이라, 팔레트가 3막(90층) 환경에서 역산돼 있고
-//  지터도 공유 오프셋 판이다 — 여기서 색·형태를 '보기 좋게' 고치지 말 것(viewers/README.md).
-//  뷰어 최상위에 rotation.y = π 가 없다(정면이 이미 로컬 -z). 게임 규약과 같으므로 그대로 쓴다.
-//  정면 -z. 높이 약 4.5 — 보스 스케일 1.0으로 쓴다.
+//  뷰어가 게임 렌더 경로 그대로라 팔레트가 3막(90층) 환경에서 역산돼 있고, 지터도 공유
+//  오프셋 판이다 — 여기서 색·형태를 '보기 좋게' 고치지 말 것(viewers/README.md).
+//  색만 다른 재질은 `userData.mergeInto`로 묶어 정점색으로 굽는다(c3MergeStatic이 처리).
+//  발광 핵 11개는 매 프레임 정점이 바뀌므로 병합에서 빼고 한 덩어리로 따로 둔다.
+//  뷰어 최상위에 rotation.y = π 가 없다(정면이 이미 로컬 -z) — 게임 규약과 같으므로 그대로 쓴다.
+//  정면 -z. 높이 약 4.4 — 보스 스케일 1.0으로 쓴다.
 // ============================================================
 function buildCorruptKingBody(grp, bodyGrp, headGrp, limbs) {
   const sh = (o) => { o.castShadow = false; o.receiveShadow = true; return o; };   // 캐릭터는 진짜 그림자를 안 진다(블롭이 대신)
   grp.add(bodyGrp);
 
+  // ===== 공용 형태·병합 헬퍼 (구울 뷰어와 같은 코드) =====
   // 울룩불룩한 종양 혹 하나
   function lump(r, mat, detail) {
     const m = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(r, detail === undefined ? 0 : detail), mat));
@@ -14221,6 +14236,27 @@ function buildCorruptKingBody(grp, bodyGrp, headGrp, limbs) {
   // 게임은 살로 된 몬스터의 skinMat 에 자동으로 걸지만, 전용 빌더가 자기 재질을 만들면 빠진다.
   // 뺀 것: 황금·녹청·가죽·천·결정·방패면·부츠·백발(각질이라 하이라이트가 있어야 형태가 산다).
   [fLav, fLav2, fMauve, fPink, fDeep, fSage, fCream, fBone, muscle, muscleD, skin, skinDk].forEach(markOrganic);
+
+  // ---------- 팔레트 통합: 색만 다른 재질을 하나로 묶는다 ----------
+  // 드로우콜은 (병합 그룹 × 재질)이라, 재질 수가 그대로 콜 수가 된다. 이 모델은 살 재질만
+  // 8종이라 그것만으로 콜의 절반을 먹고 있었다(132개 중 68개).
+  // 색을 버리는 대신 **정점색으로 구워 넣어** 하나로 합친다 — 게임의 3막 산호(mergeCoral)와
+  // 같은 방식이고, 색이 그대로라 그림은 바뀌지 않는다(픽셀 단위로 검증했다).
+  //
+  // 묶을 수 있는 조건: 색 말고 나머지가 같아야 한다. 그래서 세 무리로 나눈다.
+  //  · 살   — markOrganic 이 걸린 것(하이라이트 없음·러프니스 1.0·노멀 패스 피부 표식)
+  //  · 금속 — getLowPolyMat(_, true) 인 것(러프니스 0.6·메탈니스 0.3)
+  //  · 단단 — 그냥 getLowPolyMat(_) 인 것(러프니스 0.9·메탈니스 0)
+  // 발광 재질(crystal·glowMat·eyeMat·crackMat)은 emissive 색·세기가 제각각이라 못 묶는다.
+  const fleshShared = markOrganic(getLowPolyMat(0xffffff));
+  const metalShared = getLowPolyMat(0xffffff, true);
+  const hardShared  = getLowPolyMat(0xffffff);
+  [fleshShared, metalShared, hardShared].forEach(m => { m.vertexColors = true; m.needsUpdate = true; });
+  [fLav, fLav2, fMauve, fPink, fDeep, fSage, fCream, fBone, muscle, muscleD, skin, skinDk]
+    .forEach(m => { m.userData.mergeInto = fleshShared; });
+  [gold, goldHi, goldRot, verdi].forEach(m => { m.userData.mergeInto = metalShared; });
+  [leather, hairMat, cloth, clothDk, crystal2, shieldFace, bootMat]
+    .forEach(m => { m.userData = m.userData || {}; m.userData.mergeInto = hardShared; });
 
   const POOL_UPPER = [fMauve, fMauve, fPink, fPink, fLav2, fDeep, fCream, fLav];
   const POOL_ARM   = [fLav, fLav2, fMauve, fCream, fPink, fSage, fBone, fLav2];
@@ -14351,6 +14387,49 @@ function buildCorruptKingBody(grp, bodyGrp, headGrp, limbs) {
    [0.30, 0.06, 0.22, 0.070], [-0.08, -0.28, 0.10, 0.060]].forEach(p => {
     const g = lump(p[3], glowMat, 0); g.position.set(p[0], p[1], p[2]); bloomGrp.add(g); glowNodes.push(g);
   });
+  // 발광 핵 11개를 한 덩어리로 합친다(드로우콜 11 → 1).
+  // 맥동은 **CPU 에서 정점을 갱신**한다. 다른 방법 둘은 이 파이프라인에서 못 쓴다:
+  //  · 그룹째 스케일 — 원점에서 떨어진 핵이 제자리에서 부푸는 대신 원점 쪽으로 미끄러진다.
+  //  · 정점 셰이더 — 색 패스만 흔들리고 노멀·그림자 패스는 제자리라 외곽선이 형상과 어긋난다.
+  // 정점이 132개뿐이라 CPU 갱신 비용은 무시할 수 있다.
+  const glowMesh = (() => {
+    const geos = [], ctrs = [];
+    glowNodes.forEach((g) => {
+      const gg = g.geometry.clone();
+      gg.translate(g.position.x, g.position.y, g.position.z);
+      geos.push(gg); ctrs.push(g.position.clone());
+      bloomGrp.remove(g);
+    });
+    const geo = c3MergeGeos(geos);
+    const pos = geo.attributes.position;
+    const base = new Float32Array(pos.array);     // 원래 정점 위치
+    const ctr = new Float32Array(pos.count * 3);  // 그 정점이 속한 핵의 중심
+    const ph = new Float32Array(pos.count);       // 핵마다 다른 위상(예전의 인덱스 i)
+    let off = 0;
+    geos.forEach((gg, i) => {
+      const n = gg.attributes.position.count;
+      for (let k = 0; k < n; k++) {
+        ctr[(off + k) * 3] = ctrs[i].x; ctr[(off + k) * 3 + 1] = ctrs[i].y; ctr[(off + k) * 3 + 2] = ctrs[i].z;
+        ph[off + k] = i;
+      }
+      off += n;
+    });
+    const m = sh(new THREE.Mesh(geo, glowMat));
+    m.userData.pulse = { base, ctr, ph, pos };
+    bloomGrp.add(m);
+    return m;
+  })();
+  // t 를 주면 그 시점의 맥동을, null 이면 기준 형태(배율 1)를 만든다.
+  function setGlowPulse(t) {
+    const u = glowMesh.userData.pulse, p = u.pos, a = p.array;
+    for (let k = 0; k < p.count; k++) {
+      const s = (t === null) ? 1 : 1 + Math.sin(t * 2.4 + u.ph[k]) * 0.10;
+      a[k * 3]     = u.ctr[k * 3]     + (u.base[k * 3]     - u.ctr[k * 3])     * s;
+      a[k * 3 + 1] = u.ctr[k * 3 + 1] + (u.base[k * 3 + 1] - u.ctr[k * 3 + 1]) * s;
+      a[k * 3 + 2] = u.ctr[k * 3 + 2] + (u.base[k * 3 + 2] - u.ctr[k * 3 + 2]) * s;
+    }
+    p.needsUpdate = true;
+  }
   // 뻗어 나온 결정 파편
   [[-0.10, 0.34, -0.06, -0.3, 0.4], [0.14, 0.30, 0.04, -0.5, -0.3], [-0.28, 0.20, -0.10, -0.2, 0.9],
    [0.04, 0.36, 0.14, -0.7, 0.1], [-0.22, 0.06, -0.24, 0.4, 0.6]].forEach(p => {
@@ -14516,7 +14595,7 @@ function buildCorruptKingBody(grp, bodyGrp, headGrp, limbs) {
   c3MergeStatic(shieldGrp);
   c3MergeStatic(crownGrp);
   c3MergeStatic(headGrp, [crownGrp]);
-  c3MergeStatic(bloomGrp, glowNodes);
+  c3MergeStatic(bloomGrp, [glowMesh]);   // 합쳐 둔 발광 덩어리는 따로 둔다(매 프레임 정점이 바뀐다)
   [armR, armL].forEach(a => {
     c3MergeStatic(a.handGrp, [swordGrp]);
     c3MergeStatic(a.elbowGrp, [a.handGrp, shieldGrp]);
@@ -14542,12 +14621,12 @@ function buildCorruptKingBody(grp, bodyGrp, headGrp, limbs) {
     const breath = Math.sin(t * 0.9);
     torsoGrp.scale.set(1 + breath * 0.012, 1 + breath * 0.008, 1 + breath * 0.014);
     const pulse = 1.1 + Math.sin(t * 2.2) * 0.5 + Math.sin(t * 0.7) * 0.25;
-    // 발광 세기의 맥동 식에도 v14의 배수가 들어 있다 — 생성자 값만 낮추면 첫 프레임에 덮인다.
+    // 발광 세기의 맥동 식에도 뷰어의 배수가 들어 있다 — 생성자 값만 낮추면 첫 프레임에 덮인다.
     glowMat.emissiveIntensity = Math.max(0.42, (pulse + 0.9) * 0.386);
     crackMat.emissiveIntensity = Math.max(0.11, (0.8 + Math.sin(t * 1.7) * 0.4) * 0.325);
     bloomLight.intensity = 0.6 + Math.max(0, pulse) * 0.35;
     eyeMat.emissiveIntensity = 0.29 + Math.sin(t * 2.6) * 0.08;
-    glowNodes.forEach((g, i) => g.scale.setScalar(1 + Math.sin(t * 2.4 + i) * 0.10));
+    setGlowPulse(t);   // 발광 핵 맥동(CPU 정점 갱신 — 모든 패스가 같이 움직인다)
     // 무릎은 엉덩이(legR/legL)를 공용 코드가 돌린 만큼 따라 굽힌다
     legR.kneeGrp.rotation.x = Math.max(0, -legR.hipGrp.rotation.x) * 1.1;
     legL.kneeGrp.rotation.x = Math.max(0, -legL.hipGrp.rotation.x) * 1.1;
