@@ -10,6 +10,7 @@
 | `brood_tick_viewer_v1.html` | 포란충(抱卵蟲) — 3막 첫 보스. 팔레트를 **3막**에서 역산했다 |
 | `brood_tick_larva_viewer_v1.html` | 새끼 포란충 — 3막 일반 몹. 위 보스의 유생. 팔레트를 **보스 출력색에 맞춰** 역산했다 |
 | `corrupted_king_viewer_v14.html` | 부패한 왕 — 90층 보스. 팔레트를 **3막**에서 역산했다 |
+| `voxel_floor_spike_v1.html` | 캐릭터가 아니라 **바닥** 스파이크. 던전 바닥을 프래그먼트 레이마칭으로 복셀화한다 |
 | `smoke.js` | **뷰어가 열면 실제로 보이는지** 확인한다. 커밋·전달 전에 반드시 돌릴 것 |
 | `build-standalone.js` | three.js를 인라인해 단일 파일을 만든다(사람에게 보낼 때 씀) |
 | `export-glb.js` | 캐릭터를 glTF 바이너리(.glb)로 뽑는다 |
