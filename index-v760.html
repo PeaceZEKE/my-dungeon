@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v759'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v760'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -5584,10 +5584,13 @@ function updateBlobShadows() {
   if (!BLOB_ON) return;
   if (player && player.obj) {
     if (!player._blob) { player._blob = makeBlobShadow(1.6, true); player.obj.add(player._blob); }
-    const h = Math.max(0, player.obj.position.y);
+    // 높이는 '지면으로부터'다. 지형이 생기면 절대 y가 아니라 발밑 지면과의 차이를 봐야
+    // 그림자가 언덕 위에서도 발밑에 붙는다(?relief=0이면 지면이 0이라 예전과 같은 식).
+    const gy = groundHeightAt(player.obj.position.x, player.obj.position.z);
+    const h = Math.max(0, player.obj.position.y - gy);
     const k = 1 / (1 + h * 0.6);
     const s = player._blob.userData.blobBase * k;
-    player._blob.position.y = 0.03 - h;
+    player._blob.position.y = 0.03 - (player.obj.position.y - gy);
     player._blob.scale.set(s, s, 1);
     player._blob.material.opacity = 0.72 * k;
     player._blob.visible = player.alive;
@@ -7680,6 +7683,79 @@ let dungeon = null;
 let floorGroup = new THREE.Group(); scene.add(floorGroup);
 let wallGroup  = new THREE.Group(); scene.add(wallGroup);
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  지형 높이 — 1단계(시각 굴곡) + 2단계(배관)
+//  이 게임은 지금까지 "바닥은 y=0"을 전제로 깔려 있다(중력 착지·마우스 조준 평면·블롭
+//  그림자·카메라 높이가 전부 상수 0). 계단식 고저차(3단계)를 넣으려면 그것부터 걷어내야 한다.
+//  그래서 여기서 두 가지를 한다.
+//   ① 타일 격자마다 지면 높이를 들고 있는 필드(groundH)와 조회 함수(groundHeightAt)
+//   ② 지면에 닿는 모든 것이 상수 0 대신 groundHeightAt()을 쓰게 배선
+//  지금 채워 넣는 값은 부드러운 굴곡뿐이다. 3단계에서는 이 필드에 정수 단을 채우면 된다.
+//
+//  ?relief=0 이면 필드가 통째로 null이고 groundHeightAt이 항상 0을 돌려주므로,
+//  **화면이 배선 전(v759)과 픽셀 단위로 같아야 한다.** 이게 2단계의 합격 기준이다.
+//
+//  높이는 0 이상만 쓴다(아래로 파지 않는다). 벽 상자가 y=0에서 시작하므로 바닥을 내리면
+//  벽 밑동과 바닥 사이가 벌어져 벽 아래가 들여다보인다.
+// 기본 0.9. 이웃 타일 높이차는 진폭의 약 0.165배인데(실측 0.9→0.149, 1.6→0.265, 3.0→0.497)
+// 바닥 타일 두께가 0.4이고 윗면이 이미 0.32까지 울퉁불퉁해서, 1.5를 넘으면 타일 사이가 벌어져
+// 바닥 아래가 들여다보인다. 그 위로 올리려면 타일을 두껍게 하거나 단차 옆면을 만들어야 한다(3단계).
+const RELIEF = (() => { const m = location.search.match(/[?&]relief=([\d.]+)/); return m ? parseFloat(m[1]) : 0.9; })();
+const RELIEF_PERIOD = 6;      // 노이즈 파장(타일). 길수록 이웃 칸 높이차가 작아 틈이 안 생긴다
+let groundH = null;           // Float32Array((MAP_W+1)*(MAP_H+1)) — 타일 중심의 지면 높이
+
+// 층마다 높이 필드를 굽는다. **Math.random을 쓰지 않는다** — 같은 층이면 ?relief 값과
+// 무관하게 던전 배치가 같아야 두 빌드를 나란히 비교할 수 있기 때문이다
+// (CLAUDE.md: 난수 소비가 달라지면 이후 층 생성이 통째로 바뀐다).
+function buildGroundHeight(floorNo) {
+  if (!(RELIEF > 0)) { groundH = null; return; }
+  let sd = (((floorNo | 0) * 2654435761) ^ 0x9e3779b9) >>> 0;
+  const rnd = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
+  const P = RELIEF_PERIOD;
+  const gw = Math.ceil(MAP_W / P) + 2, gh = Math.ceil(MAP_H / P) + 2;
+  const ctl = new Float32Array(gw * gh);
+  for (let i = 0; i < ctl.length; i++) ctl[i] = rnd();
+  const sm = (t) => t * t * (3 - 2 * t);                 // smoothstep — 격자 티가 안 나게
+  const W1 = MAP_W + 1;
+  groundH = new Float32Array(W1 * (MAP_H + 1));
+  for (let y = 0; y <= MAP_H; y++) for (let x = 0; x <= MAP_W; x++) {
+    const fx = x / P, fy = y / P;
+    const ix = Math.floor(fx), iy = Math.floor(fy);
+    const tx = sm(fx - ix), ty = sm(fy - iy);
+    const c = (a2, b2) => ctl[Math.min(gh - 1, b2) * gw + Math.min(gw - 1, a2)];
+    const v = (c(ix, iy) * (1 - tx) + c(ix + 1, iy) * tx) * (1 - ty)
+            + (c(ix, iy + 1) * (1 - tx) + c(ix + 1, iy + 1) * tx) * ty;
+    groundH[y * W1 + x] = v * RELIEF;
+  }
+}
+
+// 월드 좌표의 지면 높이. 필드가 없으면(마을·쉼터·?relief=0) 항상 0 — 예전과 완전히 같다.
+function groundHeightAt(wx, wz) {
+  if (!groundH) return 0;
+  if ((typeof inTown !== 'undefined' && inTown) || (typeof inRest !== 'undefined' && inRest)) return 0;
+  const W1 = MAP_W + 1;
+  const gx = wx / TILE + MAP_W / 2, gy = wz / TILE + MAP_H / 2;
+  const x0 = Math.floor(gx), y0 = Math.floor(gy);
+  const tx = gx - x0, ty = gy - y0;
+  const at = (a2, b2) => groundH[Math.max(0, Math.min(MAP_H, b2)) * W1 + Math.max(0, Math.min(MAP_W, a2))];
+  return (at(x0, y0) * (1 - tx) + at(x0 + 1, y0) * tx) * (1 - ty)
+       + (at(x0, y0 + 1) * (1 - tx) + at(x0 + 1, y0 + 1) * tx) * ty;
+}
+
+// 던전 메시를 다 짓고 나서 바닥·벽을 통째로 높이만큼 올린다.
+// 배치 지점마다 손대지 않고 한 곳에서 처리하는 이유: 바닥 장식(균열·이끼·자갈·카펫·핏줄·종양)이
+// 수십 군데에서 floorGroup에 들어가는데, 3막에서 배운 대로 **바닥을 올리면 그 위 장식도
+// 같이 올라가야 한다.** 그룹 자식을 훑으면 그게 자동으로 지켜진다.
+function applyGroundRelief() {
+  if (!groundH) return;
+  for (const grp of [floorGroup, wallGroup]) {
+    const ch = grp.children;
+    for (let i = 0; i < ch.length; i++) ch[i].position.y += groundHeightAt(ch[i].position.x, ch[i].position.z);
+  }
+}
+// 층에 놓인 소품(계단·상자 등)을 지면에 앉힌다. 메시 빌드 뒤에 배치되므로 따로 불러 준다.
+function snapToGround(o) { if (o && groundH) o.position.y += groundHeightAt(o.position.x, o.position.z); }
+
 // ===== 막(Act) 판정: 1막=1~30층(이끼 동굴), 2막=31~60층(무너진 성), 3막=61~90층(부패한 성) =====
 function currentAct() { if (!player) return 1; if (player.floor >= 61) return 3; return (player.floor >= 31) ? 2 : 1; }
 
@@ -8903,6 +8979,7 @@ function generateDungeon() {
   // 맵 크기도 막 안에서 4층마다 2칸씩 완만하게 커진다. 보스층은 보스방을 위해 약간 여유.
   const sizeStep = Math.floor((floorInAct - 1) / 4) * 2;
   MAP_W = MAP_H = Math.min(MAP_MAX, MAP_MIN + sizeStep + (isBossFloor ? 4 : 0));
+  buildGroundHeight(player ? player.floor : 1);   // 지형 높이 필드(?relief=0이면 null)
 
   for (let attempt = 0; attempt < 30; attempt++) {
     const grid = Array.from({ length: MAP_H }, () => new Array(MAP_W).fill(0));
@@ -8976,7 +9053,9 @@ function generateDungeon() {
 // 무너지는 바닥 함정 배열(buildDungeonMesh보다 먼저 선언 — buildDungeonMesh 안에서 length=0 참조하므로 TDZ 방지)
 const collapseTiles = []; // { grp, slab, edge, gx, gy, x, z, state:'idle'|'shake'|'broken', timer, dmg }
 
-function buildDungeonMesh(dgn) {
+// 막별 빌더는 중간에 return하므로, 지형 높이 적용은 이 래퍼가 한 곳에서 맡는다.
+function buildDungeonMesh(dgn) { buildDungeonMeshInner(dgn); applyGroundRelief(); }
+function buildDungeonMeshInner(dgn) {
   // 이전 층 던전 메시를 GPU에서 해제(dispose)하며 비운다. remove만 하면 벽·바닥 수천 개가 누적 → 컨텍스트 손실.
   // 단, 전역 공유 지오메트리/머티리얼(모든 층이 재사용)은 dispose 제외(해제하면 다음 층에서 깨짐).
   const _sharedGeos = new Set(floorGeos);
@@ -9377,6 +9456,9 @@ function createPixelGrass(options) {
     'precision highp float;',
     '#define GPI 3.14159265359',
     'attribute vec2 aOffset; attribute float aRand; attribute float aTile; attribute float aFlip;',
+    // aGY: 그 포기가 선 지면의 높이. 잔디는 floorGroup 밖(scene 직속)이라 바닥이 올라가도
+    // 따라오지 않는다 — 지형을 켰더니 풀이 통째로 바닥에 묻혔다. 셀마다 높이를 받아 올린다.
+    'attribute float aGY;',
     'uniform float uWind, uWindSpeed, uWindSway;',
     'uniform vec2 uWindDir;',
     'uniform vec2 uChars[MAXCH]; uniform int uCharCount;',
@@ -9399,7 +9481,7 @@ function createPixelGrass(options) {
     '  vec3 up=vec3(0.0,1.0,0.0);',
     '#endif',
     '  float fs=(aFlip>0.5)?-1.0:1.0;',
-    '  vec3 world=vec3(aOffset.x,0.0,aOffset.y)+right*(position.x*sc*fs)+up*(position.y*sc);',
+    '  vec3 world=vec3(aOffset.x,aGY,aOffset.y)+right*(position.x*sc*fs)+up*(position.y*sc);',
     // 바람: 노이즈 둘을 곱해 돌풍처럼. π로 스케일·속도를 어긋내면 공통 주기가 사라진다.
     '  vec2 wd=normalize(uWindDir);',
     '#if PI_WIND',
@@ -9509,10 +9591,10 @@ function createPixelGrass(options) {
     _s = O.seed >>> 0 || 1;
     const n = cells.length * O.perCell;
     const offs = new Float32Array(n * 2), rnds = new Float32Array(n);
-    const tiles = new Float32Array(n), flips = new Float32Array(n);
+    const tiles = new Float32Array(n), flips = new Float32Array(n), gys = new Float32Array(n);
     let k = 0;
     for (let c = 0; c < cells.length; c++) {
-      const cx = cells[c][0], cz = cells[c][1];
+      const cx = cells[c][0], cz = cells[c][1], cy = cells[c][2] || 0;   // 세 번째 값은 지면 높이(없으면 0)
       for (let j = 0; j < O.perCell; j++) {
         offs[k * 2] = cx + rnd() * O.cellSize;
         offs[k * 2 + 1] = cz + rnd() * O.cellSize;
@@ -9520,6 +9602,7 @@ function createPixelGrass(options) {
         const r = rnd();
         tiles[k] = r < O.lightRatio ? 2 : (r < O.lightRatio + O.darkRatio ? 1 : 0);
         flips[k] = rnd() < 0.5 ? 1 : 0;
+        gys[k] = cy;
         k++;
       }
     }
@@ -9532,6 +9615,7 @@ function createPixelGrass(options) {
     geo.setAttribute('aRand', new THREE.InstancedBufferAttribute(rnds, 1));
     geo.setAttribute('aTile', new THREE.InstancedBufferAttribute(tiles, 1));
     geo.setAttribute('aFlip', new THREE.InstancedBufferAttribute(flips, 1));
+    geo.setAttribute('aGY', new THREE.InstancedBufferAttribute(gys, 1));
     if (mesh.geometry && mesh.geometry.isInstancedBufferGeometry) mesh.geometry.dispose();
     mesh.geometry = geo;
     mesh.visible = n > 0;
@@ -10285,7 +10369,7 @@ function buildGrass(grid, mossSpots, edgeBias) {
     // 조명을 못 받으므로 막 분위기를 tint로 맞춘다(1막 숲 동굴은 어둑한 초록, 2막 성은 달빛 냉색).
     dgnPGrass.setTint(edgeBias ? 0x55637e : 0x71805e);
     const CS = 2.4;
-    dgnPGrass.setCells(tufts.map(t => [t.x - CS / 2, t.z - CS / 2]));
+    dgnPGrass.setCells(tufts.map(t => [t.x - CS / 2, t.z - CS / 2, groundHeightAt(t.x, t.z)]));
     return;
   }
   const _gm = makeGrassMesh(tufts);
@@ -16585,10 +16669,14 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
   }
   // 진짜 그림자 대신 발밑 블롭을 붙인다(위 traverse에서 castShadow를 끈 것에 대한 대체)
   if (BLOB_ON) { const _bl = makeBlobShadow(isBoss ? 2.3 : 1.4); grp.add(_bl); grp.userData.blob = _bl; }
-  grp.scale.setScalar(scale * (isBoss ? 1 : 1.10)); grp.position.set(x, 0, z); scene.add(grp);
+  // 생성 시점에 지면에 앉힌다. 업데이트 루프의 지면 추적은 '깨어 있고 가까운' 적만 타므로
+  // (시야 게이트에서 continue), 여기서 안 앉히면 잠든 적이 y=0에 남아 땅에 파묻힌다
+  // (실측: 굴곡 0.9에서 최대 0.88 침하).
+  const _spawnY = groundHeightAt(x, z);
+  grp.scale.setScalar(scale * (isBoss ? 1 : 1.10)); grp.position.set(x, _spawnY, z); scene.add(grp);
 
   const ent = { 
-    obj: grp, limbs, baseY: 0, hp, hpMax: hp, damage: dmg, speed: sp,
+    obj: grp, limbs, baseY: _spawnY, hp, hpMax: hp, damage: dmg, speed: sp,
     // 반지름은 보통 스케일에 비례한다. 3막 보스들은 뷰어에서 옮긴 실물 크기(높이 3.3~3.9)라
     // 스케일 1.0으로 쓰는데, 그러면 반지름이 0.5로 잡혀 플레이어가 몸 안으로 걸어 들어간다.
     radius: 0.5 * scale * (C3_BOSS_RADIUS[type] || 1),
@@ -16972,7 +17060,7 @@ function placeStairs(dgn) {
   const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.6, 0), getGlowMat(0xf6e05e)); orb.position.y = 1.5; g.add(orb); g._orb = orb;
   orb.add(makeGlowSprite(0xf6e05e, 2.8, 0.5)); // 계단 구슬 빛번짐
   const glow = new THREE.PointLight(0xf6e05e, 2, 8); glow.position.y = 1.5; g.add(glow);
-  g.position.set(sx, 0.25, sz); scene.add(g); stairsMesh = g;
+  g.position.set(sx, 0.25, sz); snapToGround(g); scene.add(g); stairsMesh = g;
 }
 
 // 1층 전용: 시작 방(rooms[0])에 마을로 돌아가는 '상행' 계단 설치(파란 오브).
@@ -16994,7 +17082,7 @@ function placeReturnStairs(dgn) {
   orb.add(makeGlowSprite(0x6fd0ff, 2.6, 0.5)); // 귀환 계단 구슬 빛번짐
   const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.7, 5), getGlowMat(0x9fe4ff)); arrow.position.y = 2.3; g.add(arrow);
   const glow = new THREE.PointLight(0x6fd0ff, 2, 8); glow.position.y = 1.5; g.add(glow);
-  g.position.set(sx, 0.25, sz); scene.add(g); returnStairsMesh = g;
+  g.position.set(sx, 0.25, sz); snapToGround(g); scene.add(g); returnStairsMesh = g;
 }
 // 던전 1층 → 마을로 귀환(회차 정리 후 마을 모드). 테스트 모드는 유지.
 function returnToTown() {
@@ -17069,7 +17157,7 @@ function placeInteractables(dgn) {
       const lid = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.25, 0.65), getLowPolyMat(0x6b4420)); lid.position.y = 0.7; lid.castShadow = true; g.add(lid);
       const lock = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, 0.1), getLowPolyMat(0xf6e05e, true)); lock.position.set(0, 0.45, 0.33); g.add(lock);
       const glow = new THREE.PointLight(0xffcc55, 1.2, 4); glow.position.y = 1.0; g.add(glow);
-      g.position.set(cx, 0, cz); scene.add(g); chestMesh = g; chestMesh._opened = false;
+      g.position.set(cx, 0, cz); snapToGround(g); scene.add(g); chestMesh = g; chestMesh._opened = false;
       // 주의: 스폰 시점이 아니라 실제 '획득(open)' 시점에만 lastChestFloor를 갱신한다.
       if (forcedChest) toast(_i18n('📦 어딘가에 보물상자가 있습니다!'), 3000);
     }
@@ -19345,7 +19433,9 @@ function update(dt) {
   // 함정 구멍에 빠진 동안엔 중력/착지 로직을 건너뜀(추락 연출은 updateCollapseTraps가 담당)
   if (!player.fallingInTrap) {
     player.jumpVy -= 25 * dt; player.obj.position.y += player.jumpVy * dt;
-    if (player.obj.position.y <= 0) { player.obj.position.y = 0; player.jumpVy = 0; player.onGround = true; }
+    // 착지면은 상수 0이 아니라 발밑 지면 높이다(?relief=0이면 0이라 예전과 같다)
+    const _gy = groundHeightAt(player.obj.position.x, player.obj.position.z);
+    if (player.obj.position.y <= _gy) { player.obj.position.y = _gy; player.jumpVy = 0; player.onGround = true; }
   }
 
   // 캐릭터 방향(조준)
@@ -19366,6 +19456,9 @@ function update(dt) {
     if (manualAimTime <= 0 && player.alive) {
       raycaster.setFromCamera(mousePos, camera);
       const target = new THREE.Vector3();
+      // 조준 평면은 발밑 지면 높이에 맞춘다. y=0 고정이면 높이 h만큼 서 있을 때
+      // 교점이 h/tan(51.9°) 만큼 밀린다(h=2면 1.57유닛 ≈ 타일 1/3).
+      groundPlane.constant = -groundHeightAt(player.obj.position.x, player.obj.position.z);
       const hit = raycaster.ray.intersectPlane(groundPlane, target);
       if (hit) player.yaw = Math.atan2(player.obj.position.x - target.x, player.obj.position.z - target.z);
     }
@@ -21256,6 +21349,14 @@ function update(dt) {
       if (!bZ && Math.abs(e.obj.position.x - w.x) < w.halfW + e.radius && Math.abs(e.obj.position.z + eTotalWz - w.z) < w.halfD + e.radius) bZ = true;
     }
     if (!bX) e.obj.position.x += eTotalWx; if (!bZ) e.obj.position.z += eTotalWz;
+    // 지형: 발밑 지면 높이를 baseY로 삼는다. 리그가 y를 직접 쓰는 타입(곤충 보행·비행)은
+    // 다음 프레임에 baseY 기준으로 다시 계산하고, 안 쓰는 타입은 여기서 차이만큼 따라 올라간다.
+    // 블롭 그림자도 baseY를 기준으로 돌기 때문에 한 곳만 맞춰 두면 같이 따라온다.
+    if (groundH) {
+      const _egy = groundHeightAt(e.obj.position.x, e.obj.position.z);
+      e.obj.position.y += _egy - (e.baseY || 0);
+      e.baseY = _egy;
+    }
     e.kbX += (0 - e.kbX) * 10 * dt; e.kbZ += (0 - e.kbZ) * 10 * dt;
     // 피격 스쿼시: 맞는 순간 세로로 납작·가로로 부푼 뒤 빠르게 원래 비율로 복원(탱글한 타격감)
     if (e.squash > 0 && e._squashBase) {
@@ -21488,8 +21589,8 @@ function startFloor() {
   for (const s of slashes) scene.remove(s.mesh); slashes.length = 0;
   dungeon = generateDungeon(); buildDungeonMesh(dungeon); placeStairs(dungeon); placeReturnStairs(dungeon); placeTrapRoom(dungeon); placeAmbushCorridor(dungeon); placeSpikeTraps(dungeon); spawnEnemies(dungeon); placeInteractables(dungeon);
   const r = dungeon.rooms[0]; const px = (r.cx - MAP_W / 2) * TILE, pz = (r.cy - MAP_H / 2) * TILE;
-  player.obj.position.set(px, 0, pz); player.jumpVy = 0; player.onGround = true; player.yaw = Math.atan2(-px, -pz); player.pitch = 0.2; player.isBlocking = false; isCharging = false; SFX.chargeStop(false);
-  camera.position.set(px + isoOffsetX, isoOffsetY, pz + isoOffsetZ); camera.lookAt(player.obj.position);
+  player.obj.position.set(px, groundHeightAt(px, pz), pz); player.jumpVy = 0; player.onGround = true; player.yaw = Math.atan2(-px, -pz); player.pitch = 0.2; player.isBlocking = false; isCharging = false; SFX.chargeStop(false);
+  camera.position.set(px + isoOffsetX, isoOffsetY + groundHeightAt(px, pz), pz + isoOffsetZ); camera.lookAt(player.obj.position);
   updateHUD();
   saveRun(); // 새 층 진입 시 진행 저장(이어하기용)
 }
@@ -22389,7 +22490,9 @@ function enterTownMode(keepGod) {
   player.obj.position.set(sr * Math.sin(startA), 0, sr * Math.cos(startA));
   player.yaw = startA;                       // 마을 중심(안쪽)을 바라봄 — 전진방향 -sin/-cos는 위치의 반대=중심
   player.obj.rotation.y = player.yaw;
-  camera.position.set(player.obj.position.x + isoOffsetX, isoOffsetY, player.obj.position.z + isoOffsetZ);
+  // 카메라 y가 절대값이면 플레이어가 올라갈 때 아이소 각도가 틀어진다(y=2에서 51.9° → 49.0°).
+  // 지면 높이를 같이 더해 시점 기하를 지형과 무관하게 고정한다.
+  camera.position.set(player.obj.position.x + isoOffsetX, isoOffsetY + groundHeightAt(player.obj.position.x, player.obj.position.z), player.obj.position.z + isoOffsetZ);
   camera.lookAt(player.obj.position);
   if (townTimeAuto) townTimeOfDay = timeOfDayNow(); // 자동: 실제 시각에 맞춰 낮/밤 결정
   setTownTimeOfDay(townTimeOfDay); // 시간대(밤/낮) 적용
@@ -22979,6 +23082,9 @@ function updateRestMode(dt) {
     if (manualAimTime <= 0) {
       raycaster.setFromCamera(mousePos, camera);
       const target = new THREE.Vector3();
+      // 조준 평면은 발밑 지면 높이에 맞춘다. y=0 고정이면 높이 h만큼 서 있을 때
+      // 교점이 h/tan(51.9°) 만큼 밀린다(h=2면 1.57유닛 ≈ 타일 1/3).
+      groundPlane.constant = -groundHeightAt(player.obj.position.x, player.obj.position.z);
       const hit = raycaster.ray.intersectPlane(groundPlane, target);
       if (hit) player.yaw = Math.atan2(player.obj.position.x - target.x, player.obj.position.z - target.z);
     }
@@ -23093,6 +23199,9 @@ function updateTownMode(dt) {
     if (manualAimTime <= 0) {
       raycaster.setFromCamera(mousePos, camera);
       const target = new THREE.Vector3();
+      // 조준 평면은 발밑 지면 높이에 맞춘다. y=0 고정이면 높이 h만큼 서 있을 때
+      // 교점이 h/tan(51.9°) 만큼 밀린다(h=2면 1.57유닛 ≈ 타일 1/3).
+      groundPlane.constant = -groundHeightAt(player.obj.position.x, player.obj.position.z);
       const hit = raycaster.ray.intersectPlane(groundPlane, target);
       if (hit) player.yaw = Math.atan2(player.obj.position.x - target.x, player.obj.position.z - target.z);
     }
