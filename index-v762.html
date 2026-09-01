@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v761'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v762'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -7697,67 +7697,181 @@ let wallGroup  = new THREE.Group(); scene.add(wallGroup);
 //
 //  높이는 0 이상만 쓴다(아래로 파지 않는다). 벽 상자가 y=0에서 시작하므로 바닥을 내리면
 //  벽 밑동과 바닥 사이가 벌어져 벽 아래가 들여다보인다.
-// **기본 0(꺼짐).** v760에서 0.9로 켜 봤는데 두 가지가 걸렸다.
-//  ① 타일을 통째로 올리면 윗면이 수평 그대로라 음영이 안 바뀌어 고저차로 안 읽힌다
-//     (진폭 0.9에서 화면 변화가 거친 격자 평균 최대 6.6/255뿐).
-//  ② 이웃 타일 높이차만큼 타일 옆면이 드러나는데, 그 면은 옆을 보므로 빛을 거의 못 받아
-//     가는 어두운 선으로 보인다(실측: 선 픽셀 8041 → 8475, 약 5% 증가).
-// 즉 '얻는 것은 거의 없고 이음매만 생기는' 상태라 시각 굴곡은 끄고 배관만 남긴다.
-// 제대로 된 고저차는 단차 옆면을 실제로 만들어야 나온다(복셀 바닥 — 3단계).
-// 진폭을 올려 보려면 이웃 타일 높이차가 진폭의 약 0.165배라는 것을 기억할 것
-// (실측 0.9→0.149, 1.6→0.265, 3.0→0.497. 타일 두께가 0.4라 1.5를 넘으면 바닥이 뚫린다).
+// ═══ 지형 높이 ═══════════════════════════════════════════════════════════
+// 두 가지 모드가 같은 높이 필드를 공유한다.
+//  · **복셀 바닥**(`?vox=N`, 기본 켜짐) — 타일 하나를 VOX_N×VOX_N로 쪼개 칸마다 단(step)을 주고,
+//    바닥 전체를 **한 지오메트리로 합쳐** 드로우콜 1개로 그린다. 단차 옆면을 실제로 만들어
+//    붙이므로 고저차가 눈에 읽힌다.
+//  · **부드러운 굴곡**(`?relief=N`, 기본 꺼짐) — v760에서 시도한 방식. 타일을 통째로 올리기만 해서
+//    윗면이 수평 그대로였고(음영이 안 바뀜) 타일 옆면이 어두운 이음매로 보였다. 기록만 남긴다.
+// 둘 다 꺼면 높이가 전부 0이라 화면이 v759와 픽셀 단위로 같다 — 배관 검증의 기준이다.
 const RELIEF = (() => { const m = location.search.match(/[?&]relief=([\d.]+)/); return m ? parseFloat(m[1]) : 0; })();
-const RELIEF_PERIOD = 6;      // 노이즈 파장(타일). 길수록 이웃 칸 높이차가 작아 틈이 안 생긴다
-let groundH = null;           // Float32Array((MAP_W+1)*(MAP_H+1)) — 타일 중심의 지면 높이
+const RELIEF_PERIOD = 6;      // 부드러운 굴곡의 노이즈 파장(타일)
+// 복셀 단 높이. 0이면 복셀 바닥을 끄고 예전 타일 바닥을 그대로 쓴다.
+const VOX_STEP = (() => { const m = location.search.match(/[?&]vox=([\d.]+)/); return m ? parseFloat(m[1]) : 0.4; })();
+const VOX_N = (() => { const m = location.search.match(/[?&]voxn=(\d+)/); return m ? Math.max(1, Math.min(6, parseInt(m[1], 10))) : 3; })();
+const VOX_LEVELS = 2;         // 단 수(0·1·2단). 늘리면 기복이 커지는 대신 못 올라가는 벽이 생긴다
+const VOX_SKIRT = 0.6;        // 벽·바깥으로 면한 쪽에 내리는 치마 깊이(바닥이 판때기로 안 보이게)
+const VOX_ON = VOX_STEP > 0;
 
-// 층마다 높이 필드를 굽는다. **Math.random을 쓰지 않는다** — 같은 층이면 ?relief 값과
-// 무관하게 던전 배치가 같아야 두 빌드를 나란히 비교할 수 있기 때문이다
+let groundH = null;           // Float32Array(gSubW*gSubH) — 서브셀의 지면 높이(칸마다 평평)
+let gSubW = 0, gSubH = 0, gSubN = 1;   // 서브셀 격자 크기 / 타일당 분할 수
+// 서브셀 격자의 원점은 타일 0의 **왼쪽 위 모서리**다(타일 중심이 아니라).
+function _gSub() { return TILE / gSubN; }
+function _gX0() { return -(MAP_W / 2 + 0.5) * TILE; }
+function _gZ0() { return -(MAP_H / 2 + 0.5) * TILE; }
+
+// 층마다 높이 필드를 굽는다. **Math.random을 쓰지 않는다** — 같은 층이면 플래그 값과 무관하게
+// 던전 배치가 같아야 두 빌드를 나란히 비교할 수 있기 때문이다
 // (CLAUDE.md: 난수 소비가 달라지면 이후 층 생성이 통째로 바뀐다).
 function buildGroundHeight(floorNo) {
-  if (!(RELIEF > 0)) { groundH = null; return; }
+  gSubN = VOX_ON ? VOX_N : 1;
+  if (!VOX_ON && !(RELIEF > 0)) { groundH = null; return; }
+  gSubW = MAP_W * gSubN; gSubH = MAP_H * gSubN;
   let sd = (((floorNo | 0) * 2654435761) ^ 0x9e3779b9) >>> 0;
   const rnd = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
-  const P = RELIEF_PERIOD;
-  const gw = Math.ceil(MAP_W / P) + 2, gh = Math.ceil(MAP_H / P) + 2;
+  // 복셀 파장을 4타일로 잡았더니 화면 안이 통째로 한 단이라 계단이 안 보였다 — 2타일로 줄여
+  // 시야(약 10타일) 안에 단이 여러 번 나오게 한다.
+  const P = (VOX_ON ? 2 : RELIEF_PERIOD) * gSubN;        // 파장(서브셀 단위)
+  const gw = Math.ceil(gSubW / P) + 2, gh = Math.ceil(gSubH / P) + 2;
   const ctl = new Float32Array(gw * gh);
   for (let i = 0; i < ctl.length; i++) ctl[i] = rnd();
   const sm = (t) => t * t * (3 - 2 * t);                 // smoothstep — 격자 티가 안 나게
-  const W1 = MAP_W + 1;
-  groundH = new Float32Array(W1 * (MAP_H + 1));
-  for (let y = 0; y <= MAP_H; y++) for (let x = 0; x <= MAP_W; x++) {
-    const fx = x / P, fy = y / P;
+  groundH = new Float32Array(gSubW * gSubH);
+  for (let j = 0; j < gSubH; j++) for (let i = 0; i < gSubW; i++) {
+    const fx = i / P, fy = j / P;
     const ix = Math.floor(fx), iy = Math.floor(fy);
     const tx = sm(fx - ix), ty = sm(fy - iy);
     const c = (a2, b2) => ctl[Math.min(gh - 1, b2) * gw + Math.min(gw - 1, a2)];
     const v = (c(ix, iy) * (1 - tx) + c(ix + 1, iy) * tx) * (1 - ty)
             + (c(ix, iy + 1) * (1 - tx) + c(ix + 1, iy + 1) * tx) * ty;
-    groundH[y * W1 + x] = v * RELIEF;
+    groundH[j * gSubW + i] = VOX_ON ? Math.round(v * VOX_LEVELS) * VOX_STEP : v * RELIEF;
+  }
+  // 복셀: 이웃 단차를 한 단으로 제한한다. 두 단이 붙으면 플레이어가 못 올라가는 벽이 생기는데,
+  // 지금은 이동 제한을 안 걸었으므로 '올라갈 수 없어 보이는 턱'이 그냥 통과돼 이상하게 보인다.
+  if (VOX_ON) {
+    for (let pass = 0; pass < 3; pass++) {
+      for (let j = 0; j < gSubH; j++) for (let i = 0; i < gSubW; i++) {
+        const k = j * gSubW + i; let lo = groundH[k];
+        if (i > 0) lo = Math.min(lo, groundH[k - 1] + VOX_STEP);
+        if (i < gSubW - 1) lo = Math.min(lo, groundH[k + 1] + VOX_STEP);
+        if (j > 0) lo = Math.min(lo, groundH[k - gSubW] + VOX_STEP);
+        if (j < gSubH - 1) lo = Math.min(lo, groundH[k + gSubW] + VOX_STEP);
+        groundH[k] = lo;
+      }
+    }
   }
 }
 
-// 월드 좌표의 지면 높이. 필드가 없으면(마을·쉼터·?relief=0) 항상 0 — 예전과 완전히 같다.
+// 월드 좌표의 지면 높이. 필드가 없으면(마을·쉼터·전부 꺼짐) 항상 0 — 예전과 완전히 같다.
+// 복셀이므로 **칸 안에서는 평평하다**(보간하지 않는다) — 그래야 발이 단 위에 딱 선다.
 function groundHeightAt(wx, wz) {
   if (!groundH) return 0;
   if ((typeof inTown !== 'undefined' && inTown) || (typeof inRest !== 'undefined' && inRest)) return 0;
-  const W1 = MAP_W + 1;
-  const gx = wx / TILE + MAP_W / 2, gy = wz / TILE + MAP_H / 2;
-  const x0 = Math.floor(gx), y0 = Math.floor(gy);
-  const tx = gx - x0, ty = gy - y0;
-  const at = (a2, b2) => groundH[Math.max(0, Math.min(MAP_H, b2)) * W1 + Math.max(0, Math.min(MAP_W, a2))];
-  return (at(x0, y0) * (1 - tx) + at(x0 + 1, y0) * tx) * (1 - ty)
-       + (at(x0, y0 + 1) * (1 - tx) + at(x0 + 1, y0 + 1) * tx) * ty;
+  const S = _gSub();
+  let i = Math.floor((wx - _gX0()) / S), j = Math.floor((wz - _gZ0()) / S);
+  i = Math.max(0, Math.min(gSubW - 1, i)); j = Math.max(0, Math.min(gSubH - 1, j));
+  return groundH[j * gSubW + i];
 }
 
-// 던전 메시를 다 짓고 나서 바닥·벽을 통째로 높이만큼 올린다.
+// ── 복셀 바닥 메시 ──────────────────────────────────────────────────────
+// 서브셀마다 윗면 한 장 + '이웃이 더 낮은 쪽'에만 옆면을 낸다. 전부 한 지오메트리로 굽고
+// 색은 정점색으로 넣는다(3막 mergeCoral·c3MergeStatic과 같은 방식) → 드로우콜 1개.
+// **옆면을 어둡게 굽는 것이 핵심이다.** 이 조명은 위에서 오므로 옆면은 그냥 두면 새까맣고,
+// 반대로 색을 안 눌러 두면 윗면과 구분이 안 돼 고저차가 안 읽힌다.
+let voxelFloorMesh = null;
+function buildVoxelFloor(dgn) {
+  if (!VOX_ON || !groundH || !dgn || !dgn.grid) return;
+  const grid = dgn.grid, S = _gSub(), X0 = _gX0(), Z0 = _gZ0();
+  const act = currentAct();
+  // 팔레트·텍스처는 그 막의 바닥 재질에서 그대로 가져온다.
+  // 색은 정점색으로 넣고 재질 색은 흰색으로 둔다 — 한 재질로도 타일마다 색이 섞인다
+  // (MeshStandardMaterial은 color × vertexColor × map 이라 셋이 곱해진다).
+  const pal = act === 3 ? [COR.floor, COR.floorB, COR.floorDark]
+            : act === 2 ? [CAS.floor, CAS.floorB, CAS.floorDark]
+            : [0x2a2417, 0x322b1a, 0x241f14];
+  const srcMat = act === 3 ? corFloorMats[0] : act === 2 ? casFloorMats[0] : null;
+  const cols = pal.map(h => new THREE.Color(h));
+  const pos = [], nor = [], col = [], uvs = [];
+  // 모서리 높이 흔들기: **좌표만으로 결정**해야 이웃 칸과 값이 같아 틈이 안 생긴다.
+  // 평평한 판이면 음영이 한 톤이라 바닥이 종이처럼 보인다 — 예전 타일이 윗면을 밀어
+  // 울퉁불퉁하게 만든 것과 같은 이유다(displaceFloorTop).
+  const jit = (x, z) => {
+    let h = ((Math.round(x * 16) * 73856093) ^ (Math.round(z * 16) * 19349663)) >>> 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+    return ((h / 4294967296) - 0.5) * 0.16;
+  };
+  const tri = (a, b, c, n, cr, cg, cb) => {
+    pos.push(a[0],a[1],a[2], b[0],b[1],b[2], c[0],c[1],c[2]);
+    nor.push(n[0],n[1],n[2], n[0],n[1],n[2], n[0],n[1],n[2]);
+    col.push(cr,cg,cb, cr,cg,cb, cr,cg,cb);
+    uvs.push((a[0]-X0)/TILE, (a[2]-Z0)/TILE, (b[0]-X0)/TILE, (b[2]-Z0)/TILE, (c[0]-X0)/TILE, (c[2]-Z0)/TILE);
+  };
+  const quad = (p0, p1, p2, p3, n, cr, cg, cb) => { tri(p0,p1,p2,n,cr,cg,cb); tri(p0,p2,p3,n,cr,cg,cb); };
+  const isFloorSub = (i, j) => {
+    if (i < 0 || j < 0 || i >= gSubW || j >= gSubH) return false;
+    const tx = (i / gSubN) | 0, ty = (j / gSubN) | 0;
+    return !!(grid[ty] && grid[ty][tx] > 0);
+  };
+  const hAt = (i, j) => groundH[j * gSubW + i];
+  const SIDE = 0.55;   // 옆면 밝기 배수 — 위에서 오는 빛이라 그냥 두면 새까맣고, 안 누르면 단이 안 읽힌다
+  for (let j = 0; j < gSubH; j++) for (let i = 0; i < gSubW; i++) {
+    if (!isFloorSub(i, j)) continue;
+    const h = hAt(i, j);
+    const x0 = X0 + i * S, x1 = x0 + S, z0 = Z0 + j * S, z1 = z0 + S;
+    const tx = (i / gSubN) | 0, ty = (j / gSubN) | 0;
+    const c0 = cols[(tx * 2 + ty + ((tx * 7 + ty * 13) % 3)) % 3];
+    // 네 모서리의 실제 높이(좌표 해시로 흔든 값) — 옆면 윗변도 같은 값을 써야 틈이 안 벌어진다
+    const h00 = h + jit(x0, z0), h01 = h + jit(x0, z1), h11 = h + jit(x1, z1), h10 = h + jit(x1, z0);
+    quad([x0,h00,z0], [x0,h01,z1], [x1,h11,z1], [x1,h10,z0], [0,1,0], c0.r, c0.g, c0.b);
+    const sides = [
+      { di:-1, dj: 0, n:[-1,0,0], p:(nh)=>[[x0,h00,z0],[x0,nh,z0],[x0,nh,z1],[x0,h01,z1]] },
+      { di: 1, dj: 0, n:[ 1,0,0], p:(nh)=>[[x1,h11,z1],[x1,nh,z1],[x1,nh,z0],[x1,h10,z0]] },
+      { di: 0, dj:-1, n:[0,0,-1], p:(nh)=>[[x1,h10,z0],[x1,nh,z0],[x0,nh,z0],[x0,h00,z0]] },
+      { di: 0, dj: 1, n:[0,0, 1], p:(nh)=>[[x0,h01,z1],[x0,nh,z1],[x1,nh,z1],[x1,h11,z1]] },
+    ];
+    for (const sd of sides) {
+      const ni = i + sd.di, nj = j + sd.dj;
+      const nh = isFloorSub(ni, nj) ? hAt(ni, nj) : (h - VOX_SKIRT);
+      if (nh >= h - 1e-4) continue;
+      const q = sd.p(nh - 0.05);   // 이웃 윗면보다 살짝 더 내려 덮어야 흔든 모서리 사이로 틈이 안 보인다
+      quad(q[0], q[1], q[2], q[3], sd.n, c0.r * SIDE, c0.g * SIDE, c0.b * SIDE);
+    }
+  }
+  if (!pos.length) return;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true,
+    roughness: srcMat ? srcMat.roughness : 0.9, metalness: 0, flatShading: true });
+  if (srcMat && srcMat.map) { mat.map = srcMat.map; mat.needsUpdate = true; }
+  voxelFloorMesh = new THREE.Mesh(geo, mat);
+  voxelFloorMesh.receiveShadow = true; voxelFloorMesh.castShadow = false;
+  voxelFloorMesh.userData.noRelief = true;   // 정점에 이미 높이가 들어 있다 — 다시 올리면 안 된다
+  floorGroup.add(voxelFloorMesh);
+}
+
+// 던전 메시를 다 짓고 나서 지면 높이를 반영한다.
 // 배치 지점마다 손대지 않고 한 곳에서 처리하는 이유: 바닥 장식(균열·이끼·자갈·카펫·핏줄·종양)이
 // 수십 군데에서 floorGroup에 들어가는데, 3막에서 배운 대로 **바닥을 올리면 그 위 장식도
 // 같이 올라가야 한다.** 그룹 자식을 훑으면 그게 자동으로 지켜진다.
-function applyGroundRelief() {
+function applyGroundRelief(dgn) {
   if (!groundH) return;
-  for (const grp of [floorGroup, wallGroup]) {
+  // 복셀 모드에서 벽은 제자리에 둔다. 같이 올려 봤더니 화면 바닥 픽셀이 오히려 더 줄었다
+  // (실측: 예전 239,151 / 벽 고정 159,461 / 벽도 올림 143,489). 벽이 앞쪽에서 더 가리기 때문이다.
+  const grps = VOX_ON ? [floorGroup] : [floorGroup, wallGroup];
+  for (const grp of grps) {
     const ch = grp.children;
-    for (let i = 0; i < ch.length; i++) ch[i].position.y += groundHeightAt(ch[i].position.x, ch[i].position.z);
+    for (let i = 0; i < ch.length; i++) {
+      const c = ch[i];
+      if (c.userData.noRelief) continue;
+      if (VOX_ON && c.userData.isFloorTile) { c.visible = false; continue; }
+      c.position.y += groundHeightAt(c.position.x, c.position.z);
+    }
   }
+  buildVoxelFloor(dgn);
 }
 // 층에 놓인 소품(계단·상자 등)을 지면에 앉힌다. 메시 빌드 뒤에 배치되므로 따로 불러 준다.
 function snapToGround(o) { if (o && groundH) o.position.y += groundHeightAt(o.position.x, o.position.z); }
@@ -8169,7 +8283,7 @@ function buildCastleMesh(dgn) {
     if (grid[y][x] > 0) {
       if (trapSet.has(x + ',' + y)) continue; // 함정 칸은 바닥 생략(함정 메시가 대신 깔림)
       const f = new THREE.Mesh(casFloorGeos[(x + y) % casFloorGeos.length], casFloorMats[(x * 2 + y) % casFloorMats.length]);
-      f.position.set(wxf(x), -0.2, wzf(y)); f.receiveShadow = true; floorGroup.add(f);
+      f.position.set(wxf(x), -0.2, wzf(y)); f.receiveShadow = true; f.userData.isFloorTile = true; floorGroup.add(f);
       if (grid[y][x] === 1 && Math.random() < 0.06) {
         const crack = new THREE.Mesh(new THREE.BoxGeometry(TILE * 0.7, 0.1, 0.3), getGlowMat(CAS.void));
         crack.position.set(wxf(x), 0.0, wzf(y)); crack.rotation.y = Math.random() * Math.PI; floorGroup.add(crack);
@@ -8771,7 +8885,7 @@ function buildCorruptMesh(dgn) {
         f.rotation.x = (Math.random() - 0.5) * 0.024 * COR_BUMP;   // 두께 0.55 안에서만 기울인다
         f.rotation.z = (Math.random() - 0.5) * 0.024 * COR_BUMP;
       }
-      f.receiveShadow = true; floorGroup.add(f);
+      f.receiveShadow = true; f.userData.isFloorTile = true; floorGroup.add(f);
       if (grid[y][x] === 1 && Math.random() < 0.13) makeFloorVeins(floorGroup, wxf(x), wzf(y), dy);
       if (grid[y][x] === 1 && Math.random() < 0.045) {
         // 발광 균열: 살 속 빛이 바닥 틈으로 샘
@@ -9060,7 +9174,7 @@ function generateDungeon() {
 const collapseTiles = []; // { grp, slab, edge, gx, gy, x, z, state:'idle'|'shake'|'broken', timer, dmg }
 
 // 막별 빌더는 중간에 return하므로, 지형 높이 적용은 이 래퍼가 한 곳에서 맡는다.
-function buildDungeonMesh(dgn) { buildDungeonMeshInner(dgn); applyGroundRelief(); }
+function buildDungeonMesh(dgn) { buildDungeonMeshInner(dgn); applyGroundRelief(dgn); }
 function buildDungeonMeshInner(dgn) {
   // 이전 층 던전 메시를 GPU에서 해제(dispose)하며 비운다. remove만 하면 벽·바닥 수천 개가 누적 → 컨텍스트 손실.
   // 단, 전역 공유 지오메트리/머티리얼(모든 층이 재사용)은 dispose 제외(해제하면 다음 층에서 깨짐).
@@ -9193,7 +9307,7 @@ function buildDungeonMeshInner(dgn) {
     for (let x = 0; x < MAP_W; x++) {
       const wx = (x - MAP_W / 2) * TILE, wz = (y - MAP_H / 2) * TILE;
       if (grid[y][x] === 1) {
-        const f = new THREE.Mesh(floorGeos[Math.floor(Math.random() * floorGeos.length)], ((x + y) % 2) ? floorMat2 : floorMat); f.position.set(wx, -0.2, wz); f.receiveShadow = true; floorGroup.add(f);
+        const f = new THREE.Mesh(floorGeos[Math.floor(Math.random() * floorGeos.length)], ((x + y) % 2) ? floorMat2 : floorMat); f.position.set(wx, -0.2, wz); f.receiveShadow = true; f.userData.isFloorTile = true; floorGroup.add(f);
         // 이끼 얼룩(바닥을 덮은 어두운 초록) — 위치·반경 기록해 풀을 그 위에 우거지게
         if (Math.random() < 0.16) {
           const mr = TILE * (0.2 + Math.random() * 0.16);
@@ -19439,9 +19553,15 @@ function update(dt) {
   // 함정 구멍에 빠진 동안엔 중력/착지 로직을 건너뜀(추락 연출은 updateCollapseTraps가 담당)
   if (!player.fallingInTrap) {
     player.jumpVy -= 25 * dt; player.obj.position.y += player.jumpVy * dt;
-    // 착지면은 상수 0이 아니라 발밑 지면 높이다(?relief=0이면 0이라 예전과 같다)
+    // 착지면은 상수 0이 아니라 발밑 지면 높이다(지형이 꺼져 있으면 0이라 예전과 같다)
     const _gy = groundHeightAt(player.obj.position.x, player.obj.position.z);
-    if (player.obj.position.y <= _gy) { player.obj.position.y = _gy; player.jumpVy = 0; player.onGround = true; }
+    if (player.obj.position.y <= _gy) {
+      // 복셀 단을 밟으면 y가 계단처럼 튄다 — 올라설 때만 부드럽게 따라 올린다(내려갈 땐 중력이 처리).
+      const _up = _gy - player.obj.position.y;
+      player.obj.position.y = (_up > 0.02 && _up < VOX_STEP * 1.6)
+        ? player.obj.position.y + _up * Math.min(1, dt * 14) : _gy;
+      player.jumpVy = 0; player.onGround = true;
+    }
   }
 
   // 캐릭터 방향(조준)
