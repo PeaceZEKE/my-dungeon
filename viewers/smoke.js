@@ -49,7 +49,8 @@ const files = args.length ? args
         // 배경색만 비교하면 '배경은 나오는데 캐릭터가 없는' 경우를 놓친다.
         const root = (typeof kingObj !== 'undefined') ? kingObj
                    : (typeof bugObj !== 'undefined') ? bugObj
-                   : (typeof ghoulObj !== 'undefined') ? ghoulObj : null;
+                   : (typeof ghoulObj !== 'undefined') ? ghoulObj
+                   : (typeof voxMesh !== 'undefined') ? voxMesh : null;
         const gl = renderer.getContext();
         const W = gl.drawingBufferWidth, H = gl.drawingBufferHeight;
         const A = new Uint8Array(W * H * 4), B = new Uint8Array(W * H * 4);
