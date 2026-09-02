@@ -1124,33 +1124,46 @@ const POOL_LEG   = [fLav, fLav2, fCream, fBone, fSage, fMauve, fDeep, fLav];
 const kingObj = new THREE.Group(); scene.add(kingObj);   // 정면은 로컬 -z — 반바퀴는 카메라(GAME_YAW)가 진다
 const bodyGrp = new THREE.Group(); kingObj.add(bodyGrp);
 
-// ---------- 살: 근육마다 타원체 하나 (SDF 스컬핑) ----------
-// 좌표는 v14 와 같은 그룹 로컬 공간이라 관절·황금판·천·머리는 그대로 맞물린다.
-const C = { lav: fLav.color, lav2: fLav2.color, mauve: fMauve.color, pink: fPink.color, deep: fDeep.color, cream: fCream.color, sage: fSage.color, bone: fBone.color };
+// ---------- 갑옷 + 세포: 두 층의 SDF 스컬핑 ----------
+// 원화의 구조는 '판금 갑옷 위에 오염된 세포 덩어리가 붙은 것'이다(사용자 설명).
+// 창백한 큰 덩어리 = 갑옷(견갑·흉갑·허벅지 가리개·정강이받이), 자줏빛 = 틈새로 터져 나온 세포.
+// 그래서 부위마다 두 번 뽑는다 — 갑옷은 hardShared(단단·각진 면·하이라이트 있음),
+// 세포는 fleshShared(유기체·매끈·하이라이트 없음). 세포를 갑옷보다 살짝 크게 두면 틈에서 밀고 나온다.
+const C = { lav: fLav.color, lav2: fLav2.color, mauve: fMauve.color, pink: fPink.color, deep: fDeep.color,
+            cream: fCream.color, plate: shieldFace.color, plate2: cloth.color };
+// 갑옷: 골이 얕고(k 큼) 굴곡이 거의 없다. 격자 면 그대로 각진 판으로 읽힌다.
+const ARM = { mat: hardShared, k: 0.10, noiseF: 4, noiseA: 0.008 };
+// 세포: 골이 깊고 굴곡이 잘다 — 세포 덩어리가 뭉친 질감
+const CELL = { mat: fleshShared, k: 0.03, noiseF: 11, noiseA: 0.030 };
 
 // ---------- 하체(골반·다리) ----------
 const HIP_Y = 2.00;
 function createLeg(isRight) {
   const s = isRight ? 1 : -1;              // 캐릭터 오른쪽 = +x(화면 왼쪽)
   const hipGrp = new THREE.Group(); hipGrp.position.set(s * 0.34, HIP_Y, 0); bodyGrp.add(hipGrp);
-  // 허벅지 — 본체 + 대퇴직근(앞) + 외측광근 + 내측 + 햄스트링(뒤) + 무릎
+  // 세포(안쪽): 허벅지 안쪽·뒤쪽으로 밀고 나온다
   sdfMesh(hipGrp, [
-    { c: [0, -0.44, -0.02],       r: [0.36, 0.52, 0.32], col: C.lav2 },
-    { c: [s * 0.06, -0.30, -0.24], r: [0.22, 0.34, 0.16], col: C.lav },
-    { c: [s * 0.24, -0.40, -0.04], r: [0.17, 0.36, 0.20], col: C.mauve },
-    { c: [-s * 0.20, -0.48, -0.04], r: [0.15, 0.30, 0.18], col: C.pink },
-    { c: [0, -0.42, 0.22],        r: [0.26, 0.36, 0.16], col: C.deep },
-    { c: [0, -0.88, -0.02],       r: [0.21, 0.17, 0.21], col: C.cream },
-  ], {});
-  tumorShell(hipGrp, { cx: 0, cy: -0.40, cz: 0, rx: 0.36, ry: 0.44, rz: 0.32, count: 6, rMin: 0.07, rMax: 0.12, pool: POOL_LEG });
+    { c: [-s * 0.10, -0.44, 0.06], r: [0.30, 0.48, 0.30], col: C.mauve },
+    { c: [-s * 0.22, -0.34, -0.10], r: [0.16, 0.26, 0.16], col: C.pink },
+    { c: [0, -0.50, 0.22],         r: [0.22, 0.30, 0.14], col: C.deep },
+  ], CELL);
+  // 갑옷(바깥): 허벅지 가리개 — 앞·바깥을 덮는 판 두 장
+  sdfMesh(hipGrp, [
+    { c: [s * 0.08, -0.36, -0.12], r: [0.34, 0.46, 0.26], col: C.plate },
+    { c: [s * 0.22, -0.52, 0.02],  r: [0.20, 0.36, 0.24], col: C.plate2 },
+    { c: [0, -0.88, -0.04],        r: [0.22, 0.16, 0.22], col: C.plate },   // 무릎받이
+  ], ARM);
   plate(hipGrp, s * 0.10, -0.86, -0.14, 0.34, 0.20, 0.30, gold, 0.2, 0, s * 0.15);   // 무릎 황금판
-  // 정강이 — 본체 + 종아리(뒤) + 정강이뼈 능선(앞)
+  // 정강이
   const kneeGrp = new THREE.Group(); kneeGrp.position.y = -0.92; hipGrp.add(kneeGrp);
   sdfMesh(kneeGrp, [
-    { c: [0, -0.38, 0.00],  r: [0.22, 0.42, 0.20], col: C.lav2 },
-    { c: [0, -0.28, 0.16],  r: [0.18, 0.26, 0.14], col: C.pink },
-    { c: [0, -0.40, -0.16], r: [0.12, 0.34, 0.10], col: C.cream },
-  ], {});
+    { c: [0, -0.26, 0.16],  r: [0.19, 0.28, 0.16], col: C.mauve },          // 종아리 세포
+    { c: [0, -0.06, 0.02],  r: [0.20, 0.16, 0.20], col: C.pink },           // 무릎 뒤 틈
+  ], CELL);
+  sdfMesh(kneeGrp, [
+    { c: [0, -0.40, -0.06], r: [0.22, 0.42, 0.18], col: C.plate },          // 정강이받이
+    { c: [0, -0.40, -0.18], r: [0.12, 0.36, 0.08], col: C.plate2 },         // 능선
+  ], ARM);
   // 부츠
   const footGrp = new THREE.Group(); footGrp.position.y = -0.78; kneeGrp.add(footGrp);
   const boot = lump(0.24, bootMat, 1); boot.scale.set(1.0, 0.72, 1.5); boot.position.set(0, -0.10, -0.10); footGrp.add(boot);
@@ -1160,12 +1173,15 @@ function createLeg(isRight) {
 }
 const legR = createLeg(true), legL = createLeg(false);
 
-// 골반
+// 골반: 가운데는 세포, 양옆은 갑옷 가리개
 sdfMesh(bodyGrp, [
-  { c: [0, 2.14, 0],        r: [0.48, 0.30, 0.34], col: C.lav2 },
-  { c: [0.30, 2.10, 0.02],  r: [0.24, 0.24, 0.28], col: C.mauve },
-  { c: [-0.30, 2.10, 0.02], r: [0.24, 0.24, 0.28], col: C.mauve },
-], {});
+  { c: [0, 2.12, 0.02], r: [0.34, 0.28, 0.32], col: C.mauve },
+  { c: [0, 2.02, -0.18], r: [0.20, 0.18, 0.16], col: C.pink },
+], CELL);
+sdfMesh(bodyGrp, [
+  { c: [0.40, 2.10, 0.02],  r: [0.24, 0.26, 0.30], col: C.plate },
+  { c: [-0.40, 2.10, 0.02], r: [0.24, 0.26, 0.30], col: C.plate },
+], ARM);
 plate(bodyGrp, 0, 2.30, 0, 0.86, 0.14, 0.62, gold);                                    // 황금 허리띠
 plate(bodyGrp, 0, 2.30, -0.34, 0.26, 0.18, 0.10, goldHi);                              // 버클
 [-1, 1].forEach(s => plate(bodyGrp, s * 0.44, 2.06, -0.08, 0.22, 0.40, 0.36, goldRot, 0, 0, s * 0.2)); // 옆구리 판
@@ -1183,31 +1199,36 @@ plate(bodyGrp, 0, 1.80, 0.34, 0.50, 1.00, 0.08, cloth, -0.05, 0, 0);
 // ---------- 몸통(허리 피벗) ----------
 const TORSO_Y = 2.30;
 const torsoGrp = new THREE.Group(); torsoGrp.position.set(0, TORSO_Y, 0); bodyGrp.add(torsoGrp);
+// 세포: 복부 전체 + 가슴 한가운데 세로 골(흉갑이 갈라진 자리) + 목 밑 + 어깨 결정 쪽으로 번진 덩어리
 {
-  const parts = [
-    { c: [0, 0.22, 0.00],   r: [0.44, 0.32, 0.36], col: C.lav2 },   // 복부
-    { c: [0, 0.70, 0.02],   r: [0.70, 0.36, 0.42], col: C.mauve },  // 가슴 본체(넓게)
-    { c: [0.32, 0.66, -0.30],  r: [0.30, 0.24, 0.20], col: C.pink },   // 대흉근
-    { c: [-0.32, 0.66, -0.30], r: [0.30, 0.24, 0.20], col: C.pink },
-    { c: [0.50, 0.98, 0.06],   r: [0.28, 0.20, 0.26], col: C.mauve },  // 승모근
-    { c: [-0.50, 0.98, 0.06],  r: [0.28, 0.20, 0.26], col: C.mauve },
-    { c: [0.44, 0.48, 0.28],   r: [0.32, 0.40, 0.20], col: C.deep },   // 광배근
-    { c: [-0.44, 0.48, 0.28],  r: [0.32, 0.40, 0.20], col: C.deep },
-    { c: [0, 0.62, 0.34],   r: [0.36, 0.44, 0.16], col: C.deep },   // 등 중앙
+  const cells = [
+    { c: [0, 0.22, 0.00],    r: [0.42, 0.30, 0.34], col: C.mauve },   // 복부(노출)
+    { c: [0, 0.64, -0.26],   r: [0.17, 0.44, 0.18], col: C.deep },    // 가슴 중앙 골
+    { c: [0, 1.00, -0.06],   r: [0.24, 0.16, 0.20], col: C.pink },    // 목 밑
+    { c: [0.62, 0.86, 0.02], r: [0.30, 0.26, 0.28], col: C.mauve },   // 오른어깨(결정 쪽) 번짐
+    { c: [0, 0.56, 0.30],    r: [0.36, 0.40, 0.14], col: C.deep },    // 등 중앙 세로
   ];
-  // 복근 6덩이 — 살 안에 같이 넣어 골이 생기게 한다
   for (let r = 0; r < 3; r++) for (let c = 0; c < 2; c++)
-    parts.push({ c: [(c - 0.5) * 0.22, 0.42 - r * 0.18, -0.32], r: [0.12, 0.10, 0.10], col: r === 0 ? C.pink : C.lav });
-  sdfMesh(torsoGrp, parts, {});
-  tumorShell(torsoGrp, { cx: 0, cy: 0.74, cz: 0.02, rx: 0.66, ry: 0.36, rz: 0.42, count: 10, rMin: 0.08, rMax: 0.13, pool: POOL_UPPER });
+    cells.push({ c: [(c - 0.5) * 0.22, 0.40 - r * 0.18, -0.30], r: [0.12, 0.10, 0.10], col: r === 0 ? C.pink : C.mauve });
+  sdfMesh(torsoGrp, cells, CELL);
+  // 갑옷: 흉갑 두 장(가슴 좌우) + 옆구리 판 + 등판 + 승모근 자리 판
+  sdfMesh(torsoGrp, [
+    { c: [0.34, 0.68, -0.22],  r: [0.34, 0.30, 0.24], col: C.plate },
+    { c: [-0.34, 0.68, -0.22], r: [0.34, 0.30, 0.24], col: C.plate },
+    { c: [0.50, 0.50, 0.10],   r: [0.24, 0.34, 0.30], col: C.plate2 },
+    { c: [-0.50, 0.50, 0.10],  r: [0.24, 0.34, 0.30], col: C.plate2 },
+    { c: [0.30, 0.66, 0.34],   r: [0.30, 0.38, 0.14], col: C.plate },
+    { c: [-0.30, 0.66, 0.34],  r: [0.30, 0.38, 0.14], col: C.plate },
+    { c: [-0.48, 1.00, 0.04],  r: [0.24, 0.16, 0.24], col: C.plate },   // 왼쪽 승모근 판(오른쪽은 결정)
+  ], ARM);
 }
 // 가슴 한가운데 드러난 붉은 근섬유(부패가 파고든 자리)
-const sternum = lump(0.15, muscle, 1); sternum.scale.set(0.7, 1.5, 0.5); sternum.position.set(0, 0.66, -0.36); torsoGrp.add(sternum);
-[[0, 0.92, -0.32], [-0.10, 0.48, -0.35], [0.12, 0.52, -0.35]].forEach(p => {
+const sternum = lump(0.15, muscle, 1); sternum.scale.set(0.7, 1.5, 0.5); sternum.position.set(0, 0.66, -0.40); torsoGrp.add(sternum);
+[[0, 0.92, -0.34], [-0.10, 0.48, -0.38], [0.12, 0.52, -0.38]].forEach(p => {
   const m = lump(0.08, muscleD, 0); m.scale.set(1.2, 1.0, 0.6); m.position.set(p[0], p[1], p[2]); torsoGrp.add(m);
 });
-vein(torsoGrp, [0, 0.98, -0.30], [-0.34, 0.74, -0.32], 0.035, muscleD);
-vein(torsoGrp, [0, 0.98, -0.30], [0.32, 0.72, -0.32], 0.035, muscleD);
+vein(torsoGrp, [0, 0.98, -0.32], [-0.34, 0.74, -0.34], 0.035, muscleD);
+vein(torsoGrp, [0, 0.98, -0.32], [0.32, 0.72, -0.34], 0.035, muscleD);
 // 목
 bone(torsoGrp, 0, 1.06, 0.02, 0.16, 0.19, 0.22, skinDk);
 // 가슴 황금 장식(부패해 변색)
@@ -1219,23 +1240,26 @@ const SH_Y = 0.86;   // torsoGrp 기준 어깨 높이(월드 3.16)
 function createArm(isRight) {
   const s = isRight ? 1 : -1;
   const armGrp = new THREE.Group(); armGrp.position.set(s * 0.84, SH_Y, 0); torsoGrp.add(armGrp);
-  // 삼각근 + 위팔 + 이두(앞) + 삼두(뒤)
+  // 세포: 겨드랑이·이두 안쪽·팔꿈치 위로 밀고 나온다
   sdfMesh(armGrp, [
-    { c: [s * 0.08, 0.04, 0],  r: [0.36, 0.32, 0.34], col: C.mauve },
-    { c: [s * 0.16, 0.16, -0.04], r: [0.20, 0.14, 0.20], col: C.cream },   // 삼각근 윗면(창백)
-    { c: [0, -0.40, 0],        r: [0.24, 0.42, 0.22], col: C.lav2 },
-    { c: [0, -0.36, -0.10],    r: [0.20, 0.28, 0.16], col: C.lav },
-    { c: [0, -0.40, 0.12],     r: [0.18, 0.30, 0.14], col: C.deep },
-  ], {});
-  tumorShell(armGrp, { cx: s * 0.07, cy: 0.02, cz: 0, rx: 0.34, ry: 0.30, rz: 0.32, count: 6, rMin: 0.07, rMax: 0.12, pool: POOL_UPPER });
+    { c: [-s * 0.10, -0.34, -0.10], r: [0.20, 0.30, 0.18], col: C.mauve },
+    { c: [-s * 0.14, -0.08, 0.06],  r: [0.20, 0.18, 0.20], col: C.pink },
+    { c: [0, -0.58, 0.04],          r: [0.16, 0.16, 0.16], col: C.deep },
+  ], CELL);
+  // 갑옷: 큰 둥근 견갑 + 위팔 가리개
+  sdfMesh(armGrp, [
+    { c: [s * 0.12, 0.06, 0], r: [0.40, 0.34, 0.38], col: isRight ? C.plate2 : C.plate },
+    { c: [s * 0.06, -0.40, 0], r: [0.22, 0.36, 0.20], col: C.plate },
+  ], ARM);
   plate(armGrp, s * 0.18, 0.20, 0, 0.42, 0.15, 0.46, gold, 0, 0, s * 0.35);   // 어깨 황금판
   // 팔꿈치·아래팔
   const elbowGrp = new THREE.Group(); elbowGrp.position.y = -0.74; armGrp.add(elbowGrp);
   sdfMesh(elbowGrp, [
-    { c: [0, -0.04, 0],     r: [0.20, 0.20, 0.20], col: C.deep },
-    { c: [0, -0.34, 0],     r: [0.20, 0.36, 0.18], col: C.lav2 },
-    { c: [0, -0.30, -0.10], r: [0.15, 0.26, 0.12], col: C.lav },
-  ], {});
+    { c: [0, -0.04, 0.02],  r: [0.20, 0.20, 0.20], col: C.mauve },           // 팔꿈치 세포
+  ], CELL);
+  sdfMesh(elbowGrp, [
+    { c: [0, -0.36, 0],     r: [0.20, 0.34, 0.18], col: C.plate },           // 팔목 가리개
+  ], ARM);
   plate(elbowGrp, 0, -0.52, -0.02, 0.30, 0.20, 0.30, gold, 0, 0, 0);              // 황금 완갑
   // 손
   const handGrp = new THREE.Group(); handGrp.position.y = -0.68; elbowGrp.add(handGrp);
