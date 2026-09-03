@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v764'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v765'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -7730,6 +7730,10 @@ const VOX_STEP = _voxFlag !== null ? _voxFlag : (VOX_RAY ? TILE / VOX_N : 0.4); 
 // ?voxlv=N 으로 되돌려 비교할 수 있다(6 이 v763 값). 지오메트리 복셀은 늘리면 못 올라가는 벽이 생긴다(0·1·2단).
 const VOX_LEVELS = (() => { const m = location.search.match(/[?&]voxlv=(\d+)/); return m ? Math.max(1, Math.min(16, parseInt(m[1], 10))) : (VOX_RAY ? 3 : 2); })();
 const VOX_SKIRT = 0.6;        // 벽·바깥으로 면한 쪽에 내리는 치마 깊이(바닥이 판때기로 안 보이게)
+// v765: 복셀 바닥을 켤 막. 3막 프레임 저하(사용자 보고)로 2·3막은 예전 타일 바닥(v759)으로 되돌렸다.
+// 그 막에서는 높이 필드가 null 이라 groundHeightAt 이 0 을 돌려주고 복셀 메시도 안 만든다 — ?vox=0 과 같은 경로.
+// ?voxacts=123 처럼 막 번호를 나열해 되돌릴 수 있다.
+const VOX_ACTS = (location.search.match(/[?&]voxacts=(\d+)/) || [])[1] || '1';
 
 let groundH = null;           // Float32Array(gSubW*gSubH) — 서브셀의 지면 높이(칸마다 평평)
 let gSubW = 0, gSubH = 0, gSubN = 1;   // 서브셀 격자 크기 / 타일당 분할 수
@@ -7744,6 +7748,8 @@ function _gZ0() { return -(MAP_H / 2 + 0.5) * TILE; }
 function buildGroundHeight(floorNo) {
   gSubN = VOX_ON ? VOX_N : 1;
   if (!VOX_ON && !(RELIEF > 0)) { groundH = null; return; }
+  const _act = floorNo >= 61 ? 3 : floorNo >= 31 ? 2 : 1;
+  if (VOX_ON && VOX_ACTS.indexOf(String(_act)) < 0) { groundH = null; return; }   // 이 막은 복셀 바닥 없음(v765)
   gSubW = MAP_W * gSubN; gSubH = MAP_H * gSubN;
   let sd = (((floorNo | 0) * 2654435761) ^ 0x9e3779b9) >>> 0;
   const rnd = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
