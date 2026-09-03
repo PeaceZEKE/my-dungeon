@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v763'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v764'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -7714,7 +7714,7 @@ const RELIEF_PERIOD = 6;      // 부드러운 굴곡의 노이즈 파장(타일)
 const _voxFlag = (() => { const m = location.search.match(/[?&]vox=([\d.]+)/); return m ? parseFloat(m[1]) : null; })();
 const VOX_ON = _voxFlag === null || _voxFlag > 0;
 // **복셀 디스플레이스먼트**(v763, 기본 켜짐 · ?voxray=0 이면 v762 지오메트리 복셀로).
-// 타일을 16등분해 칸 0.3125 짜리 정육면체 복셀 6단으로 바닥을 만든다. 이걸 지오메트리로 만들면
+// 타일을 16등분해 칸 0.3125 짜리 정육면체 복셀 3단(v763 은 6단)으로 바닥을 만든다. 이걸 지오메트리로 만들면
 // 층당 윗면이 수만 장이라, 프록시 상자 하나를 그리고 프래그먼트에서 높이장을 DDA로 훑어
 // gl_FragDepth 로 깊이를 쓴다(viewers/voxel_floor_spike_v1.html 에서 검증). 비용은 칸 크기가
 // 아니라 '높이 범위 / 칸 크기'(마칭 횟수)에 붙으므로 단수를 늘리는 쪽이 비싸다.
@@ -7725,7 +7725,10 @@ const VOX_RAY = VOX_ON && !/[?&]voxray=0/.test(location.search)
   && !!(renderer && renderer.capabilities && renderer.capabilities.isWebGL2);
 const VOX_N = (() => { const m = location.search.match(/[?&]voxn=(\d+)/); return m ? Math.max(1, Math.min(32, parseInt(m[1], 10))) : (VOX_RAY ? 16 : 3); })();
 const VOX_STEP = _voxFlag !== null ? _voxFlag : (VOX_RAY ? TILE / VOX_N : 0.4);   // 레이마칭은 정육면체(칸 = 단)
-const VOX_LEVELS = VOX_RAY ? 6 : 2;   // 단 수. 지오메트리 복셀은 늘리면 못 올라가는 벽이 생긴다(0·1·2단)
+// 단 수. v764: 6 → 3 — 3막에서 프레임이 떨어져서(사용자 보고). 레이마칭 비용은 칸 크기가 아니라
+// '높이 범위 / 칸'(= 마칭 횟수)에 붙으므로 칸을 키워 봐야 소용없고 단수를 줄여야 준다.
+// ?voxlv=N 으로 되돌려 비교할 수 있다(6 이 v763 값). 지오메트리 복셀은 늘리면 못 올라가는 벽이 생긴다(0·1·2단).
+const VOX_LEVELS = (() => { const m = location.search.match(/[?&]voxlv=(\d+)/); return m ? Math.max(1, Math.min(16, parseInt(m[1], 10))) : (VOX_RAY ? 3 : 2); })();
 const VOX_SKIRT = 0.6;        // 벽·바깥으로 면한 쪽에 내리는 치마 깊이(바닥이 판때기로 안 보이게)
 
 let groundH = null;           // Float32Array(gSubW*gSubH) — 서브셀의 지면 높이(칸마다 평평)
