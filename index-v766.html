@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v765'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v766'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -4198,6 +4198,22 @@ const SSAO_STR = PX_MODE ? (_ssaoM ? parseFloat(_ssaoM[1]) : 5.0) : 0;   // ?ssa
 const SSAO_RADIUS = parseFloat((location.search.match(/[?&]ssaor=([\d.]+)/) || [])[1]) || 2.4;
 // AO를 건물·벽(과 거기 붙은 바닥)에만 걸지 여부. 끄면 모든 물체가 가림으로 계산된다.
 const SSAO_ARCH = !/[?&]ssaoarch=0/.test(location.search);
+// ===== v766 렌더 비용 정리 — 세 가지. 전부 URL 로 되돌릴 수 있다 =====
+// ① 그림자맵은 프레임당 한 번만 굽는다(?shonce=0 이면 예전처럼 render 호출마다).
+//    three 는 renderer.render() 를 부를 때마다 그림자맵을 다시 굽는데, 노멀 패스가 render 를
+//    2~4번(1패스·건축물·피부·식생) 부르므로 프레임에 3~5번 구워지고 있었다. 그때 구운 맵은 아무도
+//    안 쓴다 — 다음 프레임 색 패스가 또 굽는다. 실측(SwiftShader): 75층 490 → 360ms(−27%),
+//    드로우콜 6484 → 3486, 화면 차이 0픽셀.
+const SHADOW_ONCE = !/[?&]shonce=0/.test(location.search);
+// ② 던전(scene)에서는 SSAO 를 끈다(?ssaodun=1 이면 켬). 합성 비용의 절반(53ms, 프레임의 12%)인데
+//    던전에서 그림이 거의 안 바뀐다 — 실측: 끄면 5층 픽셀 0.8%·평균 6/255, 45층 2.2%·8.5, 75층 0.0%.
+//    마을·쉼터는 그대로(마을은 28.8% 가 바뀐다).
+const SSAO_DUNGEON = /[?&]ssaodun=1/.test(location.search);
+// ③ 2·3막 달빛 그림자 절두체를 플레이어 주변으로 좁히고, 플레이어가 움직였을 때만 다시 굽는다
+//    (?moonfollow=0 이면 예전처럼 맵 전체 ±70 을 매번). 맵 전체를 덮으면 굽을 때마다 캐스터
+//    2,500~3,150개를 그렸다(75층 드로우콜의 절반). ±24 면 1,600 남짓이고 1024 맵이 140 이 아니라
+//    48 유닛에 쓰여 그림자도 3배 선명해진다. 벽은 안 움직이므로 1.5 유닛 이상 움직였을 때만 굽는다.
+const MOON_FOLLOW = !/[?&]moonfollow=0/.test(location.search);
 // 이 게임의 캐릭터는 진짜 그림자를 안 진다 — 발밑 블롭이 대신한다(몬스터 빌더 주석 참고).
 // 궁수 리그만 메시 전부에 castShadow를 켜 두어서, 던전 횃불(플레이어 바로 옆의 점광원)에
 // 몸 전체가 크게 늘어난 그림자로 찍혔다(실측: 기사 60×19픽셀 → 궁수 135×80).
@@ -5504,7 +5520,12 @@ const _invVP = new THREE.Matrix4();
 function renderWithPost(sceneToRender) {
   updateBlobShadows();
   applyPixelSnap();
+  moonFollow(sceneToRender);                              // ③ 색 패스가 굽기 전에 절두체를 옮긴다
+  if (SHADOW_ONCE) renderer.shadowMap.autoUpdate = true;  // ① 색 패스에서만 굽는다
   renderer.setRenderTarget(rt); renderer.clear(); renderer.render(sceneToRender, camera);
+  if (SHADOW_ONCE) renderer.shadowMap.autoUpdate = false; // 이후 노멀 패스들의 render 는 그림자맵을 안 건드린다
+  // ② 던전에서는 SSAO 를 끈다. 유니폼 하나라 매 프레임 씬에 맞춰 넣는다(마을·쉼터는 SSAO_STR 그대로).
+  if (quadMat.uniforms.uAOStr) quadMat.uniforms.uAOStr.value = (sceneToRender === scene && !SSAO_DUNGEON) ? 0 : SSAO_STR;
   if (PX_MODE && quadMat.uniforms.uPxNormalStr.value > 0.001) renderNormalPass(sceneToRender);
   if (quadMat.uniforms.uBloomStr && quadMat.uniforms.uBloomStr.value > 0.001) {
     renderer.setRenderTarget(rtBloom); renderer.clear(); renderer.render(bloomScene, quadCam);
@@ -7274,6 +7295,25 @@ castleMoon.shadow.bias = -0.0008;
 castleMoon.visible = false;
 scene.add(castleMoon);
 scene.add(castleMoon.target);                        // 맵 중심(0,0,0)을 비춤 → 뷰어와 같은 광 방향
+// ③ 달빛 그림자 절두체를 플레이어 주변으로(v766). 광 방향은 그대로다 — 위치와 타깃을 같이 옮긴다.
+// 그림자 행렬은 맵을 구울 때만 갱신되므로(WebGLShadowMap.render 안의 updateMatrices), 안 굽는 프레임에는
+// 맵과 행렬이 함께 예전 자리에 남아 어긋나지 않는다. 그래서 '움직였을 때만 굽기'가 안전하다.
+const MOON_HALF = 24;             // 절두체 반폭. 화면은 플레이어 ±12 남짓 + 벽 그림자 길이(높이 4 × 0.67) 여유
+const MOON_REBAKE_DIST = 1.5;     // 이만큼 움직이면 다시 굽는다(±24 안에서 화면이 여전히 덮인다)
+let _moonBakeX = 1e9, _moonBakeZ = 1e9, _moonBakeFloor = -1;
+function moonFollow(sceneToRender) {
+  if (!MOON_FOLLOW || sceneToRender !== scene || !castleMoon.visible || !player || !player.obj) return;
+  castleMoon.shadow.autoUpdate = false;
+  const P = player.obj.position;
+  const dx = P.x - _moonBakeX, dz = P.z - _moonBakeZ;
+  if (_moonBakeFloor === player.floor && dx * dx + dz * dz < MOON_REBAKE_DIST * MOON_REBAKE_DIST) return;
+  castleMoon.target.position.set(P.x, 0, P.z);
+  castleMoon.position.set(P.x + 20, 38, P.z + 16);
+  const c = castleMoon.shadow.camera;
+  if (c.right !== MOON_HALF) { c.left = -MOON_HALF; c.right = MOON_HALF; c.top = MOON_HALF; c.bottom = -MOON_HALF; c.updateProjectionMatrix(); }
+  castleMoon.shadow.needsUpdate = true;
+  _moonBakeX = P.x; _moonBakeZ = P.z; _moonBakeFloor = player.floor;
+}
 const castleHemi = new THREE.HemisphereLight(0x3a4360, 0x141519, 0.12);
 castleHemi.visible = false;
 scene.add(castleHemi);
@@ -9471,7 +9511,7 @@ function generateDungeon() {
 const collapseTiles = []; // { grp, slab, edge, gx, gy, x, z, state:'idle'|'shake'|'broken', timer, dmg }
 
 // 막별 빌더는 중간에 return하므로, 지형 높이 적용은 이 래퍼가 한 곳에서 맡는다.
-function buildDungeonMesh(dgn) { buildDungeonMeshInner(dgn); applyGroundRelief(dgn); }
+function buildDungeonMesh(dgn) { buildDungeonMeshInner(dgn); applyGroundRelief(dgn); _moonBakeFloor = -1; /* ③ 새 층은 달빛 그림자를 다시 굽는다 */ }
 function buildDungeonMeshInner(dgn) {
   // 이전 층 던전 메시를 GPU에서 해제(dispose)하며 비운다. remove만 하면 벽·바닥 수천 개가 누적 → 컨텍스트 손실.
   // 단, 전역 공유 지오메트리/머티리얼(모든 층이 재사용)은 dispose 제외(해제하면 다음 층에서 깨짐).
