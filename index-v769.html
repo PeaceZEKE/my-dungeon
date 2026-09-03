@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v768'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v769'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -13054,9 +13054,11 @@ const SMEAR_BAND = 0.20;         // 띠가 시작하는 검신 위치(0=밑동, 
 // 게임 실제 크기에서 기사 검이 30픽셀 남짓이라 검신 길이 그대로면 얼룩으로만 보인다 —
 // 픽셀아트 스미어처럼 칼끝 너머로 과장해서 늘린다(1.5 = 검신의 1.5배까지).
 const SMEAR_REACH = 1.5;
-// 팔레트: 칼 쪽 크림 / 가운데 주황 / 꼬리 어두운 주황. toneMapped:false 라 이 값이 그대로 나온다(양자화만 탄다).
-// 크림을 너무 밝게 두면 블룸 임계(0.62)를 넘어 하얗게 번진다 — 픽셀아트는 안 번진다.
-const SMEAR_COLS = [0xd9c89f, 0xcf7a34, 0x6e2e0e];
+// 팔레트: 칼 쪽 / 가운데 / 꼬리. toneMapped:false 라 이 값이 그대로 나온다(양자화만 탄다).
+// v769: 기사의 검기(0xddfaff)·검 발광(0x66ccff)과 같은 청록 계열로 맞췄다 — 레퍼런스의 크림·주황을
+// 그대로 쓰니 흰 검기와 주황 잔상이 두 계열로 갈려 따로 놀았다. 가장 밝은 톤은 검기보다 한 단 낮춰
+// 블룸이 검기만큼 번지지 않게 한다(픽셀아트 스미어는 번지지 않는다).
+const SMEAR_COLS = [0xcdeef6, 0x56bfe4, 0x1c4a78];
 let smearMesh = null, smearGeo = null, smearTime = 0, _smearHasPrev = false;
 const smearSamples = [];
 const _smB = new THREE.Vector3(), _smP = new THREE.Vector3(), _smPrevP = new THREE.Vector3();
