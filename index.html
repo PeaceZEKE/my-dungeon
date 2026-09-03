@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v762'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v763'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -5405,6 +5405,9 @@ function renderNormalPass(sceneToRender) {
   renderer.setRenderTarget(rtNormal); renderer.clear(); renderer.render(sceneToRender, camera);
   for (const o of _normalHidden) o.visible = true;
   _normalHidden.length = 0;
+  // 복셀 디스플레이스먼트 바닥: overrideMaterial 로 그리면 프록시 상자의 면 노멀만 찍힌다.
+  // 전용 재질로 레이마칭해서 복셀 형상의 노멀·깊이를 넣는다(아래 voxNormalPass · v763).
+  voxNormalPass(sceneToRender);
   // 건축물 패스: 알파 0.5를 찍어 SSAO가 '이 픽셀이 건물·벽인지' 알 수 있게 한다.
   // 1패스에서 빠진 것을 여기서 그리는 것이므로 드로우콜 총량은 같다.
   if (_normalArchCount > 0) {
@@ -7708,11 +7711,22 @@ let wallGroup  = new THREE.Group(); scene.add(wallGroup);
 const RELIEF = (() => { const m = location.search.match(/[?&]relief=([\d.]+)/); return m ? parseFloat(m[1]) : 0; })();
 const RELIEF_PERIOD = 6;      // 부드러운 굴곡의 노이즈 파장(타일)
 // 복셀 단 높이. 0이면 복셀 바닥을 끄고 예전 타일 바닥을 그대로 쓴다.
-const VOX_STEP = (() => { const m = location.search.match(/[?&]vox=([\d.]+)/); return m ? parseFloat(m[1]) : 0.4; })();
-const VOX_N = (() => { const m = location.search.match(/[?&]voxn=(\d+)/); return m ? Math.max(1, Math.min(6, parseInt(m[1], 10))) : 3; })();
-const VOX_LEVELS = 2;         // 단 수(0·1·2단). 늘리면 기복이 커지는 대신 못 올라가는 벽이 생긴다
+const _voxFlag = (() => { const m = location.search.match(/[?&]vox=([\d.]+)/); return m ? parseFloat(m[1]) : null; })();
+const VOX_ON = _voxFlag === null || _voxFlag > 0;
+// **복셀 디스플레이스먼트**(v763, 기본 켜짐 · ?voxray=0 이면 v762 지오메트리 복셀로).
+// 타일을 16등분해 칸 0.3125 짜리 정육면체 복셀 6단으로 바닥을 만든다. 이걸 지오메트리로 만들면
+// 층당 윗면이 수만 장이라, 프록시 상자 하나를 그리고 프래그먼트에서 높이장을 DDA로 훑어
+// gl_FragDepth 로 깊이를 쓴다(viewers/voxel_floor_spike_v1.html 에서 검증). 비용은 칸 크기가
+// 아니라 '높이 범위 / 칸 크기'(마칭 횟수)에 붙으므로 단수를 늘리는 쪽이 비싸다.
+// WebGL2 전용이다 — three r128 은 WebGL2 에서 모든 셰이더를 300 es 로 굽고 gl_FragDepthEXT 를
+// gl_FragDepth 로 정의해 준다. WebGL1 에서는 확장 지시문을 onBeforeCompile 로 못 넣으므로
+// 자동으로 v762 지오메트리 복셀(3×3 · 0.4 · 2단)로 떨어진다.
+const VOX_RAY = VOX_ON && !/[?&]voxray=0/.test(location.search)
+  && !!(renderer && renderer.capabilities && renderer.capabilities.isWebGL2);
+const VOX_N = (() => { const m = location.search.match(/[?&]voxn=(\d+)/); return m ? Math.max(1, Math.min(32, parseInt(m[1], 10))) : (VOX_RAY ? 16 : 3); })();
+const VOX_STEP = _voxFlag !== null ? _voxFlag : (VOX_RAY ? TILE / VOX_N : 0.4);   // 레이마칭은 정육면체(칸 = 단)
+const VOX_LEVELS = VOX_RAY ? 6 : 2;   // 단 수. 지오메트리 복셀은 늘리면 못 올라가는 벽이 생긴다(0·1·2단)
 const VOX_SKIRT = 0.6;        // 벽·바깥으로 면한 쪽에 내리는 치마 깊이(바닥이 판때기로 안 보이게)
-const VOX_ON = VOX_STEP > 0;
 
 let groundH = null;           // Float32Array(gSubW*gSubH) — 서브셀의 지면 높이(칸마다 평평)
 let gSubW = 0, gSubH = 0, gSubN = 1;   // 서브셀 격자 크기 / 타일당 분할 수
@@ -7732,6 +7746,31 @@ function buildGroundHeight(floorNo) {
   const rnd = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
   // 복셀 파장을 4타일로 잡았더니 화면 안이 통째로 한 단이라 계단이 안 보였다 — 2타일로 줄여
   // 시야(약 10타일) 안에 단이 여러 번 나오게 한다.
+  if (VOX_RAY) {
+    // 뷰어(voxel_floor_spike_v1)와 같은 3옥타브 값 노이즈 — 사용자가 고른 것이 이 지형이다.
+    // 파장은 월드 단위(9 / 3.6 / 1.4)라 칸 크기를 바꿔도 지형 자체는 같다.
+    // 층 번호를 해시에 섞어 층마다 다르되 재현 가능하게 한다(Math.random 안 씀).
+    const seed = ((floorNo | 0) * 0x9e3779b1) | 0;
+    const hash = (ix, iz) => {
+      let n = (ix * 374761393 + iz * 668265263 + seed) | 0;
+      n = Math.imul(n ^ (n >>> 13), 1274126177);
+      return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+    };
+    const vnoise = (x, z) => {
+      const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz;
+      const ux = fx * fx * (3 - 2 * fx), uz = fz * fz * (3 - 2 * fz);
+      const a = hash(ix, iz), b = hash(ix + 1, iz), c = hash(ix, iz + 1), d = hash(ix + 1, iz + 1);
+      return (a * (1 - ux) + b * ux) * (1 - uz) + (c * (1 - ux) + d * ux) * uz;
+    };
+    const S = _gSub(), X0 = _gX0(), Z0 = _gZ0();
+    groundH = new Float32Array(gSubW * gSubH);
+    for (let j = 0; j < gSubH; j++) for (let i = 0; i < gSubW; i++) {
+      const wx = X0 + (i + 0.5) * S, wz = Z0 + (j + 0.5) * S;
+      const n = 0.55 * vnoise(wx / 9.0, wz / 9.0) + 0.30 * vnoise(wx / 3.6, wz / 3.6) + 0.15 * vnoise(wx / 1.4, wz / 1.4);
+      const lv = Math.max(0, Math.min(VOX_LEVELS - 1, Math.floor(n * VOX_LEVELS)));   // 0 ~ 5단 = 여섯 단
+      groundH[j * gSubW + i] = lv * VOX_STEP;
+    }
+  } else {
   const P = (VOX_ON ? 2 : RELIEF_PERIOD) * gSubN;        // 파장(서브셀 단위)
   const gw = Math.ceil(gSubW / P) + 2, gh = Math.ceil(gSubH / P) + 2;
   const ctl = new Float32Array(gw * gh);
@@ -7746,6 +7785,7 @@ function buildGroundHeight(floorNo) {
     const v = (c(ix, iy) * (1 - tx) + c(ix + 1, iy) * tx) * (1 - ty)
             + (c(ix, iy + 1) * (1 - tx) + c(ix + 1, iy + 1) * tx) * ty;
     groundH[j * gSubW + i] = VOX_ON ? Math.round(v * VOX_LEVELS) * VOX_STEP : v * RELIEF;
+  }
   }
   // 복셀: 이웃 단차를 한 단으로 제한한다. 두 단이 붙으면 플레이어가 못 올라가는 벽이 생기는데,
   // 지금은 이동 제한을 안 걸었으므로 '올라갈 수 없어 보이는 턱'이 그냥 통과돼 이상하게 보인다.
@@ -7853,6 +7893,245 @@ function buildVoxelFloor(dgn) {
   floorGroup.add(voxelFloorMesh);
 }
 
+// ── 복셀 디스플레이스먼트 바닥(레이마칭) ───────────────────────────────
+// 프록시 상자(맵 전체 × 최대 높이) 하나를 그리고, 프래그먼트마다 카메라에서 나가는 시선을
+// XZ 격자 위에서 DDA(Amanatides & Woo)로 훑는다. 기둥은 전부 y=0 에서 시작하므로 셀마다
+// '진입 시점의 y 가 기둥 높이 이하인가'(옆면) → '내려가다 윗면을 지나는가'(윗면)만 본다.
+// 맞은 지점의 깊이를 gl_FragDepth 로 써서 캐릭터·벽과 정상적으로 맞물린다
+// (뷰어에서 CPU 기준 구현과 비교: 153,600픽셀 중 153,594 일치).
+// 색 패스는 **MeshStandardMaterial 에 onBeforeCompile 로 얹는다** — 조명·톤매핑·안개·그림자·
+// ShaderChunk 개조(?dspec/?drough/?spec)를 전부 물려받기 위해서다. 셰이더를 새로 짜면 그 순간
+// 바닥만 다른 조명을 받는다. vViewPosition·fogDepth·그림자 좌표·vUv 는 varying 이라 프래그먼트에서
+// 못 고치므로, 그걸 쓰는 청크만 인라인해서 맞은 지점 기준 값으로 갈아 끼운다.
+// 노멀 패스는 overrideMaterial 로는 프록시 상자의 면만 찍히므로 전용 재질로 따로 그린다
+// (식생 패스와 같은 요령 · 레이어 VOX_TAG_LAYER).
+const VOX_TAG_LAYER = 4;
+const VOX_GLSL = `
+uniform sampler2D tVoxH;
+uniform vec2 uVoxGrid;
+uniform vec2 uVoxOrigin;
+uniform float uVoxCell;
+uniform float uVoxStep;
+uniform float uVoxMaxH;
+uniform float uVoxSideDim;
+uniform vec3 uVoxPal0;
+uniform vec3 uVoxPal1;
+uniform vec3 uVoxPal2;
+uniform mat4 projectionMatrix;
+varying vec3 vVoxWorld;
+vec3 vxView, vxNormal, vxWorldHit, vxWorldNrm, vxColor;
+vec2 vxUv;
+// 텍셀 R = 단(0..N). 255 = 바닥이 아닌 칸(벽·바깥) — 기둥이 없어 시선이 그냥 지나간다.
+float vxColH(ivec2 c) {
+  float lv = floor(texture2D(tVoxH, (vec2(c) + 0.5) / uVoxGrid).r * 255.0 + 0.5);
+  return lv > 200.0 ? -1e6 : lv * uVoxStep;
+}
+bool vxOut(ivec2 c) {
+  return c.x < 0 || c.y < 0 || float(c.x) >= uVoxGrid.x || float(c.y) >= uVoxGrid.y;
+}
+bool vxTrace(vec3 ro, vec3 rd, out vec3 hp, out vec3 hn, out ivec2 hc, out float hh) {
+  // 상자 바닥을 0 보다 살짝 아래 둔다 — 0단 윗면(y=0)이 상자 경계면과 겹치면 못 맞는다
+  vec3 bmin = vec3(uVoxOrigin.x, -0.05, uVoxOrigin.y);
+  vec3 bmax = vec3(uVoxOrigin.x + uVoxGrid.x * uVoxCell, uVoxMaxH, uVoxOrigin.y + uVoxGrid.y * uVoxCell);
+  // 0 으로 나누면 0*inf 가 NaN — 축에 정확히 평행한 시선에서 실제로 걸린다
+  vec3 rs = vec3(abs(rd.x) < 1e-6 ? 1e-6 : rd.x, abs(rd.y) < 1e-6 ? 1e-6 : rd.y, abs(rd.z) < 1e-6 ? 1e-6 : rd.z);
+  vec3 ta = (bmin - ro) / rs, tb = (bmax - ro) / rs;
+  vec3 tn = min(ta, tb), tf = max(ta, tb);
+  float t0 = max(max(tn.x, tn.y), tn.z);
+  float tE = min(min(tf.x, tf.y), tf.z);
+  if (tE < max(t0, 0.0)) return false;
+  vec3 nEnter;
+  if (t0 > 0.0) {
+    if (tn.x > tn.y && tn.x > tn.z) nEnter = vec3(-sign(rs.x), 0.0, 0.0);
+    else if (tn.y > tn.z) nEnter = vec3(0.0, -sign(rs.y), 0.0);
+    else nEnter = vec3(0.0, 0.0, -sign(rs.z));
+  } else { t0 = 0.0; nEnter = -rd; }
+  float tCur = t0 + 1e-4;
+  vec2 pxz = ro.xz + rs.xz * tCur;
+  ivec2 c = ivec2(floor((pxz - uVoxOrigin) / uVoxCell));
+  if (vxOut(c)) return false;
+  vec2 sgn = vec2(rs.x >= 0.0 ? 1.0 : -1.0, rs.z >= 0.0 ? 1.0 : -1.0);
+  vec2 cellMin = uVoxOrigin + vec2(c) * uVoxCell;
+  vec2 tMax = (cellMin + max(sgn, vec2(0.0)) * uVoxCell - ro.xz) / rs.xz;
+  vec2 tDel = abs(vec2(uVoxCell) / rs.xz);
+  for (int k = 0; k < 160; k++) {
+    float h = vxColH(c);
+    float yIn = ro.y + rs.y * tCur;
+    float tOut = min(min(tMax.x, tMax.y), tE);
+    if (yIn <= h + 1e-4) { hp = ro + rs * tCur; hn = nEnter; hc = c; hh = h; return true; }
+    if (rs.y < 0.0) {
+      float th = (h - ro.y) / rs.y;
+      if (th <= tOut) { hp = ro + rs * th; hp.y = h; hn = vec3(0.0, 1.0, 0.0); hc = c; hh = h; return true; }
+    }
+    if (tOut >= tE - 1e-6) return false;
+    if (tMax.x < tMax.y) { tCur = tMax.x; tMax.x += tDel.x; c.x += int(sgn.x); nEnter = vec3(-sgn.x, 0.0, 0.0); }
+    else                 { tCur = tMax.y; tMax.y += tDel.y; c.y += int(sgn.y); nEnter = vec3(0.0, 0.0, -sgn.y); }
+    if (vxOut(c)) return false;
+  }
+  return false;
+}
+// 칸마다 팔레트 3색 중 하나를 뽑고 밝기를 흔든다(평평한 판은 한 톤이라 종이처럼 보인다).
+// 옆면은 반드시 눌러야 단이 읽힌다 — 빛이 위에서 와서 그냥 두면 윗면과 구분이 안 된다.
+vec3 vxShade(ivec2 c, float h, vec3 n) {
+  float hs = fract(sin(float(c.x) * 127.1 + float(c.y) * 311.7) * 43758.5453);
+  vec3 base = hs < 0.34 ? uVoxPal0 : (hs < 0.67 ? uVoxPal1 : uVoxPal2);
+  float t = 0.88 + fract(hs * 17.0) * 0.24;
+  t *= 0.92 + 0.04 * (h / uVoxStep);
+  if (n.y < 0.5) t *= uVoxSideDim;
+  return base * t;
+}
+`;
+const VOX_MAIN = `
+  vec3 vxRd = normalize(vVoxWorld - cameraPosition);
+  vec3 vxHP, vxHN; ivec2 vxHC; float vxHH;
+  if (!vxTrace(cameraPosition, vxRd, vxHP, vxHN, vxHC, vxHH)) discard;
+  vec4 vxClip = projectionMatrix * viewMatrix * vec4(vxHP, 1.0);
+  gl_FragDepthEXT = vxClip.z / vxClip.w * 0.5 + 0.5;
+  vxWorldHit = vxHP; vxWorldNrm = vxHN;
+  vxView = -(viewMatrix * vec4(vxHP, 1.0)).xyz;
+  vxNormal = normalize(mat3(viewMatrix) * vxHN);
+  vxColor = vxShade(vxHC, vxHH, vxHN);
+  vxUv = (vxHP.xz - uVoxOrigin) / ${TILE.toFixed(1)};
+`;
+function _vxInline(src, name, fn) { return src.replace('#include <' + name + '>', fn(THREE.ShaderChunk[name])); }
+const voxRayUniforms = {
+  tVoxH: { value: null },
+  uVoxGrid: { value: new THREE.Vector2(1, 1) },
+  uVoxOrigin: { value: new THREE.Vector2(0, 0) },
+  uVoxCell: { value: 1 },
+  uVoxStep: { value: 1 },
+  uVoxMaxH: { value: 1 },
+  uVoxSideDim: { value: 0.55 },   // v762 지오메트리 복셀의 옆면 배수와 같은 값
+  uVoxPal0: { value: new THREE.Color(0x2a2417) },
+  uVoxPal1: { value: new THREE.Color(0x322b1a) },
+  uVoxPal2: { value: new THREE.Color(0x241f14) },
+};
+// 재질은 첫 사용 때 만든다 — 모듈 로드 시점에 만들면 generateUUID 가 Math.random 을 먹어
+// ?vox=0 / ?voxray=0 빌드의 난수 스트림이 어긋난다(CLAUDE.md: 객체 수가 달라지면 픽셀 A/B 불가).
+let voxRayColorMat = null, voxRayNormalMat = null;
+function _voxRayMats() {
+  if (voxRayColorMat) return;
+  voxRayColorMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: STONE_ROUGH, metalness: 0, side: THREE.DoubleSide });
+  voxRayColorMat.onBeforeCompile = function (shader) {
+  Object.assign(shader.uniforms, voxRayUniforms);
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', '#include <common>\nvarying vec3 vVoxWorld;')
+    .replace('#include <project_vertex>', '#include <project_vertex>\n\tvVoxWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;');
+  let f = shader.fragmentShader;
+  f = f.replace('#include <common>', '#include <common>\n' + VOX_GLSL);
+  f = _vxInline(f, 'normal_fragment_begin', () => 'vec3 normal = vxNormal;\nvec3 geometryNormal = normal;');
+  f = _vxInline(f, 'map_fragment', s => s.replace(/vUv/g, 'vxUv'));
+  // 그림자 좌표는 정점(프록시 상자 표면)이 아니라 맞은 지점에서 다시 만든다 — 안 그러면 벽 그림자가 어긋난다
+  f = _vxInline(f, 'lights_fragment_begin', s => s
+    .replace(/vViewPosition/g, 'vxView')
+    .replace(/vDirectionalShadowCoord\[ i \]/g, '( directionalShadowMatrix[ i ] * vec4( vxWorldHit + vxWorldNrm * directionalLightShadows[ i ].shadowNormalBias, 1.0 ) )')
+    .replace(/vSpotShadowCoord\[ i \]/g, '( spotShadowMatrix[ i ] * vec4( vxWorldHit + vxWorldNrm * spotLightShadows[ i ].shadowNormalBias, 1.0 ) )')
+    .replace(/vPointShadowCoord\[ i \]/g, '( pointShadowMatrix[ i ] * vec4( vxWorldHit + vxWorldNrm * pointLightShadows[ i ].shadowNormalBias, 1.0 ) )'));
+  f = _vxInline(f, 'lights_fragment_end', s => s.replace(/vViewPosition/g, 'vxView'));
+  f = _vxInline(f, 'fog_fragment', s => s.replace(/fogDepth/g, 'vxView.z'));
+  // 그림자 행렬은 원래 정점 셰이더에만 선언돼 있다. 유니폼은 프로그램 공용이라 여기 다시 선언해도 된다.
+  f = f.replace('#include <shadowmap_pars_fragment>', `#include <shadowmap_pars_fragment>
+#ifdef USE_SHADOWMAP
+  #if NUM_DIR_LIGHT_SHADOWS > 0
+    uniform mat4 directionalShadowMatrix[ NUM_DIR_LIGHT_SHADOWS ];
+  #endif
+  #if NUM_SPOT_LIGHT_SHADOWS > 0
+    uniform mat4 spotShadowMatrix[ NUM_SPOT_LIGHT_SHADOWS ];
+  #endif
+  #if NUM_POINT_LIGHT_SHADOWS > 0
+    uniform mat4 pointShadowMatrix[ NUM_POINT_LIGHT_SHADOWS ];
+  #endif
+#endif`);
+  f = f.replace('void main() {', 'void main() {\n' + VOX_MAIN);
+  f = f.replace('#include <color_fragment>', '#include <color_fragment>\n\tdiffuseColor.rgb *= vxColor;');
+  shader.fragmentShader = f;
+};
+  // 프로그램 캐시 키에 onBeforeCompile 결과가 안 들어간다 — 같은 파라미터의 표준 재질과 프로그램을 나눠 갖는다.
+  voxRayColorMat.customProgramCacheKey = function () { return 'voxray'; };
+  // 노멀 버퍼 규약: RGB = 뷰 공간 노멀(0.5 중심), 알파 1.0 = 외곽선 있음·건축물 아님(바닥 타일과 같다).
+  voxRayNormalMat = new THREE.ShaderMaterial({
+  uniforms: voxRayUniforms,
+  vertexShader: `
+    varying vec3 vVoxWorld;
+    void main() {
+      vVoxWorld = ( modelMatrix * vec4( position, 1.0 ) ).xyz;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+    }`,
+  fragmentShader: VOX_GLSL + `
+    void main() {
+      vec3 rd = normalize(vVoxWorld - cameraPosition);
+      vec3 hp, hn; ivec2 hc; float hh;
+      if (!vxTrace(cameraPosition, rd, hp, hn, hc, hh)) discard;
+      vec4 clip = projectionMatrix * viewMatrix * vec4(hp, 1.0);
+      gl_FragDepthEXT = clip.z / clip.w * 0.5 + 0.5;
+      vec3 n = normalize(mat3(viewMatrix) * hn);
+      gl_FragColor = vec4(n * 0.5 + 0.5, 1.0);
+    }`,
+  side: THREE.DoubleSide,
+  });
+}
+let voxRayTex = null;
+function buildVoxelRayFloor(dgn) {
+  if (!VOX_RAY || !groundH || !dgn || !dgn.grid) return;
+  _voxRayMats();
+  const grid = dgn.grid, S = _gSub(), X0 = _gX0(), Z0 = _gZ0();
+  const act = currentAct();
+  // 팔레트·텍스처는 v762 지오메트리 복셀과 같은 출처(그 막의 바닥 재질).
+  const pal = act === 3 ? [COR.floor, COR.floorB, COR.floorDark]
+            : act === 2 ? [CAS.floor, CAS.floorB, CAS.floorDark]
+            : [0x2a2417, 0x322b1a, 0x241f14];
+  const srcMat = act === 3 ? corFloorMats[0] : act === 2 ? casFloorMats[0] : null;
+  const map = srcMat ? srcMat.map : texDirts[0];
+  const data = new Uint8Array(gSubW * gSubH * 4);
+  for (let j = 0; j < gSubH; j++) for (let i = 0; i < gSubW; i++) {
+    const tx = (i / gSubN) | 0, ty = (j / gSubN) | 0;
+    const isF = !!(grid[ty] && grid[ty][tx] > 0);
+    data[(j * gSubW + i) * 4] = isF ? Math.round(groundH[j * gSubW + i] / VOX_STEP) : 255;
+  }
+  if (voxRayTex) voxRayTex.dispose();
+  voxRayTex = new THREE.DataTexture(data, gSubW, gSubH, THREE.RGBAFormat);
+  voxRayTex.magFilter = THREE.NearestFilter; voxRayTex.minFilter = THREE.NearestFilter;
+  voxRayTex.wrapS = voxRayTex.wrapT = THREE.ClampToEdgeWrapping;
+  voxRayTex.generateMipmaps = false; voxRayTex.needsUpdate = true;
+  const u = voxRayUniforms;
+  u.tVoxH.value = voxRayTex;
+  u.uVoxGrid.value.set(gSubW, gSubH);
+  u.uVoxOrigin.value.set(X0, Z0);
+  u.uVoxCell.value = S; u.uVoxStep.value = VOX_STEP;
+  u.uVoxMaxH.value = (VOX_LEVELS - 1) * VOX_STEP + 0.01;
+  u.uVoxPal0.value.setHex(pal[0]); u.uVoxPal1.value.setHex(pal[1]); u.uVoxPal2.value.setHex(pal[2]);
+  if (voxRayColorMat.map !== map) { voxRayColorMat.map = map; voxRayColorMat.needsUpdate = true; }
+  voxRayColorMat.roughness = srcMat ? srcMat.roughness : STONE_ROUGH;
+  const w = gSubW * S, d = gSubH * S, hMax = u.uVoxMaxH.value + 0.05;
+  const geo = new THREE.BoxGeometry(w, hMax, d);
+  voxelFloorMesh = new THREE.Mesh(geo, voxRayColorMat);
+  voxelFloorMesh.position.set(X0 + w / 2, hMax / 2 - 0.05, Z0 + d / 2);
+  voxelFloorMesh.receiveShadow = true; voxelFloorMesh.castShadow = false;
+  voxelFloorMesh.frustumCulled = false;
+  voxelFloorMesh.userData.noRelief = true;
+  voxelFloorMesh.userData.fx = true;            // 1패스(overrideMaterial)에서는 빼고 전용 패스로 그린다
+  voxelFloorMesh.layers.enable(VOX_TAG_LAYER);  // 레이어 0 은 그대로 — 색 패스에 남는다
+  floorGroup.add(voxelFloorMesh);
+}
+// 노멀 패스 훅 — renderNormalPass 가 1패스 직후에 부른다(벽·피부·식생 패스가 이 깊이에 맞춰 가려진다).
+function voxNormalPass(sceneToRender) {
+  if (!VOX_RAY || !voxelFloorMesh || !voxelFloorMesh.visible || voxelFloorMesh.material !== voxRayColorMat) return;
+  if (!voxelFloorMesh.parent || sceneToRender !== scene) return;   // 마을·쉼터 씬에는 없다
+  const prevOverride = sceneToRender.overrideMaterial, prevBg = sceneToRender.background;
+  const prevAuto = renderer.autoClear, prevMask = camera.layers.mask;
+  sceneToRender.overrideMaterial = null;
+  sceneToRender.background = null;   // Color 면 three 가 autoClear 와 무관하게 강제 clear 한다
+  renderer.autoClear = false;
+  camera.layers.set(VOX_TAG_LAYER);
+  voxelFloorMesh.material = voxRayNormalMat;
+  renderer.render(sceneToRender, camera);
+  voxelFloorMesh.material = voxRayColorMat;
+  camera.layers.mask = prevMask;
+  renderer.autoClear = prevAuto;
+  sceneToRender.background = prevBg;
+  sceneToRender.overrideMaterial = prevOverride;
+}
+
 // 던전 메시를 다 짓고 나서 지면 높이를 반영한다.
 // 배치 지점마다 손대지 않고 한 곳에서 처리하는 이유: 바닥 장식(균열·이끼·자갈·카펫·핏줄·종양)이
 // 수십 군데에서 floorGroup에 들어가는데, 3막에서 배운 대로 **바닥을 올리면 그 위 장식도
@@ -7871,10 +8150,19 @@ function applyGroundRelief(dgn) {
       c.position.y += groundHeightAt(c.position.x, c.position.z);
     }
   }
-  buildVoxelFloor(dgn);
+  if (VOX_RAY) buildVoxelRayFloor(dgn); else buildVoxelFloor(dgn);
 }
 // 층에 놓인 소품(계단·상자 등)을 지면에 앉힌다. 메시 빌드 뒤에 배치되므로 따로 불러 준다.
 function snapToGround(o) { if (o && groundH) o.position.y += groundHeightAt(o.position.x, o.position.z); }
+// 날아가는 것(화염구·검기·곤봉)이 단 위를 지날 때 파묻히지 않게, 지면 높이의 **변화분**만 y에 더한다.
+// 절대값을 대입하지 않는 이유: 자체 상하 운동(포물선·부양)을 살려야 하기 때문이다.
+// v763 복셀 바닥은 최대 1.56 까지 올라가서, y=1.0 고정인 투사체가 높은 단 안으로 사라졌다.
+function followGround(rec, mesh) {
+  if (!groundH) return;
+  const g = groundHeightAt(mesh.position.x, mesh.position.z);
+  if (rec._gy === undefined) rec._gy = g;
+  mesh.position.y += g - rec._gy; rec._gy = g;
+}
 
 // ===== 막(Act) 판정: 1막=1~30층(이끼 동굴), 2막=31~60층(무너진 성), 3막=61~90층(부패한 성) =====
 function currentAct() { if (!player) return 1; if (player.floor >= 61) return 3; return (player.floor >= 31) ? 2 : 1; }
@@ -9179,7 +9467,7 @@ function buildDungeonMeshInner(dgn) {
   // 이전 층 던전 메시를 GPU에서 해제(dispose)하며 비운다. remove만 하면 벽·바닥 수천 개가 누적 → 컨텍스트 손실.
   // 단, 전역 공유 지오메트리/머티리얼(모든 층이 재사용)은 dispose 제외(해제하면 다음 층에서 깨짐).
   const _sharedGeos = new Set(floorGeos);
-  const _sharedMats = new Set([casMatPillar, casMatPillarD]);
+  const _sharedMats = new Set([casMatPillar, casMatPillarD, voxRayColorMat || casMatPillar]);   // 레이마칭 바닥 재질은 층 공용
   const _disposeGroup = (grp) => {
     while (grp.children.length > 0) {
       const c = grp.children[0];
@@ -12105,6 +12393,7 @@ function updateSlashes(dt) {
     const step = Math.hypot(s.vx, s.vz) * dt;
     s.mesh.position.x += s.vx * dt;
     s.mesh.position.z += s.vz * dt;
+    followGround(s, s.mesh);
     s.traveled += step;
     if (s.isFire) { s.mesh.rotation.x += s.spin * dt; s.mesh.rotation.y += s.spin * dt; }
     if (s.trail) { spawnPierceTrail(s.mesh.position.x, s.trailY, s.mesh.position.z, s.dirX, s.dirZ); }
@@ -12285,7 +12574,7 @@ function spawnIcicleMissile(e, ic) {
 // 그대로 두면 점액이 발밑에서 나온다(포란충 머리 y≈2.0 / 탐식 구울 배의 두 번째 입 y≈1.4).
 const PROJ_ORIGIN_Y = { broodtick: 1.9, gluttonghoul: 1.4, stingwasp: 0.95 };
 function spawnFireball(e, angleOffset) {
-  const ox = e.obj.position.x, oz = e.obj.position.z, oy = (PROJ_ORIGIN_Y[e.type] || 1.0) * e.scale;
+  const ox = e.obj.position.x, oz = e.obj.position.z, oy = (PROJ_ORIGIN_Y[e.type] || 1.0) * e.scale + groundHeightAt(ox, oz);
   const dx = player.obj.position.x - ox, dz = player.obj.position.z - oz;
   const d = Math.hypot(dx, dz) || 1;
   let dirX = dx / d, dirZ = dz / d;
@@ -12307,7 +12596,7 @@ function spawnFireball(e, angleOffset) {
 // 스켈레톤 보스: 들고 있던 곤봉을 창처럼 던진다(전용 발사체). 땅에 박히면 작은 충격파로 주변 공격.
 const thrownClubs = [];
 function throwBoneClub(e) {
-  const ox = e.obj.position.x, oz = e.obj.position.z, oy = 1.0 * e.scale;
+  const ox = e.obj.position.x, oz = e.obj.position.z, oy = 1.0 * e.scale + groundHeightAt(ox, oz);
   const dx = player.obj.position.x - ox, dz = player.obj.position.z - oz;
   const d = Math.hypot(dx, dz) || 1;
   const dirX = dx / d, dirZ = dz / d;
@@ -12339,11 +12628,12 @@ function updateThrownClubs(dt) {
     }
     c.mesh.position.x += c.vx * dt;
     c.mesh.position.z += c.vz * dt;
+    followGround(c, c.mesh);
     c.spin += dt * 14; c.club.rotation.x = c.spin; // 창처럼 회전하며 날아감
     // 직접 명중(점프로 회피 가능)
     const pdx = player.obj.position.x - c.mesh.position.x, pdz = player.obj.position.z - c.mesh.position.z;
     const pdist = Math.hypot(pdx, pdz);
-    const airborne = player.obj.position.y > 1.2;
+    const airborne = player.obj.position.y - groundHeightAt(player.obj.position.x, player.obj.position.z) > 1.2;
     // 목표 지점 도달 판정
     const reachedX = (c.vx >= 0) ? (c.mesh.position.x >= c.tx) : (c.mesh.position.x <= c.tx);
     const reachedZ = (c.vz >= 0) ? (c.mesh.position.z >= c.tz) : (c.mesh.position.z <= c.tz);
@@ -12375,13 +12665,14 @@ function updateFireballs(dt) {
     f.life -= dt;
     f.mesh.position.x += f.vx * dt;
     f.mesh.position.z += f.vz * dt;
+    followGround(f, f.mesh);
     if (!f._iqIcicle) { f.mesh.rotation.x += dt * 6; f.mesh.rotation.y += dt * 6; } // 고드름 미사일은 방향 정렬 유지(회전 안 함)
 
     if (!f.reflected) {
       // 플레이어 피격 판정
       const pdx = player.obj.position.x - f.mesh.position.x, pdz = player.obj.position.z - f.mesh.position.z;
       const pdist = Math.hypot(pdx, pdz);
-      const airborne = player.obj.position.y > 1.2; // 점프로 회피 가능
+      const airborne = player.obj.position.y - groundHeightAt(player.obj.position.x, player.obj.position.z) > 1.2; // 점프로 회피 가능(발밑 지면 기준)
       if (pdist < 0.8 && !airborne) {
         const d2 = pdist || 1;
         const facing = (pdx * Math.sin(player.yaw) + pdz * Math.cos(player.yaw)) / d2;
@@ -18751,7 +19042,7 @@ function skillArcherRain() {
 }
 // 화살 비 zone 생성: 텔레그래프 후 화살이 쏟아지며 지역 내 적에게 주기 피해
 function spawnArrowRain(x, z, radius, dmg) {
-  const grp = new THREE.Group(); grp.position.set(x, 0, z);
+  const grp = new THREE.Group(); grp.position.set(x, groundHeightAt(x, z), z);
   const teleMat = new THREE.MeshBasicMaterial({ color: 0xcfe8a0, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false, fog: false });
   const tele = new THREE.Mesh(new THREE.RingGeometry(radius * 0.85, radius, 28), teleMat);
   tele.rotation.x = -Math.PI / 2; tele.position.y = 0.06; grp.add(tele);
