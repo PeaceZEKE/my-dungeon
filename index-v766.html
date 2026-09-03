@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v763'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v766'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -4198,6 +4198,22 @@ const SSAO_STR = PX_MODE ? (_ssaoM ? parseFloat(_ssaoM[1]) : 5.0) : 0;   // ?ssa
 const SSAO_RADIUS = parseFloat((location.search.match(/[?&]ssaor=([\d.]+)/) || [])[1]) || 2.4;
 // AO를 건물·벽(과 거기 붙은 바닥)에만 걸지 여부. 끄면 모든 물체가 가림으로 계산된다.
 const SSAO_ARCH = !/[?&]ssaoarch=0/.test(location.search);
+// ===== v766 렌더 비용 정리 — 세 가지. 전부 URL 로 되돌릴 수 있다 =====
+// ① 그림자맵은 프레임당 한 번만 굽는다(?shonce=0 이면 예전처럼 render 호출마다).
+//    three 는 renderer.render() 를 부를 때마다 그림자맵을 다시 굽는데, 노멀 패스가 render 를
+//    2~4번(1패스·건축물·피부·식생) 부르므로 프레임에 3~5번 구워지고 있었다. 그때 구운 맵은 아무도
+//    안 쓴다 — 다음 프레임 색 패스가 또 굽는다. 실측(SwiftShader): 75층 490 → 360ms(−27%),
+//    드로우콜 6484 → 3486, 화면 차이 0픽셀.
+const SHADOW_ONCE = !/[?&]shonce=0/.test(location.search);
+// ② 던전(scene)에서는 SSAO 를 끈다(?ssaodun=1 이면 켬). 합성 비용의 절반(53ms, 프레임의 12%)인데
+//    던전에서 그림이 거의 안 바뀐다 — 실측: 끄면 5층 픽셀 0.8%·평균 6/255, 45층 2.2%·8.5, 75층 0.0%.
+//    마을·쉼터는 그대로(마을은 28.8% 가 바뀐다).
+const SSAO_DUNGEON = /[?&]ssaodun=1/.test(location.search);
+// ③ 2·3막 달빛 그림자 절두체를 플레이어 주변으로 좁히고, 플레이어가 움직였을 때만 다시 굽는다
+//    (?moonfollow=0 이면 예전처럼 맵 전체 ±70 을 매번). 맵 전체를 덮으면 굽을 때마다 캐스터
+//    2,500~3,150개를 그렸다(75층 드로우콜의 절반). ±24 면 1,600 남짓이고 1024 맵이 140 이 아니라
+//    48 유닛에 쓰여 그림자도 3배 선명해진다. 벽은 안 움직이므로 1.5 유닛 이상 움직였을 때만 굽는다.
+const MOON_FOLLOW = !/[?&]moonfollow=0/.test(location.search);
 // 이 게임의 캐릭터는 진짜 그림자를 안 진다 — 발밑 블롭이 대신한다(몬스터 빌더 주석 참고).
 // 궁수 리그만 메시 전부에 castShadow를 켜 두어서, 던전 횃불(플레이어 바로 옆의 점광원)에
 // 몸 전체가 크게 늘어난 그림자로 찍혔다(실측: 기사 60×19픽셀 → 궁수 135×80).
@@ -5504,7 +5520,12 @@ const _invVP = new THREE.Matrix4();
 function renderWithPost(sceneToRender) {
   updateBlobShadows();
   applyPixelSnap();
+  moonFollow(sceneToRender);                              // ③ 색 패스가 굽기 전에 절두체를 옮긴다
+  if (SHADOW_ONCE) renderer.shadowMap.autoUpdate = true;  // ① 색 패스에서만 굽는다
   renderer.setRenderTarget(rt); renderer.clear(); renderer.render(sceneToRender, camera);
+  if (SHADOW_ONCE) renderer.shadowMap.autoUpdate = false; // 이후 노멀 패스들의 render 는 그림자맵을 안 건드린다
+  // ② 던전에서는 SSAO 를 끈다. 유니폼 하나라 매 프레임 씬에 맞춰 넣는다(마을·쉼터는 SSAO_STR 그대로).
+  if (quadMat.uniforms.uAOStr) quadMat.uniforms.uAOStr.value = (sceneToRender === scene && !SSAO_DUNGEON) ? 0 : SSAO_STR;
   if (PX_MODE && quadMat.uniforms.uPxNormalStr.value > 0.001) renderNormalPass(sceneToRender);
   if (quadMat.uniforms.uBloomStr && quadMat.uniforms.uBloomStr.value > 0.001) {
     renderer.setRenderTarget(rtBloom); renderer.clear(); renderer.render(bloomScene, quadCam);
@@ -7274,6 +7295,25 @@ castleMoon.shadow.bias = -0.0008;
 castleMoon.visible = false;
 scene.add(castleMoon);
 scene.add(castleMoon.target);                        // 맵 중심(0,0,0)을 비춤 → 뷰어와 같은 광 방향
+// ③ 달빛 그림자 절두체를 플레이어 주변으로(v766). 광 방향은 그대로다 — 위치와 타깃을 같이 옮긴다.
+// 그림자 행렬은 맵을 구울 때만 갱신되므로(WebGLShadowMap.render 안의 updateMatrices), 안 굽는 프레임에는
+// 맵과 행렬이 함께 예전 자리에 남아 어긋나지 않는다. 그래서 '움직였을 때만 굽기'가 안전하다.
+const MOON_HALF = 24;             // 절두체 반폭. 화면은 플레이어 ±12 남짓 + 벽 그림자 길이(높이 4 × 0.67) 여유
+const MOON_REBAKE_DIST = 1.5;     // 이만큼 움직이면 다시 굽는다(±24 안에서 화면이 여전히 덮인다)
+let _moonBakeX = 1e9, _moonBakeZ = 1e9, _moonBakeFloor = -1;
+function moonFollow(sceneToRender) {
+  if (!MOON_FOLLOW || sceneToRender !== scene || !castleMoon.visible || !player || !player.obj) return;
+  castleMoon.shadow.autoUpdate = false;
+  const P = player.obj.position;
+  const dx = P.x - _moonBakeX, dz = P.z - _moonBakeZ;
+  if (_moonBakeFloor === player.floor && dx * dx + dz * dz < MOON_REBAKE_DIST * MOON_REBAKE_DIST) return;
+  castleMoon.target.position.set(P.x, 0, P.z);
+  castleMoon.position.set(P.x + 20, 38, P.z + 16);
+  const c = castleMoon.shadow.camera;
+  if (c.right !== MOON_HALF) { c.left = -MOON_HALF; c.right = MOON_HALF; c.top = MOON_HALF; c.bottom = -MOON_HALF; c.updateProjectionMatrix(); }
+  castleMoon.shadow.needsUpdate = true;
+  _moonBakeX = P.x; _moonBakeZ = P.z; _moonBakeFloor = player.floor;
+}
 const castleHemi = new THREE.HemisphereLight(0x3a4360, 0x141519, 0.12);
 castleHemi.visible = false;
 scene.add(castleHemi);
@@ -7714,7 +7754,7 @@ const RELIEF_PERIOD = 6;      // 부드러운 굴곡의 노이즈 파장(타일)
 const _voxFlag = (() => { const m = location.search.match(/[?&]vox=([\d.]+)/); return m ? parseFloat(m[1]) : null; })();
 const VOX_ON = _voxFlag === null || _voxFlag > 0;
 // **복셀 디스플레이스먼트**(v763, 기본 켜짐 · ?voxray=0 이면 v762 지오메트리 복셀로).
-// 타일을 16등분해 칸 0.3125 짜리 정육면체 복셀 6단으로 바닥을 만든다. 이걸 지오메트리로 만들면
+// 타일을 16등분해 칸 0.3125 짜리 정육면체 복셀 3단(v763 은 6단)으로 바닥을 만든다. 이걸 지오메트리로 만들면
 // 층당 윗면이 수만 장이라, 프록시 상자 하나를 그리고 프래그먼트에서 높이장을 DDA로 훑어
 // gl_FragDepth 로 깊이를 쓴다(viewers/voxel_floor_spike_v1.html 에서 검증). 비용은 칸 크기가
 // 아니라 '높이 범위 / 칸 크기'(마칭 횟수)에 붙으므로 단수를 늘리는 쪽이 비싸다.
@@ -7725,8 +7765,15 @@ const VOX_RAY = VOX_ON && !/[?&]voxray=0/.test(location.search)
   && !!(renderer && renderer.capabilities && renderer.capabilities.isWebGL2);
 const VOX_N = (() => { const m = location.search.match(/[?&]voxn=(\d+)/); return m ? Math.max(1, Math.min(32, parseInt(m[1], 10))) : (VOX_RAY ? 16 : 3); })();
 const VOX_STEP = _voxFlag !== null ? _voxFlag : (VOX_RAY ? TILE / VOX_N : 0.4);   // 레이마칭은 정육면체(칸 = 단)
-const VOX_LEVELS = VOX_RAY ? 6 : 2;   // 단 수. 지오메트리 복셀은 늘리면 못 올라가는 벽이 생긴다(0·1·2단)
+// 단 수. v764: 6 → 3 — 3막에서 프레임이 떨어져서(사용자 보고). 레이마칭 비용은 칸 크기가 아니라
+// '높이 범위 / 칸'(= 마칭 횟수)에 붙으므로 칸을 키워 봐야 소용없고 단수를 줄여야 준다.
+// ?voxlv=N 으로 되돌려 비교할 수 있다(6 이 v763 값). 지오메트리 복셀은 늘리면 못 올라가는 벽이 생긴다(0·1·2단).
+const VOX_LEVELS = (() => { const m = location.search.match(/[?&]voxlv=(\d+)/); return m ? Math.max(1, Math.min(16, parseInt(m[1], 10))) : (VOX_RAY ? 3 : 2); })();
 const VOX_SKIRT = 0.6;        // 벽·바깥으로 면한 쪽에 내리는 치마 깊이(바닥이 판때기로 안 보이게)
+// v765: 복셀 바닥을 켤 막. 3막 프레임 저하(사용자 보고)로 2·3막은 예전 타일 바닥(v759)으로 되돌렸다.
+// 그 막에서는 높이 필드가 null 이라 groundHeightAt 이 0 을 돌려주고 복셀 메시도 안 만든다 — ?vox=0 과 같은 경로.
+// ?voxacts=123 처럼 막 번호를 나열해 되돌릴 수 있다.
+const VOX_ACTS = (location.search.match(/[?&]voxacts=(\d+)/) || [])[1] || '1';
 
 let groundH = null;           // Float32Array(gSubW*gSubH) — 서브셀의 지면 높이(칸마다 평평)
 let gSubW = 0, gSubH = 0, gSubN = 1;   // 서브셀 격자 크기 / 타일당 분할 수
@@ -7741,6 +7788,8 @@ function _gZ0() { return -(MAP_H / 2 + 0.5) * TILE; }
 function buildGroundHeight(floorNo) {
   gSubN = VOX_ON ? VOX_N : 1;
   if (!VOX_ON && !(RELIEF > 0)) { groundH = null; return; }
+  const _act = floorNo >= 61 ? 3 : floorNo >= 31 ? 2 : 1;
+  if (VOX_ON && VOX_ACTS.indexOf(String(_act)) < 0) { groundH = null; return; }   // 이 막은 복셀 바닥 없음(v765)
   gSubW = MAP_W * gSubN; gSubH = MAP_H * gSubN;
   let sd = (((floorNo | 0) * 2654435761) ^ 0x9e3779b9) >>> 0;
   const rnd = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
@@ -9462,7 +9511,7 @@ function generateDungeon() {
 const collapseTiles = []; // { grp, slab, edge, gx, gy, x, z, state:'idle'|'shake'|'broken', timer, dmg }
 
 // 막별 빌더는 중간에 return하므로, 지형 높이 적용은 이 래퍼가 한 곳에서 맡는다.
-function buildDungeonMesh(dgn) { buildDungeonMeshInner(dgn); applyGroundRelief(dgn); }
+function buildDungeonMesh(dgn) { buildDungeonMeshInner(dgn); applyGroundRelief(dgn); _moonBakeFloor = -1; /* ③ 새 층은 달빛 그림자를 다시 굽는다 */ }
 function buildDungeonMeshInner(dgn) {
   // 이전 층 던전 메시를 GPU에서 해제(dispose)하며 비운다. remove만 하면 벽·바닥 수천 개가 누적 → 컨텍스트 손실.
   // 단, 전역 공유 지오메트리/머티리얼(모든 층이 재사용)은 dispose 제외(해제하면 다음 층에서 깨짐).
