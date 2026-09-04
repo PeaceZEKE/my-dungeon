@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v774'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v775'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -13071,25 +13071,40 @@ const SMEAR_R_IN = 1.60, SMEAR_R_MID = 2.05, SMEAR_R_OUT = 2.6;  // 팔 0.605 �
 // 세 벌을 재서 골랐다(스미어 픽셀의 상위 10% 출력 / 블룸 임계 0.62 초과 픽셀 수):
 //   0xd0cfc7 → #bcbcbc·1442px(최상위가 #ffffff 로 날아간다) / 0xb4b3ab → #adadad·524px
 //   **0x9a998f → #848478·158px**(채택. 검의 #919184 와 같은 대역)
-const SMEAR_COLS = [0x9a998f, 0x66665e, 0x1f201c];
+// v775: 3단 → 5단(사용자 지시). 머리(칼날) → 꼬리 순서, 휘도 0.60 → 0.28 으로 고르게 떨어진다.
+// **끝을 배경만큼 어둡게 만들지 않는다** — 사라지는 느낌은 색이 아니라 아래 디더(구멍)가 낸다.
+// 팔레트로 어둡게 빼면 꼬리가 그냥 안 보이고(던전 바닥 휘도가 0.15 남짓) 소산이 안 읽힌다.
+const SMEAR_COLS = [0x9a998f, 0x86857c, 0x71706a, 0x5d5c57, 0x494843];
 // [안쪽 비율, 바깥 비율, 색 인덱스, 이 밴드가 살아 있는 최소 u] — 띠 폭을 세 겹으로 나눈다.
 // 꼬리로 갈수록 밝은 겹부터 사라지고 어두운 겹만 남아 그림자로 흩어진다.
 // v774: 톤은 **호를 따라** 나눈다(사용자 지시) — 칼날에 붙은 머리(u=1)가 가장 밝고 꼬리로 갈수록
 // 어두워진다. v771~v773 은 호를 가로질러(반지름 방향) 세 겹으로 잘랐는데, 그러면 띠 어디를 봐도
 // 같은 층 구조라 '칼이 지나간 자리'가 아니라 무늬 있는 고리로 읽힌다.
 // 값은 호 위의 위치 문턱 — 이 값보다 크면 그 톤(머리 / 중간 / 꼬리).
-const SMEAR_TONE_AT = [0.72, 0.36];   // 밝은 머리는 짧게 — 넓으면 띠가 통째로 흰 덩어리가 된다
+// 톤은 호 위의 위치(u: 0 꼬리 → 1 칼날)를 단수로 나눈다. 지수 0.85 로 칼날 쪽을 살짝 압축해
+// 가장 밝은 단이 짧게 남는다(균등하면 머리가 넓어 흰 덩어리로 보인다).
+const SMEAR_TONE_POW = 0.85;
+// 이 아래(꼬리)에서 띠가 격자로 부서지기 시작한다 — 반투명을 못 쓰므로(포스트 양자화·노멀 패스)
+// 픽셀아트의 디더 소산으로 '투명도가 옅어지는' 것을 흉내 낸다. 남는 확률이 꼬리로 갈수록 줄고
+// 남은 칸도 같이 작아져, 큰 덩어리 → 잔알갱이로 이어진다.
+const SMEAR_DITHER_AT = 0.66;
+const SMEAR_DITHER_NR = 4, SMEAR_DITHER_NA = 2;   // 세그먼트를 반지름 4 × 호 방향 2 칸으로 쪼갠다
 // 폭·비율은 세 벌을 나란히 찍어 골랐다 — 띠가 좁으면(안쪽 1.6) 기사를 두른 가는 고리로 보인다.
 // 가장자리 들쭉날쭉함의 한 계단(팔 길이 배수. 0.10 ≈ 화면 1픽셀). 부드러운 지터는 픽셀아트로 안 읽힌다 —
 // 화면에서 1픽셀 미만으로 뭉개져 그냥 매끈한 곡선이 된다. 계단으로 양자화해야 픽셀이 튄다.
 const SMEAR_RAG = 0.17, SMEAR_RAG_N = 3;
-const SMEAR_SPECK = 0.38;   // 흩어지는 알갱이가 띠 바깥으로 튀는 거리(팔 길이 배수). 0=끔
-const SMEAR_SPECK_N = 3;    // 표본당 알갱이 시도 횟수. 보간 표본이 16~25개라 이 값이 3만 넘어도 자갈밭이 된다
+const SMEAR_SPECK = 0.42;   // 흩어지는 알갱이가 띠 바깥으로 튀는 거리(팔 길이 배수). 0=끔
+const SMEAR_SPECK_N = 5;    // 표본당 알갱이 시도 횟수(꼬리에서만 다 쓴다 — 칼날 쪽은 문턱에서 걸린다)
 let smearMesh = null, smearGeo = null, smearTime = 0, _smearHasPrev = false, _smearArmed = false;
 let _smPrevZ = 0, _smPrevDZ = 0;   // 직전 프레임의 팔 rotation.z 와 그 변화량 — 부호가 뒤집히면 팔이 되돌아오는 것
 const smearSamples = [];
 const _smS = new THREE.Vector3(), _smH = new THREE.Vector3(), _smPrevS = new THREE.Vector3(), _smPrevH = new THREE.Vector3();
 function _smearHash(x) { return ((Math.sin(x * 12.9898) * 43758.5453) % 1 + 1) % 1; }
+// u(0 꼬리 ~ 1 칼날) → 팔레트 인덱스(0 이 가장 밝은 칼날 쪽)
+function _smTone(u) {
+  const f = Math.pow(Math.max(0, Math.min(1, 1 - u)), SMEAR_TONE_POW);
+  return Math.min(SMEAR_COLS.length - 1, Math.floor(f * SMEAR_COLS.length));
+}
 function _smearInit() {
   if (smearMesh) return;
   // 재질·메시는 첫 스윙 때 만든다 — 모듈 로드 시점에 만들면 generateUUID 가 난수를 먹어 층 생성이 어긋난다.
@@ -13167,41 +13182,66 @@ function updateSmearRibbon(dt, active) {
   for (let i = 0; i + 1 < shaped.length; i++) {
     const a = shaped[i], b = shaped[i + 1];
     const u = (a.u + b.u) * 0.5;
-    const ci = u > SMEAR_TONE_AT[0] ? 0 : u > SMEAR_TONE_AT[1] ? 1 : 2;
-    quad(atR(a, a.rIn), atR(a, a.rOut), atR(b, b.rOut), atR(b, b.rIn), cols[ci]);
+    const ci = _smTone(u);
+    if (u >= SMEAR_DITHER_AT) {                // 칼날 쪽은 통짜 띠
+      quad(atR(a, a.rIn), atR(a, a.rOut), atR(b, b.rOut), atR(b, b.rIn), cols[ci]);
+      continue;
+    }
+    // 디더 소산 — 칸마다 확률로 남기고, 남은 칸도 덮개 비율만큼 작게 그린다
+    const cov = Math.pow(Math.max(0, u / SMEAR_DITHER_AT), 0.75);
+    const P = (tt, ff) => {
+      const rIn = a.rIn + (b.rIn - a.rIn) * tt, rOut = a.rOut + (b.rOut - a.rOut) * tt;
+      const d = a.d.clone().lerp(b.d, tt);
+      return a.s.clone().lerp(b.s, tt).addScaledVector(d, rIn + (rOut - rIn) * ff);
+    };
+    for (let jr = 0; jr < SMEAR_DITHER_NR; jr++) for (let ja = 0; ja < SMEAR_DITHER_NA; ja++) {
+      const h = _smearHash(a.t * 913.7 + jr * 37.1 + ja * 11.9 + i * 5.3);
+      if (h > cov) continue;
+      const shrink = 0.32 + 0.68 * cov;      // 꼬리로 갈수록 칸이 작아진다(잔알갱이)
+      // 칸 중심을 조금 흔든다 — 안 흔들면 격자가 그대로 보여 '체크무늬'로 읽힌다
+      const jx = (_smearHash(a.t * 77.3 + jr * 5.9 + ja * 23.1 + i * 3.7) - 0.5) * (1 - shrink) * 0.8;
+      const jy = (_smearHash(a.t * 151.9 + jr * 13.3 + ja * 41.7 + i * 2.1) - 0.5) * (1 - shrink) * 0.8;
+      const cr = jr + 0.5 + jx, ca = ja + 0.5 + jy;
+      const f0 = (cr - shrink * 0.5) / SMEAR_DITHER_NR, f1 = (cr + shrink * 0.5) / SMEAR_DITHER_NR;
+      const t0 = (ca - shrink * 0.5) / SMEAR_DITHER_NA, t1 = (ca + shrink * 0.5) / SMEAR_DITHER_NA;
+      quad(P(t0, f0), P(t0, f1), P(t1, f1), P(t1, f0), cols[ci]);
+    }
   }
-  // 흩어지는 알갱이 — 레퍼런스의 서명 같은 부분이다. 띠 바깥·안쪽으로 조각이 떨어져 나온다.
-  // 부채꼴 평면(어깨 높이 수평) 위의 작은 사각형이라 월드 Y 를 평면 법선으로 쓴다.
-  // v773: **꼬리로 갈수록 크고 촘촘하게**(사용자 지시) — 레퍼런스도 끝부분이 큰 덩어리로 부서진다.
-  // 크기·개수·튀는 거리·옆 퍼짐을 전부 `tailW`(꼬리 가중치)로 키운다. 회색 팔레트에서는 가장 밝은
-  // 톤(0x9a998f)도 휘도 0.60 이라 블룸 임계(0.62) 아래다 — v771 청록과 달리 알갱이에 밝은 톤을 써도
-  // 둥근 빛덩이로 안 번진다(그래서 잘 보인다).
+  // 부서지는 알갱이 — 띠가 '투명해지며 사라지는' 것처럼 보이게 하는 장치다(반투명을 못 쓰므로
+  // 픽셀아트의 디더 소산을 흉내 낸다). 부채꼴 평면(어깨 높이 수평) 위의 작은 사각형이라
+  // 월드 Y 를 평면 법선으로 쓴다.
+  // v775: **칼날에서 멀어질수록 작고 자잘하게, 대신 개수는 많게**(사용자 지시).
+  // 크기는 f 에 반비례(칼 쪽 큰 덩어리 → 꼬리 잔알갱이), 개수·퍼짐은 f 에 비례한다.
+  // v773 은 반대로 꼬리를 크게 했었는데, 그러면 부서지는 게 아니라 조각이 떨어져 나온 것으로 읽힌다.
+  // 회색 팔레트에서는 가장 밝은 톤(0x9a998f)도 휘도 0.60 이라 블룸 임계(0.62) 아래다 — 알갱이에
+  // 밝은 톤을 써도 둥근 빛덩이로 안 번진다.
   if (SMEAR_SPECK > 0) {
     const up = new THREE.Vector3(0, 1, 0);
     for (let i = 0; i < shaped.length; i++) {
       const sh = shaped[i];
       const L = sh.d.length();
       const dir = sh.d.clone().normalize(), tan = new THREE.Vector3().crossVectors(up, dir).normalize();
-      const tailW = 1 - sh.u;                        // 0 = 칼 쪽, 1 = 꼬리 끝
+      const f = 1 - sh.u;                            // 0 = 칼날, 1 = 꼬리 끝
+      const ci = _smTone(sh.u);                      // 알갱이도 같은 그라데이션을 탄다
       for (let k = 0; k < SMEAR_SPECK_N; k++) {
         // 통과 판정·크기·위치에 서로 다른 해시를 쓴다 — 하나로 쓰면 통과한 것만 골라 남으므로
         // 크기가 한쪽 끝에 몰린다(문턱이 낮을수록 전부 작은 알갱이만 남는다)
         const h = _smearHash(sh.t * (131.7 + k * 57.3) + i * 11.3);
-        if (h > 0.10 + 0.42 * tailW) continue;       // 꼬리 쪽이 더 촘촘(칼 쪽은 거의 안 나온다)
+        if (h > 0.03 + 0.34 * f) continue;           // 본체 소산은 위 디더가 맡으므로 여기는 성기게
         const hs = _smearHash(sh.t * (211.3 + k * 37.9) + i * 7.7);
         const hp = _smearHash(sh.t * (307.1 + k * 19.3) + i * 3.3);
         const outward = (k % 2 === 0);
-        // 너무 멀리 던지면 몸통에서 떨어진 '떠 있는 판'으로 읽힌다 — 띠에 붙여 두고 크기로만 키운다
-        const r = outward ? sh.rOut + 0.06 + hp * SMEAR_SPECK * (0.4 + tailW * 0.6)
-                          : sh.rIn - 0.06 - hp * SMEAR_SPECK * (0.3 + tailW * 0.5);
+        // 띠에 붙여 두고 꼬리로 갈수록만 넓게 흩는다(멀리 던지면 '떠 있는 판'으로 읽힌다)
+        const r = outward ? sh.rOut + 0.05 + hp * SMEAR_SPECK * (0.25 + f * 0.9)
+                          : sh.rIn - 0.05 - hp * SMEAR_SPECK * (0.2 + f * 0.7);
         const c = sh.s.clone().addScaledVector(sh.d, r)
-                       .addScaledVector(tan, (hp - 0.4) * (0.22 + tailW * 0.40) * L);
-        const sz = (0.08 + hs * 0.09) * (1 + tailW * 0.7) * L;   // 칼 쪽 약 2px · 꼬리 3~6px
+                       .addScaledVector(tan, (hp - 0.5) * (0.18 + f * 0.95) * L);
+        const sz = (0.17 - 0.12 * f) * (0.72 + hs * 0.56) * L;   // 칼 쪽 약 3px · 꼬리 끝 1px 남짓
         const a0 = c.clone().addScaledVector(dir, -sz).addScaledVector(tan, -sz);
         const a1 = c.clone().addScaledVector(dir,  sz).addScaledVector(tan, -sz);
         const a2 = c.clone().addScaledVector(dir,  sz).addScaledVector(tan,  sz);
         const a3 = c.clone().addScaledVector(dir, -sz).addScaledVector(tan,  sz);
-        quad(a0, a1, a2, a3, cols[hs < 0.45 ? 0 : 1]);
+        quad(a0, a1, a2, a3, cols[Math.min(SMEAR_COLS.length - 1, ci + (hs < 0.5 ? 0 : 1))]);
       }
     }
   }
