@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v773'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v774'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -13056,7 +13056,9 @@ const SMEAR_SUB = 4;             // 표본 사이 보간 등분
 const SMEAR_TAIL = 0.45;         // 꼬리가 가늘어지는 구간(호 위의 위치 0~0.45). 머리(칼 쪽)는 폭 그대로
 // 반지름은 팔 길이(어깨→손) 배수. 게임 실제 크기에서 팔이 0.55 남짓이라 그대로면 얼룩으로만 보인다 —
 // 픽셀아트 스미어처럼 손 너머로 과장해서 늘린다. 꼬리는 IN·OUT 이 MID 로 모여 한 점이 된다.
-const SMEAR_R_IN = 1.30, SMEAR_R_MID = 1.90, SMEAR_R_OUT = 2.6;  // 팔 0.605 → 0.79 / 1.15 / 1.57 유닛
+const SMEAR_R_IN = 1.60, SMEAR_R_MID = 2.05, SMEAR_R_OUT = 2.6;  // 팔 0.605 → 0.97 / 1.24 / 1.57 유닛
+// v774 에서 v770 폭으로 되돌렸다 — 1.30 은 호를 가로지르는 3겹(v771~v773)을 읽히게 하려고 넓힌 값이라,
+// 겹을 없애고 한 톤으로 칠하면 그 폭이 통째로 덩어리가 된다.
 // 처음(0.7~3.3)은 어깨까지 꽉 찬 파이 조각이 기사 키보다 커서 흰 판으로 번졌다 — 초승달 띠가 픽셀아트 스미어다.
 // 팔레트: 칼 쪽 / 가운데 / 꼬리. toneMapped:false 라 이 값이 그대로 나온다(양자화만 탄다).
 // v769: 기사의 검기(0xddfaff)·검 발광(0x66ccff)과 같은 청록 계열로 맞췄다 — 레퍼런스의 크림·주황을
@@ -13072,12 +13074,11 @@ const SMEAR_R_IN = 1.30, SMEAR_R_MID = 1.90, SMEAR_R_OUT = 2.6;  // 팔 0.605 �
 const SMEAR_COLS = [0x9a998f, 0x66665e, 0x1f201c];
 // [안쪽 비율, 바깥 비율, 색 인덱스, 이 밴드가 살아 있는 최소 u] — 띠 폭을 세 겹으로 나눈다.
 // 꼬리로 갈수록 밝은 겹부터 사라지고 어두운 겹만 남아 그림자로 흩어진다.
-// [안쪽 비율, 바깥 비율, 색 인덱스, 이 밴드가 살아 있는 최소 u]
-// v773: 층 순서를 뒤집었다(사용자 지시) — **검에 가까운 안쪽이 밝고 멀어질수록 어둡다.**
-// 띠는 어깨에서 1.30~2.6(팔 길이 배수)에 걸치고 손·검은 1.0 자리라, 반지름이 작은 쪽이 검 쪽이다.
-// v771~v772 는 반대(바깥 날이 밝음)였는데 검에서 멀어질수록 밝아져서 궤적으로 안 읽혔다.
-// 꼬리(u 작은 쪽)에서는 밝은 겹부터 사라져 어두운 겹만 남는다 — 연기처럼 흩어진다.
-const SMEAR_BANDS = [[0.00, 0.34, 0, 0.30], [0.34, 0.62, 1, 0.12], [0.62, 1.00, 2, 0.00]];
+// v774: 톤은 **호를 따라** 나눈다(사용자 지시) — 칼날에 붙은 머리(u=1)가 가장 밝고 꼬리로 갈수록
+// 어두워진다. v771~v773 은 호를 가로질러(반지름 방향) 세 겹으로 잘랐는데, 그러면 띠 어디를 봐도
+// 같은 층 구조라 '칼이 지나간 자리'가 아니라 무늬 있는 고리로 읽힌다.
+// 값은 호 위의 위치 문턱 — 이 값보다 크면 그 톤(머리 / 중간 / 꼬리).
+const SMEAR_TONE_AT = [0.72, 0.36];   // 밝은 머리는 짧게 — 넓으면 띠가 통째로 흰 덩어리가 된다
 // 폭·비율은 세 벌을 나란히 찍어 골랐다 — 띠가 좁으면(안쪽 1.6) 기사를 두른 가는 고리로 보인다.
 // 가장자리 들쭉날쭉함의 한 계단(팔 길이 배수. 0.10 ≈ 화면 1픽셀). 부드러운 지터는 픽셀아트로 안 읽힌다 —
 // 화면에서 1픽셀 미만으로 뭉개져 그냥 매끈한 곡선이 된다. 계단으로 양자화해야 픽셀이 튄다.
@@ -13158,27 +13159,16 @@ function updateSmearRibbon(dt, active) {
     // 가장자리를 계단으로 흔든다(양자화 — 위 SMEAR_RAG 주석 참고)
     rOut += Math.round((_smearHash(sm.t * 97.3 + i * 2.3) - 0.5) * SMEAR_RAG_N) * SMEAR_RAG;
     rIn -= Math.round((_smearHash(sm.t * 41.7 + i * 5.1) - 0.5) * 2) * SMEAR_RAG;
-    // 겹과 겹의 경계도 같이 흔든다 — 바깥 테두리만 흔들면 안쪽 층 경계가 매끈한 호로 남아
-    // '그라데이션 띠'로 보인다. 레퍼런스는 흰↔중간 경계 자체가 들쭉날쭉하다.
-    const rr = [rIn];
-    for (let k = 0; k + 1 < SMEAR_BANDS.length; k++) {
-      const f = SMEAR_BANDS[k][1] + (_smearHash(sm.t * (63.1 + k * 29.7) + i * 7.9) - 0.5) * 0.22;
-      rr.push(rIn + (rOut - rIn) * Math.max(0.05, Math.min(0.95, f)));
-    }
-    rr.push(rOut);
-    return { u, i, t: sm.t, s: sm.s, d: sm.d, rIn, rOut, rr };
+    return { u, i, t: sm.t, s: sm.s, d: sm.d, rIn, rOut };
   });
-  // 톤은 호를 따라가 아니라 **호를 가로질러** 나눈다(레퍼런스). v770 까지는 호 위의 위치로 나눠서
-  // '앞은 밝고 뒤는 어두운 띠' 한 겹이었고, 그래서 레퍼런스의 층 구조가 안 나왔다.
+  // 색은 나이가 아니라 호 위의 위치(u: 0 꼬리 → 1 칼)로 — 내려베기가 몇 프레임이라 나이로 나누면
+  // 어느 프레임엔 전부 새것, 다음엔 전부 낡은 것이 된다.
   const atR = (sh, r) => sh.s.clone().addScaledVector(sh.d, r);
   for (let i = 0; i + 1 < shaped.length; i++) {
     const a = shaped[i], b = shaped[i + 1];
     const u = (a.u + b.u) * 0.5;
-    for (let k = 0; k < SMEAR_BANDS.length; k++) {
-      const bd = SMEAR_BANDS[k];
-      if (u < bd[3]) continue;
-      quad(atR(a, a.rr[k]), atR(a, a.rr[k + 1]), atR(b, b.rr[k + 1]), atR(b, b.rr[k]), cols[bd[2]]);
-    }
+    const ci = u > SMEAR_TONE_AT[0] ? 0 : u > SMEAR_TONE_AT[1] ? 1 : 2;
+    quad(atR(a, a.rIn), atR(a, a.rOut), atR(b, b.rOut), atR(b, b.rIn), cols[ci]);
   }
   // 흩어지는 알갱이 — 레퍼런스의 서명 같은 부분이다. 띠 바깥·안쪽으로 조각이 떨어져 나온다.
   // 부채꼴 평면(어깨 높이 수평) 위의 작은 사각형이라 월드 Y 를 평면 법선으로 쓴다.
