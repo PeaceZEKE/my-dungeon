@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v779'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v780'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -13094,7 +13094,7 @@ const SMEAR_TONE_POW = 0.85;
 // 남은 칸도 같이 작아져, 큰 덩어리 → 잔알갱이로 이어진다.
 const SMEAR_DITHER_FROM = 1;
 const SMEAR_DITHER_AT = 1 - Math.pow(SMEAR_DITHER_FROM / SMEAR_COLS.length, 1 / SMEAR_TONE_POW);
-const SMEAR_DITHER_NR = 3, SMEAR_DITHER_NA = 4;   // 세그먼트를 반지름 3 × 호 방향 4 칸으로 쪼갠다
+const SMEAR_DITHER_NR = 4, SMEAR_DITHER_NA = 4;   // 세그먼트를 반지름 4 × 호 방향 4 칸으로 쪼갠다
 // **폭을 줄이면 반지름 분할도 같이 줄여야 한다** — 칸 크기는 (폭 / NR)이라 8 을 유지하면 0.6px 서브픽셀이
 // 돼 디더가 통째로 사라진다. v777 의 8/1.0폭 과 v778 의 4/0.50폭 은 칸 크기가 같다(약 1.3px).
 // v777: 4×2 → 8×4(사용자 지시). 칸이 화면에서 0.7~1.7px 이 돼 픽셀 단위 디더로 읽힌다
@@ -13209,12 +13209,18 @@ function updateSmearRibbon(dt, active) {
       const h = _smearHash(a.t * 913.7 + jr * 37.1 + ja * 11.9 + i * 5.3);
       if (h > cov) continue;
       const shrink = 0.40 + 0.60 * cov;      // 꼬리로 갈수록 칸이 작아진다(잔알갱이). 칸이 잘아져 하한은 올렸다
-      // 칸 중심을 조금 흔든다 — 안 흔들면 격자가 그대로 보여 '체크무늬'로 읽힌다
-      const jx = (_smearHash(a.t * 77.3 + jr * 5.9 + ja * 23.1 + i * 3.7) - 0.5) * (1 - shrink) * 0.8;
-      const jy = (_smearHash(a.t * 151.9 + jr * 13.3 + ja * 41.7 + i * 2.1) - 0.5) * (1 - shrink) * 0.8;
+      // v780: **반지름(폭) 쪽은 칸마다 더 줄인다.** 띠가 내부 해상도로 2~3px 뿐이라 폭 방향에는 구멍이
+      // 뚫릴 자리가 없어서, 디더가 전부 '가로 1픽셀 대시'로만 보였다(실측: 마스크의 조각이 전부 높이 1px).
+      // 칸 크기를 폭 쪽만 0.45~1.0 배로 흔들면 띠 두께가 픽셀 단위로 0/1/2px 를 오가 세로로도 부서진다.
+      const hr = _smearHash(a.t * 517.3 + jr * 7.7 + ja * 29.3 + i * 1.9);
+      const shR = shrink * (0.45 + 0.55 * hr), shA = shrink;
+      // 칸 중심을 흔든다 — 안 흔들면 격자가 그대로 보여 '체크무늬'로 읽힌다.
+      // 폭 쪽은 남은 자리를 다 쓰게 해서 조각이 안쪽·바깥쪽 가장자리를 오가게 한다(세로 방향 흩뿌림).
+      const jx = (_smearHash(a.t * 77.3 + jr * 5.9 + ja * 23.1 + i * 3.7) - 0.5) * (1 - shR);
+      const jy = (_smearHash(a.t * 151.9 + jr * 13.3 + ja * 41.7 + i * 2.1) - 0.5) * (1 - shA) * 0.8;
       const cr = jr + 0.5 + jx, ca = ja + 0.5 + jy;
-      const f0 = (cr - shrink * 0.5) / SMEAR_DITHER_NR, f1 = (cr + shrink * 0.5) / SMEAR_DITHER_NR;
-      const t0 = (ca - shrink * 0.5) / SMEAR_DITHER_NA, t1 = (ca + shrink * 0.5) / SMEAR_DITHER_NA;
+      const f0 = (cr - shR * 0.5) / SMEAR_DITHER_NR, f1 = (cr + shR * 0.5) / SMEAR_DITHER_NR;
+      const t0 = (ca - shA * 0.5) / SMEAR_DITHER_NA, t1 = (ca + shA * 0.5) / SMEAR_DITHER_NA;
       quad(P(t0, f0), P(t0, f1), P(t1, f1), P(t1, f0), cols[ci]);
     }
   }
