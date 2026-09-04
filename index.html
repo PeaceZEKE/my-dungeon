@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v776'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v777'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -13088,7 +13088,9 @@ const SMEAR_TONE_POW = 0.85;
 // 남은 칸도 같이 작아져, 큰 덩어리 → 잔알갱이로 이어진다.
 const SMEAR_DITHER_FROM = 1;
 const SMEAR_DITHER_AT = 1 - Math.pow(SMEAR_DITHER_FROM / SMEAR_COLS.length, 1 / SMEAR_TONE_POW);
-const SMEAR_DITHER_NR = 4, SMEAR_DITHER_NA = 2;   // 세그먼트를 반지름 4 × 호 방향 2 칸으로 쪼갠다
+const SMEAR_DITHER_NR = 8, SMEAR_DITHER_NA = 4;   // 세그먼트를 반지름 8 × 호 방향 4 칸으로 쪼갠다
+// v777: 4×2 → 8×4(사용자 지시). 칸이 화면에서 0.7~1.7px 이 돼 픽셀 단위 디더로 읽힌다
+// (4×2 는 칸이 3px 넘어 '부서진 조각'으로 보였다). 칸 수가 4배라 삼각형도 그만큼 는다.
 // 폭·비율은 세 벌을 나란히 찍어 골랐다 — 띠가 좁으면(안쪽 1.6) 기사를 두른 가는 고리로 보인다.
 // 가장자리 들쭉날쭉함의 한 계단(팔 길이 배수. 0.10 ≈ 화면 1픽셀). 부드러운 지터는 픽셀아트로 안 읽힌다 —
 // 화면에서 1픽셀 미만으로 뭉개져 그냥 매끈한 곡선이 된다. 계단으로 양자화해야 픽셀이 튄다.
@@ -13197,7 +13199,7 @@ function updateSmearRibbon(dt, active) {
     for (let jr = 0; jr < SMEAR_DITHER_NR; jr++) for (let ja = 0; ja < SMEAR_DITHER_NA; ja++) {
       const h = _smearHash(a.t * 913.7 + jr * 37.1 + ja * 11.9 + i * 5.3);
       if (h > cov) continue;
-      const shrink = 0.32 + 0.68 * cov;      // 꼬리로 갈수록 칸이 작아진다(잔알갱이)
+      const shrink = 0.40 + 0.60 * cov;      // 꼬리로 갈수록 칸이 작아진다(잔알갱이). 칸이 잘아져 하한은 올렸다
       // 칸 중심을 조금 흔든다 — 안 흔들면 격자가 그대로 보여 '체크무늬'로 읽힌다
       const jx = (_smearHash(a.t * 77.3 + jr * 5.9 + ja * 23.1 + i * 3.7) - 0.5) * (1 - shrink) * 0.8;
       const jy = (_smearHash(a.t * 151.9 + jr * 13.3 + ja * 41.7 + i * 2.1) - 0.5) * (1 - shrink) * 0.8;
