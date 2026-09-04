@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v782'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v783'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -13060,6 +13060,14 @@ const SMEAR_TAIL = 0.45;         // 꼬리가 가늘어지는 구간(호 위의 
 // 반지름은 팔 길이(어깨→손) 배수. 게임 실제 크기에서 팔이 0.55 남짓이라 그대로면 얼룩으로만 보인다 —
 // 픽셀아트 스미어처럼 손 너머로 과장해서 늘린다. 꼬리는 IN·OUT 이 MID 로 모여 한 점이 된다.
 const SMEAR_R_IN = 1.09, SMEAR_R_MID = 1.26, SMEAR_R_OUT = 1.43;  // 팔 0.605 → 0.66 / 0.76 / 0.87 유닛
+// v783: **기준은 팔이 아니라 무기 리치(어깨→칼끝)다.** 위 세 값은 기사(리치가 팔의 2.89배)에서
+// 고른 것이라, 팔 배수로 그대로 물려주면 무기가 긴 리그에서 띠가 손잡이에만 붙는다 —
+// 흑기사 대검은 리치가 팔의 3.44배(7.02유닛)인데 띠는 1.07배(2.19)까지밖에 안 갔다(**칼이 쓸고 간
+// 자리의 31%**. 기사는 61%). 그래서 사용자가 "꼬리만 보이고 시작 부분이 안 보인다"고 했다 —
+// 밝은 머리가 칼날이 아니라 손잡이 옆에 찍히고 있었다(톤을 색으로 갈아 끼워 확인).
+// 리치 배수로 환산하면 1.09/2.89 · 1.26/2.89 · 1.43/2.89 다. 이 비율로 다시 계산하면 기사는
+// 0.659/0.762/0.865 로 **예전 값과 1.5% 안에서 같고**(즉 기사는 안 바뀐다) 다른 리그로도 옮겨간다.
+const SMEAR_RF_IN = SMEAR_R_IN / 2.89, SMEAR_RF_MID = SMEAR_R_MID / 2.89, SMEAR_RF_OUT = SMEAR_R_OUT / 2.89;
 // v778: 폭(바깥−안쪽)을 1.0 → 0.50(팔 배수)로 좁혔다. 그때는 **안쪽을 고정**하고 바깥만 당겼다 —
 // 검날에 붙은 쪽이라 안쪽을 움직이면 띠가 칼에서 떨어지기 때문.
 // v779: 호 자체가 커서 반지름을 통째로 0.68배 했다(사용자 지시). **띠는 완전한 수평면이라 세로 두께가
@@ -13135,10 +13143,28 @@ const smearTrails = [];   // 살아 있는 잔상 전부. 매 프레임 끝에 �
 function makeSmearTrail(scale, cols) {
   const t = { mesh: null, geo: null, time: 0, hasPrev: false, armed: false, prevZ: 0, prevDZ: 0,
               samples: [], prevS: new THREE.Vector3(), prevH: new THREE.Vector3(), driven: false,
-              rs: scale || 1, cols: cols || SMEAR_COLS };
+              rs: scale || 1, cols: cols || SMEAR_COLS, rk: 0 };
   smearTrails.push(t); return t;
 }
 const _smS = new THREE.Vector3(), _smH = new THREE.Vector3();
+// 어깨→칼끝 / 어깨→손. **어깨에서 직접 재야 한다** — '팔 길이 + 칼 길이'로 더하면 안 된다:
+// 이 리그는 칼이 팔에 수직이라(칼날은 항상 월드 +Y) 합이 실제 거리보다 훨씬 길게 나온다
+// (기사 실측: 직접 재면 1.75인데 더하면 2.24 — 띠가 1.3배 커진다).
+// 첫 표본(휘두르는 자세)에서 한 번만 재서 캐시한다. 대기 자세로 재면 안 된다 — 흑기사는 휘두를 때
+// 칼 각도가 바뀌어 어깨→칼끝이 5.41 ↔ 7.02 로 달라진다.
+function _smearReach(handObj, S, H) {
+  const armL = S.distanceTo(H) || 1;
+  let far = 0; const v = new THREE.Vector3();
+  handObj.updateMatrixWorld(true);
+  handObj.traverse(o => {
+    if (!o.isMesh || !o.geometry) return;
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    const bb = o.geometry.boundingBox;
+    for (const cx of [bb.min.x, bb.max.x]) for (const cy of [bb.min.y, bb.max.y]) for (const cz of [bb.min.z, bb.max.z])
+      far = Math.max(far, S.distanceTo(v.set(cx, cy, cz).applyMatrix4(o.matrixWorld)));
+  });
+  return far > armL ? far / armL : 2.89;   // 못 재면 기사 값으로
+}
 function _smearHash(x) { return ((Math.sin(x * 12.9898) * 43758.5453) % 1 + 1) % 1; }
 // u(0 꼬리 ~ 1 칼날) → 팔레트 인덱스(0 이 가장 밝은 칼날 쪽)
 function _smTone(u, n) {
@@ -13212,9 +13238,12 @@ function updateSmearTrail(t, dt, active, rootObj, shObj, handObj, armZ) {
   // 폭은 꼬리만 가늘고 머리(칼 쪽)는 그대로 — v769 까지는 양끝을 좁혔는데 표본이 3개뿐이라 마지막 표본 구간
   // (호의 1/3)이 통째로 가늘어져 띠가 칼이 멈춘 자리까지 못 가는 것처럼 보였다.
   const N = dense.length;
-  const rs = t.rs;                       // 리그별 반지름 배수(위 makeSmearTrail 주석)
-  const rag = SMEAR_RAG * rs;            // 흔들림·알갱이도 폭·호와 같은 비율로 줄인다
-  const R_IN = SMEAR_R_IN * rs, R_MID = SMEAR_R_MID * rs, R_OUT = SMEAR_R_OUT * rs;
+  // 무기 리치 배수(어깨→칼끝 / 어깨→손). 리그마다 한 번만 재서 캐시한다 — 손 아래는 강체라
+  // 자세와 무관하다(팔 전체로 재면 팔꿈치·손 회전 때문에 프레임마다 값이 흔들린다).
+  const rk = t.rk || (t.rk = _smearReach(handObj, _smS, _smH));
+  const rs = t.rs * rk;                  // 리그별 배수 = 리치 배수 × 사용자 조정값
+  const rag = SMEAR_RAG / 2.89 * rs;     // 흔들림·알갱이도 폭·호와 같은 비율로
+  const R_IN = SMEAR_RF_IN * rs, R_MID = SMEAR_RF_MID * rs, R_OUT = SMEAR_RF_OUT * rs;
   const shaped = dense.map((sm, i) => {
     const u = N > 1 ? i / (N - 1) : 1;
     const w = Math.pow(Math.min(1, u / SMEAR_TAIL), 0.6);
@@ -13228,8 +13257,11 @@ function updateSmearTrail(t, dt, active, rootObj, shObj, handObj, armZ) {
   // 리그가 커지면 칸도 같이 커진다 — 흑기사는 팔이 3.4 배라 칸이 4px 넘는 '부서진 조각'이 된다.
   // 그래서 칸 수를 상수로 두지 않고 **기사 팔 길이(0.605) 대비 실제 월드 크기**로 유도한다.
   const armL = shaped.length ? shaped[shaped.length - 1].d.length() : 0.605;
-  const cellF = Math.max(1, (armL * rs) / 0.605);
-  const NR = Math.max(2, Math.round(SMEAR_DITHER_NR * cellF)), NA = Math.max(2, Math.round(SMEAR_DITHER_NA * cellF));
+  const cellF = Math.max(1, (armL * rs) / (0.605 * 2.89));
+  // 상한 24 는 안전장치다 — 칸 수는 (칸/세그먼트)² 로 삼각형에 들어가므로(흑기사 16×16 = 256칸,
+  // 삼각형 최대 11,848) 리치가 더 긴 리그가 들어와도 폭주하지 않게 막아 둔다.
+  const NR = Math.max(2, Math.min(24, Math.round(SMEAR_DITHER_NR * cellF)));
+  const NA = Math.max(2, Math.min(24, Math.round(SMEAR_DITHER_NA * cellF)));
   // 색은 나이가 아니라 호 위의 위치(u: 0 꼬리 → 1 칼)로 — 내려베기가 몇 프레임이라 나이로 나누면
   // 어느 프레임엔 전부 새것, 다음엔 전부 낡은 것이 된다.
   const atR = (sh, r) => sh.s.clone().addScaledVector(sh.d, r);
@@ -13277,10 +13309,10 @@ function updateSmearTrail(t, dt, active, rootObj, shObj, handObj, armZ) {
   // 밝은 톤을 써도 둥근 빛덩이로 안 번진다.
   if (SMEAR_SPECK > 0) {
     const up = new THREE.Vector3(0, 1, 0);
-    const SPK = SMEAR_SPECK * rs;
+    const SPK = SMEAR_SPECK / 2.89 * rs;
     for (let i = 0; i < shaped.length; i++) {
       const sh = shaped[i];
-      const L = sh.d.length() * rs;   // 알갱이 크기·퍼짐도 띠와 같은 비율(리그가 커도 화면 크기는 같게)
+      const L = sh.d.length() * rs / 2.89;   // 알갱이 크기·퍼짐도 띠와 같은 비율
       const dir = sh.d.clone().normalize(), tan = new THREE.Vector3().crossVectors(up, dir).normalize();
       const f = 1 - sh.u;                            // 0 = 칼날, 1 = 꼬리 끝
       const ci = _smTone(sh.u, cols.length);         // 알갱이도 같은 그라데이션을 탄다
@@ -21575,7 +21607,7 @@ function update(dt) {
       // 횡베기 스미어 잔상 — 흑기사는 팔을 수평(RX=π/2)으로 뻗고 rotation.z 로 휩쓰는, 기사와 같은 리그다.
       // 아래 분기들이 `continue` 를 많이 하므로 **블록 첫머리에서** 굴려야 빠지지 않는다.
       if (SMEAR_ON && e.limbs && e.limbs.armR && e.limbs._dkSword) {
-        if (!e._smear) e._smear = makeSmearTrail(0.63, SMEAR_COLS_DK);   // 몸 높이 대비 기사와 같은 호 크기
+        if (!e._smear) e._smear = makeSmearTrail(1, SMEAR_COLS_DK);   // 크기는 무기 리치가 정한다(v783)
         updateSmearTrail(e._smear, dt, e.sweepState === 'slashing', e.obj, e.limbs.armR, e.limbs._dkSword, e.limbs.armR.rotation.z);
       }
       // 분노: 체력 절반 이하 1회 — 공격력·속도 상승, 마그마 격화
