@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v769'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v783'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -4220,6 +4220,9 @@ const MOON_FOLLOW = !/[?&]moonfollow=0/.test(location.search);
 const TORCH_SHADOW_EVERY = (() => { const m = location.search.match(/[?&]tshadow=(\d+)/); return m ? Math.max(1, parseInt(m[1], 10)) : 2; })();
 // 기사 횡베기 스미어 잔상(v768, ?smear=0 이면 끔). viewers/smear_ribbon_spike_v1.html 에서 만든 것을 옮겼다.
 const SMEAR_ON = !/[?&]smear=0/.test(location.search);
+// v781: 플레이어에는 기본으로 안 건다(사용자 지시) — 기사가 화면에서 45px 이라 띠가 잘 안 보인다.
+// 잔상은 몸집이 큰 보스에 붙인다. `?smearp=1` 로 플레이어에도 다시 켤 수 있다.
+const SMEAR_PLAYER = /[?&]smearp=1/.test(location.search);
 // 이 게임의 캐릭터는 진짜 그림자를 안 진다 — 발밑 블롭이 대신한다(몬스터 빌더 주석 참고).
 // 궁수 리그만 메시 전부에 castShadow를 켜 두어서, 던전 횃불(플레이어 바로 옆의 점광원)에
 // 몸 전체가 크게 늘어난 그림자로 찍혔다(실측: 기사 60×19픽셀 → 궁수 135×80).
@@ -13040,93 +13043,310 @@ bladeLight.position.y = 0.7; swordGrp.add(bladeLight);
 swordGrp.position.set(0, -0.55, 0); swordGrp.rotation.x = -Math.PI / 2; armR.add(swordGrp);
 
 // ===== 기사 횡베기 스미어 잔상(v768) =====
-// 칼 밑동·끝 월드 좌표를 내려베기 프레임마다 기록해 최근 SMEAR_LIFE 초의 궤적을 삼각형 띠로 잇는다.
+// 기사 횡베기 스미어 잔상(v768). 내려베기 프레임마다 어깨 피벗과 손(검 밑동) 월드 좌표를 기록해 최근
+// SMEAR_LIFE 초의 궤적을 어깨 높이의 수평 부채꼴로 잇는다.
+// v770: 띠를 검신(밑동→끝)이 아니라 어깨→손 방향으로 깐다 — 기사 검은 팔에 수직으로 위를 향하는 리그라
+// (swordGrp.rotation.x = -π/2, 팔 RX = 0.5π → 검신은 항상 월드 +Y) 검신으로 띠를 만들면 호 위에 선
+// 세로 커튼이 되고, 카메라 시선과 평행한 구간(끝 쪽)은 종이를 옆에서 본 것처럼 세로 줄 하나로 보였다.
 // 불투명 + 조명 없음 + 정점색 3톤(호 위치로 나눔). 반투명·알파는 안 쓴다 — 포스트가 양자화하면 중간톤이
 // 될 뿐 픽셀아트로 안 읽히고, 반투명 재질은 노멀 패스에서 빠져 검은 외곽선을 못 받는다.
 // 외곽선은 포스트의 깊이·노멀 외곽선 패스가 공짜로 그린다. 사라질 때는 알파가 아니라 폭을 줄인다.
 // 정점은 CPU 에서 갱신한다(정점 셰이더로 늘리면 노멀 패스가 셰이더를 안 타서 외곽선이 어긋난다).
-// 내려베기가 0.07초(4프레임)라 표본이 성글다 — 표본 사이는 방향을 slerp 로 보간해 호를 채운다.
+// 내려베기가 0.07초(60fps 에서 3프레임)라 표본이 성글다 — 표본 사이는 방향을 slerp 로 보간해 호를 채운다.
 const SMEAR_LIFE = 0.11;         // 잔상이 남는 시간. 픽셀아트 스미어는 몇 프레임만 보인다
-const SMEAR_MIN_SPEED = 9.0;     // 칼끝 속도(유닛/초)가 이보다 빠를 때만 기록
-const SMEAR_BASE_Y = 0.15, SMEAR_TIP_Y = 1.38;   // 기사 검 로컬 +Y — 검신 시작·끝
+const SMEAR_MIN_SPEED = 9.0;     // 손 속도(유닛/초)가 이보다 빠를 때만 기록 — 들어올림·걷기 팔 스윙은 걸러진다
 const SMEAR_SUB = 4;             // 표본 사이 보간 등분
-const SMEAR_BAND = 0.20;         // 띠가 시작하는 검신 위치(0=밑동, 1=끝)
-// 게임 실제 크기에서 기사 검이 30픽셀 남짓이라 검신 길이 그대로면 얼룩으로만 보인다 —
-// 픽셀아트 스미어처럼 칼끝 너머로 과장해서 늘린다(1.5 = 검신의 1.5배까지).
-const SMEAR_REACH = 1.5;
+const SMEAR_TAIL = 0.45;         // 꼬리가 가늘어지는 구간(호 위의 위치 0~0.45). 머리(칼 쪽)는 폭 그대로
+// 반지름은 팔 길이(어깨→손) 배수. 게임 실제 크기에서 팔이 0.55 남짓이라 그대로면 얼룩으로만 보인다 —
+// 픽셀아트 스미어처럼 손 너머로 과장해서 늘린다. 꼬리는 IN·OUT 이 MID 로 모여 한 점이 된다.
+const SMEAR_R_IN = 1.09, SMEAR_R_MID = 1.26, SMEAR_R_OUT = 1.43;  // 팔 0.605 → 0.66 / 0.76 / 0.87 유닛
+// v783: **기준은 팔이 아니라 무기 리치(어깨→칼끝)다.** 위 세 값은 기사(리치가 팔의 2.89배)에서
+// 고른 것이라, 팔 배수로 그대로 물려주면 무기가 긴 리그에서 띠가 손잡이에만 붙는다 —
+// 흑기사 대검은 리치가 팔의 3.44배(7.02유닛)인데 띠는 1.07배(2.19)까지밖에 안 갔다(**칼이 쓸고 간
+// 자리의 31%**. 기사는 61%). 그래서 사용자가 "꼬리만 보이고 시작 부분이 안 보인다"고 했다 —
+// 밝은 머리가 칼날이 아니라 손잡이 옆에 찍히고 있었다(톤을 색으로 갈아 끼워 확인).
+// 리치 배수로 환산하면 1.09/2.89 · 1.26/2.89 · 1.43/2.89 다. 이 비율로 다시 계산하면 기사는
+// 0.659/0.762/0.865 로 **예전 값과 1.5% 안에서 같고**(즉 기사는 안 바뀐다) 다른 리그로도 옮겨간다.
+const SMEAR_RF_IN = SMEAR_R_IN / 2.89, SMEAR_RF_MID = SMEAR_R_MID / 2.89, SMEAR_RF_OUT = SMEAR_R_OUT / 2.89;
+// v778: 폭(바깥−안쪽)을 1.0 → 0.50(팔 배수)로 좁혔다. 그때는 **안쪽을 고정**하고 바깥만 당겼다 —
+// 검날에 붙은 쪽이라 안쪽을 움직이면 띠가 칼에서 떨어지기 때문.
+// v779: 호 자체가 커서 반지름을 통째로 0.68배 했다(사용자 지시). **띠는 완전한 수평면이라 세로 두께가
+// 없다**(실측 월드 Y 1.303 고정) — 화면 세로폭은 호의 크기에서만 나오므로 반지름을 줄이는 것이 답이다.
+// 실측 화면 크기(캐릭터 높이 45px 기준): v778 101×75 → 0.80배 82×61 → **0.68배 72×52**(채택).
+// 안쪽 1.09 는 손(1.0) 바로 바깥이라 여전히 검에 붙어 있다.
+// v774 에서 v770 폭으로 되돌렸다 — 1.30 은 호를 가로지르는 3겹(v771~v773)을 읽히게 하려고 넓힌 값이라,
+// 겹을 없애고 한 톤으로 칠하면 그 폭이 통째로 덩어리가 된다.
+// 처음(0.7~3.3)은 어깨까지 꽉 찬 파이 조각이 기사 키보다 커서 흰 판으로 번졌다 — 초승달 띠가 픽셀아트 스미어다.
 // 팔레트: 칼 쪽 / 가운데 / 꼬리. toneMapped:false 라 이 값이 그대로 나온다(양자화만 탄다).
 // v769: 기사의 검기(0xddfaff)·검 발광(0x66ccff)과 같은 청록 계열로 맞췄다 — 레퍼런스의 크림·주황을
 // 그대로 쓰니 흰 검기와 주황 잔상이 두 계열로 갈려 따로 놀았다. 가장 밝은 톤은 검기보다 한 단 낮춰
 // 블룸이 검기만큼 번지지 않게 한다(픽셀아트 스미어는 번지지 않는다).
-const SMEAR_COLS = [0xcdeef6, 0x56bfe4, 0x1c4a78];
-let smearMesh = null, smearGeo = null, smearTime = 0, _smearHasPrev = false;
-const smearSamples = [];
-const _smB = new THREE.Vector3(), _smP = new THREE.Vector3(), _smPrevP = new THREE.Vector3();
-function _smearHash(x) { return ((Math.sin(x * 12.9898) * 43758.5453) % 1 + 1) % 1; }
-function _smearInit() {
-  if (smearMesh) return;
-  // 재질·메시는 첫 스윙 때 만든다 — 모듈 로드 시점에 만들면 generateUUID 가 난수를 먹어 층 생성이 어긋난다.
-  smearGeo = new THREE.BufferGeometry();
-  const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, toneMapped: false, fog: false });
-  smearMesh = new THREE.Mesh(smearGeo, mat);
-  smearMesh.frustumCulled = false; smearMesh.castShadow = false; smearMesh.receiveShadow = false;
-  smearMesh.visible = false;
-  scene.add(smearMesh);
+// v771: 레퍼런스(픽셀아트 스미어)는 **호를 가로질러** 층이 나뉜다 — 진행 방향 바깥 날이 밝고,
+// 그 뒤가 중간톤, 안쪽·꼬리가 거의 검정.
+// v772: 청록(검기 계열)에서 **검 날과 같은 회색**으로(사용자 지시). 검 날 재질은 0xdcdbd5 지만 화면에
+// 찍히는 색은 조명·포스트를 거쳐 #919184(휘도 0.56)다 — 재질 색이 아니라 이 값에 맞춘다.
+// 세 벌을 재서 골랐다(스미어 픽셀의 상위 10% 출력 / 블룸 임계 0.62 초과 픽셀 수):
+//   0xd0cfc7 → #bcbcbc·1442px(최상위가 #ffffff 로 날아간다) / 0xb4b3ab → #adadad·524px
+//   **0x9a998f → #848478·158px**(채택. 검의 #919184 와 같은 대역)
+// v775: 3단 → 5단(사용자 지시). 머리(칼날) → 꼬리 순서, 휘도 0.60 → 0.28 으로 고르게 떨어진다.
+// **끝을 배경만큼 어둡게 만들지 않는다** — 사라지는 느낌은 색이 아니라 아래 디더(구멍)가 낸다.
+// 팔레트로 어둡게 빼면 꼬리가 그냥 안 보이고(던전 바닥 휘도가 0.15 남짓) 소산이 안 읽힌다.
+const SMEAR_COLS = [0x9a998f, 0x86857c, 0x71706a, 0x5d5c57, 0x494843];
+// v781: 흑기사(2막 보스)용. **팔레트는 개체마다 자기 무기의 화면 색에 맞춘다**(v772 규칙).
+// 흑기사 검은 어두운 날(0x4e5564) + 주황 마그마 심(0xbb3e18 / emissive 0xff3300)이다.
+// 회색 날에 맞춘 판(머리 0xb4b3ab → 출력 #adadad)을 먼저 넣었다가 **사용자 지시로 마그마 쪽
+// 주황으로 바꿨다.** 고르는 기준은 v772 그대로 '화면에 찍히는 색' 이다 — 마그마 줄기 본체가
+// **#a3573e(휘도 0.40 · 채도 0.62)** 고, 그 위 발광 심은 블룸에 날아가 #e2e2ad 로 뜬다.
+// **발광 심 쪽에 맞추면 안 된다** — 띠는 면적이 넓어서 그 밝기면 흰 덩어리가 된다.
+// 후보 다섯을 같은 프레임에서 재서 골랐다(스미어 픽셀의 상위 10% 출력 · 채도):
+//   회색(대조) #8a8c88(0.55) · 0xe68e42 → #a2734a(0.48 · 0.54) · 0xf2a557 → #aa8358(0.53 · 0.48)
+//   **0xff8c34 → #a57141(0.47 · 채도 0.61)**(채택 — 마그마 본체의 채도 0.62 와 같은 대역)
+//   꼬리를 더 붉게 뺀 판은 중간 톤이 0.23 까지 내려가 꼬리가 그냥 안 보였다(v775 의 교훈).
+// 나머지 네 단은 기사 팔레트와 같은 비율(1 / 0.870 / 0.734 / 0.604 / 0.474)로 떨어뜨린다.
+// **머리 톤 휘도가 0.632 라 2막 블룸 임계(0.70)는 안 넘지만 1·3막 임계(0.62)는 넘는다** —
+// 이 팔레트를 1·3막 보스에 그대로 쓰면 띠가 둥근 빛덩이로 번진다. 막마다 다시 재고 쓸 것.
+const SMEAR_COLS_DK = [0xff8c34, 0xde7a2d, 0xbb6726, 0x9a551f, 0x794219];
+// v774: 톤은 **호를 따라** 나눈다(사용자 지시) — 칼날에 붙은 머리(u=1)가 가장 밝고 꼬리로 갈수록
+// 어두워진다. v771~v773 은 호를 가로질러(반지름 방향) 세 겹으로 잘랐는데, 그러면 띠 어디를 봐도
+// 같은 층 구조라 '칼이 지나간 자리'가 아니라 무늬 있는 고리로 읽힌다.
+// 톤은 호 위의 위치(u: 0 꼬리 → 1 칼날)를 단수로 나눈다. 지수 0.85 로 칼날 쪽을 살짝 압축해
+// 가장 밝은 단이 짧게 남는다(균등하면 머리가 넓어 흰 덩어리로 보인다).
+const SMEAR_TONE_POW = 0.85;
+// **몇 번째 톤 단부터 디더가 들어가는지**(0 = 칼날 단. 1 이면 두 번째 단부터 부서진다 — 사용자 지시).
+// 문턱 u 는 톤 함수의 역으로 구한다 — 상수로 박으면 단수·지수를 바꿀 때 경계가 어긋난다.
+// 이 아래(꼬리)에서 띠가 격자로 부서진다 — 반투명을 못 쓰므로(포스트 양자화·노멀 패스)
+// 픽셀아트의 디더 소산으로 '투명도가 옅어지는' 것을 흉내 낸다. 남는 확률이 꼬리로 갈수록 줄고
+// 남은 칸도 같이 작아져, 큰 덩어리 → 잔알갱이로 이어진다.
+const SMEAR_DITHER_FROM = 1;
+const SMEAR_DITHER_AT = 1 - Math.pow(SMEAR_DITHER_FROM / SMEAR_COLS.length, 1 / SMEAR_TONE_POW);
+const SMEAR_DITHER_NR = 4, SMEAR_DITHER_NA = 4;   // 세그먼트를 반지름 4 × 호 방향 4 칸으로 쪼갠다
+// **폭을 줄이면 반지름 분할도 같이 줄여야 한다** — 칸 크기는 (폭 / NR)이라 8 을 유지하면 0.6px 서브픽셀이
+// 돼 디더가 통째로 사라진다. v777 의 8/1.0폭 과 v778 의 4/0.50폭 은 칸 크기가 같다(약 1.3px).
+// v777: 4×2 → 8×4(사용자 지시). 칸이 화면에서 0.7~1.7px 이 돼 픽셀 단위 디더로 읽힌다
+// (4×2 는 칸이 3px 넘어 '부서진 조각'으로 보였다). 칸 수가 4배라 삼각형도 그만큼 는다.
+// 폭·비율은 세 벌을 나란히 찍어 골랐다 — 띠가 좁으면(안쪽 1.6) 기사를 두른 가는 고리로 보인다.
+// 가장자리 들쭉날쭉함의 한 계단(팔 길이 배수. 0.10 ≈ 화면 1픽셀). 부드러운 지터는 픽셀아트로 안 읽힌다 —
+// 화면에서 1픽셀 미만으로 뭉개져 그냥 매끈한 곡선이 된다. 계단으로 양자화해야 픽셀이 튄다.
+const SMEAR_RAG = 0.09, SMEAR_RAG_N = 2;   // 폭이 줄면 흔들림도 같이 줄인다 — 폭 대비 ±26% 유지
+// (v777 의 0.17×3 을 그대로 두면 지금 폭(0.34)의 ±150% 라 띠가 들쭉날쭉을 넘어 통째로 끊긴다)
+const SMEAR_SPECK = 0.30;   // 흩어지는 알갱이가 띠 바깥으로 튀는 거리(팔 길이 배수). 0=끔. 호와 같이 줄인다
+const SMEAR_SPECK_N = 5;    // 표본당 알갱이 시도 횟수(꼬리에서만 다 쓴다 — 칼날 쪽은 문턱에서 걸린다)
+// v781: 잔상을 **개체별로** 만든다(사용자 지시로 플레이어에서 보스로 옮김 — 기사가 화면에서 45px 이라
+// 띠가 잘 안 보였다). 상태를 한 벌 레코드로 묶고, 잔상마다 자기 메시·표본을 갖는다.
+const smearTrails = [];   // 살아 있는 잔상 전부. 매 프레임 끝에 한 번씩 반드시 굴린다(아래 `tickSmearTrails`)
+// scale: 반지름 배수. 반지름은 팔 길이 배수라 리그가 크면 띠도 같이 커지는데, 큰 리그일수록
+// 팔이 몸에 비해 길어서 띠가 몸보다 커진다 — 흑기사는 팔/키가 0.50 으로 기사(0.315)의 1.6 배다.
+// **기준은 몸 높이 대비 띠 반지름**이다(v779 에서 사용자가 캐릭터 높이로 판단한 그 기준).
+// 기사 1.43×0.605 / 1.92 = 0.451 에 맞추면 흑기사(팔 2.039 · 키 4.06)는 0.63 이 된다.
+// cols: 팔레트. **개체마다 무기 색이 다르므로 같이 넘긴다**(v772 의 규칙 — 재질 색이 아니라 화면에
+// 찍히는 색에 맞춘다). 생략하면 기사(플레이어)용 SMEAR_COLS.
+function makeSmearTrail(scale, cols) {
+  const t = { mesh: null, geo: null, time: 0, hasPrev: false, armed: false, prevZ: 0, prevDZ: 0,
+              samples: [], prevS: new THREE.Vector3(), prevH: new THREE.Vector3(), driven: false,
+              rs: scale || 1, cols: cols || SMEAR_COLS, rk: 0 };
+  smearTrails.push(t); return t;
 }
-// active: 내려베기 구간인가. 아니면 기록만 안 하고 남은 표본을 흘려보낸다.
-function updateSmearRibbon(dt, active) {
-  if (!active && !smearSamples.length && !_smearHasPrev) return;
-  smearTime += dt;
-  if (active) {
-    player.obj.updateMatrixWorld(true);
-    swordGrp.localToWorld(_smB.set(0, SMEAR_BASE_Y, 0));
-    swordGrp.localToWorld(_smP.set(0, SMEAR_TIP_Y, 0));
-    const speed = _smearHasPrev ? _smP.distanceTo(_smPrevP) / Math.max(1e-4, dt) : 0;
-    _smPrevP.copy(_smP); _smearHasPrev = true;
-    if (speed > SMEAR_MIN_SPEED) smearSamples.push({ t: smearTime, b: _smB.clone(), p: _smP.clone() });
-  } else _smearHasPrev = false;
-  while (smearSamples.length && smearTime - smearSamples[0].t > SMEAR_LIFE) smearSamples.shift();
-  if (!smearSamples.length) { if (smearMesh) smearMesh.visible = false; return; }
-  _smearInit();
+const _smS = new THREE.Vector3(), _smH = new THREE.Vector3();
+// 어깨→칼끝 / 어깨→손. **어깨에서 직접 재야 한다** — '팔 길이 + 칼 길이'로 더하면 안 된다:
+// 이 리그는 칼이 팔에 수직이라(칼날은 항상 월드 +Y) 합이 실제 거리보다 훨씬 길게 나온다
+// (기사 실측: 직접 재면 1.75인데 더하면 2.24 — 띠가 1.3배 커진다).
+// 첫 표본(휘두르는 자세)에서 한 번만 재서 캐시한다. 대기 자세로 재면 안 된다 — 흑기사는 휘두를 때
+// 칼 각도가 바뀌어 어깨→칼끝이 5.41 ↔ 7.02 로 달라진다.
+function _smearReach(handObj, S, H) {
+  const armL = S.distanceTo(H) || 1;
+  let far = 0; const v = new THREE.Vector3();
+  handObj.updateMatrixWorld(true);
+  handObj.traverse(o => {
+    if (!o.isMesh || !o.geometry) return;
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    const bb = o.geometry.boundingBox;
+    for (const cx of [bb.min.x, bb.max.x]) for (const cy of [bb.min.y, bb.max.y]) for (const cz of [bb.min.z, bb.max.z])
+      far = Math.max(far, S.distanceTo(v.set(cx, cy, cz).applyMatrix4(o.matrixWorld)));
+  });
+  return far > armL ? far / armL : 2.89;   // 못 재면 기사 값으로
+}
+function _smearHash(x) { return ((Math.sin(x * 12.9898) * 43758.5453) % 1 + 1) % 1; }
+// u(0 꼬리 ~ 1 칼날) → 팔레트 인덱스(0 이 가장 밝은 칼날 쪽)
+function _smTone(u, n) {
+  n = n || SMEAR_COLS.length;
+  const f = Math.pow(Math.max(0, Math.min(1, 1 - u)), SMEAR_TONE_POW);
+  return Math.min(n - 1, Math.floor(f * n));
+}
+function _smearInit(t) {
+  if (t.mesh) return;
+  // 재질·메시는 첫 스윙 때 만든다 — 모듈 로드 시점에 만들면 generateUUID 가 난수를 먹어 층 생성이 어긋난다.
+  t.geo = new THREE.BufferGeometry();
+  const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, toneMapped: false, fog: false });
+  t.mesh = new THREE.Mesh(t.geo, mat);
+  t.mesh.frustumCulled = false; t.mesh.castShadow = false; t.mesh.receiveShadow = false;
+  t.mesh.visible = false;
+  scene.add(t.mesh);
+}
+// rootObj/shObj(어깨 피벗)/handObj(손·무기 밑동)/armZ(스윙 각도)는 개체마다 다르다.
+// 스윙이 끝난 잔상은 `active=false` 로만 계속 굴려 주면 스스로 사그라진다(객체는 안 봐도 된다).
+function updateSmearTrail(t, dt, active, rootObj, shObj, handObj, armZ) {
+  t.driven = true;
+  // 스윙 창이 닫힌 뒤에도 팔이 같은 방향으로 빠르게 도는 동안은 계속 기록한다(armed) —
+  // 고주사율에서는 팔이 창 안에 호를 다 못 돌고 창 밖에서 마저 돈다.
+  // 팔이 되돌아오기 시작하면(rotation.z 변화 부호가 뒤집힘) 끊는다 — 안 그러면 띠가 같은 호를 거꾸로 되짚는다.
+  // 반전은 손 이동 방향의 내적으로 보면 안 된다 — 한 프레임에 호가 0.7π 넘게 돌아서 같은 방향으로 돌아도
+  // 현(chord)끼리 90°를 넘어 내적이 음수가 된다.
+  if (active) t.armed = true;
+  const rec = (active || t.armed) && rootObj && shObj && handObj;
+  if (!rec && !t.samples.length && !t.hasPrev) return;
+  t.time += dt;
+  if (rec) {
+    rootObj.updateMatrixWorld(true);
+    shObj.getWorldPosition(_smS);     // 어깨 피벗
+    handObj.getWorldPosition(_smH);   // 손(무기 밑동)
+    const speed = t.hasPrev ? _smH.distanceTo(t.prevH) / Math.max(1e-4, dt) : 0;
+    const z = armZ, dz = t.hasPrev ? z - t.prevZ : 0;
+    const reversed = t.samples.length > 0 && dz * t.prevDZ < 0;
+    if (speed > SMEAR_MIN_SPEED && !reversed) {
+      // 첫 표본이면 직전 프레임(스윙 시작 자세)도 꼬리로 넣는다 — 안 넣으면 호의 첫 구간이 빠지고,
+      // 짧은 스윙(2프레임)은 표본이 하나뿐이라 띠가 아예 안 그려진다
+      if (!t.samples.length && t.hasPrev) t.samples.push({ t: t.time - dt, s: t.prevS.clone(), d: t.prevH.clone().sub(t.prevS) });
+      t.samples.push({ t: t.time, s: _smS.clone(), d: _smH.clone().sub(_smS) });
+      t.prevDZ = dz;
+    } else if (!active) t.armed = false;
+    t.prevS.copy(_smS); t.prevH.copy(_smH); t.prevZ = z; t.hasPrev = true;
+  } else t.hasPrev = false;
+  while (t.samples.length && t.time - t.samples[0].t > SMEAR_LIFE) t.samples.shift();
+  if (!t.samples.length) { if (t.mesh) t.mesh.visible = false; return; }
+  _smearInit(t);
+  const smearSamples = t.samples;
   const pos = [], col = [];
-  const cols = SMEAR_COLS.map(h => new THREE.Color(h));
+  const cols = t.cols.map(h => new THREE.Color(h));
   const tri = (a, b, c, k) => { pos.push(a.x,a.y,a.z, b.x,b.y,b.z, c.x,c.y,c.z); col.push(k.r,k.g,k.b, k.r,k.g,k.b, k.r,k.g,k.b); };
   const quad = (a0, a1, b1, b0, k) => { tri(a0,a1,b1,k); tri(a0,b1,b0,k); tri(a1,a0,b1,k); tri(b1,b0,a0,k); };  // 양면
+  // 표본 사이는 방향(어깨→손)을 slerp 로 채운다 — 끝점을 선형 보간하면 호 대신 현이 돼 안쪽으로 꺾인다
   const dense = [];
   for (let i = 0; i < smearSamples.length; i++) {
     const s0 = smearSamples[i];
     if (i === 0) { dense.push(s0); continue; }
     const s1 = smearSamples[i - 1];
-    const d0 = s1.p.clone().sub(s1.b), d1 = s0.p.clone().sub(s0.b);
-    const L0 = d0.length(), L1 = d1.length();
-    const q = new THREE.Quaternion().setFromUnitVectors(d0.clone().normalize(), d1.clone().normalize());
+    const L0 = s1.d.length(), L1 = s0.d.length();
+    const n0 = s1.d.clone().normalize(), n1 = s0.d.clone().normalize();
+    const q = new THREE.Quaternion().setFromUnitVectors(n0, n1);
     for (let k = 1; k <= SMEAR_SUB; k++) {
       const u = k / SMEAR_SUB;
-      const b = s1.b.clone().lerp(s0.b, u);
-      const dir = d0.clone().normalize().applyQuaternion(new THREE.Quaternion().slerp(q, u)).multiplyScalar(L0 + (L1 - L0) * u);
-      dense.push({ t: s1.t + (s0.t - s1.t) * u, b, p: b.clone().add(dir) });
+      const s = s1.s.clone().lerp(s0.s, u);
+      const d = n0.clone().applyQuaternion(new THREE.Quaternion().slerp(q, u)).multiplyScalar(L0 + (L1 - L0) * u);
+      dense.push({ t: s1.t + (s0.t - s1.t) * u, s, d });
     }
   }
-  // 색·폭은 나이가 아니라 호 위의 위치(u: 0 꼬리 → 1 칼)로 — 내려베기가 몇 프레임이라 나이로 나누면
-  // 어느 프레임엔 전부 새것, 다음엔 전부 낡은 것이 된다. 폭은 양끝이 가늘어지는 쉼표 모양.
+  // 폭은 꼬리만 가늘고 머리(칼 쪽)는 그대로 — v769 까지는 양끝을 좁혔는데 표본이 3개뿐이라 마지막 표본 구간
+  // (호의 1/3)이 통째로 가늘어져 띠가 칼이 멈춘 자리까지 못 가는 것처럼 보였다.
   const N = dense.length;
+  // 무기 리치 배수(어깨→칼끝 / 어깨→손). 리그마다 한 번만 재서 캐시한다 — 손 아래는 강체라
+  // 자세와 무관하다(팔 전체로 재면 팔꿈치·손 회전 때문에 프레임마다 값이 흔들린다).
+  const rk = t.rk || (t.rk = _smearReach(handObj, _smS, _smH));
+  const rs = t.rs * rk;                  // 리그별 배수 = 리치 배수 × 사용자 조정값
+  const rag = SMEAR_RAG / 2.89 * rs;     // 흔들림·알갱이도 폭·호와 같은 비율로
+  const R_IN = SMEAR_RF_IN * rs, R_MID = SMEAR_RF_MID * rs, R_OUT = SMEAR_RF_OUT * rs;
   const shaped = dense.map((sm, i) => {
     const u = N > 1 ? i / (N - 1) : 1;
-    const d = sm.p.clone().sub(sm.b);
-    const w = Math.pow(Math.sin(Math.PI * Math.min(1, u * 1.15)), 0.6);
-    let tipK = SMEAR_REACH - (SMEAR_REACH - 0.6) * (1 - w), baseK = SMEAR_BAND + (1 - SMEAR_BAND) * 0.6 * (1 - w);
-    tipK += (_smearHash(sm.t * 97.3) - 0.5) * 0.2;   // 바깥 가장자리 지터(들쭉날쭉한 픽셀)
-    return { u, b: sm.b.clone().addScaledVector(d, baseK), p: sm.b.clone().addScaledVector(d, tipK) };
+    const w = Math.pow(Math.min(1, u / SMEAR_TAIL), 0.6);
+    let rOut = R_OUT - (R_OUT - R_MID) * (1 - w), rIn = R_IN + (R_MID - R_IN) * (1 - w);
+    // 가장자리를 계단으로 흔든다(양자화 — 위 SMEAR_RAG 주석 참고)
+    rOut += Math.round((_smearHash(sm.t * 97.3 + i * 2.3) - 0.5) * SMEAR_RAG_N) * rag;
+    rIn -= Math.round((_smearHash(sm.t * 41.7 + i * 5.1) - 0.5) * 2) * rag;
+    return { u, i, t: sm.t, s: sm.s, d: sm.d, rIn, rOut };
   });
+  // **디더 칸은 화면에서 1~2px 이어야 픽셀 단위 디더로 읽힌다**(v777). 칸 크기는 (띠 폭 / 칸 수)라
+  // 리그가 커지면 칸도 같이 커진다 — 흑기사는 팔이 3.4 배라 칸이 4px 넘는 '부서진 조각'이 된다.
+  // 그래서 칸 수를 상수로 두지 않고 **기사 팔 길이(0.605) 대비 실제 월드 크기**로 유도한다.
+  const armL = shaped.length ? shaped[shaped.length - 1].d.length() : 0.605;
+  const cellF = Math.max(1, (armL * rs) / (0.605 * 2.89));
+  // 상한 24 는 안전장치다 — 칸 수는 (칸/세그먼트)² 로 삼각형에 들어가므로(흑기사 16×16 = 256칸,
+  // 삼각형 최대 11,848) 리치가 더 긴 리그가 들어와도 폭주하지 않게 막아 둔다.
+  const NR = Math.max(2, Math.min(24, Math.round(SMEAR_DITHER_NR * cellF)));
+  const NA = Math.max(2, Math.min(24, Math.round(SMEAR_DITHER_NA * cellF)));
+  // 색은 나이가 아니라 호 위의 위치(u: 0 꼬리 → 1 칼)로 — 내려베기가 몇 프레임이라 나이로 나누면
+  // 어느 프레임엔 전부 새것, 다음엔 전부 낡은 것이 된다.
+  const atR = (sh, r) => sh.s.clone().addScaledVector(sh.d, r);
   for (let i = 0; i + 1 < shaped.length; i++) {
     const a = shaped[i], b = shaped[i + 1];
     const u = (a.u + b.u) * 0.5;
-    quad(a.b, a.p, b.p, b.b, cols[u > 0.62 ? 0 : u > 0.28 ? 1 : 2]);
+    const ci = _smTone(u, cols.length);
+    if (u >= SMEAR_DITHER_AT) {                // 칼날 쪽은 통짜 띠
+      quad(atR(a, a.rIn), atR(a, a.rOut), atR(b, b.rOut), atR(b, b.rIn), cols[ci]);
+      continue;
+    }
+    // 디더 소산 — 칸마다 확률로 남기고, 남은 칸도 덮개 비율만큼 작게 그린다
+    const cov = Math.pow(Math.max(0, u / SMEAR_DITHER_AT), 0.75);
+    const P = (tt, ff) => {
+      const rIn = a.rIn + (b.rIn - a.rIn) * tt, rOut = a.rOut + (b.rOut - a.rOut) * tt;
+      const d = a.d.clone().lerp(b.d, tt);
+      return a.s.clone().lerp(b.s, tt).addScaledVector(d, rIn + (rOut - rIn) * ff);
+    };
+    for (let jr = 0; jr < NR; jr++) for (let ja = 0; ja < NA; ja++) {
+      const h = _smearHash(a.t * 913.7 + jr * 37.1 + ja * 11.9 + i * 5.3);
+      if (h > cov) continue;
+      const shrink = 0.40 + 0.60 * cov;      // 꼬리로 갈수록 칸이 작아진다(잔알갱이). 칸이 잘아져 하한은 올렸다
+      // v780: **반지름(폭) 쪽은 칸마다 더 줄인다.** 띠가 내부 해상도로 2~3px 뿐이라 폭 방향에는 구멍이
+      // 뚫릴 자리가 없어서, 디더가 전부 '가로 1픽셀 대시'로만 보였다(실측: 마스크의 조각이 전부 높이 1px).
+      // 칸 크기를 폭 쪽만 0.45~1.0 배로 흔들면 띠 두께가 픽셀 단위로 0/1/2px 를 오가 세로로도 부서진다.
+      const hr = _smearHash(a.t * 517.3 + jr * 7.7 + ja * 29.3 + i * 1.9);
+      const shR = shrink * (0.45 + 0.55 * hr), shA = shrink;
+      // 칸 중심을 흔든다 — 안 흔들면 격자가 그대로 보여 '체크무늬'로 읽힌다.
+      // 폭 쪽은 남은 자리를 다 쓰게 해서 조각이 안쪽·바깥쪽 가장자리를 오가게 한다(세로 방향 흩뿌림).
+      const jx = (_smearHash(a.t * 77.3 + jr * 5.9 + ja * 23.1 + i * 3.7) - 0.5) * (1 - shR);
+      const jy = (_smearHash(a.t * 151.9 + jr * 13.3 + ja * 41.7 + i * 2.1) - 0.5) * (1 - shA) * 0.8;
+      const cr = jr + 0.5 + jx, ca = ja + 0.5 + jy;
+      const f0 = (cr - shR * 0.5) / NR, f1 = (cr + shR * 0.5) / NR;
+      const t0 = (ca - shA * 0.5) / NA, t1 = (ca + shA * 0.5) / NA;
+      quad(P(t0, f0), P(t0, f1), P(t1, f1), P(t1, f0), cols[ci]);
+    }
   }
-  smearGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  smearGeo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  smearGeo.computeVertexNormals();
-  smearMesh.visible = pos.length > 0;
+  // 부서지는 알갱이 — 띠가 '투명해지며 사라지는' 것처럼 보이게 하는 장치다(반투명을 못 쓰므로
+  // 픽셀아트의 디더 소산을 흉내 낸다). 부채꼴 평면(어깨 높이 수평) 위의 작은 사각형이라
+  // 월드 Y 를 평면 법선으로 쓴다.
+  // v775: **칼날에서 멀어질수록 작고 자잘하게, 대신 개수는 많게**(사용자 지시).
+  // 크기는 f 에 반비례(칼 쪽 큰 덩어리 → 꼬리 잔알갱이), 개수·퍼짐은 f 에 비례한다.
+  // v773 은 반대로 꼬리를 크게 했었는데, 그러면 부서지는 게 아니라 조각이 떨어져 나온 것으로 읽힌다.
+  // 회색 팔레트에서는 가장 밝은 톤(0x9a998f)도 휘도 0.60 이라 블룸 임계(0.62) 아래다 — 알갱이에
+  // 밝은 톤을 써도 둥근 빛덩이로 안 번진다.
+  if (SMEAR_SPECK > 0) {
+    const up = new THREE.Vector3(0, 1, 0);
+    const SPK = SMEAR_SPECK / 2.89 * rs;
+    for (let i = 0; i < shaped.length; i++) {
+      const sh = shaped[i];
+      const L = sh.d.length() * rs / 2.89;   // 알갱이 크기·퍼짐도 띠와 같은 비율
+      const dir = sh.d.clone().normalize(), tan = new THREE.Vector3().crossVectors(up, dir).normalize();
+      const f = 1 - sh.u;                            // 0 = 칼날, 1 = 꼬리 끝
+      const ci = _smTone(sh.u, cols.length);         // 알갱이도 같은 그라데이션을 탄다
+      for (let k = 0; k < SMEAR_SPECK_N; k++) {
+        // 통과 판정·크기·위치에 서로 다른 해시를 쓴다 — 하나로 쓰면 통과한 것만 골라 남으므로
+        // 크기가 한쪽 끝에 몰린다(문턱이 낮을수록 전부 작은 알갱이만 남는다)
+        const h = _smearHash(sh.t * (131.7 + k * 57.3) + i * 11.3);
+        if (h > 0.03 + 0.34 * f) continue;           // 본체 소산은 위 디더가 맡으므로 여기는 성기게
+        const hs = _smearHash(sh.t * (211.3 + k * 37.9) + i * 7.7);
+        const hp = _smearHash(sh.t * (307.1 + k * 19.3) + i * 3.3);
+        const outward = (k % 2 === 0);
+        // 띠에 붙여 두고 꼬리로 갈수록만 넓게 흩는다(멀리 던지면 '떠 있는 판'으로 읽힌다)
+        const r = outward ? sh.rOut + 0.05 * rs + hp * SPK * (0.25 + f * 0.9)
+                          : sh.rIn - 0.05 * rs - hp * SPK * (0.2 + f * 0.7);
+        const c = sh.s.clone().addScaledVector(sh.d, r)
+                       .addScaledVector(tan, (hp - 0.5) * (0.18 + f * 0.95) * L);
+        const sz = (0.17 - 0.12 * f) * (0.72 + hs * 0.56) * L;   // 칼 쪽 약 3px · 꼬리 끝 1px 남짓
+        const a0 = c.clone().addScaledVector(dir, -sz).addScaledVector(tan, -sz);
+        const a1 = c.clone().addScaledVector(dir,  sz).addScaledVector(tan, -sz);
+        const a2 = c.clone().addScaledVector(dir,  sz).addScaledVector(tan,  sz);
+        const a3 = c.clone().addScaledVector(dir, -sz).addScaledVector(tan,  sz);
+        quad(a0, a1, a2, a3, cols[Math.min(cols.length - 1, ci + (hs < 0.5 ? 0 : 1))]);
+      }
+    }
+  }
+  t.geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  t.geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  t.geo.computeVertexNormals();
+  t.mesh.visible = pos.length > 0;
+}
+// 이번 프레임에 아무도 굴려 주지 않은 잔상을 사그라뜨린다 — 보스가 얼거나 죽어서 패턴 코드가
+// 안 돌아도 띠가 화면에 얼어붙어 남지 않게. update() 끝에서 한 번 부른다.
+function tickSmearTrails(dt) {
+  for (const t of smearTrails) { if (!t.driven) updateSmearTrail(t, dt, false, null, null, null, 0); t.driven = false; }
 }
 
 const shieldGrp = new THREE.Group();
@@ -19802,6 +20022,7 @@ function hasClearPath(x0, z0, x1, z1) {
 }
 
 function update(dt) {
+  if (SMEAR_ON) tickSmearTrails(dt);   // 아무도 안 굴린 잔상 사그라뜨리기(보스가 죽거나 얼어도 안 남게)
   player.attackCooldown = Math.max(0, player.attackCooldown - dt); player.hurtCooldown = Math.max(0, player.hurtCooldown - dt);
   parryTimer -= dt; parryFlashTimer = Math.max(0, parryFlashTimer - dt);
   // 스태미나: 방어 유지 중 소모, 그 외엔 지연 후 자동 회복
@@ -20106,7 +20327,10 @@ function update(dt) {
   player.limbs.armR.rotation.x += (targetArmRX - player.limbs.armR.rotation.x) * armRLerp * dt;
   player.limbs.armR.rotation.z += (targetArmRZ - player.limbs.armR.rotation.z) * armRLerp * dt;
   // 기사 횡베기 스미어 잔상 — 팔 각도가 정해진 직후에 칼 좌표를 잰다(v768)
-  if (SMEAR_ON && selectedChar === 'knight') updateSmearRibbon(dt, inDownswing);
+  if (SMEAR_ON && SMEAR_PLAYER && selectedChar === 'knight') {
+    if (!player._smear) player._smear = makeSmearTrail();
+    updateSmearTrail(player._smear, dt, inDownswing, player.obj, player.limbs.armR, swordGrp, player.limbs.armR.rotation.z);
+  }
   const armLLerp = (selectedChar === 'knight' && player.isBlocking) ? 24 : 15;
   player.limbs.armL.rotation.x += (targetArmLX - player.limbs.armL.rotation.x) * armLLerp * dt;
   player.limbs.armL.rotation.z += (targetArmLZ - player.limbs.armL.rotation.z) * armLLerp * dt;
@@ -21380,6 +21604,12 @@ function update(dt) {
     }
 
     if (e.isBoss && e.type === 'darkknight' && e.frozen <= 0) {
+      // 횡베기 스미어 잔상 — 흑기사는 팔을 수평(RX=π/2)으로 뻗고 rotation.z 로 휩쓰는, 기사와 같은 리그다.
+      // 아래 분기들이 `continue` 를 많이 하므로 **블록 첫머리에서** 굴려야 빠지지 않는다.
+      if (SMEAR_ON && e.limbs && e.limbs.armR && e.limbs._dkSword) {
+        if (!e._smear) e._smear = makeSmearTrail(1, SMEAR_COLS_DK);   // 크기는 무기 리치가 정한다(v783)
+        updateSmearTrail(e._smear, dt, e.sweepState === 'slashing', e.obj, e.limbs.armR, e.limbs._dkSword, e.limbs.armR.rotation.z);
+      }
       // 분노: 체력 절반 이하 1회 — 공격력·속도 상승, 마그마 격화
       if (!e.enraged && e.hp <= e.hpMax * 0.5) {
         e.enraged = true; e.damage = Math.floor(e.damage * 1.25); e.speed *= 1.2;
