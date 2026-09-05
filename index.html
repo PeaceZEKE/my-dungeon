@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v784'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v785'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -4223,6 +4223,11 @@ const SMEAR_ON = !/[?&]smear=0/.test(location.search);
 // v781: 플레이어에는 기본으로 안 건다(사용자 지시) — 기사가 화면에서 45px 이라 띠가 잘 안 보인다.
 // 잔상은 몸집이 큰 보스에 붙인다. `?smearp=1` 로 플레이어에도 다시 켤 수 있다.
 const SMEAR_PLAYER = /[?&]smearp=1/.test(location.search);
+// v785: 계단(하행·귀환) 받침 6각 실린더의 **가로 크기** 배수. 높이(0.5)는 안 건드린다.
+// 사용자 지시로 절반(0.5). 받침 반경에는 판정 셋이 묶여 있어 같이 줄인다 —
+// 몬스터 밀어내기(2.6)·하강 트리거(2.0)·귀환 트리거(1.8). 안 줄이면 작아진 받침 **밖에서**
+// 하강이 걸리고 몬스터가 보이지 않는 넓은 원을 피해 다닌다.
+const STAIR_W = (() => { const m = location.search.match(/[?&]stairw=([\d.]+)/); return m ? parseFloat(m[1]) : 0.5; })();
 // 이 게임의 캐릭터는 진짜 그림자를 안 진다 — 발밑 블롭이 대신한다(몬스터 빌더 주석 참고).
 // 궁수 리그만 메시 전부에 castShadow를 켜 두어서, 던전 횃불(플레이어 바로 옆의 점광원)에
 // 몸 전체가 크게 늘어난 그림자로 찍혔다(실측: 기사 60×19픽셀 → 궁수 135×80).
@@ -17872,7 +17877,7 @@ function placeStairs(dgn) {
   stairsRoom = last;
   const sx = (last.cx - MAP_W / 2) * TILE, sz = (last.cy - MAP_H / 2) * TILE;
   const g = new THREE.Group();
-  const baseGeo = new THREE.CylinderGeometry(2.5, 3, 0.5, 6);
+  const baseGeo = new THREE.CylinderGeometry(2.5 * STAIR_W, 3 * STAIR_W, 0.5, 6);   // 높이 0.5 는 그대로
   const base = new THREE.Mesh(baseGeo, darkMetal); base.castShadow = true; base.receiveShadow = true; g.add(base);
   const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.6, 0), getGlowMat(0xf6e05e)); orb.position.y = 1.5; g.add(orb); g._orb = orb;
   orb.add(makeGlowSprite(0xf6e05e, 2.8, 0.5)); // 계단 구슬 빛번짐
@@ -17892,7 +17897,7 @@ function placeReturnStairs(dgn) {
   const off = Math.min((r0.w || 3) * TILE * 0.30, TILE * 1.6);
   const sx = cx + off, sz = cz + off;
   const g = new THREE.Group();
-  const baseGeo = new THREE.CylinderGeometry(2.3, 2.8, 0.5, 6);
+  const baseGeo = new THREE.CylinderGeometry(2.3 * STAIR_W, 2.8 * STAIR_W, 0.5, 6);   // 높이 0.5 는 그대로
   const base = new THREE.Mesh(baseGeo, darkMetal); base.castShadow = true; base.receiveShadow = true; g.add(base);
   // 위로 솟은 상행 표시: 푸른 오브 + 위를 향한 화살(콘)
   const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.55, 0), getGlowMat(0x6fd0ff)); orb.position.y = 1.5; g.add(orb); g._orb = orb;
@@ -22241,7 +22246,7 @@ function update(dt) {
     if (stairsMesh && stairsMesh.position.y > -10) {
       const sdx = e.obj.position.x - stairsMesh.position.x, sdz = e.obj.position.z - stairsMesh.position.z;
       const sdist = Math.hypot(sdx, sdz);
-      const stairR = 2.6 + e.radius; // 계단 받침대 반경(약 2.6) + 몬스터 반경
+      const stairR = 2.6 * STAIR_W + e.radius; // 계단 받침대 반경 + 몬스터 반경(받침이 줄면 같이 준다)
       if (sdist < stairR && sdist > 0.0001) {
         e.obj.position.x = stairsMesh.position.x + (sdx / sdist) * stairR;
         e.obj.position.z = stairsMesh.position.z + (sdz / sdist) * stairR;
@@ -22386,14 +22391,14 @@ function update(dt) {
   }
   if (stairsMesh && stairsMesh.position.y > -10) {
     stairsMesh._orb.rotation.y += dt * 2.0; stairsMesh._orb.position.y = 1.5 + Math.sin(performance.now() * 0.005) * 0.2;
-    if (!bossTestMode && Math.hypot(player.obj.position.x - stairsMesh.position.x, player.obj.position.z - stairsMesh.position.z) < 2.0) descend(); 
+    if (!bossTestMode && Math.hypot(player.obj.position.x - stairsMesh.position.x, player.obj.position.z - stairsMesh.position.z) < 2.0 * STAIR_W) descend(); 
   }
   // 1층 마을 귀환 계단: 위에 잠시 서 있으면 마을로(스폰 직후 실수 발동 방지 위해 hold)
   if (returnStairsMesh) {
     returnStairsMesh._orb.rotation.y += dt * 2.0; returnStairsMesh._orb.position.y = 1.5 + Math.sin(performance.now() * 0.005) * 0.2;
     const rd = Math.hypot(player.obj.position.x - returnStairsMesh.position.x, player.obj.position.z - returnStairsMesh.position.z);
     const rp = $('townPrompt');
-    if (rd < 1.8) {
+    if (rd < 1.8 * STAIR_W) {
       returnStairsHold += dt;
       if (rp) { rp.style.display = 'block'; rp.textContent = _i18n('🏘️ 마을로 돌아가는 중… ') + Math.min(100, Math.round(returnStairsHold / 1.2 * 100)) + '%'; }
       if (returnStairsHold >= 1.2) { if (rp) rp.style.display = 'none'; returnToTown(); return; }
