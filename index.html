@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v785'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v786'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -5619,13 +5619,20 @@ function makeBlobShadow(diameter, ownMaterial) {
 }
 // 캐릭터가 뛰거나 떠 있어도 그림자는 바닥에 남아야 한다 → 로컬 y로 높이를 상쇄하고
 // 높이에 비례해 작고 옅게 만든다(공중에 뜬 느낌).
+// 마을은 던전과 달리 자체 계단 높이 로직으로 발밑 y 를 정한다(`updateTownMode`).
+// `groundHeightAt` 은 마을에서 **항상 0** 을 돌려주므로 그걸로 블롭을 놓으면 계단을 내려갈 때
+// 그림자가 지상(0.03)에 남아 공중에 뜬다 — 구덩이 바닥에서 플레이어보다 3.37 유닛 위였다(v786).
+// 그래서 마을에서는 이 값을 쓴다. `updateTownMode` 가 매 프레임 갱신한다.
+let townGroundY = 0;
 function updateBlobShadows() {
   if (!BLOB_ON) return;
   if (player && player.obj) {
     if (!player._blob) { player._blob = makeBlobShadow(1.6, true); player.obj.add(player._blob); }
     // 높이는 '지면으로부터'다. 지형이 생기면 절대 y가 아니라 발밑 지면과의 차이를 봐야
     // 그림자가 언덕 위에서도 발밑에 붙는다(?relief=0이면 지면이 0이라 예전과 같은 식).
-    const gy = groundHeightAt(player.obj.position.x, player.obj.position.z);
+    const gy = (typeof inTown !== 'undefined' && inTown)
+      ? townGroundY                                            // 마을: 계단/구덩이 높이(위 주석)
+      : groundHeightAt(player.obj.position.x, player.obj.position.z);
     const h = Math.max(0, player.obj.position.y - gy);
     const k = 1 / (1 + h * 0.6);
     const s = player._blob.userData.blobBase * k;
@@ -24077,6 +24084,7 @@ function updateTownMode(dt) {
     }
   }
   player.obj.position.y = groundY;
+  townGroundY = groundY;   // 블롭 그림자가 계단을 따라 내려오게(v786 — 위 updateBlobShadows 주석)
   // 카메라 부드럽게 추적(플레이어가 계단 내려가면 카메라도 함께 내려감)
   const tx = player.obj.position.x + isoOffsetX, ty = isoOffsetY + groundY, tz = player.obj.position.z + isoOffsetZ;
   camera.position.x += (tx - camera.position.x) * Math.min(1, dt * 8);
