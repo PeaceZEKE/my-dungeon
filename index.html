@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v792'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v793'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -7753,6 +7753,7 @@ function buildTownScene() {
   // 성벽 v3(v792): 다각형 변을 따라 2.1 칸씩 + 꼭짓점마다 둥근 망루. 성문 자리(성문 v2 가 옆 성벽 ±6.6 을 직접 잇는다)는 비운다.
   function makeRampart3() {
     const stone = M.stone, stoneD = M.stoneD, n = TOWN_POLY.length;
+    if (!/[?&]wall3=0/.test(location.search)) return makeRampart3Stone();   // v793: 성문 v2 와 같은 돌 쌓기(?wall3=0 이면 v792 상자)
     for (let i = 0; i < n; i++) {
       const e = townEdge(i), cnt = Math.max(1, Math.round((e.L - 1.6) / 2.1)), seg = (e.L - 1.6) / cnt, ry = Math.atan2(-e.dz, e.dx);
       for (let k = 0; k < cnt; k++) {
@@ -7767,6 +7768,37 @@ function buildTownScene() {
       g.add(cyl(1.35, 1.5, h, 10, stone, 0, h / 2, 0)); g.add(cyl(1.6, 1.6, 0.3, 10, stoneD, 0, h + 0.15, 0));
       for (let m = 0; m < 8; m += 2) { const a = m / 8 * Math.PI * 2; g.add(box(0.5, 0.55, 0.5, stoneD, Math.cos(a) * 1.35, h + 0.55, Math.sin(a) * 1.35)); }
       g.position.set(e.ax, 0, e.az); markArch(g); townScene.add(g);
+    }
+  }
+  // 성벽 v3 돌(v793) — 성문 v2(makeGateV2)와 같은 팔레트·같은 stoneWall/ringStones 로 쌓는다. 상자 대신 돌 한 장씩이라
+  // 삼각형이 늘므로 **카메라를 보는 면만** 쌓는다(카메라는 +x+z 쪽 — 뒤 성벽은 안쪽 면, 앞 성벽은 바깥 면이 보인다).
+  // 속은 줄눈색 상자 하나(반대쪽 면은 이 상자 면이 그대로 보인다 — 화면에 거의 안 나온다). 망루도 보이는 반원만 돌을 두른다.
+  // 변(+그 시작 꼭짓점 망루)마다 vcMerge — 드로우콜은 오히려 준다(예전은 칸마다 메시 3개). 높이는 칸마다 그 자리 지면(단)에 앉힌다.
+  function makeRampart3Stone() {
+    const pal = [0x8a8a84, 0x7c7c76, 0x96948c, 0x76746e, 0x6c6c68], n = TOWN_POLY.length, H = 3.0, T = 1.3, TH = 4.4;
+    for (let i = 0; i < n; i++) {
+      // 변마다 따로 합친다 — 성벽 전체를 메시 하나로 합치면 화면 밖 성벽까지 늘 그려진다(절두체 컬링이 안 걸린다)
+      const g = new THREE.Group(); g.userData.noCollide = true; g.userData.noLift = true; townScene.add(g);
+      const K = vcKit(g, 7707 + i * 31), { P, pick, vb, vcy } = K;
+      const e = townEdge(i), cnt = Math.max(1, Math.round((e.L - 1.6) / 2.1)), seg = (e.L - 1.6) / cnt, rot = K.faceRot(e.dx, e.dz);
+      const vs = (e.nx + e.nz) >= 0 ? 1 : -1, fnx = e.nx * vs, fnz = e.nz * vs;   // 카메라 쪽 면의 법선(바깥 또는 안쪽)
+      for (let k = 0; k < cnt; k++) {
+        const t = 0.8 + seg * (k + 0.5), x = e.ax + e.dx * t, z = e.az + e.dz * t;
+        if (Math.hypot(x - TOWN_GATE.x, z - TOWN_GATE.z) < 6.9) continue;
+        const yb = townTerrH(x, z), w = seg + 0.15;
+        vb(g, w - 0.08, H, T - 0.1, P.mortar, x, yb + H / 2, z, 0.02).rotation.y = rot;
+        K.stoneWall(x + fnx * T / 2, z + fnz * T / 2, e.dx, e.dz, fnx, fnz, w, H, null, yb, { pal, big: true });
+        const cap = vb(g, w, 0.18, T + 0.12, pick(pal), x, yb + H + 0.02, z, 0.05); cap.rotation.y = rot;
+        for (const u of [-seg * 0.26, seg * 0.26]) vb(g, 0.62, 0.6, 1.05, pick(pal), x + e.dx * u, yb + H + 0.39, z + e.dz * u, 0.06).rotation.y = rot;
+      }
+      // 꼭짓점 망루: 줄눈색 원기둥 + 보이는 반원만 돌 링 + 톱니 머리
+      const ax = e.ax, az = e.az, yb = townTerrH(ax, az);
+      vcy(g, 1.3, 1.42, TH, 12, P.mortar, ax, yb + TH / 2, az, 0.02);
+      ringStones(K, g, ax, az, 1.52, 1.42, yb, TH, { pal, len: 0.85, skip: (a) => Math.cos(a) + Math.sin(a) < -0.55 });
+      vcy(g, 1.68, 1.62, 0.3, 12, pick(pal), ax, yb + TH + 0.15, az, 0.04);
+      for (let m = 0; m < 8; m += 2) { const a = m / 8 * Math.PI * 2, mm = vb(g, 0.55, 0.55, 0.42, pick(pal), ax + Math.cos(a) * 1.4, yb + TH + 0.57, az + Math.sin(a) * 1.4, 0.06); mm.rotation.y = -a + Math.PI / 2; }
+      vb(g, 0.16, 0.7, 0.1, 0x20262f, ax + 1.5 * Math.SQRT1_2, yb + 3.0, az + 1.5 * Math.SQRT1_2, 0.02).rotation.y = Math.PI / 4;   // 화살창(카메라 쪽)
+      vcMerge(g, 7707 + i * 31); markArch(g);
     }
   }
   // 훈련장 막사(v792) — refs/배경/마을/스킬 교관 훈련장.png 의 긴 목조 막사. 돌 기단 + 세로 판자벽 + 적갈 너와
