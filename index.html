@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v792'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v794'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -5940,7 +5940,8 @@ function townEdge(i) {
   return { ax, az, bx, bz, L, dx, dz, nx, nz };
 }
 const TOWN_GATE = (() => { const e = townEdge(T3.gate.edge), t = T3.gate.t; return { x: e.ax + (e.bx - e.ax) * t, z: e.az + (e.bz - e.az) * t, nx: e.nx, nz: e.nz, ang: Math.atan2(e.nx, e.nz) }; })();
-const TOWN_PIT = TOWN3 ? t3XZ(T3.pit[0], T3.pit[1]) : [0, 0];   // 구덩이 중심(월드). 계단·입장 판정·콜라이더가 전부 여기 기준
+const TOWN_PIT = TOWN3 ? t3XZ(T3.pit[0], T3.pit[1]) : [0, 0];
+const TOWN_ROAD = TOWN3 && !/[?&]road=0/.test(location.search);   // v794: 광장 → 던전 관문 길(포석 → 흙길)   // 구덩이 중심(월드). 계단·입장 판정·콜라이더가 전부 여기 기준
 let _vcMats = null;   // 재질은 첫 사용 때 만든다(모듈 로드 시점에 만들면 generateUUID 가 난수를 먹는다)
 function vcMats() {
   if (_vcMats) return _vcMats;
@@ -6830,7 +6831,9 @@ function buildTownScene() {
 
   // 대장간 v2(v790) — refs/배경/마을/대장간.png. 큰 돌 1층 + 회벽·목조 박공 + 짙은 판석 지붕 + 큰 돌굴뚝,
   // 오른쪽에 판자 지붕 작업장(열린 앞면): 화덕(불빛)·풀무·모루·담금통·숫돌·무기걸이·방패.
-  function makeBlacksmithV2(x, z) {
+  // ry 를 주면(v794, 마을 v3) 작업장 앞(-z)이 카메라를 보게 세우고 화덕을 작업장 앞쪽으로 당긴다 —
+  // 이 시점(51.9° 내려다봄)에서는 판자 지붕 밑 깊숙한 화덕이 지붕에 가려 안 보인다. 트인 앞변에서 0.55 안쪽이어야 보인다.
+  function makeBlacksmithV2(x, z, ry) {
     const g = new THREE.Group();
     const K = vcKit(g, 4409, ROOFS.slate), { P, r, pick, vb, vcy, vic, rod, stoneBox, timberFace, windowAt, gableRoof, gableEnd, lantern, barrel, crate } = K;
     const rock = [0x585b62, 0x4d5057, 0x62646a, 0x565450, 0x4a4c52];
@@ -6859,37 +6862,45 @@ function buildTownScene() {
     { const a = Math.atan2(yIn - yOut, sx1 - sx0), len = Math.hypot(sx1 - sx0, yIn - yOut) + 0.5;
       for (let zz = sz0 - 0.2; zz < sz1 + 0.2; zz += 0.34) { const m = vb(g, len + (r() - 0.5) * 0.3, 0.07, 0.32, pick([P.wood, P.woodL, P.woodD, 0x5e4a33]), (sx0 + sx1) / 2 + 0.2, (yIn + yOut) / 2 + 0.12, zz, 0.08); m.rotation.z = -a; m.rotation.x = (r() - 0.5) * 0.04; } }
     // 화덕(집 벽에 붙여) + 두건 + 불씨(발광 — 병합하지 않는다) + 풀무
-    const fx = sx0 + 0.9, fz = 0.3;
+    const FRONT = ry !== undefined, fx = sx0 + 0.9, fz = FRONT ? -1.2 : 0.3;
     vb(g, 1.5, 0.9, 1.3, pick(rock), fx, 0.45, fz, 0.1); vb(g, 1.2, 0.08, 1.0, 0x2a2624, fx, 0.92, fz, 0.05);
     vb(g, 1.3, 0.9, 1.1, 0x4a4a4c, fx - 0.1, 2.25, fz + 0.1, 0.06); vcy(g, 0.25, 0.3, 1.0, 6, 0x3a3a3c, fx - 0.2, 3.1, fz + 0.2, 0.05);
-    const emberMat = new THREE.MeshStandardMaterial({ color: 0xff6a1e, emissive: new THREE.Color(0xff5a1e), emissiveIntensity: 1.2, flatShading: true });
+    // v794(FRONT): 발광 재질은 톤매핑·블룸에 연노랑으로 날아가 불로 안 읽힌다 — 톤매핑 없는 주황(휘도 0.5 남짓, 블룸 임계 아래)
+    const emberMat = FRONT ? new THREE.MeshBasicMaterial({ color: 0xff6418, toneMapped: false })
+      : new THREE.MeshStandardMaterial({ color: 0xff6a1e, emissive: new THREE.Color(0xff5a1e), emissiveIntensity: 1.2, flatShading: true });
     const ember = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.12, 0.8), emberMat); ember.position.set(fx, 0.98, fz); g.add(ember);
     for (let k = 0; k < 5; k++) { const c = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 0), emberMat); c.position.set(fx - 0.35 + k * 0.18, 1.05, fz + (k % 2) * 0.2 - 0.1); g.add(c); }
+    if (FRONT) {   // v794: 카메라 쪽 화덕 입(아궁이) — 윗면 불씨는 이 각도에서 납작해서 불로 안 읽힌다
+      vb(g, 0.95, 0.6, 0.08, 0x2a2624, fx, 0.5, fz - 0.68, 0.03);
+      const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.36, 0.06), emberMat); mouth.position.set(fx, 0.46, fz - 0.71); g.add(mouth);
+      for (let k = 0; k < 3; k++) { const c = new THREE.Mesh(new THREE.IcosahedronGeometry(0.07, 0), emberMat); c.position.set(fx - 0.2 + k * 0.2, 0.34, fz - 0.74); g.add(c); }
+    }
     const forgeLight = new THREE.PointLight(0xff5a1e, 1.8, 10, 2.0); forgeLight.position.set(fx, 1.5, fz - 0.6); g.add(forgeLight);
     g.userData.forge = { light: forgeLight, ember };
     vb(g, 0.7, 0.35, 0.5, 0x5a3e2a, fx + 0.95, 0.75, fz + 0.2, 0.08); vb(g, 0.8, 0.06, 0.55, P.woodD, fx + 0.95, 0.56, fz + 0.2, 0.05);
     // 모루(나무 그루터기 위) · 담금통 · 숫돌
-    { const ax = sx0 + 1.9, az = -1.2; vcy(g, 0.3, 0.36, 0.6, 8, P.woodD, ax, 0.3, az, 0.05); vb(g, 0.82, 0.22, 0.34, 0x46494e, ax, 0.72, az, 0.05, 'metal'); vb(g, 0.36, 0.16, 0.22, 0x46494e, ax + 0.52, 0.7, az, 0.05, 'metal'); vb(g, 0.42, 0.16, 0.26, 0x46494e, ax, 0.53, az, 0.05, 'metal');
+    { const ax = sx0 + (FRONT ? 2.4 : 1.9), az = FRONT ? -1.6 : -1.2; vcy(g, 0.3, 0.36, 0.6, 8, P.woodD, ax, 0.3, az, 0.05); vb(g, 0.82, 0.22, 0.34, 0x46494e, ax, 0.72, az, 0.05, 'metal'); vb(g, 0.36, 0.16, 0.22, 0x46494e, ax + 0.52, 0.7, az, 0.05, 'metal'); vb(g, 0.42, 0.16, 0.26, 0x46494e, ax, 0.53, az, 0.05, 'metal');
       vb(g, 0.5, 0.06, 0.06, P.woodD, ax - 0.1, 0.87, az + 0.08, 0.05); vb(g, 0.16, 0.12, 0.1, 0x46494e, ax - 0.38, 0.87, az + 0.08, 0.05, 'metal'); }
     barrel(sx1 - 0.5, 0, 1.3, 1); vcy(g, 0.27, 0.27, 0.02, 9, 0x2d5a6a, sx1 - 0.5, 0.91, 1.3, 0.02);
     { const gx2 = sx1 - 0.6, gz2 = -0.2; const w = vcy(g, 0.42, 0.42, 0.14, 12, 0x8a8a84, gx2, 0.75, gz2, 0.05); w.rotation.x = Math.PI / 2; for (const s of [-1, 1]) rod(g, [gx2 - 0.35, 0, gz2 + s * 0.15], [gx2, 0.75, gz2 + s * 0.12], 0.05, P.woodD); }
     // 무기걸이(집 벽) + 방패 + 도끼
-    vb(g, 0.1, 0.1, 2.2, P.woodD, sx0 + 0.08, 1.8, -1.0, 0.05); vb(g, 0.1, 0.1, 2.2, P.woodD, sx0 + 0.08, 0.6, -1.0, 0.05);
-    for (let k = 0; k < 5; k++) { vb(g, 0.03, 1.25, 0.07, 0x9aa0a6, sx0 + 0.15, 1.25, -1.9 + k * 0.4, 0.04, 'metal'); vb(g, 0.05, 0.05, 0.26, P.brass, sx0 + 0.15, 0.7, -1.9 + k * 0.4, 0.03, 'metal'); }
+    const rz = FRONT ? 2.0 : 0;   // 화덕을 앞으로 당기면 무기걸이는 뒤로
+    vb(g, 0.1, 0.1, 2.2, P.woodD, sx0 + 0.08, 1.8, -1.0 + rz, 0.05); vb(g, 0.1, 0.1, 2.2, P.woodD, sx0 + 0.08, 0.6, -1.0 + rz, 0.05);
+    for (let k = 0; k < 5; k++) { vb(g, 0.03, 1.25, 0.07, 0x9aa0a6, sx0 + 0.15, 1.25, -1.9 + rz + k * 0.4, 0.04, 'metal'); vb(g, 0.05, 0.05, 0.26, P.brass, sx0 + 0.15, 0.7, -1.9 + rz + k * 0.4, 0.03, 'metal'); }
     for (const [yy, zz, hex] of [[2.4, 0.6, 0x7a3a2a], [2.4, 1.35, 0x5a6470]]) { const s2 = vcy(g, 0.36, 0.36, 0.07, 10, hex, sx0 + 0.1, yy, zz, 0.05); s2.rotation.z = Math.PI / 2; vcy(g, 0.1, 0.1, 0.1, 6, 0x9aa0a6, sx0 + 0.15, yy, zz, 0.03, 'metal').rotation.z = Math.PI / 2; }
     for (const [ax2, az2] of [[sx1 + 0.3, sz0 + 0.5], [sx1 + 0.35, sz0 + 0.9]]) { const h2 = rod(g, [ax2, 0, az2], [ax2 - 0.1, 1.0, az2], 0.035, P.wood); vb(g, 0.06, 0.26, 0.34, 0x8a9096, ax2 - 0.1, 0.95, az2 + 0.12, 0.04, 'metal'); }
     crate(sx1 - 0.6, 0, sz1 + 0.5, 0.9, 0.3); lantern(sx1 - 0.1, yOut - 0.35, sz0 + 0.1, 0.9); lantern(hx - W / 2 - 0.15, 2.0, -D / 2 - 0.15);
     // 발밑 돌바닥(작업장)
     for (let k = 0; k < 14; k++) { const m = vb(g, 0.45 + r() * 0.4, 0.05, 0.4 + r() * 0.35, pick(rock), sx0 + 0.3 + r() * 2.8, 0.025, sz0 + 0.2 + r() * 3.8, 0.06); m.rotation.y = r() * 3; }
     vcMerge(g, 4409);
-    g.position.set(x, 0, z); faceCamPlaza(g, x, z); townScene.add(g);
-    colLocal(g, [[hx, 0, 2.5], [hx - 1.2, -1.2, 1.1], [hx + 1.2, 1.2, 1.1], [sx0 + 0.9, 0.3, 0.9], [sx1 - 0.5, 1.3, 0.5], [sx1 - 0.6, -0.2, 0.55]]);
+    g.position.set(x, 0, z); if (FRONT) g.rotation.y = ry; else faceCamPlaza(g, x, z); townScene.add(g);
+    colLocal(g, [[hx, 0, 2.5], [hx - 1.2, -1.2, 1.1], [hx + 1.2, 1.2, 1.1], [sx0 + 0.9, fz, 0.9], [sx1 - 0.5, 1.3, 0.5], [sx1 - 0.6, -0.2, 0.55]]);
     return g;
   }
 
   // 상점 v2(v790) — refs/배경/마을/상점과 시장1~4. 돌 기단 + 목조 골조 가게 + 열린 덧문·계산대·물약 선반 +
   // 오른쪽 줄무늬 차양 아래 좌판 + 매단 등불·간판 + 상자·자루.
-  function makeShopV2(x, z) {
+  function makeShopV2(x, z, ry) {
     const g = new THREE.Group();
     const K = vcKit(g, 5501, ROOFS.wood), { P, r, pick, vb, vcy, vic, rod, stoneWall, timberBox, windowAt, gableRoof, gableEnd, lantern, barrel, crate, sack } = K;
     const W = 4.2, D = 3.4, H0 = 0.6, H = 2.7;
@@ -6925,7 +6936,7 @@ function buildTownScene() {
     vb(g, 1.2, 0.08, 0.08, P.woodD, -W / 2 - 0.5, H - 0.3, -D / 2 - 0.1, 0.05); vb(g, 0.8, 0.55, 0.06, P.woodL, -W / 2 - 0.7, H - 0.75, -D / 2 - 0.1, 0.08); vcy(g, 0.12, 0.08, 0.25, 6, 0x5a8a5a, -W / 2 - 0.7, H - 0.75, -D / 2 - 0.16, 0.05);
     sack(-W / 2 - 0.3, 0, -D / 2 - 0.6, 1); sack(-W / 2 - 0.7, 0, -D / 2 - 0.2, 0.85, 0xc8b88a); crate(-W / 2 - 0.4, 0, D / 2 - 0.4, 0.9, 0.5);
     vcMerge(g, 5501);
-    g.position.set(x, 0, z); faceCamPlaza(g, x, z); townScene.add(g);
+    g.position.set(x, 0, z); if (ry !== undefined) g.rotation.y = ry; else faceCamPlaza(g, x, z); townScene.add(g);
     colLocal(g, [[0, 0, 2.3], [-1.2, 0.8, 1.0], [1.2, 0.8, 1.0], [W / 2 + 1.3, -0.6, 1.0], [W / 2 + 1.5, 0.6, 0.8], [-W / 2 - 0.4, -D / 2 - 0.4, 0.5]]);
     return g;
   }
@@ -7726,8 +7737,10 @@ function buildTownScene() {
   }
 
   // 측면 — 대장간/상점/여관
-  buildings.push(markArch(TOWN_V2 ? makeBlacksmithV2(...(TOWN3 ? t3XZ(-10.5, -9.5) : [-13, 0])) : makeBlacksmith(-13, 0)));
-  buildings.push(markArch(TOWN_V2 ? makeShopV2(13.5, 0) : makeShop(13.5, 0)));
+  // v794: 대장간은 작업장(화덕)이 카메라를 보게 -3π/4 로 세운다(작업장 = 화면 왼쪽, 집 = 오른쪽) · 상점은 광장→던전 길에서 비켜 보루 옆으로
+  const smithV2 = TOWN_V2 ? (TOWN3 ? makeBlacksmithV2(...t3XZ(-10.3, -10.3), -3 * Math.PI / 4) : makeBlacksmithV2(-13, 0)) : null;
+  buildings.push(markArch(smithV2 || makeBlacksmith(-13, 0)));
+  buildings.push(markArch(TOWN_V2 ? (TOWN3 ? makeShopV2(...t3XZ(15.6, 18.0), -3 * Math.PI / 4) : makeShopV2(13.5, 0)) : makeShop(13.5, 0)));
   buildings.push(markArch(TOWN_V2 ? makeInnV2(12, -8) : makeInn(12, -8)));   // v789 여관 새로(?town2=0 이면 예전)
   // 여관 주인: 여관 앞(중심 쪽)에 세워 캐릭터 변경 안내
   {
@@ -7753,6 +7766,7 @@ function buildTownScene() {
   // 성벽 v3(v792): 다각형 변을 따라 2.1 칸씩 + 꼭짓점마다 둥근 망루. 성문 자리(성문 v2 가 옆 성벽 ±6.6 을 직접 잇는다)는 비운다.
   function makeRampart3() {
     const stone = M.stone, stoneD = M.stoneD, n = TOWN_POLY.length;
+    if (!/[?&]wall3=0/.test(location.search)) return makeRampart3Stone();   // v793: 성문 v2 와 같은 돌 쌓기(?wall3=0 이면 v792 상자)
     for (let i = 0; i < n; i++) {
       const e = townEdge(i), cnt = Math.max(1, Math.round((e.L - 1.6) / 2.1)), seg = (e.L - 1.6) / cnt, ry = Math.atan2(-e.dz, e.dx);
       for (let k = 0; k < cnt; k++) {
@@ -7767,6 +7781,37 @@ function buildTownScene() {
       g.add(cyl(1.35, 1.5, h, 10, stone, 0, h / 2, 0)); g.add(cyl(1.6, 1.6, 0.3, 10, stoneD, 0, h + 0.15, 0));
       for (let m = 0; m < 8; m += 2) { const a = m / 8 * Math.PI * 2; g.add(box(0.5, 0.55, 0.5, stoneD, Math.cos(a) * 1.35, h + 0.55, Math.sin(a) * 1.35)); }
       g.position.set(e.ax, 0, e.az); markArch(g); townScene.add(g);
+    }
+  }
+  // 성벽 v3 돌(v793) — 성문 v2(makeGateV2)와 같은 팔레트·같은 stoneWall/ringStones 로 쌓는다. 상자 대신 돌 한 장씩이라
+  // 삼각형이 늘므로 **카메라를 보는 면만** 쌓는다(카메라는 +x+z 쪽 — 뒤 성벽은 안쪽 면, 앞 성벽은 바깥 면이 보인다).
+  // 속은 줄눈색 상자 하나(반대쪽 면은 이 상자 면이 그대로 보인다 — 화면에 거의 안 나온다). 망루도 보이는 반원만 돌을 두른다.
+  // 변(+그 시작 꼭짓점 망루)마다 vcMerge — 드로우콜은 오히려 준다(예전은 칸마다 메시 3개). 높이는 칸마다 그 자리 지면(단)에 앉힌다.
+  function makeRampart3Stone() {
+    const pal = [0x8a8a84, 0x7c7c76, 0x96948c, 0x76746e, 0x6c6c68], n = TOWN_POLY.length, H = 3.0, T = 1.3, TH = 4.4;
+    for (let i = 0; i < n; i++) {
+      // 변마다 따로 합친다 — 성벽 전체를 메시 하나로 합치면 화면 밖 성벽까지 늘 그려진다(절두체 컬링이 안 걸린다)
+      const g = new THREE.Group(); g.userData.noCollide = true; g.userData.noLift = true; townScene.add(g);
+      const K = vcKit(g, 7707 + i * 31), { P, pick, vb, vcy } = K;
+      const e = townEdge(i), cnt = Math.max(1, Math.round((e.L - 1.6) / 2.1)), seg = (e.L - 1.6) / cnt, rot = K.faceRot(e.dx, e.dz);
+      const vs = (e.nx + e.nz) >= 0 ? 1 : -1, fnx = e.nx * vs, fnz = e.nz * vs;   // 카메라 쪽 면의 법선(바깥 또는 안쪽)
+      for (let k = 0; k < cnt; k++) {
+        const t = 0.8 + seg * (k + 0.5), x = e.ax + e.dx * t, z = e.az + e.dz * t;
+        if (Math.hypot(x - TOWN_GATE.x, z - TOWN_GATE.z) < 6.9) continue;
+        const yb = townTerrH(x, z), w = seg + 0.15;
+        vb(g, w - 0.08, H, T - 0.1, P.mortar, x, yb + H / 2, z, 0.02).rotation.y = rot;
+        K.stoneWall(x + fnx * T / 2, z + fnz * T / 2, e.dx, e.dz, fnx, fnz, w, H, null, yb, { pal, big: true });
+        const cap = vb(g, w, 0.18, T + 0.12, pick(pal), x, yb + H + 0.02, z, 0.05); cap.rotation.y = rot;
+        for (const u of [-seg * 0.26, seg * 0.26]) vb(g, 0.62, 0.6, 1.05, pick(pal), x + e.dx * u, yb + H + 0.39, z + e.dz * u, 0.06).rotation.y = rot;
+      }
+      // 꼭짓점 망루: 줄눈색 원기둥 + 보이는 반원만 돌 링 + 톱니 머리
+      const ax = e.ax, az = e.az, yb = townTerrH(ax, az);
+      vcy(g, 1.3, 1.42, TH, 12, P.mortar, ax, yb + TH / 2, az, 0.02);
+      ringStones(K, g, ax, az, 1.52, 1.42, yb, TH, { pal, len: 0.85, skip: (a) => Math.cos(a) + Math.sin(a) < -0.55 });
+      vcy(g, 1.68, 1.62, 0.3, 12, pick(pal), ax, yb + TH + 0.15, az, 0.04);
+      for (let m = 0; m < 8; m += 2) { const a = m / 8 * Math.PI * 2, mm = vb(g, 0.55, 0.55, 0.42, pick(pal), ax + Math.cos(a) * 1.4, yb + TH + 0.57, az + Math.sin(a) * 1.4, 0.06); mm.rotation.y = -a + Math.PI / 2; }
+      vb(g, 0.16, 0.7, 0.1, 0x20262f, ax + 1.5 * Math.SQRT1_2, yb + 3.0, az + 1.5 * Math.SQRT1_2, 0.02).rotation.y = Math.PI / 4;   // 화살창(카메라 쪽)
+      vcMerge(g, 7707 + i * 31); markArch(g);
     }
   }
   // 훈련장 막사(v792) — refs/배경/마을/스킬 교관 훈련장.png 의 긴 목조 막사. 돌 기단 + 세로 판자벽 + 적갈 너와
@@ -7905,10 +7950,47 @@ function buildTownScene() {
     };
     { const gi = [TOWN_GATE.x - TOWN_GATE.nx * 1.6, TOWN_GATE.z - TOWN_GATE.nz * 1.6]; lane([[-9.0, 4.5], [-11.8, 6.8], [-15, 10], [-17.3, 12.8], [(gi[0] + gi[1]) * T3R, (gi[0] - gi[1]) * T3R]], 2.6, Y1); }   // 성문 → 계단
     lane([[-9.1, -2], [-10.7, -2]], 3.8, Y1);                                              // 교회 앞마당
-    lane([[-9.4, -3.9], [-8.8, -9.2]], 1.6, Y1);                                           // 대장간 골목
+    lane([[-7.5, -3.9], [-7.5, -14.2]], 1.5, Y1);                                          // 대장간 앞마당(v794: 화덕 앞을 따라)
     lane([[-17, -9.2], [-17, -10.9]], 1.8, H.y);                                       // 언덕 위 풍차 문 앞
     // 계단 밑 광장 쪽 디딤 포석(홈 입구가 광장 포석과 이어지게)
     for (const n of T3.notches) lane([[S1 + 0.9, (n.u0 + n.u1) / 2], [S1 + 0.1, (n.u0 + n.u1) / 2]], n.u1 - n.u0 + 0.6, 0);
+    // 광장 → 던전 보루 관문 길(v794): 광장 포석에서 이어져 나가다 중간부터 흙길로 바뀐다. 누적 거리 RD0 까지 포석,
+    // RD1 까지는 포석이 드문드문 빠지고 흙이 드러나며, 그 뒤는 바퀴 자국 난 흙길. 여관 아래·상점 자리를 지나 관문(s 7.6)으로.
+    if (TOWN_ROAD) {
+      const pts = [[8.0, 9.8], [9.5, 12.2], [9.9, 15.4], [8.6, 18.6], [7.6, 21.0], [7.3, 22.4]], RW = 2.6, RD0 = 4.0, RD1 = 8.0;
+      const dirtPal = [0x7a6446, 0x6e5a3e, 0x846c4c, 0x735e42, 0x68543a], rutPal = [0x5a4832, 0x544430], pebPal = [0x8a8478, 0x767064, 0x9a9282];
+      for (let i = 0, d0 = 0; i < pts.length - 1; i++) {
+        const [s0, u0] = pts[i], [s1, u1] = pts[i + 1], len = Math.hypot(s1 - s0, u1 - u0), ts = (s1 - s0) / len, tu = (u1 - u0) / len;
+        const at2 = (a, b, j) => XZ(s0 + ts * a - tu * b + (r() - 0.5) * j, u0 + tu * a + ts * b + (r() - 0.5) * j);
+        for (let a = 0; a < len; a += 0.62) for (let b = -RW / 2 + 0.31; b < RW / 2; b += 0.62) {
+          const pave = Math.max(0, Math.min(1, (RD1 - d0 - a) / (RD1 - RD0)));   // 1 = 포석, 0 = 흙
+          if (r() < pave) {
+            if (r() < 0.06) continue;
+            const [x, z] = at2(a, b, 0.1), q = 0.5 + r() * 0.12; vb(terr, q, 0.07, q, pick(flagPal), x, 0.035, z, 0.07).rotation.y = (r() - 0.5) * 0.3;
+          } else if (pave > 0 && r() < 0.5) {   // 섞임 구간: 포석이 빠진 자리엔 흙 한 조각 + 가끔 깨진 돌
+            const [x, z] = at2(a, b, 0.2); vb(terr, 0.55 + r() * 0.2, 0.03, 0.55 + r() * 0.2, pick(dirtPal), x, 0.02 + r() * 0.012, z, 0.08).rotation.y = r() * 3;
+            if (r() < 0.4) vic(terr, 0.1 + r() * 0.06, pick(pebPal), x + (r() - 0.5) * 0.3, 0.05, z + (r() - 0.5) * 0.3, 0, 0.3);
+          }
+        }
+        // 흙길: 겹쳐 까는 흙 조각(윗면 높이를 조금씩 달리해 같은 평면에서 깜빡이지 않게) + 가장자리는 들쭉날쭉
+        for (let a = 0; a < len; a += 0.45) {
+          const d = d0 + a, dirt = Math.max(0, Math.min(1, (d - RD0) / (RD1 - RD0)));
+          if (dirt <= 0) continue;
+          for (let b = -RW / 2 - 0.2; b <= RW / 2 + 0.2; b += 0.45) {
+            if (dirt < 1 && r() > dirt * 0.8) continue;
+            if (Math.abs(b) > RW / 2 - 0.2 && r() < 0.45) continue;
+            const [x, z] = at2(a, b, 0.25), q = 0.55 + r() * 0.35; vb(terr, q, 0.03, q * (0.7 + r() * 0.5), pick(dirtPal), x, 0.024 + r() * 0.014, z, 0.1).rotation.y = r() * 3;
+          }
+          if (dirt >= 1) for (const sd of [-0.55, 0.55]) {   // 바퀴 자국 두 줄
+            const [x, z] = at2(a, sd, 0.06), [dx, dz] = toV(ts, tu); vb(terr, 0.5, 0.03, 0.2, pick(rutPal), x, 0.05, z, 0.05).rotation.y = Math.atan2(-dz, dx);
+          }
+          if (r() < dirt * 0.7) { const [x, z] = at2(a, (r() - 0.5) * RW, 0.2); vic(terr, 0.07 + r() * 0.07, pick(pebPal), x, 0.05, z, 0, 0.3); }
+        }
+        const [cx, cz] = XZ((s0 + s1) / 2, (u0 + u1) / 2), [dx, dz] = toV(ts, tu);
+        townGrassExcludeRects.push({ x: cx, z: cz, hw: len / 2 + 0.6, hd: RW / 2 + 0.5, ry: Math.atan2(-dz, dx) });
+        d0 += len;
+      }
+    }
     vcMerge(terr, 9101); markArch(terr);
 
     // ── 새 집: 윗마을 셋 · 화단 둘 · 앞마을 하나(주택 v2) ──
@@ -7958,16 +8040,16 @@ function buildTownScene() {
     // 윗마을: 성문길 가로등·교회 앞 화분·대장간 장작·빨랫줄·건초
     lampPost(-12.4, 9.1); lampPost(-16.7, 14.0); lampPost(-9.8, 2.2);
     planter(-10.4, -4.4, 1.1); planter(-10.4, 0.4, 1.1);
-    woodpile(-8.2, -15.6, 1.1); barrels(-7.6, -13.4, 2);   // v792: 교회↔대장간 사이 골목(풍차 쪽 유일한 길)은 비운다
+    woodpile(-8.0, -15.8, 1.1);   // v792: 교회↔대장간 사이 골목(풍차 쪽 유일한 길)은 비운다 · v794: 대장간 앞(상인 자리)은 비운다
     laundry([-17.8, 1.9], [-13.4, 1.9]); crates(-19.4, 4.2, 2); barrels(-20.3, 9.6, 2); sacks(-13.0, 4.0, 2);
-    hay(-9.8, -15.0); hay(-10.6, -14.0); hay(-9.6, -13.2); rubble(-12.0, -22.5, 4);
+    hay(-7.3, -17.0); rubble(-12.0, -22.5, 4);
     crates(-8.0, 12.0, 2); flowerPots(-7.3, 18.8, 3);
     // 풍차 언덕 위
     sacks(-18.9, -11.4, 3); barrels(-14.8, -14.7, 2);
     // 앞마을(광장 바깥 풀밭 쪽)
     for (const [bs, bu] of [[2.6, 0], [-2.6, 0]]) bench(bs, bu); flowerPots(0.4, 2.3, 3); flowerPots(-0.9, -3.2, 3);   // v792: 광장 가운데 우물 둘레
     bench(1.7, -10.3); laundry([4.6, -8.6], [7.4, -8.0]); planter(4.8, -22.5, 1.4);
-    barrels(13.2, 13.5, 2); sacks(16.4, -11.2, 3); barrels(17.5, -11.9, 2);
+    barrels(12.4, 12.9, 2); sacks(16.4, -11.2, 3); barrels(17.5, -11.9, 2);
     vcMerge(life, 9203);
 
     // 윗마을 깃발(성문길 계단 양옆) · 짐수레 하나
@@ -8284,12 +8366,15 @@ function buildTownScene() {
   // 북쪽 호(던전과 뒤쪽 건물 사이) — 3개
   placeStallRow(0,             3, 9.0, 2.4, [C.cloth, C.cloth2, C.cloth]);
   // 동쪽 호(상점·여관 앞 빈 공간) — 2개
-  placeStallRow(Math.PI / 2,   2, 9.0, 2.4, [C.cloth2, C.cloth]);
+  if (TOWN3) [[-1.5, C.cloth2], [1.5, C.cloth]].forEach(([u, col]) => makeStallV2(...t3XZ(9.2, u), Math.PI / 4, col));   // v794: 던전 가는 길에서 비켜 광장 앞쪽으로
+  else placeStallRow(Math.PI / 2,   2, 9.0, 2.4, [C.cloth2, C.cloth]);
   // (남동쪽 호 가판대는 여관 주인 앞 길목을 막아 제거)
   // 광장 북서쪽 가판대 3개: 캐릭터 위치 부근을 중심으로 호 모양 배치(논밭 앞, 위쪽으로)
   if (TOWN3) {   // v3: 옛 자리는 윗마을이 됐다 — 광장 오른쪽 옹벽 밑에 장터 한 줄(원화처럼 벽에 기댄 좌판)
     [[9.5, C.cloth], [12.5, C.cloth2], [15.5, C.cloth]].forEach(([u, col]) => makeStallV2(...t3XZ(-4.9, u), -3 * Math.PI / 4, col));
-    makeMerchant(...t3XZ(-3.2, 12.5), Math.PI / 4);
+    // 대장장이 상인(v794): 장터가 아니라 대장간 앞에 서서 카메라를 본다
+    smithV2.updateMatrixWorld(true); const mp = smithV2.localToWorld(new THREE.Vector3(0.4, 0, -3.0));   // 화덕 오른쪽(집 모퉁이 앞) — 화덕을 가리지 않게
+    makeMerchant(mp.x, mp.z, -3 * Math.PI / 4);
   } else placeStallRow(Math.atan2(-10.6, -9.0), 3, 13.9, 3.0, [C.cloth, C.cloth2, C.cloth]);
   // 가판대 호의 가운데 앞(중심 쪽)에 상인 NPC 배치 — 광장 중심을 향하게
   if (!TOWN3) {
@@ -8305,7 +8390,7 @@ function buildTownScene() {
     else makeTrainer(txp, tzp, Math.atan2(-txp, -tzp));
   }
   makeCart(-2.6, 8.5, 0.3);
-  makeCart(9.0, -3.0, -1.1);
+  if (TOWN3) makeCart(...t3XZ(11.6, 6.4), 0.2); else makeCart(9.0, -3.0, -1.1);   // v794: 던전 가는 길 입구에서 비킴
 
   // 교회 뒤 묘지 · 방앗간 옆 밀밭
   makeGraveyard(...(TOWN3 ? t3XZ(-10.5, 15) : [10, -16.5]));
