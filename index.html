@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v787'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v788'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -24259,7 +24259,7 @@ function rv2Build(root, isFinal) {
   // 광장~출구 사이
   stallLean(17.2, -11.2, -0.35, 'goods');
   tentSquare(22.4, -12.0, -0.5, 0.85);
-  table(9.2, 5.0, 0.5); table(15.4, 4.6, -0.3); table(-5.4, 5.8, 0.2);
+  table(9.2, 5.0, 0.5); table(15.4, 4.6, -0.3); table(-4.6, 3.0, 0.2);   // 마지막 탁자는 v787 에 낭떠러지 밖(-5.4, 5.8)에 떠 있었다
   notice(-19.2, -3.4, 0.9);
   // 오른쪽 트인 곳: 작은 야영 + 잠자리 천막 둘
   smallCamp(26.5, 1.2); tentSleep(29.6, -2.2, -1.2, W.canvasC); tentSleep(23.4, 5.0, -2.6, W.canvasB);
