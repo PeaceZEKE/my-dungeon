@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v790'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v791'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -5827,9 +5827,12 @@ function buildTownGrass() {
     for (let z = -rMax; z < rMax; z += CS) for (let x = -rMax; x < rMax; x += CS) {
       const cx = x + CS / 2, cz = z + CS / 2;
       const r = Math.hypot(cx, cz);
-      if (r < rMin || r > rMax) continue;
+      const gy = townTerrH(cx, cz);
+      // v3: 단 위(윗마을·언덕·화단)는 광장 가까이까지 풀밭이다. 단 가장자리에 걸친 칸은 뺀다(반은 허공·반은 벽 속)
+      if (r > rMax || (r < rMin && !(gy > 0.1 && r > 8))) continue;
+      if (TOWN3 && [[0, 0], [CS, 0], [0, CS], [CS, CS]].some(([ox, oz]) => townTerrH(x + ox, z + oz) !== gy)) continue;
       if (blockedAt(cx, cz, 0, 1.2)) continue;
-      cells.push([x, z]);
+      cells.push(TOWN3 ? [x, z, gy] : [x, z]);
     }
     townPGrass = createPixelGrass({
       scene: townScene, seed: 20260810,
@@ -5860,6 +5863,47 @@ function buildTownGrass() {
 //  메시마다 userData.vc = { k: 'solid'|'metal'|'cloth'|'glow', c: 색, j: 면마다 흔들 밝기 폭 } 를 단다.
 // ===================================================================
 const TOWN_V2 = !/[?&]town2=0/.test(location.search);
+// 마을 v3 지형(v791) — 원화(쿼터뷰 마을 컨셉)처럼 단을 쌓는다. ?town3=0 이면 v790 평지 배치.
+// 좌표는 화면 축으로 잡는다: s = (x+z)/√2 (화면 깊이 — 음수가 화면 위쪽 = 뒤), u = (x−z)/√2 (화면 가로).
+// 카메라가 (+x,+z) 에서 보므로 **높은 단은 뒤(s 음수)에** 둔다 — 그래야 옹벽 정면(+s)이 카메라를 보고
+// 높은 단이 앞을 가리지 않는다(쉼터 v2 의 45° 협곡과 같은 이유).
+//   광장 0 · 윗마을 1.8(s ≤ −6.5, 옹벽 한 줄) · 풍차 언덕 3.0 · 앞쪽 화단 둘 0.6 · 계단 다섯.
+// 윗마을 옹벽의 계단 둘은 광장 쪽으로 튀어나오지 않고 **윗단을 파고 들어간다**(홈) — 구덩이 바로 뒤라
+// 튀어나온 계단은 구덩이 콜라이더 고리(반경 5.45)에 밑단이 먹힌다.
+const TOWN3 = TOWN_V2 && !/[?&]town3=0/.test(location.search);
+const T3R = Math.SQRT1_2;
+const T3 = {
+  S1: -6.5, Y1: 1.8, STEP: 0.45,   // STEP: 한 번에 오를 수 있는 높이차(계단 한 단 0.24~0.3 은 통과, 옹벽은 막힘)
+  notches: [{ u0: -3.5, u1: -0.5, sTop: -9 }, { u0: 3, u1: 6, sTop: -9 }],
+  hill: { s: -17, u: -13, a: 3.8, y: 3.0 },                 // 정팔각형(변심거리 a) — 화면 축에 맞춰 눕혔다
+  plats: [{ s0: 3, s1: 9, u0: -23, u1: -15, y: 0.6 }, { s0: 9.5, s1: 15.5, u0: 12.5, u1: 19, y: 0.6 }],
+  // ax: 오르는 축. from = 밑단 좌표, to = 윗단 좌표. lo~hi = 다른 축 폭.
+  stairs: [
+    { ax: 's', from: -6.5, to: -9, lo: -3.5, hi: -0.5, y0: 0, y1: 1.8, n: 6 },    // 교회 계단(홈)
+    { ax: 's', from: -6.5, to: -9, lo: 3, hi: 6, y0: 0, y1: 1.8, n: 6 },          // 성문길 계단(홈)
+    { ax: 'u', from: -7.2, to: -9.2, lo: -18.2, hi: -15.8, y0: 1.8, y1: 3.0, n: 4 }, // 풍차 언덕
+    { ax: 's', from: 1, to: 3, lo: -20.2, hi: -17.8, y0: 0, y1: 0.6, n: 2 },        // 왼쪽 화단
+    { ax: 's', from: 7.5, to: 9.5, lo: 16.3, hi: 18.7, y0: 0, y1: 0.6, n: 2 },      // 오른쪽 화단
+  ],
+};
+function t3XZ(s, u) { return [(s + u) * T3R, (s - u) * T3R]; }
+// 마을 지면 높이(마을 전용 — groundHeightAt 은 마을에서 0 이다). 구덩이 계단은 updateTownMode 가 따로 본다.
+function townTerrH(x, z) {
+  if (!TOWN3) return 0;
+  const s = (x + z) * T3R, u = (x - z) * T3R;
+  for (const st of T3.stairs) {
+    const c = st.ax === 's' ? s : u, o = st.ax === 's' ? u : s;
+    if (o < st.lo || o > st.hi) continue;
+    const t = (c - st.from) / (st.to - st.from);
+    if (t < 0 || t > 1) continue;
+    return st.y0 + (st.y1 - st.y0) * (Math.min(st.n - 1, Math.floor(t * st.n)) + 1) / st.n;
+  }
+  let h = s <= T3.S1 ? T3.Y1 : 0;
+  const H = T3.hill, ds = Math.abs(s - H.s), du = Math.abs(u - H.u);
+  if (ds <= H.a && du <= H.a && (ds + du) * T3R <= H.a) h = H.y;
+  for (const p of T3.plats) if (s >= p.s0 && s <= p.s1 && u >= p.u0 && u <= p.u1) h = Math.max(h, p.y);
+  return h;
+}
 let _vcMats = null;   // 재질은 첫 사용 때 만든다(모듈 로드 시점에 만들면 generateUUID 가 난수를 먹는다)
 function vcMats() {
   if (_vcMats) return _vcMats;
@@ -6039,6 +6083,7 @@ function buildTownScene() {
   for (let i = -12; i <= 12; i++) for (let j = -12; j <= 12; j++) {
     const bx = i * PITCH, bz = j * PITCH, r = Math.hypot(bx, bz);
     if (r > RAD || r < TOWN_HOLE + 0.4) continue;                 // 중앙 입구는 비움
+    if (TOWN3 && (bx + bz) * T3R < T3.S1 + 0.3) continue;         // v3: 윗마을 옹벽 뒤는 풀밭(길은 따로 깐다)
     if (Math.random() < 0.10) continue;                      // 빠진 포석
     const near = r < TOWN_HOLE + 1.4;                              // 입구 주변은 잔해 톤
     const tm = near ? tileMats[4] : tileMats[(i * 3 + j + 200) % 4];
@@ -6051,6 +6096,7 @@ function buildTownScene() {
   // 흩어진 잔돌(입구 바깥)
   for (let i = 0; i < 24; i++) {
     const a = Math.random() * Math.PI * 2, d = TOWN_HOLE + 0.8 + Math.random() * 4.0;
+    if (TOWN3 && (Math.cos(a) + Math.sin(a)) * d * T3R < T3.S1 + 0.5) continue;
     townScene.add(box(0.3 + Math.random() * 0.4, 0.18 + Math.random() * 0.25, 0.3 + Math.random() * 0.4,
       Math.random() < 0.5 ? mat(C.rubbleD) : M.stoneD, Math.cos(a) * d, 0.1, Math.sin(a) * d));
   }
@@ -6696,7 +6742,7 @@ function buildTownScene() {
 
   // 교회 v2(v790) — refs/배경/마을/교회.png. 회벽 본당 + 버팀벽 + 뾰족 아치창(따뜻한 빛) + 짙은 판석 지붕 +
   // 정면 돌 종탑(열린 종실·청동 종) + 철띠 두른 아치 대문 + 등불. 본당은 z 방향으로 길고 종탑이 정면(-z).
-  function makeChurchV2(x, z) {
+  function makeChurchV2(x, z, ry) {
     const g = new THREE.Group();
     const K = vcKit(g, 3301, ROOFS.slate), { P, r, pick, vb, vcy, stoneWall, stoneBox, quoins, windowAt, gableRoof, gableEnd, lantern } = K;
     const W = 4.6, D = 7.2, H = 3.6, stoneRow = [0x7a766e, 0x6c6962, 0x858178, 0x716d66, 0x5f5c57];
@@ -6736,7 +6782,7 @@ function buildTownScene() {
     // 비석 몇 개(묘지는 따로 있다 — 교회 옆에 기댄 것만)
     for (const [gx2, gz2] of [[2.9, -1.2], [3.3, 0.6], [-3.0, 2.2]]) { const t = vb(g, 0.42, 0.62, 0.12, pick(stoneRow), gx2, 0.3, gz2, 0.06); t.rotation.set((r() - 0.5) * 0.2, r() * 0.6, (r() - 0.5) * 0.2); }
     vcMerge(g, 3301);
-    g.position.set(x, 0, z); faceCamPlaza(g, x, z); townScene.add(g);
+    g.position.set(x, 0, z); if (ry === undefined) faceCamPlaza(g, x, z); else g.rotation.y = ry; townScene.add(g);
     colLocal(g, [[0, 0.4, 2.7], [0, 2.8, 2.7], [0, -1.9, 2.7], [0, TZ, 1.7]]);
     g.userData.doorFront = toWorldOf(g, 0, DZ - 1.4);
     return g;
@@ -7626,7 +7672,8 @@ function buildTownScene() {
   }
 
   // 교회 아치 랜드마크
-  const church = markArch(TOWN_V2 ? makeChurchV2(5.5, -13) : makeChurch(5.5, -13));
+  // v3: 교회는 윗마을 한가운데, 정면을 카메라(+s)로 곧게 — 깊이 11.4 가 윗단(뒤 성벽까지)에 들어가야 한다
+  const church = markArch(TOWN3 ? makeChurchV2(...t3XZ(-16.8, -2), -3 * Math.PI / 4) : TOWN_V2 ? makeChurchV2(5.5, -13) : makeChurch(5.5, -13));
   buildings.push(church);
   // 교회 정문 앞에 성직자 배치(능력 강화 담당) — 중심 쪽으로 조금 나와서, 중심을 향하게
   {
@@ -7637,7 +7684,7 @@ function buildTownScene() {
   }
 
   // 측면 — 대장간/상점/여관
-  buildings.push(markArch(TOWN_V2 ? makeBlacksmithV2(-13, 0) : makeBlacksmith(-13, 0)));
+  buildings.push(markArch(TOWN_V2 ? makeBlacksmithV2(...(TOWN3 ? t3XZ(-10.5, -9.5) : [-13, 0])) : makeBlacksmith(-13, 0)));
   buildings.push(markArch(TOWN_V2 ? makeShopV2(13.5, 0) : makeShop(13.5, 0)));
   buildings.push(markArch(TOWN_V2 ? makeInnV2(12, -8) : makeInn(12, -8)));   // v789 여관 새로(?town2=0 이면 예전)
   // 여관 주인: 여관 앞(중심 쪽)에 세워 캐릭터 변경 안내
@@ -7657,9 +7704,184 @@ function buildTownScene() {
   buildings.push(...cottages);
 
   // 방앗간 + 등록 배열
-  const windmill = markArch(TOWN_V2 ? makeWindmillV2(-17, -9) : makeWindmill(-17, -9));
+  const windmill = markArch(TOWN_V2 ? makeWindmillV2(...(TOWN3 ? t3XZ(-17, -13) : [-17, -9])) : makeWindmill(-17, -9));
   const windmills = [windmill];
   const gates = [gate];
+
+  // ===== 마을 v3 단(v791) — 옹벽·계단·언덕·화단 + 새 집 + 생활 소품 =====
+  // 높이·보행은 모듈의 townTerrH 한 곳에서 나온다(T3 표). 여기는 그 표를 눈에 보이게 짓는 곳이다.
+  // 지형·소품은 전부 월드 좌표로 높이까지 넣어 짓고 noLift 로 둔다 — 나머지(건물·NPC·가로등·나무)는
+  // 아래 '단 올리기'가 자기 자리의 높이만큼 한 번에 올린다(던전 floorGroup 과 같은 요령).
+  if (TOWN3) {
+    const XZ = t3XZ, UX = T3R, UZ = -T3R, SX = T3R, SZ = T3R;      // u 축·s 축의 월드 방향
+    const toV = (ns, nu) => [ns * SX + nu * UX, ns * SZ + nu * UZ];  // (s,u) 벡터 → 월드 (x,z)
+    const Y1 = T3.Y1, S1 = T3.S1, RS = Math.PI / 4;                 // 상자 회전 π/4 = 로컬 x 가 u 축
+    // ── 흙판(윗면 풀 · 옆면 줄눈색). 옆면은 앞에 돌을 쌓아 가린다 ──
+    const slabMats = [mat(0x66843c), mat(0x4a453d)];
+    const slab = (pts, y0, depth) => {   // pts: [[s,u]…] 외곽선
+      const sh = new THREE.Shape();
+      pts.forEach(([s, u], i) => { const [x, z] = XZ(s, u); if (i) sh.lineTo(x, -z); else sh.moveTo(x, -z); });
+      const m = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false }), slabMats);
+      m.rotation.x = -Math.PI / 2; m.position.y = y0; m.receiveShadow = true; m.castShadow = true;
+      m.userData.noCollide = true; m.userData.noLift = true; townScene.add(m); return m;
+    };
+    {  // 윗마을: s ≤ S1 인 원판(반경 33.5 — 바닥 링 끝까지) + 계단 홈 둘
+      const R = 33.5, Uf = Math.sqrt(R * R - S1 * S1), pts = [[S1, Uf]];
+      for (const n of [...T3.notches].sort((a, b) => b.u0 - a.u0)) pts.push([S1, n.u1], [n.sTop, n.u1], [n.sTop, n.u0], [S1, n.u0]);
+      pts.push([S1, -Uf]);
+      const a0 = Math.atan2(-Uf, S1), a1 = Math.atan2(Uf, S1) - 2 * Math.PI, N = 40;
+      for (let k = 1; k < N; k++) { const a = a0 + (a1 - a0) * k / N; pts.push([R * Math.cos(a), R * Math.sin(a)]); }
+      slab(pts, 0, Y1);
+    }
+    const H = T3.hill, HR = H.a / Math.cos(Math.PI / 8), hv = [];
+    for (let k = 0; k < 8; k++) { const a = Math.PI / 8 + k * Math.PI / 4; hv.push([H.s + HR * Math.cos(a), H.u + HR * Math.sin(a)]); }
+    slab(hv, Y1 - 0.02, H.y - Y1 + 0.02);
+    for (const p of T3.plats) slab([[p.s0, p.u0], [p.s1, p.u0], [p.s1, p.u1], [p.s0, p.u1]], 0, p.y);
+
+    // ── 돌: 옹벽·계단·난간·담쟁이·길 — 한 그룹에 짓고 재질별로 합친다 ──
+    const terr = new THREE.Group(); terr.userData.noCollide = true; terr.userData.noLift = true; townScene.add(terr);
+    const K = vcKit(terr, 9101), { r, pick, vb, vcy, vic } = K;
+    const wallPal = [0x8a8272, 0x7c7466, 0x968d7c, 0x716a5e, 0x857d6d, 0x6c6558];
+    const capPal = [0x9d947f, 0x918875, 0xa69d88, 0x8a826f];
+    const at = (s, u, y, w, h, d, hex, j, k) => { const [x, z] = XZ(s, u); const m = vb(terr, w, h, d, hex, x, y, z, j, k); m.rotation.y = RS; return m; };
+    // 벽 한 변: p0→p1 (s,u), 바깥 법선 n(s,u). 윗면 갓돌은 안쪽으로 0.12 들여 한 줄
+    const wall = (p0, p1, n, y0, top, cap) => {
+      const ds = p1[0] - p0[0], du = p1[1] - p0[1], len = Math.hypot(ds, du); if (len < 0.2) return;
+      const [ax, az] = toV(ds / len, du / len), [nx, nz] = toV(n[0], n[1]), [cx, cz] = XZ((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2);
+      K.stoneWall(cx, cz, ax, az, nx, nz, len, top - y0, null, y0, { pal: wallPal });
+      if (!cap) return;
+      for (let t = 0; t < len - 0.05;) {
+        const w = Math.min(0.45 + r() * 0.4, len - t), mid = t + w / 2;
+        const s = p0[0] + ds / len * mid - n[0] * 0.12, u = p0[1] + du / len * mid - n[1] * 0.12, [x, z] = XZ(s, u);
+        const m = vb(terr, w - 0.04, 0.13, 0.5, pick(capPal), x, top + 0.05, z, 0.06); m.rotation.y = K.faceRot(ax, az) + (r() - 0.5) * 0.05;
+        t += w;
+      }
+    };
+    // 난간(나무 기둥 + 가로대 둘) — 옹벽 윗가장자리를 따라
+    const rail = (p0, p1, n, y) => {
+      const ds = p1[0] - p0[0], du = p1[1] - p0[1], len = Math.hypot(ds, du), cnt = Math.max(1, Math.round(len / 1.5));
+      const [ax, az] = toV(ds / len, du / len);
+      for (let i = 0; i <= cnt; i++) { const t = i / cnt, [x, z] = XZ(p0[0] + ds * t - n[0] * 0.3, p0[1] + du * t - n[1] * 0.3); vb(terr, 0.12, 0.85, 0.12, 0x5a4230, x, y + 0.42, z, 0.08); }
+      for (const hy of [0.72, 0.4]) { const [x, z] = XZ((p0[0] + p1[0]) / 2 - n[0] * 0.3, (p0[1] + p1[1]) / 2 - n[1] * 0.3); const m = vb(terr, len, 0.08, 0.07, 0x6e5238, x, y + hy, z, 0.06); m.rotation.y = K.faceRot(ax, az); }
+    };
+    // 담쟁이: 옹벽 앞면에 늘어진 초록 줄기
+    const ivy = (s, u, n, y, len) => { for (let i = 0; i < 4; i++) { const hh = len * (0.5 + r() * 0.5), [x, z] = XZ(s + n[0] * 0.14, u + n[1] * 0.14 + (i - 1.5) * 0.18 * (n[0] ? 1 : 0)); const m = vb(terr, 0.16 + r() * 0.2, hh, 0.05, pick([0x4f6a32, 0x5d7a3a, 0x43592b]), x, y - hh / 2, z, 0.08); m.rotation.y = RS + (n[0] ? 0 : Math.PI / 2); } };
+
+    // 윗마을 앞 옹벽(홈 자리는 뚫고, 홈 양옆 벽)
+    const Uw = Math.sqrt(27 * 27 - S1 * S1), cuts = [...T3.notches].sort((a, b) => a.u0 - b.u0);
+    let ua = -Uw;
+    for (const n of cuts) { wall([S1, ua], [S1, n.u0], [1, 0], -0.1, Y1, true); rail([S1, ua + 0.4], [S1, n.u0 - 0.3], [1, 0], Y1); ua = n.u1;
+      wall([n.sTop, n.u0], [S1, n.u0], [0, 1], -0.1, Y1, true); wall([n.sTop, n.u1], [S1, n.u1], [0, -1], -0.1, Y1, true); }
+    wall([S1, ua], [S1, Uw], [1, 0], -0.1, Y1, true); rail([S1, ua + 0.3], [S1, Uw - 1], [1, 0], Y1);
+    for (let u = -Uw + 2; u < Uw - 2; u += 2.2 + r() * 2.5) { if (cuts.some(n => u > n.u0 - 0.6 && u < n.u1 + 0.6)) continue; if (r() < 0.55) ivy(S1, u, [1, 0], Y1, 0.5 + r() * 0.7); }
+    // 풍차 언덕 여덟 변 + 난간(계단 변은 비움)
+    for (let k = 0; k < 8; k++) {
+      const p0 = hv[k], p1 = hv[(k + 1) % 8], a = (k + 1) * Math.PI / 4, n = [Math.cos(a), Math.sin(a)];
+      wall(p0, p1, n, Y1 - 0.1, H.y, true);
+      if (Math.abs(a - Math.PI / 2) > 0.1) rail(p0, p1, n, H.y);
+      if (r() < 0.6) ivy((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2, n, H.y, 0.4 + r() * 0.5);
+    }
+    // 화단: 네 변 낮은 옹벽 + 앞에 꽃
+    for (const p of T3.plats) {
+      wall([p.s1, p.u0], [p.s1, p.u1], [1, 0], -0.1, p.y, true); wall([p.s0, p.u0], [p.s0, p.u1], [-1, 0], -0.1, p.y, true);
+      wall([p.s0, p.u0], [p.s1, p.u0], [0, -1], -0.1, p.y, true); wall([p.s0, p.u1], [p.s1, p.u1], [0, 1], -0.1, p.y, true);
+    }
+    // 계단: 단마다 돌 한 덩어리 + 밝은 디딤판. 튀어나온 계단(언덕·화단)은 양옆 볼돌
+    for (const st of T3.stairs) {
+      const rise = (st.y1 - st.y0) / st.n, wdt = st.hi - st.lo, oc = (st.lo + st.hi) / 2, notch = st.y0 === 0 && st.y1 === Y1;
+      for (let k = 0; k < st.n; k++) {
+        const c0 = st.from + (st.to - st.from) * k / st.n, c1 = st.from + (st.to - st.from) * (k + 1) / st.n, cc = (c0 + c1) / 2, dep = Math.abs(c1 - c0);
+        const top = st.y0 + rise * (k + 1), bot = st.y0 - 0.1, [s, u] = st.ax === 's' ? [cc, oc] : [oc, cc];
+        const [w, d] = st.ax === 's' ? [wdt, dep] : [dep, wdt];
+        at(s, u, (top + bot) / 2, w, top - bot, d, pick(wallPal), 0.05);
+        at(s, u, top + 0.03, w + 0.06, 0.07, d + 0.04, pick(capPal), 0.05);
+        if (!notch) for (const sd of [-1, 1]) { const oo = oc + sd * (wdt / 2 + 0.16), [s2, u2] = st.ax === 's' ? [cc, oo] : [oo, cc]; at(s2, u2, (top + 0.14 + bot) / 2, st.ax === 's' ? 0.3 : dep, top + 0.14 - bot, st.ax === 's' ? dep : 0.3, pick(wallPal), 0.06); }
+      }
+    }
+    // 길: 윗마을 성문길·교회 앞마당·대장간 쪽 골목(포석) — 풀은 여기에 안 난다
+    const flagPal = [C.flag, C.flagD, C.flagE, C.flag, C.rubble];
+    const lane = (pts, wdt, y) => {
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [s0, u0] = pts[i], [s1, u1] = pts[i + 1], len = Math.hypot(s1 - s0, u1 - u0), ts = (s1 - s0) / len, tu = (u1 - u0) / len;
+        for (let a = 0; a < len; a += 0.62) for (let b = -wdt / 2 + 0.31; b < wdt / 2; b += 0.62) {
+          if (r() < 0.08) continue;
+          const s = s0 + ts * a - tu * b + (r() - 0.5) * 0.1, u = u0 + tu * a + ts * b + (r() - 0.5) * 0.1, [x, z] = XZ(s, u);
+          const q = 0.5 + r() * 0.12, m = vb(terr, q, 0.07, q, pick(flagPal), x, y + 0.035, z, 0.07); m.rotation.y = (r() - 0.5) * 0.3;
+        }
+        const [cx, cz] = XZ((s0 + s1) / 2, (u0 + u1) / 2), [dx, dz] = toV(ts, tu);
+        townGrassExcludeRects.push({ x: cx, z: cz, hw: len / 2 + 0.6, hd: wdt / 2 + 0.5, ry: Math.atan2(-dz, dx) });
+      }
+    };
+    lane([[-9.0, 4.5], [-11.8, 6.8], [-15, 10], [-17.5, 12.6], [-19.7, 15.4]], 2.6, Y1);   // 성문 → 계단
+    lane([[-9.1, -2], [-10.7, -2]], 3.8, Y1);                                              // 교회 앞마당
+    lane([[-9.4, -3.9], [-8.8, -9.2]], 1.6, Y1);                                           // 대장간 골목
+    lane([[-17, -9.2], [-17, -10.9]], 1.8, H.y);                                       // 언덕 위 풍차 문 앞
+    // 계단 밑 광장 쪽 디딤 포석(홈 입구가 광장 포석과 이어지게)
+    for (const n of T3.notches) lane([[S1 + 0.9, (n.u0 + n.u1) / 2], [S1 + 0.1, (n.u0 + n.u1) / 2]], n.u1 - n.u0 + 0.6, 0);
+    vcMerge(terr, 9101); markArch(terr);
+
+    // ── 새 집: 윗마을 셋 · 화단 둘 · 앞마을 하나(주택 v2) ──
+    for (const [s, u, w, d, wh, rh, wall2, roof, chim] of [
+      [-15.5, 5.5, 3.0, 3.2, 2.6, 1.4, C.plasterA, C.tileB, true],
+      [-21.5, 7.0, 2.8, 3.0, 2.4, 1.3, C.plasterC, C.tileC, true],
+      [-8.8, -20.5, 2.8, 3.0, 2.5, 1.4, C.plasterB, C.thatch, true],
+      [6.0, -19.0, 3.0, 3.2, 2.8, 1.4, C.plasterA, C.tileA, true],
+      [12.5, 15.5, 2.9, 3.0, 2.6, 1.3, C.plasterC, C.tileC, false],
+      [19.0, -8.0, 3.0, 3.0, 2.5, 1.4, C.plasterB, C.tileB, true],
+    ]) { const [x, z] = XZ(s, u); const hs = markArch(makeHouseV2({ x, z, w, d, wh, rh, wall: wall2, roof, chimney: chim })); cottages.push(hs); buildings.push(hs); }
+
+    // ── 생활 소품(원화처럼 벽 밑·집 옆에 쌓인 것들) — 전부 한 그룹, 높이는 자리마다 ──
+    const life = new THREE.Group(); life.userData.noCollide = true; life.userData.noLift = true; townScene.add(life);
+    const L = vcKit(life, 9203), P = L.P;
+    const Y = (s, u) => { const [x, z] = XZ(s, u); return townTerrH(x, z); };
+    const put = (s, u) => { const [x, z] = XZ(s, u); return [x, townTerrH(x, z), z]; };
+    const barrels = (s, u, n) => { for (let i = 0; i < n; i++) { const [x, y, z] = put(s + (i % 2) * 0.62 - 0.3, u + Math.floor(i / 2) * 0.62 - 0.3 * (n > 2)); L.vcy(life, 0.28, 0.3, 0.74, 9, pick([0x7a5434, 0x6c4a2e]), x, y + 0.37, z, 0.06); for (const hy of [0.16, 0.58]) L.vcy(life, 0.31, 0.31, 0.05, 9, 0x3c3a38, x, y + hy, z, 0.03, 'metal'); }
+      const [x, , z] = put(s, u); _collide(x, z, 0.3 + 0.28 * Math.sqrt(n)); };
+    const crates = (s, u, n) => { for (let i = 0; i < n; i++) { const top = i === n - 1 && n > 2, [x, y, z] = put(s + (top ? 0 : (i % 2) * 0.7 - 0.35), u + (top ? 0.2 : 0)); const sz = 0.62 - (top ? 0.12 : 0); const m = L.vb(life, sz, sz, sz, pick([0x8a6440, 0x7a5636, 0x94704a]), x, y + sz / 2 + (top ? 0.62 : 0), z, 0.08); m.rotation.y = RS + (r() - 0.5) * 0.5; }
+      const [x, , z] = put(s, u); _collide(x, z, 0.65); };
+    const sacks = (s, u, n) => { for (let i = 0; i < n; i++) { const [x, y, z] = put(s + (r() - 0.5) * 0.8, u + (r() - 0.5) * 0.8); L.sack(x, y, z, 0.8 + r() * 0.3, pick([0xb09a6c, 0xa28c60, 0xc2ae84])); } };
+    const woodpile = (s, u, len) => { const [x0, y, z0] = put(s, u); for (let row = 0; row < 3; row++) for (let i = 0; i < 5 - row; i++) { const [x, z] = XZ(s, u + (i - (4 - row) / 2) * 0.3); const m = L.vcy(life, 0.13, 0.13, len, 6, pick([0x8a6440, 0x7a5636, 0x6c4a2e]), x, y + 0.14 + row * 0.24, z, 0.08); m.rotation.set(Math.PI / 2, RS, 0, 'YXZ'); }
+      _collide(x0, z0, 0.8); };
+    const bench = (s, u) => { const [x, y, z] = put(s, u); const m = L.vb(life, 1.4, 0.1, 0.4, 0x7a5a3c, x, y + 0.45, z, 0.06); m.rotation.y = RS; for (const t of [-0.55, 0.55]) { const [x2, z2] = XZ(s, u + t); L.vb(life, 0.1, 0.45, 0.36, 0x5a4230, x2, y + 0.22, z2, 0.05).rotation.y = RS; } _collide(x, z, 0.55); };
+    const planter = (s, u, len) => { const [x, y, z] = put(s, u); L.vb(life, len, 0.4, 0.5, 0x6e5238, x, y + 0.2, z, 0.06).rotation.y = RS;
+      for (let i = 0; i < len * 4; i++) { const [x2, z2] = XZ(s + (r() - 0.5) * 0.3, u + (r() - 0.5) * (len - 0.2)); L.vic(life, 0.1 + r() * 0.06, pick([0xb86a8a, 0xd8c060, 0x8a6aaa, 0xd0d0c0, 0x5a8a4a, 0x4f7a3a]), x2, y + 0.46 + r() * 0.08, z2, 0); } };
+    const hay = (s, u) => { const [x, y, z] = put(s, u); const m = L.vcy(life, 0.5, 0.5, 0.9, 9, 0xc9a85a, x, y + 0.5, z, 0.08); m.rotation.set(Math.PI / 2, RS + r(), 0, 'YXZ'); _collide(x, z, 0.6); };
+    const post = (s, u, h) => { const [x, y, z] = put(s, u); L.vcy(life, 0.07, 0.09, h, 6, 0x4a3828, x, y + h / 2, z, 0.05); return [x, y + h, z]; };
+    const laundry = (a, b) => {   // 빨랫줄: 기둥 둘 + 줄 + 널린 천
+      const pa = post(a[0], a[1], 2.1), pb = post(b[0], b[1], 2.1);
+      L.rod(life, [pa[0], pa[1] - 0.1, pa[2]], [pb[0], pb[1] - 0.1, pb[2]], 0.015, 0xb0a080);
+      const cols = [0xd8ccae, 0x9a4a3a, 0x5a7090, 0xe0d5b8, 0x7a8a50, 0xc0a070];
+      for (let i = 1; i < 6; i++) { const t = i / 6 + (r() - 0.5) * 0.04, hh = 0.45 + r() * 0.35, x = pa[0] + (pb[0] - pa[0]) * t, z = pa[2] + (pb[2] - pa[2]) * t, y = pa[1] + (pb[1] - pa[1]) * t - 0.1 - 0.12 * Math.sin(t * Math.PI);
+        const m = L.vb(life, 0.42 + r() * 0.2, hh, 0.02, pick(cols), x, y - hh / 2, z, 0.06, 'cloth'); m.rotation.y = Math.atan2(-(pb[2] - pa[2]), pb[0] - pa[0]); }
+    };
+    const lampPost = (s, u) => { const [x, y, z] = post(s, u, 2.3); L.vb(life, 0.45, 0.06, 0.06, 0x3a3834, x, y - 0.1, z, 0.03, 'metal'); L.lantern(x + 0.2, y - 0.35, z, 0.9); };
+    const sign = (s, u, txtCol) => { const [x, y, z] = post(s, u, 1.6); const m = L.vb(life, 0.9, 0.32, 0.06, 0x8a6440, x, y - 0.25, z, 0.06); m.rotation.y = RS; const m2 = L.vb(life, 0.6, 0.05, 0.07, txtCol, x, y - 0.25, z, 0.02); m2.rotation.y = RS; };
+    const rubble = (s, u, n) => { for (let i = 0; i < n; i++) { const [x, y, z] = put(s + (r() - 0.5) * 0.9, u + (r() - 0.5) * 1.4); L.vic(life, 0.12 + r() * 0.16, pick(wallPal), x, y + 0.08, z, 0); } };
+    const flowerPots = (s, u, n) => { for (let i = 0; i < n; i++) { const [x, y, z] = put(s + (r() - 0.5) * 0.3, u + i * 0.45); L.vcy(life, 0.16, 0.12, 0.24, 7, 0x8a5a3a, x, y + 0.12, z, 0.05); for (let k = 0; k < 3; k++) L.vic(life, 0.08, pick([0xb86a8a, 0xd8c060, 0x8a6aaa, 0x5a8a4a]), x + (r() - 0.5) * 0.14, y + 0.3, z + (r() - 0.5) * 0.14, 0); } };
+
+    // 광장 쪽 옹벽 밑(원화처럼 벽에 기대 쌓인 짐)
+    crates(-5.6, -10.6, 3); barrels(-5.5, -6.4, 3); planter(-5.95, -8.3, 1.8); rubble(-6.0, -12.6, 5);
+    flowerPots(-6.1, 0.1, 5); barrels(-5.6, 7.3, 2); crates(-5.7, 17.2, 3); sacks(-5.5, 18.4, 3); rubble(-6.0, 20, 4);
+    sign(-5.4, 6.6, 0x3a3020);
+    // 윗마을: 성문길 가로등·교회 앞 화분·대장간 장작·빨랫줄·건초
+    lampPost(-12.4, 9.1); lampPost(-16.7, 14.0); lampPost(-9.8, 2.2);
+    planter(-10.4, -4.4, 1.1); planter(-10.4, 0.4, 1.1); bench(-10.9, -5.6);
+    woodpile(-14.0, -6.2, 1.1); barrels(-7.6, -13.4, 2);
+    laundry([-17.8, 1.9], [-13.4, 1.9]); crates(-19.4, 4.2, 2); barrels(-20.3, 9.6, 2); sacks(-13.0, 4.0, 2);
+    hay(-9.8, -15.0); hay(-10.6, -14.0); hay(-9.6, -13.2); rubble(-12.0, -22.5, 4);
+    crates(-8.0, 12.0, 2); flowerPots(-7.3, 18.8, 3);
+    // 풍차 언덕 위
+    sacks(-18.9, -11.4, 3); barrels(-14.8, -14.7, 2);
+    // 앞마을(광장 바깥 풀밭 쪽)
+    bench(1.7, -10.3); laundry([4.6, -8.6], [7.4, -8.0]); barrels(3.8, -16.5, 2); planter(2.4, -22.0, 1.4);
+    crates(8.2, 14.3, 2); barrels(15.8, 11.7, 2); flowerPots(7.0, 19.2, 3); sacks(16.4, -11.2, 3); barrels(17.5, -11.9, 2);
+    hay(0.3, -22.3); hay(1.0, -23.0);
+    vcMerge(life, 9203);
+
+    // 윗마을 깃발(성문길 계단 양옆) · 짐수레 하나
+    bannerPole(...XZ(-9.7, 6.8), 4.6, C.cloth); bannerPole(...XZ(-15.6, 12.6), 4.8, C.cloth2);
+    { const [x, z] = XZ(-14.2, 13.4); makeCart(x, z, 0.4); }
+  }
 
   // ===== 성벽 안쪽 초록 풀밭 + 풀포기 =====
   const grassRing = new THREE.Mesh(new THREE.RingGeometry(15, 33, 44, 1), mat(0x66843c)); // 풀잎 밑동 톤과 맞춰 카펫처럼
@@ -7667,8 +7889,10 @@ function buildTownScene() {
   // 어두운 잔디 얼룩
   for (let i = 0; i < 18; i++) {
     const phi = Math.random() * Math.PI * 2, rr = 17 + Math.random() * 13;
-    const p = new THREE.Mesh(new THREE.CircleGeometry(1.4 + Math.random() * 2.4, 7), mat(C.grassD));
-    p.rotation.x = -Math.PI / 2; p.position.set(rr * Math.sin(phi), 0.03, rr * Math.cos(phi)); townScene.add(p);
+    const pr = 1.4 + Math.random() * 2.4, px = rr * Math.sin(phi), pz = rr * Math.cos(phi);
+    if (TOWN3) { const h0 = townTerrH(px, pz); let flat = true; for (let k = 0; k < 8; k++) if (townTerrH(px + Math.cos(k * 0.785) * pr, pz + Math.sin(k * 0.785) * pr) !== h0) flat = false; if (!flat) continue; }   // 단 가장자리에 걸치면 허공에 뜬다
+    const p = new THREE.Mesh(new THREE.CircleGeometry(pr, 7), mat(C.grassD));
+    p.rotation.x = -Math.PI / 2; p.position.set(px, 0.03, pz); townScene.add(p);
   }
   // 무성한 풀포기(성벽 쪽으로 갈수록 촘촘) — 게이트 통로는 비움
   // 픽셀 잔디가 같은 링을 덮으므로 그때는 만들지 않는다. 원뿔 하나가 메시 하나라
@@ -7702,7 +7926,14 @@ function buildTownScene() {
     const x = rr * Math.sin(phi) + (Math.random() - 0.5) * 1.2;
     const z = rr * Math.cos(phi) + (Math.random() - 0.5) * 1.2;
     const s = 0.8 + Math.random() * 0.7;
-    if (PTREES) treeSpots.push({ x, z, scale: s * 3.2 }); // 모듈은 높이 1 기준 — 예전 나무 높이에 맞춘 배율
+    if (TOWN3) {   // v3: 새 건물·단 가장자리·길 위는 비운다
+      const h0 = townTerrH(x, z); let ok = true;
+      for (let k = 0; k < 8 && ok; k++) if (townTerrH(x + Math.cos(k * 0.785) * 1.4, z + Math.sin(k * 0.785) * 1.4) !== h0) ok = false;
+      for (const c of townColliders) if (c.r >= 0.6 && Math.hypot(x - c.x, z - c.z) < c.r + 1.5) { ok = false; break; }
+      for (const e of townGrassExcludeRects) { const co = Math.cos(e.ry || 0), si = Math.sin(e.ry || 0), lx = (x - e.x) * co - (z - e.z) * si, lz = (x - e.x) * si + (z - e.z) * co; if (Math.abs(lx) < e.hw && Math.abs(lz) < e.hd) ok = false; }
+      if (!ok) continue;
+    }
+    if (PTREES) treeSpots.push({ x, y: townTerrH(x, z), z, scale: s * 3.2 }); // 모듈은 높이 1 기준 — 예전 나무 높이에 맞춘 배율
     else trees.push(makeTree(x, z, s));
   }
   if (PTREES && treeSpots.length) {
@@ -7751,7 +7982,7 @@ function buildTownScene() {
   }
 
   // ===== 입구 → 마을로 이어지는 포장도로 (게이트에서 중앙 광장까지) =====
-  {
+  if (!TOWN3) {   // v3 은 윗마을 성문길을 따로 깐다(계단으로 꺾인다)
     const roadMats = [mat(C.flag), mat(C.flagD), mat(C.flagE), mat(C.rubble)];
     const start = 12.5, end = WALL_R - 0.4;             // 중앙 포석 근처 → 성벽 직전
     const dirX = Math.sin(GATE_ANGLE), dirZ = Math.cos(GATE_ANGLE);
@@ -7777,13 +8008,13 @@ function buildTownScene() {
 
   // 광장 사람들: 보초 둘(뒤쪽 응시) + 시장 가판대 + 마차
   const guards = [
-    makeGuard(1.6, -7.2, Math.PI, { name: _i18n('광장 보초병'), lineSets: [
+    makeGuard(...(TOWN3 ? t3XZ(-3.8, 7.2) : [1.6, -7.2]), Math.PI, { name: _i18n('광장 보초병'), lineSets: [
       [_i18n('광장은 평화롭군.'), _i18n('교회 앞 성직자에게 가면 축복(영구 강화)을 받을 수 있네.'), _i18n('던전 입구는 광장 한가운데 있네. 조심히 내려가게.')],
       [_i18n('오늘은 장이 제법 북적이는군.')],
       [_i18n('대장간은 아직 새 단장 중이라네.'), _i18n('곧 좋은 장비를 다룬다 하니 기대해 보게.')],
       [_i18n('던전에서 모은 골드는 잘 간수하게.'), _i18n('성직자의 축복에 쓰면 두고두고 도움이 되지.')]
     ] }),
-    makeGuard(-2.2, -6.6, Math.PI, { name: _i18n('광장 보초병'), lineSets: [
+    makeGuard(...(TOWN3 ? t3XZ(-5.5, 1.9) : [-2.2, -6.6]), Math.PI, { name: _i18n('광장 보초병'), lineSets: [
       [_i18n('수상한 자는 없는지 늘 살피고 있지.')],
       [_i18n('축복을 받으려면 교회 쪽으로 가 보게.'), _i18n('흰 옷을 입은 성직자가 있을 걸세.')],
       [_i18n('밤엔 등불을 밝혀 두니 길 잃을 일은 없을 거야.')],
@@ -7836,9 +8067,12 @@ function buildTownScene() {
   placeStallRow(Math.PI / 2,   2, 9.0, 2.4, [C.cloth2, C.cloth]);
   // (남동쪽 호 가판대는 여관 주인 앞 길목을 막아 제거)
   // 광장 북서쪽 가판대 3개: 캐릭터 위치 부근을 중심으로 호 모양 배치(논밭 앞, 위쪽으로)
-  placeStallRow(Math.atan2(-10.6, -9.0), 3, 13.9, 3.0, [C.cloth, C.cloth2, C.cloth]);
+  if (TOWN3) {   // v3: 옛 자리는 윗마을이 됐다 — 광장 오른쪽 옹벽 밑에 장터 한 줄(원화처럼 벽에 기댄 좌판)
+    [[9.5, C.cloth], [12.5, C.cloth2], [15.5, C.cloth]].forEach(([u, col]) => makeStallV2(...t3XZ(-4.9, u), -3 * Math.PI / 4, col));
+    makeMerchant(...t3XZ(-3.2, 12.5), Math.PI / 4);
+  } else placeStallRow(Math.atan2(-10.6, -9.0), 3, 13.9, 3.0, [C.cloth, C.cloth2, C.cloth]);
   // 가판대 호의 가운데 앞(중심 쪽)에 상인 NPC 배치 — 광장 중심을 향하게
-  {
+  if (!TOWN3) {
     const mAng = Math.atan2(-10.6, -9.0), mR = 13.9 - 1.8;
     const mxp = Math.sin(mAng) * mR, mzp = Math.cos(mAng) * mR;
     makeMerchant(mxp, mzp, Math.atan2(-mxp, -mzp)); // 중심(0,0)을 바라봄
@@ -7853,8 +8087,11 @@ function buildTownScene() {
   makeCart(9.0, -3.0, -1.1);
 
   // 교회 뒤 묘지 · 방앗간 옆 밀밭
-  makeGraveyard(10, -16.5);
-  const fields = [
+  makeGraveyard(...(TOWN3 ? t3XZ(-10.5, 15) : [10, -16.5]));
+  const fields = TOWN3 ? [
+    makeWheatField(...t3XZ(-11.8, -17.5), 4, 3, Math.PI / 4),   // v3: 윗마을 풍차 언덕 앞
+    makeWheatField(...t3XZ(-2.8, -19), 4.5, 3, Math.PI / 4),  // v3: 광장 왼쪽 텃밭
+  ] : [
     makeWheatField(-18, 2, 5, 4),                  // 풍차 왼쪽(원래, 유지)
     makeWheatField(-11.5, -14, 9, 5.5, 0.55),      // 풍차 오른쪽 — 큰 논밭 하나
   ];
@@ -7867,9 +8104,11 @@ function buildTownScene() {
     banner.rotation.z = -Math.PI / 2;                  // 위 고정 → 아래로 늘어짐
     banner.position.set(x, h - 0.05, z + 0.5); townScene.add(banner);
   }
-  bannerPole(1.9, -9.0, 5.0, C.cloth);
-  bannerPole(1.15, -15.0, 5.4, C.tileC);
-  bannerPole(0.4, -21.0, 4.6, C.cloth2);
+  if (!TOWN3) {   // v3 은 윗마을 성문길 계단 옆에 따로 세운다
+    bannerPole(1.9, -9.0, 5.0, C.cloth);
+    bannerPole(1.15, -15.0, 5.4, C.tileC);
+    bannerPole(0.4, -21.0, 4.6, C.cloth2);
+  }
 
   // 가로등(광장 안쪽 고리)
   [[5.5, 1.5], [-5.5, 1.5], [1, 6], [-1, -5], [4, -4.5], [-4.5, -3]].forEach(p => makeLamp(p[0], p[1]));
@@ -7879,6 +8118,15 @@ function buildTownScene() {
   prop(-11.2, 2.2, 'barrel'); prop(-11.8, 2.8, 'barrel');
   prop(5.5, 7.2, 'crate'); prop(-5.6, 8.4, 'hay'); prop(-6.3, 8.0, 'hay');
 
+  // ===== 단 올리기(v791) — 지형 위에 선 것들을 자기 자리 높이만큼 한 번에 올린다 =====
+  // 배치 지점마다 높이를 더하면 반드시 빠뜨린다(3막 corTileY·던전 floorGroup 교훈). 원점에 놓인 그룹
+  // (울타리처럼 자식을 월드 좌표로 짓는 것)은 자식마다 올린다. 지형·소품은 noLift(이미 높이를 넣어 지었다).
+  // baseY 는 제자리 흔들기(보초·상인)가 매 프레임 y 를 덮어쓸 때 기준으로 쓴다.
+  if (TOWN3) for (const ch of townScene.children) {
+    if (ch.isLight || ch.userData.noLift) continue;
+    if (ch.isGroup && ch.position.x === 0 && ch.position.z === 0) { for (const c2 of ch.children) c2.position.y += townTerrH(c2.position.x, c2.position.z); continue; }
+    ch.position.y += townTerrH(ch.position.x, ch.position.z); ch.userData.baseY = ch.position.y;
+  }
   // ===== 굴뚝 연기 시스템 =====
   const smokers = [];
   function buildSmoke() {
@@ -8021,18 +8269,18 @@ function updateTown(dt) {
     pos.needsUpdate = true; f.geo.computeVertexNormals();
   }
   if (townAnim.windmills) for (const w of townAnim.windmills) { if (w.userData && w.userData.blades) w.userData.blades.rotation.z += dt * 0.6; }
-  if (townAnim.guards) for (const g of townAnim.guards) { if (g.userData) { g.userData.bob = (g.userData.bob || 0) + dt; g.position.y = Math.sin(g.userData.bob * 1.5) * 0.03; } }
+  if (townAnim.guards) for (const g of townAnim.guards) { if (g.userData) { g.userData.bob = (g.userData.bob || 0) + dt; g.position.y = (g.userData.baseY || 0) + Math.sin(g.userData.bob * 1.5) * 0.03; } }
   // 상인: 가벼운 idle + 머리 위 대화 마커 둥실/회전
   if (townAnim.merchants) for (const m of townAnim.merchants) {
     if (!m.userData) continue;
     m.userData.bob = (m.userData.bob || 0) + dt;
-    m.position.y = Math.sin(m.userData.bob * 1.5) * 0.03;
+    m.position.y = (m.userData.baseY || 0) + Math.sin(m.userData.bob * 1.5) * 0.03;
     if (m.userData.mark) { m.userData.mark.rotation.y += dt * 1.5; m.userData.mark.position.y = 2.05 + Math.sin(m.userData.bob * 2.0) * 0.08; }
   }
   if (townAnim.trainers) for (const m of townAnim.trainers) {
     if (!m.userData) continue;
     m.userData.bob = (m.userData.bob || 0) + dt;
-    m.position.y = Math.sin(m.userData.bob * 1.5) * 0.03;
+    m.position.y = (m.userData.baseY || 0) + Math.sin(m.userData.bob * 1.5) * 0.03;
     if (m.userData.mark) { m.userData.mark.rotation.y += dt * 1.5; m.userData.mark.position.y = 2.05 + Math.sin(m.userData.bob * 2.0) * 0.08; }
     if (m.userData.gem) { m.userData.gem.rotation.y += dt * 2.0; } // 지팡이 보석 회전
   }
@@ -8063,8 +8311,14 @@ function updateTown(dt) {
       }
     } else {
       const sp = npc.speed * dt;
-      npc.obj.position.x += (dx / dist) * sp;
-      npc.obj.position.z += (dz / dist) * sp;
+      const nx2 = npc.obj.position.x + (dx / dist) * sp, nz2 = npc.obj.position.z + (dz / dist) * sp;
+      if (TOWN3) {   // 옹벽·계단 옆면은 못 넘는다 — 막히면 그 자리에서 쉬었다 새 목표를 고른다
+        const h1 = townTerrH(nx2, nz2);
+        if (Math.abs(h1 - townTerrH(npc.obj.position.x, npc.obj.position.z)) > T3.STEP) { npc.tx = npc.obj.position.x; npc.tz = npc.obj.position.z; continue; }
+        npc.obj.position.y = h1;
+      }
+      npc.obj.position.x = nx2;
+      npc.obj.position.z = nz2;
       npc.obj.rotation.y = Math.atan2(dx, dz);
       npc.x = npc.obj.position.x; npc.z = npc.obj.position.z;
       // 걷기 다리 모션
@@ -11424,7 +11678,7 @@ function createPixelTrees(options) {
         }
         if (inside) continue;
 
-        dummy.position.set(tx + p.x, p.y, tz + p.z);
+        dummy.position.set(tx + p.x, p.y + (list[ti].y || 0), tz + p.z);   // y: 선 자리의 지면(마을 v3 단)
         if (isSprite) {
           // 카드를 캐노피 표면에 눕힌다(면 노멀 = 구체 바깥 방향). 카메라를 향해 세우면
           // 카드가 표면을 덮는 게 아니라 표면에서 튀어나와 야자수처럼 보인다.
@@ -11498,7 +11752,7 @@ function createPixelTrees(options) {
       const dm = new THREE.Object3D();
       for (let m = 0; m < list.length; m++) {
         const sc2 = scaleOf(list[m]);
-        dm.position.set(list[m].x, 0, list[m].z);
+        dm.position.set(list[m].x, list[m].y || 0, list[m].z);
         dm.scale.set(sc2, sc2, sc2);
         dm.rotation.set(0, rnd(list[m].x, list[m].z, 21) * Math.PI * 2, 0);
         dm.updateMatrix();
@@ -11519,7 +11773,7 @@ function createPixelTrees(options) {
       for (let m = 0; m < list.length; m++) {
         const t2 = list[m], sc2 = scaleOf(t2);
         const jx = (rnd(t2.x, t2.z, 2) - 0.5) * O.jitter, jz = (rnd(t2.x, t2.z, 3) - 0.5) * O.jitter;
-        dm2.position.set(t2.x + jx, 0, t2.z + jz);
+        dm2.position.set(t2.x + jx, t2.y || 0, t2.z + jz);
         dm2.scale.set(sc2, sc2, sc2);
         dm2.rotation.set(0, 0, 0);
         dm2.updateMatrix();
@@ -24137,12 +24391,14 @@ function enterTownMode(keepGod) {
   townScene.add(player.obj);
   const startA = Math.PI + 0.12;            // 성문 방위(플레이어는 성문 근처에서 시작)
   const sr = TOWN_WALL_R - 4;
-  player.obj.position.set(sr * Math.sin(startA), 0, sr * Math.cos(startA));
+  const _sx = sr * Math.sin(startA), _sz = sr * Math.cos(startA);
+  townGroundY = townTerrH(_sx, _sz);         // v3: 성문 쪽은 윗마을(1.2)
+  player.obj.position.set(_sx, townGroundY, _sz);
   player.yaw = startA;                       // 마을 중심(안쪽)을 바라봄 — 전진방향 -sin/-cos는 위치의 반대=중심
   player.obj.rotation.y = player.yaw;
   // 카메라 y가 절대값이면 플레이어가 올라갈 때 아이소 각도가 틀어진다(y=2에서 51.9° → 49.0°).
   // 지면 높이를 같이 더해 시점 기하를 지형과 무관하게 고정한다.
-  camera.position.set(player.obj.position.x + isoOffsetX, isoOffsetY + groundHeightAt(player.obj.position.x, player.obj.position.z), player.obj.position.z + isoOffsetZ);
+  camera.position.set(player.obj.position.x + isoOffsetX, isoOffsetY + townGroundY, player.obj.position.z + isoOffsetZ);
   camera.lookAt(player.obj.position);
   if (townTimeAuto) townTimeOfDay = timeOfDayNow(); // 자동: 실제 시각에 맞춰 낮/밤 결정
   setTownTimeOfDay(townTimeOfDay); // 시간대(밤/낮) 적용
@@ -25883,6 +26139,18 @@ function updateTownMode(dt) {
       // 성벽 경계
       const rFromC = Math.hypot(nx, nz);
       if (rFromC > TOWN_WALL_R - 1.5) { const u = rFromC || 1; nx = nx / u * (TOWN_WALL_R - 1.5); nz = nz / u * (TOWN_WALL_R - 1.5); }
+      // v3 단: 높이차가 한 걸음(T3.STEP)을 넘으면 옹벽·계단 옆면이다. 벽이 화면 축(s·u)에 나란하므로
+      // 막히면 월드 x/z 가 아니라 s·u 축으로 나눠 미끄러진다(쉼터 v2 와 같은 이유 — 월드 축이면 지그재그로 걸린다).
+      if (TOWN3) {
+        const ox = player.obj.position.x, oz = player.obj.position.z, h0 = townTerrH(ox, oz);
+        const okAt = (x, z) => Math.abs(townTerrH(x, z) - h0) <= T3.STEP;
+        if (!okAt(nx, nz)) {
+          const ds = ((nx - ox) + (nz - oz)) * 0.5, du = ((nx - ox) - (nz - oz)) * 0.5;   // s·u 성분을 월드로 되돌린 값
+          if (okAt(ox + du, oz - du)) { nx = ox + du; nz = oz - du; }
+          else if (okAt(ox + ds, oz + ds)) { nx = ox + ds; nz = oz + ds; }
+          else { nx = ox; nz = oz; }
+        }
+      }
       player.obj.position.x = nx; player.obj.position.z = nz;
       moved = true;
     }
@@ -25904,7 +26172,7 @@ function updateTownMode(dt) {
       const target = new THREE.Vector3();
       // 조준 평면은 발밑 지면 높이에 맞춘다. y=0 고정이면 높이 h만큼 서 있을 때
       // 교점이 h/tan(51.9°) 만큼 밀린다(h=2면 1.57유닛 ≈ 타일 1/3).
-      groundPlane.constant = -groundHeightAt(player.obj.position.x, player.obj.position.z);
+      groundPlane.constant = -townGroundY;   // 마을은 자체 높이(groundHeightAt 은 마을에서 0) — 단 위에서도 조준이 안 밀린다
       const hit = raycaster.ray.intersectPlane(groundPlane, target);
       if (hit) player.yaw = Math.atan2(player.obj.position.x - target.x, player.obj.position.z - target.z);
     }
@@ -25929,8 +26197,8 @@ function updateTownMode(dt) {
   const stairTopZ = TOWN_HOLE - 0.45;   // 계단 시작(위, 지상)
   const stairBotZ = -0.7;               // 계단 끝(아래, 바닥)
   const pitFloorY = -3.4 + 0.06;        // 구덩이 바닥 높이
-  let groundY = 0;
   const ppx = player.obj.position.x, ppz = player.obj.position.z;
+  let groundY = townTerrH(ppx, ppz);   // v3 단(평지면 0). 구덩이 계단은 광장(0) 안이라 아래가 덮어쓴다
   if (Math.abs(ppx) < 1.5 && ppz < stairTopZ + 0.3 && ppz > -3.4) {
     if (ppz >= stairBotZ) {
       const tt = Math.max(0, Math.min(1, (stairTopZ - ppz) / (stairTopZ - stairBotZ)));
