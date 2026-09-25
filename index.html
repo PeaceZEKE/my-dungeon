@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v798'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v799'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -10054,6 +10054,7 @@ function makeCastleRubble(parent, x, z) {
 // 쓰러진 책장·무기걸이·카펫·바닥 문장)을 둔다. ?cas2=0 이면 v795(타일 한 장 = 석판 텍스처 한 장 + 잔해·기둥뿐).
 // 바닥은 청크(8×8칸)마다 한 메시, 소품은 방마다 재질별 한 메시(vcMerge)라 드로우콜이 오히려 준다.
 const CAS2 = !/[?&]cas2=0/.test(location.search);
+const CAS2_BUMP = (() => { const m = /[?&]bump2=([0-9.]+)/.exec(location.search); return m ? parseFloat(m[1]) : 1; })();   // v799 바닥 석판 높낮이 배수(0 = v798)
 let _cas2Mat = null;
 function cas2FloorMat() {   // 첫 사용 때 만든다(모듈 로드 시 generateUUID 가 난수를 먹는다)
   if (_cas2Mat) return _cas2Mat;
@@ -10153,8 +10154,12 @@ function buildCas2Floor(dgn, trapSet, rnd, mf) {
         let hex = PAL[Math.floor(u2 * PAL.length)], k = 0.9 + u3 * 0.2;
         if (nearWall) hex = [0x2f3630, 0x2d332f, 0x30343b][Math.floor(u3 * 3)];   // 벽 밑은 이끼 낀 석판
         // 높이: 대부분 평평(±0.015), 8% 는 가라앉거나 한쪽이 들린 석판 — 귀퉁이 높이를 석판 좌표로 정해 잘린 조각끼리 맞는다
-        const tilt = u > 0.92 ? (hash(r, 7000 + i) - 0.5) * 0.12 : 0, base = (u2 - 0.5) * 0.03 - (u > 0.96 ? 0.05 : 0);
-        const hAt = (xx, zz) => base + tilt * ((xx - sx0) / (sx1 - sx0) - 0.5) + tilt * 0.5 * ((zz - z0) / ROW - 0.5);
+        // v799: 울퉁불퉁 — 석판마다 높이를 −0.035~+0.105 로 흔들고 셋 중 하나는 기울인다(CAS2_BUMP 배수, 0 이면 v798).
+        // 아래로는 줄눈 바탕(−0.07)을 뚫지 않게 막는다. 옆면은 +x·+z 만 내므로 높은 석판의 턱이 카메라 쪽으로 보인다
+        const B = CAS2_BUMP, hb = hash(r, 7100 + i), tiltOn = u > (B > 0 ? 0.92 - 0.25 * Math.min(1, B) : 0.92);
+        const tilt = tiltOn ? (hash(r, 7000 + i) - 0.5) * (0.12 + 0.16 * B) : 0, tiltZ = tiltOn ? (hash(r, 7200 + i) - 0.5) * 0.12 * B : 0;
+        const base = (u2 - 0.5) * 0.03 - (u > 0.96 ? 0.05 : 0) + B * ((hb - 0.5) * 0.14 + 0.035);
+        const hAt = (xx, zz) => Math.max(-0.055, base + tilt * ((xx - sx0) / (sx1 - sx0) - 0.5) + (tilt * 0.5 + tiltZ) * ((zz - z0) / ROW - 0.5));
         const z1 = z0 + ROW - GAP, zz0 = z0 + GAP;
         if (u > 0.86 && u < 0.92) {   // 금 간 석판: 두 조각
           const m = sx0 + (sx1 - sx0) * (0.35 + 0.3 * u3);
