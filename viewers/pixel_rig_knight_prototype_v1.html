@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>2.5D Pixel Rig Knight Prototype</title>
+<style>
+  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#10131a;color:#e9edf4;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+  #app{position:fixed;inset:0}
+  canvas.webgl{display:block;width:100%;height:100%;image-rendering:pixelated}
+  .panel{position:fixed;left:14px;top:14px;width:min(330px,calc(100vw - 28px));padding:13px 14px;border:1px solid #ffffff1f;background:#111722dc;backdrop-filter:blur(8px);box-shadow:0 10px 30px #0007;border-radius:12px;z-index:5}
+  h1{font-size:16px;margin:0 0 5px}.sub{font-size:12px;line-height:1.45;color:#aeb8c8;margin-bottom:10px}
+  .row{display:flex;gap:7px;flex-wrap:wrap;margin:7px 0}.btn{border:1px solid #ffffff24;background:#1b2432;color:#e8edf5;padding:7px 10px;border-radius:8px;cursor:pointer;font-size:12px}.btn.active{background:#3a506d;border-color:#8099ba}.btn:hover{background:#29374a}
+  label{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#c9d2df;margin:8px 0}input[type=range]{width:150px}
+  .tag{display:inline-block;font-size:10px;padding:3px 6px;margin:2px;border-radius:999px;background:#ffffff12;color:#bfc9d7}
+  .help{position:fixed;right:14px;bottom:12px;font-size:11px;color:#8995a6;background:#0d1118b8;padding:7px 9px;border-radius:7px;z-index:5}
+  .badge{position:fixed;right:14px;top:14px;font-size:11px;color:#d7e5f9;background:#223246dd;border:1px solid #ffffff24;padding:7px 9px;border-radius:8px;z-index:5}
+  @media(max-width:640px){.panel{padding:10px 11px}.help{display:none}.badge{top:auto;bottom:12px}.sub{font-size:11px}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="panel">
+  <h1>2.5D Pixel Rig — Knight v1</h1>
+  <div class="sub">3D 본 계층 + 카메라 지향 픽셀 파츠 + 방향별 스프라이트 교체. 원화 파츠 적용 전 기술 검증용.</div>
+  <div class="row">
+    <button class="btn active" data-anim="idle">Idle</button>
+    <button class="btn" data-anim="walk">Walk</button>
+    <button class="btn" data-anim="attack">Attack</button>
+    <button class="btn" id="reset">Reset</button>
+  </div>
+  <label>캐릭터 회전 <input id="yaw" type="range" min="-180" max="180" value="0" step="1"></label>
+  <label>픽셀 크기 <input id="pixel" type="range" min="1" max="5" value="2" step="1"></label>
+  <label><span>본 표시</span><input id="bones" type="checkbox"></label>
+  <div><span class="tag">billboard sprites</span><span class="tag">direction swap</span><span class="tag">skeletal motion</span><span class="tag">nearest pixel</span></div>
+</div>
+<div class="badge" id="dirBadge">FRONT · 0°</div>
+<div class="help">드래그: 캐릭터 회전 · 휠: 줌 · Space: 애니메이션 순환</div>
+<script src="./three.r128.min.js"></script>
+<script>
+(() => {
+  'use strict';
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x10131a);
+  scene.fog = new THREE.Fog(0x10131a, 14, 28);
+
+  const camera = new THREE.PerspectiveCamera(34, innerWidth/innerHeight, 0.1, 100);
+  camera.position.set(0, 3.25, 10.5);
+  camera.lookAt(0, 2.7, 0);
+
+  const renderer = new THREE.WebGLRenderer({antialias:false, alpha:false});
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.domElement.className = 'webgl';
+  document.getElementById('app').appendChild(renderer.domElement);
+
+  scene.add(new THREE.HemisphereLight(0xaac7ff, 0x242016, 1.25));
+  const dl = new THREE.DirectionalLight(0xffffff, .6); dl.position.set(-3,7,5); scene.add(dl);
+
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(30,30), new THREE.MeshLambertMaterial({color:0x202733}));
+  floor.rotation.x = -Math.PI/2; floor.position.y = 0; scene.add(floor);
+  const grid = new THREE.GridHelper(30,30,0x3b4658,0x28313f); grid.position.y=.005; scene.add(grid);
+
+  function canvasTex(w,h,paint){
+    const c=document.createElement('canvas'); c.width=w; c.height=h;
+    const x=c.getContext('2d'); x.imageSmoothingEnabled=false; paint(x,w,h);
+    const t=new THREE.CanvasTexture(c); t.magFilter=THREE.NearestFilter; t.minFilter=THREE.NearestFilter; t.generateMipmaps=false; t.encoding=THREE.sRGBEncoding; return t;
+  }
+  const P={outline:'#171a21', steel0:'#4b5565',steel1:'#69788c',steel2:'#9aa9b9',steel3:'#cad5df',dark:'#293140', cloth:'#3b2530',cloth2:'#6e3949',leather:'#53382b',gold:'#bd8a42',eye:'#dbefff',blade:'#cbd6de'};
+  function poly(x, pts, fill){x.fillStyle=fill;x.beginPath();x.moveTo(pts[0][0],pts[0][1]);for(let i=1;i<pts.length;i++)x.lineTo(pts[i][0],pts[i][1]);x.closePath();x.fill();}
+  function px(x,a,b,c,d,fill){x.fillStyle=fill;x.fillRect(a,b,c,d)}
+
+  function makePart(kind,dir){
+    const side = dir==='side', back=dir==='back', quarter=dir==='quarter';
+    const specs={head:[28,30],torso:[34,38],pelvis:[28,20],upperArm:[18,28],forearm:[16,27],hand:[12,13],thigh:[18,30],shin:[17,30],boot:[20,15],sword:[15,58],shield:[29,39],cape:[31,42]};
+    const [w,h]=specs[kind];
+    return canvasTex(w,h,(x)=>{
+      x.clearRect(0,0,w,h);
+      if(kind==='head'){
+        poly(x,[[5,9],[9,3],[20,3],[25,10],[24,24],[19,28],[9,27],[4,22]],P.outline);
+        poly(x,[[7,10],[10,5],[19,5],[22,10],[21,23],[17,25],[10,25],[7,21]],back?P.steel0:P.steel1);
+        px(x,9,7,11,3,P.steel2); px(x,11,5,7,2,P.steel3);
+        if(!back){px(x,7,14,15,4,P.dark); if(!side){px(x,10,15,3,2,P.eye); px(x,18,15,3,2,P.eye)} else px(x,18,15,3,2,P.eye)}
+        px(x,5,20,19,3,P.steel2); px(x,11,24,8,3,P.steel0);
+      }
+      if(kind==='torso'){
+        poly(x,[[5,6],[10,2],[24,2],[30,7],[28,34],[22,37],[11,37],[5,32]],P.outline);
+        poly(x,[[7,8],[11,4],[23,4],[27,8],[25,32],[21,34],[12,34],[8,31]],back?P.steel0:P.steel1);
+        if(!back){poly(x,[[10,7],[17,5],[24,8],[22,22],[17,28],[11,22]],quarter?P.steel2:P.steel2);px(x,15,6,4,21,P.steel3);px(x,8,27,18,5,P.cloth2)}
+        else {px(x,9,9,16,3,P.steel2);px(x,10,27,14,5,P.cloth)}
+      }
+      if(kind==='pelvis'){
+        poly(x,[[3,3],[25,3],[26,12],[21,18],[7,18],[2,12]],P.outline);px(x,5,5,18,9,P.leather);px(x,7,5,14,3,P.gold);px(x,11,8,6,5,P.steel2)
+      }
+      if(kind==='upperArm'||kind==='forearm'){
+        poly(x,[[4,2],[13,2],[16,8],[14,h-3],[5,h-2],[2,9]],P.outline);px(x,5,4,8,h-8,kind==='upperArm'?P.steel1:P.steel2);px(x,6,5,6,4,P.steel3)
+      }
+      if(kind==='hand'){poly(x,[[2,3],[9,2],[11,6],[9,11],[3,11],[1,7]],P.outline);px(x,3,4,6,6,P.leather)}
+      if(kind==='thigh'||kind==='shin'){
+        poly(x,[[4,1],[14,1],[16,6],[14,h-2],[4,h-2],[2,6]],P.outline);px(x,5,3,8,h-7,kind==='thigh'?P.dark:P.steel1);if(kind==='shin')px(x,6,4,6,5,P.steel3)
+      }
+      if(kind==='boot'){poly(x,[[3,1],[14,1],[17,7],[19,11],[15,14],[2,14],[1,9]],P.outline);px(x,4,3,10,7,P.leather);px(x,8,10,9,2,P.steel0)}
+      if(kind==='sword'){
+        poly(x,[[6,0],[10,0],[11,38],[9,46],[7,46],[5,38]],P.outline);px(x,7,2,2,36,P.blade);px(x,4,39,8,4,P.gold);px(x,7,43,2,12,P.leather);px(x,5,55,6,3,P.gold)
+      }
+      if(kind==='shield'){
+        poly(x,[[5,3],[24,3],[28,10],[25,29],[15,37],[4,29],[1,10]],P.outline);poly(x,[[6,5],[22,5],[25,11],[22,27],[15,33],[7,27],[4,11]],P.steel1);poly(x,[[13,6],[17,6],[17,31],[14,34],[12,31]],P.steel3);px(x,6,15,18,4,P.cloth2);px(x,11,13,8,8,P.gold)
+      }
+      if(kind==='cape'){
+        poly(x,[[5,2],[26,2],[29,35],[23,40],[17,37],[11,41],[3,36]],P.outline);poly(x,[[7,4],[24,4],[26,33],[22,36],[17,34],[11,38],[6,34]],back?P.cloth2:P.cloth);px(x,9,5,13,3,P.cloth2)
+      }
+    });
+  }
+
+  const dirs=['front','quarter','side','back'];
+  const textureBank={};
+  ['head','torso','pelvis','upperArm','forearm','hand','thigh','shin','boot','sword','shield','cape'].forEach(k=>{
+    textureBank[k]={}; dirs.forEach(d=>textureBank[k][d]=makePart(k,d));
+  });
+
+  const rig = new THREE.Group(); rig.position.y=.05; scene.add(rig);
+  const bones={}; const sprites=[];
+  function bone(name,parent,pos){const b=new THREE.Group();b.name=name;b.position.set(...pos);parent.add(b);bones[name]=b;return b}
+  function sprite(kind,parent,scale,pos=[0,0,0],order=0){
+    const m=new THREE.SpriteMaterial({map:textureBank[kind].front,transparent:true,depthWrite:false,alphaTest:.25});
+    const s=new THREE.Sprite(m); s.position.set(...pos); s.scale.set(scale[0],scale[1],1); s.renderOrder=order; s.userData={kind}; parent.add(s); sprites.push(s); return s;
+  }
+
+  const root=bone('root',rig,[0,0,0]);
+  const pelvis=bone('pelvis',root,[0,2.05,0]); sprite('pelvis',pelvis,[.95,.68],[0,0,0],3);
+  const spine=bone('spine',pelvis,[0,.42,0]); sprite('cape',spine,[1.25,1.72],[0,.42,.10],0); sprite('torso',spine,[1.25,1.48],[0,.58,0],4);
+  const neck=bone('neck',spine,[0,1.28,0]); sprite('head',neck,[.92,.98],[0,.36,0],8);
+
+  function arm(sideSign){
+    const pre=sideSign<0?'L':'R';
+    const sh=bone(pre+'Shoulder',spine,[sideSign*.62,1.02,0]); sprite('upperArm',sh,[.52,.86],[sideSign*.05,-.33,0],5);
+    const el=bone(pre+'Elbow',sh,[0,-.72,0]); sprite('forearm',el,[.46,.82],[0,-.31,0],6);
+    const hand=bone(pre+'Hand',el,[0,-.67,0]); sprite('hand',hand,[.34,.36],[0,-.10,0],7); return {sh,el,hand};
+  }
+  const LA=arm(-1), RA=arm(1);
+  sprite('shield',LA.hand,[.95,1.27],[-.20,-.45,.05],12);
+  const sword=sprite('sword',RA.hand,[.49,1.88],[.12,-.70,.02],13); sword.center.set(.5,.18);
+
+  function leg(sideSign){
+    const pre=sideSign<0?'L':'R';
+    const hip=bone(pre+'Hip',pelvis,[sideSign*.31,-.18,0]); sprite('thigh',hip,[.48,.90],[0,-.40,0],2);
+    const knee=bone(pre+'Knee',hip,[0,-.78,0]); sprite('shin',knee,[.46,.88],[0,-.38,0],2);
+    const foot=bone(pre+'Foot',knee,[0,-.76,0]); sprite('boot',foot,[.58,.42],[sideSign*.04,-.16,0],2); return {hip,knee,foot};
+  }
+  const LL=leg(-1), RL=leg(1);
+
+  const boneMat=new THREE.LineBasicMaterial({color:0x6fd3ff,transparent:true,opacity:.75,depthTest:false});
+  const boneLines=[];
+  function link(a,b){const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);const l=new THREE.Line(g,boneMat);l.renderOrder=99;scene.add(l);boneLines.push({l,a,b});}
+  [[pelvis,spine],[spine,neck],[spine,LA.sh],[LA.sh,LA.el],[LA.el,LA.hand],[spine,RA.sh],[RA.sh,RA.el],[RA.el,RA.hand],[pelvis,LL.hip],[LL.hip,LL.knee],[LL.knee,LL.foot],[pelvis,RL.hip],[RL.hip,RL.knee],[RL.knee,RL.foot]].forEach(p=>link(p[0],p[1]));
+  boneLines.forEach(o=>o.l.visible=false);
+
+  let anim='idle', yaw=0, zoom=10.5, pixelScale=2;
+  const badge=document.getElementById('dirBadge');
+  const clock=new THREE.Clock();
+  function dirFromYaw(rad){
+    let d=((rad%(Math.PI*2))+Math.PI*2)%(Math.PI*2); const deg=d*180/Math.PI;
+    const view=((deg+22.5)%360);
+    if(view<45||view>=315)return 'front'; if(view<135)return 'quarter'; if(view<225)return 'back'; return 'side';
+  }
+  function setDir(){
+    const d=dirFromYaw(yaw); sprites.forEach(s=>s.material.map=textureBank[s.userData.kind][d]);
+    const deg=Math.round(yaw*180/Math.PI); badge.textContent=d.toUpperCase()+' · '+deg+'°';
+  }
+  setDir();
+
+  function resetPose(){
+    Object.values(bones).forEach(b=>b.rotation.set(0,0,0)); root.position.y=0; spine.position.x=0;
+    LA.sh.rotation.z=-.08; RA.sh.rotation.z=.08; LA.el.rotation.z=.05; RA.el.rotation.z=-.05;
+  }
+  function animateRig(t){
+    resetPose();
+    if(anim==='idle'){
+      root.position.y=Math.sin(t*2.2)*.025;
+      spine.rotation.z=Math.sin(t*1.4)*.012;
+      LA.sh.rotation.z=-.08+Math.sin(t*1.4)*.025; RA.sh.rotation.z=.08-Math.sin(t*1.4)*.025;
+    } else if(anim==='walk'){
+      const s=Math.sin(t*5.2), c=Math.cos(t*5.2);
+      root.position.y=Math.abs(c)*.055;
+      LL.hip.rotation.z=s*.48; RL.hip.rotation.z=-s*.48;
+      LL.knee.rotation.z=Math.max(0,-s)*.52; RL.knee.rotation.z=Math.max(0,s)*.52;
+      LA.sh.rotation.z=-s*.38; RA.sh.rotation.z=s*.38;
+      LA.el.rotation.z=.15+Math.max(0,s)*.25; RA.el.rotation.z=-.15-Math.max(0,-s)*.25;
+    } else if(anim==='attack'){
+      const phase=(t%1.45)/1.45;
+      let a;
+      if(phase<.28)a=phase/.28; else if(phase<.58)a=1-(phase-.28)/.30*.18; else a=1-(phase-.58)/.42;
+      const ease=a*a*(3-2*a);
+      spine.rotation.z=-.18*ease;
+      RA.sh.rotation.z=.15-1.75*ease; RA.el.rotation.z=-.25-.65*ease;
+      LA.sh.rotation.z=-.25+.28*ease; LA.el.rotation.z=.18+.25*ease;
+      root.position.y=Math.sin(Math.min(1,phase*2)*Math.PI)*.06;
+    }
+  }
+
+  function updateBoneLines(){
+    const a=new THREE.Vector3(),b=new THREE.Vector3(); boneLines.forEach(o=>{o.a.getWorldPosition(a);o.b.getWorldPosition(b);const p=o.l.geometry.attributes.position.array;p[0]=a.x;p[1]=a.y;p[2]=a.z;p[3]=b.x;p[4]=b.y;p[5]=b.z;o.l.geometry.attributes.position.needsUpdate=true;});
+  }
+
+  function render(){
+    requestAnimationFrame(render); const t=clock.getElapsedTime(); animateRig(t); rig.rotation.y=yaw; updateBoneLines();
+    renderer.setPixelRatio(Math.min(devicePixelRatio,pixelScale)); renderer.render(scene,camera);
+  }
+  render();
+
+  document.querySelectorAll('[data-anim]').forEach(b=>b.onclick=()=>{anim=b.dataset.anim;document.querySelectorAll('[data-anim]').forEach(x=>x.classList.toggle('active',x===b));clock.start();});
+  document.getElementById('reset').onclick=()=>{yaw=0;zoom=10.5;camera.position.z=zoom;document.getElementById('yaw').value=0;setDir();};
+  document.getElementById('yaw').oninput=e=>{yaw=+e.target.value*Math.PI/180;setDir();};
+  document.getElementById('pixel').oninput=e=>pixelScale=+e.target.value;
+  document.getElementById('bones').onchange=e=>boneLines.forEach(o=>o.l.visible=e.target.checked);
+
+  let dragging=false,lastX=0;
+  renderer.domElement.addEventListener('pointerdown',e=>{dragging=true;lastX=e.clientX;renderer.domElement.setPointerCapture(e.pointerId)});
+  renderer.domElement.addEventListener('pointermove',e=>{if(!dragging)return;const dx=e.clientX-lastX;lastX=e.clientX;yaw+=dx*.012;document.getElementById('yaw').value=Math.max(-180,Math.min(180,Math.round(yaw*180/Math.PI)));setDir();});
+  renderer.domElement.addEventListener('pointerup',()=>dragging=false);
+  renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(6.5,Math.min(15,zoom+e.deltaY*.008));camera.position.z=zoom;},{passive:false});
+  addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();const arr=['idle','walk','attack'];anim=arr[(arr.indexOf(anim)+1)%arr.length];document.querySelectorAll('[data-anim]').forEach(x=>x.classList.toggle('active',x.dataset.anim===anim));}});
+  addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+})();
+</script>
+</body>
+</html>
