@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v799'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v800'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -10125,38 +10125,40 @@ function cas2Acc(mossAt, ox, oz) {   // mossAt(x,z): 정점마다 이끼량(월�
 }
 // 바닥: 줄(0.25 TILE 폭)은 월드 z 로 맞추고, 줄마다 석판 길이를 해시로 뽑아 맵 전체에 이어지게 한다 —
 // 타일 경계에서 잘려도 같은 석판이면 색·높이가 같아 이음매가 안 보인다.
-function buildCas2Floor(dgn, trapSet, rnd, mf) {
-  const { grid } = dgn, ROW = TILE / 4, GAP = 0.05, W0 = -MAP_W / 2 * TILE - TILE / 2;
+// o: 막마다 다른 값(줄 수·팔레트·높낮이·재질). 생략하면 2막(v799) 그대로 — 3막 v2(v800)가 같은 바닥 짜기를 물려 쓴다
+function buildCas2Floor(dgn, trapSet, rnd, mf, o) {
+  o = o || { NR: 4, PAL: [0x30343b, 0x2c3036, 0x34363b, 0x2a2d33, 0x36363a, 0x2e3238, 0x31333a], WPAL: [0x2f3630, 0x2d332f, 0x30343b], grout: 0x14161a, dirt: 0x26231e, pebble: 0x3a3c40, bump: CAS2_BUMP, mat: cas2FloorMat };
+  const { grid } = dgn, ROW = TILE / o.NR, GAP = 0.05, W0 = -MAP_W / 2 * TILE - TILE / 2;
   const hash = (a, b) => { let h = (a * 374761393 + b * 668265263 + player.floor * 2246822519) >>> 0; h = ((h ^ (h >>> 13)) * 1274126177) >>> 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
   const breaks = new Map();   // 줄 → 석판 경계 x 목록(맵 왼쪽 끝부터)
   const rowBreaks = (r) => { if (breaks.has(r)) return breaks.get(r); const out = [W0 - hash(r, 0) * 2]; let x = out[0], i = 1; while (x < -W0 + TILE) { x += 1.0 + hash(r, i++) * 1.6; out.push(x); } breaks.set(r, out); return out; };
   const isF = (x, y) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && grid[y][x] > 0;
-  const PAL = [0x30343b, 0x2c3036, 0x34363b, 0x2a2d33, 0x36363a, 0x2e3238, 0x31333a];
+  const PAL = o.PAL;
   const CH = 8, chunks = new Map();
   const mossAt = mf ? (wx, wz) => mf(wx, wz) : null;
   const tile = (A, x, y, base0) => {
     const tx0 = (x - MAP_W / 2) * TILE - TILE / 2, tz0 = (y - MAP_H / 2) * TILE - TILE / 2;
     const nearWall = !isF(x - 1, y) || !isF(x + 1, y) || !isF(x, y - 1) || !isF(x, y + 1);
-    if (base0) A.slab(tx0, tx0 + TILE, tz0, tz0 + TILE, [-0.07, -0.07, -0.07, -0.07], -0.3, 0x14161a, 1, true);   // 줄눈 바탕
-    for (let ri = 0; ri < 4; ri++) {
+    if (base0) A.slab(tx0, tx0 + TILE, tz0, tz0 + TILE, [-0.07, -0.07, -0.07, -0.07], -0.3, o.grout, 1, true);   // 줄눈 바탕
+    for (let ri = 0; ri < o.NR; ri++) {
       const z0 = tz0 + ri * ROW, r = Math.round((z0 - W0) / ROW), bs = rowBreaks(r);
       for (let i = 0; i < bs.length - 1; i++) {
         const sx0 = bs[i], sx1 = bs[i + 1]; if (sx1 <= tx0 || sx0 >= tx0 + TILE) continue;
         const u = hash(r, 1000 + i), u2 = hash(r, 2000 + i), u3 = hash(r, 3000 + i);
         if (u < 0.022) {   // 빠진 석판 — 줄눈 바탕 위에 잔돌
           const cx = Math.max(sx0, tx0) + 0.3, cx2 = Math.min(sx1, tx0 + TILE) - 0.3;
-          A.slab(Math.max(sx0, tx0) + 0.02, Math.min(sx1, tx0 + TILE) - 0.02, z0 + 0.02, z0 + ROW - 0.02, [-0.045, -0.05, -0.045, -0.05], -0.09, 0x26231e);   // 드러난 흙
-          for (let k = 0; k < 3; k++) { const px = cx + (cx2 - cx) * hash(r, 4000 + i * 7 + k), pz = z0 + 0.2 + (ROW - 0.4) * hash(r, 5000 + i * 7 + k), q = 0.12 + 0.12 * hash(r, 6000 + i * 7 + k); A.slab(px - q, px + q, pz - q, pz + q, [-0.02, -0.03, -0.01, -0.03], -0.07, 0x3a3c40); }
+          A.slab(Math.max(sx0, tx0) + 0.02, Math.min(sx1, tx0 + TILE) - 0.02, z0 + 0.02, z0 + ROW - 0.02, [-0.045, -0.05, -0.045, -0.05], -0.09, o.dirt);   // 드러난 흙
+          for (let k = 0; k < 3; k++) { const px = cx + (cx2 - cx) * hash(r, 4000 + i * 7 + k), pz = z0 + 0.2 + (ROW - 0.4) * hash(r, 5000 + i * 7 + k), q = 0.12 + 0.12 * hash(r, 6000 + i * 7 + k); A.slab(px - q, px + q, pz - q, pz + q, [-0.02, -0.03, -0.01, -0.03], -0.07, o.pebble); }
           continue;
         }
         const a = Math.max(sx0 + GAP, tx0 + (sx0 < tx0 ? 0 : GAP)), b = Math.min(sx1 - GAP, tx0 + TILE - (sx1 > tx0 + TILE ? 0 : GAP));
         if (b - a < 0.05) continue;
         let hex = PAL[Math.floor(u2 * PAL.length)], k = 0.9 + u3 * 0.2;
-        if (nearWall) hex = [0x2f3630, 0x2d332f, 0x30343b][Math.floor(u3 * 3)];   // 벽 밑은 이끼 낀 석판
+        if (nearWall) hex = o.WPAL[Math.floor(u3 * o.WPAL.length)];   // 벽 밑은 이끼 낀 석판
         // 높이: 대부분 평평(±0.015), 8% 는 가라앉거나 한쪽이 들린 석판 — 귀퉁이 높이를 석판 좌표로 정해 잘린 조각끼리 맞는다
         // v799: 울퉁불퉁 — 석판마다 높이를 −0.035~+0.105 로 흔들고 셋 중 하나는 기울인다(CAS2_BUMP 배수, 0 이면 v798).
         // 아래로는 줄눈 바탕(−0.07)을 뚫지 않게 막는다. 옆면은 +x·+z 만 내므로 높은 석판의 턱이 카메라 쪽으로 보인다
-        const B = CAS2_BUMP, hb = hash(r, 7100 + i), tiltOn = u > (B > 0 ? 0.92 - 0.25 * Math.min(1, B) : 0.92);
+        const B = o.bump, hb = hash(r, 7100 + i), tiltOn = u > (B > 0 ? 0.92 - 0.25 * Math.min(1, B) : 0.92);
         const tilt = tiltOn ? (hash(r, 7000 + i) - 0.5) * (0.12 + 0.16 * B) : 0, tiltZ = tiltOn ? (hash(r, 7200 + i) - 0.5) * 0.12 * B : 0;
         const base = (u2 - 0.5) * 0.03 - (u > 0.96 ? 0.05 : 0) + B * ((hb - 0.5) * 0.14 + 0.035);
         const hAt = (xx, zz) => Math.max(-0.055, base + tilt * ((xx - sx0) / (sx1 - sx0) - 0.5) + (tilt * 0.5 + tiltZ) * ((zz - z0) / ROW - 0.5));
@@ -10178,7 +10180,7 @@ function buildCas2Floor(dgn, trapSet, rnd, mf) {
     const key = Math.floor(x / CH) + ',' + Math.floor(y / CH); let A = chunks.get(key); if (!A) chunks.set(key, A = cas2Acc(mossAt));
     tile(A, x, y, true);
   }
-  const mat = cas2FloorMat();
+  const mat = o.mat();
   for (const A of chunks.values()) { const m = A.mesh(mat); m.userData.isFloorTile = true; floorGroup.add(m); }
   // 무너지는 함정(v798): 예전엔 균열 그린 밝은 통판이라 한눈에 티가 났다 — 석판은 주변과 같은 무늬로 깔고(함께 꺼진다),
   // 테두리 상자는 줄눈 바탕 높이로 내려 어두운 줄눈이 된다
@@ -11008,6 +11010,204 @@ function makeCorruptArchway(parent, x, z, dir) {
   }
   g.position.set(x, 0, z); if (dir === 'z') g.rotation.y = Math.PI / 2; parent.add(g);
 }
+// ===== 3막 부패한 성 v2(v800) — 2막 v2 와 같은 요령. ?cor3=0 이면 v799(타일 한 장 = 판 하나 + 복도 살길 띠).
+// 바닥은 석판을 한 장씩 깔고(2막 buildCas2Floor 를 줄 수·팔레트만 바꿔 물려 쓴다), 살이 번진 자리는 지오메트리가 아니라
+// 텍스처로 덮는다(2막 이끼와 같은 방식 — 정점 번짐량 aMoss 가 무늬의 문턱을 정한다). 복도의 살길 띠도 이 번짐으로 바뀐다.
+// 방에는 부패한 성의 흔적(썩은 깃발·살에 먹힌 석상·제단·뼈 무더기·사슬에 묶인 해골·알주머니·핏물 웅덩이)을 둔다.
+const COR3 = COR_V2 && !/[?&]cor3=0/.test(location.search);
+const COR3F = { NR: 3,   // 2막(4줄)보다 큰 석판 — 같은 바닥 짜기인데 막마다 결이 달라 보인다
+  PAL: [0x726c59, 0x6c6654, 0x77705c, 0x676150, 0x7c7461, 0x6f6957, 0x736b55],
+  WPAL: [0x5f584a, 0x635a4b, 0x5b5547],   // 벽 밑은 얼룩져 한 단 어둡다
+  grout: 0x2a2520, dirt: 0x2a2521, pebble: 0x55503f, bump: 0.6,   // 핏줄(윗면 0.11)이 석판에 묻히지 않게 2막(1.0)보다 낮게
+  mat: () => cor3FloorMat() };
+let _cor3Mat = null;
+function cor3FloorMat() {   // 첫 사용 때 만든다(모듈 로드 시 generateUUID 가 난수를 먹는다)
+  if (_cor3Mat) return _cor3Mat;
+  _cor3Mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: STONE_ROUGH, map: texStoneGrains[1] });
+  const tM = cas2MossTex();
+  _cor3Mat.onBeforeCompile = (sh) => {
+    sh.uniforms.tMoss = { value: tM };
+    sh.vertexShader = 'attribute float aMoss;\nvarying float vMoss;\nvarying vec2 vWxz;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n  vMoss = aMoss; vWxz = (modelMatrix * vec4(transformed, 1.0)).xz;');
+    // 정점색을 곱한 '뒤'에 덮는다 — 살 색이 석판 팔레트에 물들지 않게. 결은 석판 텍스처(texelColor)를 그대로 쓴다.
+    sh.fragmentShader = 'uniform sampler2D tMoss;\nvarying float vMoss;\nvarying vec2 vWxz;\nfloat cFA = 0.0;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+  {
+    vec4 mt = texture2D(tMoss, vWxz * 0.085 + vec2(0.37, 0.61));
+    float thr = 1.0 - vMoss * 0.9;
+    cFA = step(thr, mt.r);                                            // 살 — 칸 단위로 끊긴다
+    float sA = step(thr - 0.13, mt.r) - cFA;                          // 살 둘레의 썩은 얼룩 띠
+    vec3 fc = mix(vec3(0.40, 0.085, 0.14), vec3(0.56, 0.16, 0.21), mt.g);
+    fc = mix(fc, vec3(0.66, 0.33, 0.33), step(0.87, mt.b) * step(thr + 0.2, mt.r));   // 안쪽 창백한 결절 점
+    fc *= (0.75 + 0.5 * texelColor.r) * clamp(dot(vColor, vec3(0.33)) / 0.40, 0.4, 1.05);   // 줄눈에 낀 살은 어둡게 — 석판 윤곽이 남는다
+    diffuseColor.rgb = mix(diffuseColor.rgb, fc, cFA);
+    diffuseColor.rgb *= mix(vec3(1.0), vec3(0.62, 0.5, 0.48), sA);
+  }`).replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = mix(roughnessFactor, 0.55, cFA);   // 살은 젖어 있다');
+  };
+  return _cor3Mat;
+}
+// 번짐량: 값 노이즈(구역) + 칸별 기본값(복도는 살길, 벽 밑은 조금) — 칸 값은 이웃과 이선형으로 이어 경계가 부드럽다
+function cor3CreepField(dgn, seed) {
+  const { grid, rooms, corridorTiles } = dgn, mf = cas2MossField(seed);
+  const inRoom = (x, y) => rooms.some(r => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
+  const C = new Float32Array(MAP_W * MAP_H);
+  for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) C[y * MAP_W + x] = grid[y][x] > 0 ? 0 : 0.42;
+  for (const c of corridorTiles) if (!inRoom(c.x, c.y)) C[c.y * MAP_W + c.x] = 0.72;
+  const cv = (x, y) => (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) ? 0.42 : C[y * MAP_W + x];
+  return (wx, wz) => {
+    const gx = wx / TILE + MAP_W / 2, gy = wz / TILE + MAP_H / 2, i = Math.floor(gx), j = Math.floor(gy), fx = gx - i, fy = gy - j;
+    const b = cv(i, j) * (1 - fx) * (1 - fy) + cv(i + 1, j) * fx * (1 - fy) + cv(i, j + 1) * (1 - fx) * fy + cv(i + 1, j + 1) * fx * fy;
+    return Math.max(0, Math.min(1, mf(wx, wz) * 0.9 + b));
+  };
+}
+// 소품 팔레트: 2막 소품 함수(cas2Banner·cas2Statue·cas2Chandelier)를 그대로 쓰되 CAS2P 를 잠시 3막 색으로 바꿔 부른다
+const COR3P = { stone: [0x7a7262, 0x6e6858, 0x847a66], iron: 0x2c2826, wood: [0x4a3626, 0x3e2e20, 0x543e2a],
+  cloth: [[0x4e1a24, 0x34101a], [0x3e2e1c, 0x2a1e12], [0x3a2436, 0x281828]], gold: 0x6e5c38, candle: 0xb8ab8c };
+function withCor3P(fn) { const save = {}; for (const k in COR3P) { save[k] = CAS2P[k]; CAS2P[k] = COR3P[k]; } try { fn(); } finally { Object.assign(CAS2P, save); } }
+const COR3_BONE = [0xa29680, 0x978a72, 0x8c7f68];
+// 뼈 하나(누운 긴뼈 — 양끝 관절 혹)
+function cor3Bone(g, x, z, len, a, y, rnd) {
+  const c = COR3_BONE[Math.floor(rnd() * 3)], ca = Math.cos(a), sa = Math.sin(a);
+  cas2Part(g, new THREE.CylinderGeometry(0.06, 0.07, len, 5), c, x, y + 0.06, z).rotation.set(Math.PI / 2, a, 0, 'YXZ');
+  for (const s of [-1, 1]) cas2Part(g, new THREE.IcosahedronGeometry(0.1, 0), c, x + sa * s * len / 2, y + 0.07, z + ca * s * len / 2);
+}
+function cor3Skull(g, x, y, z, ry, rnd) {
+  const c = COR3_BONE[0];
+  const s = cas2Part(g, new THREE.IcosahedronGeometry(0.24, 1), c, x, y + 0.22, z); s.scale.set(1, 0.9, 1.15); s.rotation.y = ry;
+  const j = cas2Part(g, new THREE.BoxGeometry(0.26, 0.1, 0.2), COR3_BONE[1], x + Math.sin(ry) * 0.16, y + 0.06, z + Math.cos(ry) * 0.16); j.rotation.y = ry;
+  for (const sd of [-1, 1]) cas2Part(g, new THREE.BoxGeometry(0.07, 0.07, 0.04), 0x1a1210, x + Math.sin(ry) * 0.25 + Math.cos(ry) * sd * 0.09, y + 0.26, z + Math.cos(ry) * 0.25 - Math.sin(ry) * sd * 0.09, 'solid', 0).rotation.y = ry;   // 눈구멍
+}
+// 갈비뼈: 등뼈 + 좌우 휜 뼈(짧은 상자 두 마디)
+function cor3Ribs(g, x, z, a, rnd) {
+  const ca = Math.cos(a), sa = Math.sin(a);
+  cas2Part(g, new THREE.BoxGeometry(0.1, 0.1, 1.0), COR3_BONE[1], x, 0.08, z).rotation.y = a;
+  for (let i = 0; i < 5; i++) { const t = (i - 2) * 0.18, px = x + sa * t, pz = z + ca * t;
+    for (const s of [-1, 1]) { const ox = ca * s, oz = -sa * s;
+      cas2Part(g, new THREE.BoxGeometry(0.34, 0.06, 0.06), COR3_BONE[i % 3], px + ox * 0.18, 0.18, pz + oz * 0.18).rotation.set(0, a + Math.PI / 2, s * 0.5, 'YXZ');
+      cas2Part(g, new THREE.BoxGeometry(0.26, 0.06, 0.06), COR3_BONE[(i + 1) % 3], px + ox * 0.36, 0.1, pz + oz * 0.36).rotation.set(0, a + Math.PI / 2, s * 1.2, 'YXZ'); } }
+}
+function cor3BonePile(g, x, z, rnd) {
+  const n = 6 + Math.floor(rnd() * 5);
+  for (let i = 0; i < n; i++) { const r = rnd() * 1.1, a = rnd() * 6.28; cor3Bone(g, x + Math.cos(a) * r, z + Math.sin(a) * r, 0.55 + rnd() * 0.5, rnd() * 6.28, rnd() < 0.3 ? 0.1 : 0, rnd); }
+  cor3Skull(g, x + (rnd() - 0.5) * 0.6, 0.12, z + (rnd() - 0.5) * 0.6, rnd() * 6.28, rnd);
+  if (rnd() < 0.6) cor3Skull(g, x + (rnd() - 0.5) * 1.6, 0, z + (rnd() - 0.5) * 1.6, rnd() * 6.28, rnd);
+  if (rnd() < 0.5) cor3Ribs(g, x + (rnd() - 0.5) * 1.2, z + (rnd() - 0.5) * 1.2, rnd() * 6.28, rnd);
+  addDecorCollider(x, z, 0.55);
+}
+// 벽에 사슬로 묶인 해골 — 벽면(nx,nz 방향이 방 안쪽)에 붙인다
+function cor3Shackled(g, x, z, nx, nz, rnd) {
+  const ux = -nz, uz = nx, ry = Math.atan2(nx, nz);
+  for (const s of [-1, 1]) {
+    const ax = x + ux * s * 0.55, az = z + uz * s * 0.55, drop = 1.0 + rnd() * 0.5;
+    cas2Part(g, new THREE.BoxGeometry(0.16, 0.16, 0.16), COR3P.iron, ax, 2.9, az, 'metal');
+    for (let i = 0; i < 7; i++) { const t = i / 6, cx = ax + ux * -s * t * 0.15 + nx * t * 0.35, cz = az + uz * -s * t * 0.15 + nz * t * 0.35;
+      cas2Part(g, new THREE.BoxGeometry(0.09, 0.2, 0.05), COR3P.iron, cx, 2.8 - t * drop, cz, 'metal').rotation.set(0, ry + (i % 2) * Math.PI / 2, 0); }
+    cas2Part(g, new THREE.TorusGeometry(0.1, 0.035, 4, 8), COR3P.iron, ax + ux * -s * 0.15 + nx * 0.35, 2.8 - drop - 0.12, az + uz * -s * 0.15 + nz * 0.35, 'metal').rotation.y = ry;
+  }
+  // 주저앉은 해골: 벽에 기댄 갈비뼈 + 떨군 머리 + 뻗은 다리뼈
+  const bx = x + nx * 0.45, bz = z + nz * 0.45;
+  cor3Ribs(g, bx, bz, ry + Math.PI / 2, rnd);
+  cor3Skull(g, bx + nx * 0.15 + ux * 0.1, 0.35, bz + nz * 0.15 + uz * 0.1, ry + 0.4, rnd);
+  for (const s of [-1, 1]) cor3Bone(g, bx + nx * 0.6 + ux * s * 0.25, bz + nz * 0.6 + uz * s * 0.25, 0.8, ry + s * 0.25, 0, rnd);
+  addDecorCollider(bx, bz, 0.5);
+}
+// 제단: 돌 상판 위로 살이 넘쳐흐르고 초가 녹아 있다(초 불빛은 횃불 광원 풀에 합류)
+function cor3Altar(g, x, z, nx, nz, rnd) {
+  const ry = Math.atan2(nx, nz), S = COR3P.stone, L = (lx, ly, lz) => [x + Math.cos(ry) * lx + Math.sin(ry) * lz, ly, z - Math.sin(ry) * lx + Math.cos(ry) * lz];
+  const P = (geo, lx, ly, lz, hex, k) => { const [a, b, c] = L(lx, ly, lz); const m = cas2Part(g, geo, hex, a, b, c, k || 'cut'); m.rotation.y = ry; return m; };
+  P(new THREE.BoxGeometry(2.6, 0.2, 1.5), 0, 0.1, 0, 0x5e584a); P(new THREE.BoxGeometry(2.2, 0.8, 1.1), 0, 0.6, 0, S[0]);
+  P(new THREE.BoxGeometry(2.5, 0.18, 1.35), 0, 1.09, 0, S[2]);
+  for (const s of [-1, 1]) P(new THREE.BoxGeometry(0.3, 0.7, 0.2), s * 0.75, 0.6, 0.6, S[1]);   // 앞 기둥 장식
+  for (let i = 0; i < 4; i++) { const w = 0.1 + rnd() * 0.12, h = 0.3 + rnd() * 0.6; P(new THREE.BoxGeometry(w, h, 0.05), -0.9 + rnd() * 1.8, 1.0 - h / 2, 0.69, 0x4a1420, 'solid'); }   // 앞으로 흘러내린 핏물
+  const cl = coralBlobs(1.5, [], 0, 0, 0); for (const b of cl) { const [a, , c] = L(-0.3 + b.x * 0.9, 0, b.z * 0.6); b.x = a; b.z = c; b.y = 1.12 + b.y * 0.6; }
+  g.add(coralMesh(cl));
+  for (let i = 0; i < 5; i++) {
+    const lx = 0.35 + rnd() * 0.8, lz = (rnd() - 0.5) * 0.9, h = 0.15 + rnd() * 0.35;
+    P(new THREE.CylinderGeometry(0.07, 0.09, h, 6), lx, 1.18 + h / 2, lz, COR3P.candle, 'solid');
+    P(new THREE.CylinderGeometry(0.13, 0.15, 0.04, 6), lx, 1.19, lz, COR3P.candle, 'solid');   // 녹아 퍼진 촛농
+    P(new THREE.ConeGeometry(0.05, 0.15, 5), lx, 1.18 + h + 0.08, lz, 0xffa048, 'glow');
+  }
+  const [sx, , sz] = L(0.7, 0, 0); const sp = makeGlowSprite(0xffa060, 2.0, 0.4); sp.position.set(sx, 1.7, sz); g.add(sp);
+  castleTorches.push({ flame: new THREE.Object3D(), light: null, sprite: sp, ph: rnd() * 10, lit: true, wx: sx, wy: 1.9, wz: sz, lcol: 0xff9a5a, ldist: 12, li: 1.0 });
+  const [cx, , cz] = L(0, 0, 0); addDecorCollider(cx, cz, 1.0);
+}
+// 알주머니 무더기: 늘어진 창백한 주머니 + 속에서 비치는 발광 결절
+function cor3Sacs(g, x, z, rnd) {
+  // 주머니는 산호와 같은 살 재질(coralMesh — 부드러운 셰이딩·피부 표식)로. 면이 각진 vc 재질이면 모서리 하이라이트가
+  // 면마다 그어져 흰 격자공(지오데식 돔)처럼 보였다
+  const n = 4 + Math.floor(rnd() * 4), list = [];
+  for (let i = 0; i < n; i++) {
+    const a = rnd() * 6.28, r = i ? 0.35 + rnd() * 0.6 : 0, R = (i ? 0.3 : 0.5) + rnd() * 0.22, sy = 1.25 + rnd() * 0.4;
+    const px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r;
+    list.push({ x: px, y: R * sy * 0.8, z: pz, r: R, sy, t: 3 });
+    list.push({ x: px + Math.cos(a) * R * 0.3, y: R * 0.35, z: pz + Math.sin(a) * R * 0.3, r: R * 0.55, sy: 0.8, t: 1 });   // 밑동 혹
+    if (rnd() < 0.5) cas2Part(g, new THREE.IcosahedronGeometry(R * 0.28, 0), 0xff9a68, px + Math.cos(a) * R * 0.75, R * sy * 1.05, pz + Math.sin(a) * R * 0.75, 'glow', 0);
+  }
+  g.add(coralMesh(list));
+  for (let i = 0; i < 5; i++) { const a = rnd() * 6.28; cas2Part(g, new THREE.CylinderGeometry(0.03, 0.06, 0.9, 4), 0x8a2a3a, x + Math.cos(a) * 0.7, 0.05, z + Math.sin(a) * 0.7).rotation.set(Math.PI / 2, -a + Math.PI / 2, 0, 'YXZ'); }   // 바닥으로 뻗은 탯줄
+  const sp = makeGlowSprite(0xff9a68, 1.8, 0.3); sp.position.set(x, 0.9, z); g.add(sp);
+  addDecorCollider(x, z, 0.8);
+}
+// 방 가운데 핏물 웅덩이(불규칙 외곽선 — 물웅덩이 v 와 같은 정규화) + 빠진 뼈
+function cor3Pool(g, x, z, rnd) {
+  const R = 1.6 + rnd() * 0.6, ph = [rnd() * 6, rnd() * 6, rnd() * 6], N = 28, rr = [];
+  for (let i = 0; i < N; i++) { const t = i / N * Math.PI * 2; rr.push(1 + 0.18 * Math.cos(2 * t + ph[0]) + 0.12 * Math.cos(3 * t + ph[1]) + 0.07 * Math.cos(5 * t + ph[2])); }
+  const mx = Math.max(...rr), sh = new THREE.Shape(), sh2 = new THREE.Shape();
+  rr.forEach((r, i) => { const t = i / N * Math.PI * 2, px = Math.cos(t) * r / mx * R, pz = Math.sin(t) * r / mx * R; i ? sh.lineTo(px, pz) : sh.moveTo(px, pz); i ? sh2.lineTo(px * 1.12, pz * 1.12) : sh2.moveTo(px * 1.12, pz * 1.12); });
+  const ring = cas2Part(g, new THREE.ShapeGeometry(sh2), 0x3e2420, x, 0.075, z, 'solid', 0.05); ring.rotation.x = -Math.PI / 2;   // 가장자리 마른 얼룩
+  const pool = cas2Part(g, new THREE.ShapeGeometry(sh), 0x30090f, x, 0.085, z, 'metal', 0.04); pool.rotation.x = -Math.PI / 2;
+  for (let i = 0; i < 3; i++) { const a = rnd() * 6.28, r = R * (0.3 + rnd() * 0.5); cor3Bone(g, x + Math.cos(a) * r, z + Math.sin(a) * r, 0.6 + rnd() * 0.4, rnd() * 6.28, 0.02, rnd); }
+  if (rnd() < 0.5) cor3Skull(g, x + (rnd() - 0.5) * R, 0.0, z + (rnd() - 0.5) * R, rnd() * 6.28, rnd);
+}
+const cor3Placed = [];   // 배치 기록(검증용: 종류·자리)
+function buildCor3Decor(dgn, rnd) {
+  const { grid, rooms, corridorTiles } = dgn, isF = (x, y) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && grid[y][x] > 0;
+  const cor = new Set(corridorTiles.map(c => c.x + ',' + c.y)), wx = (gx) => (gx - MAP_W / 2) * TILE, wz = (gy) => (gy - MAP_H / 2) * TILE;
+  const boss = pickBossRoom(dgn), used = new Set();
+  cas2CutMat(); cor3Placed.length = 0;
+  rooms.forEach((r, ri) => {
+    const g = new THREE.Group(); wallGroup.add(g);
+    const inRoom = (x, y) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+    const spots = [];   // 뒤쪽 벽(-x·-y 가 벽 — 면이 카메라를 봄)에 붙은 칸. 문간·모서리 기둥 자리는 뺀다
+    for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) for (const [dx, dy] of [[-1, 0], [0, -1]]) {
+      if (isF(x + dx, y + dy)) continue;
+      let bad = false;
+      for (const [ex, ey] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const k = (x + ex) + ',' + (y + ey); if (cor.has(k) && !inRoom(x + ex, y + ey)) bad = true; }
+      if ((x === r.x + 1 || x === r.x + r.w - 2) && (y === r.y + 1 || y === r.y + r.h - 2)) bad = true;
+      if (!bad) spots.push({ x, y, nx: -dx, nz: -dy });
+    }
+    for (let i = spots.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [spots[i], spots[j]] = [spots[j], spots[i]]; }
+    const take = () => { while (spots.length) { const s = spots.pop(); if (!used.has(s.x + ',' + s.y)) { used.add(s.x + ',' + s.y); return s; } } return null; };
+    const big = r.w >= 5 && r.h >= 5, mid = r.w >= 4 && r.h >= 4;
+    const face = (s, d) => [wx(s.x) - s.nx * (TILE * 0.5 - d), wz(s.y) - s.nz * (TILE * 0.5 - d)];
+    const nb = big ? 1 + (rnd() < 0.4 ? 1 : 0) : mid ? (rnd() < 0.6 ? 1 : 0) : 0;
+    for (let i = 0; i < nb; i++) { const s = take(); if (!s) break; const [fx, fz] = face(s, 0.12); cor3Placed.push({ kind: 'banner', x: wx(s.x), z: wz(s.y), nx: s.nx, nz: s.nz }); withCor3P(() => cas2Banner(g, fx, fz, s.nx, s.nz, rnd)); }
+    const menu = [];
+    if (mid) { if (big && rnd() < 0.5) menu.push('statue'); if (rnd() < 0.45) menu.push('altar'); if (rnd() < 0.5) menu.push('shackle'); if (rnd() < 0.45) menu.push('sacs'); if (rnd() < 0.5) menu.push('bones'); }
+    else if (rnd() < 0.5) menu.push(rnd() < 0.5 ? 'bones' : 'shackle');
+    for (const kind of menu.slice(0, big ? 3 : mid ? 2 : 1)) {
+      const s = take(); if (!s) break;
+      const x = wx(s.x) - s.nx * TILE * 0.18, z = wz(s.y) - s.nz * TILE * 0.18; cor3Placed.push({ kind, x: wx(s.x), z: wz(s.y), nx: s.nx, nz: s.nz });
+      if (kind === 'statue') {
+        withCor3P(() => cas2Statue(g, x - s.nx * 0.2, z - s.nz * 0.2, s.nx, s.nz, rnd));   // 살에 먹힌 석상 — 발치와 어깨에 종양
+        const m1 = coralMesh(coralBlobs(2.0, [], 0, 0, 0)); m1.position.x += x + s.nx * 0.6; m1.position.z += z + s.nz * 0.6; g.add(m1);
+        if (rnd() < 0.6) { const m2 = coralMesh(coralBlobs(0.9, [], 0, 0, 0)); m2.position.set(m2.position.x + x - s.nx * 0.2 - s.nz * 0.55, m2.position.y + 3.25, m2.position.z + z - s.nz * 0.2 + s.nx * 0.55); g.add(m2); }
+      }
+      else if (kind === 'altar') cor3Altar(g, x + s.nx * 0.2, z + s.nz * 0.2, s.nx, s.nz, rnd);
+      else if (kind === 'shackle') { const [fx, fz] = face(s, 0.15); cor3Shackled(g, fx, fz, s.nx, s.nz, rnd); }
+      else if (kind === 'sacs') cor3Sacs(g, x + s.nx * 0.4 + (rnd() - 0.5) * 1.2, z + s.nz * 0.4 + (rnd() - 0.5) * 1.2, rnd);
+      else cor3BonePile(g, x + s.nx * 0.5 + (rnd() - 0.5) * 1.2, z + s.nz * 0.5 + (rnd() - 0.5) * 1.2, rnd);
+    }
+    // 방 가운데: 스폰 방·보스(계단) 방은 비운다
+    const fg = new THREE.Group(); floorGroup.add(fg);
+    if (r !== boss && ri !== 0 && big) {
+      const q = rnd(), cx = wx(r.cx), cz = wz(r.cy);
+      if (q < 0.35) { cor3Pool(fg, cx + (rnd() - 0.5) * 2, cz + (rnd() - 0.5) * 2, rnd); cor3Placed.push({ kind: 'pool', x: cx, z: cz, nx: 0, nz: 0 }); }
+      else if (q < 0.55) { withCor3P(() => cas2Chandelier(fg, cx + (rnd() - 0.5) * 2, cz + (rnd() - 0.5) * 2, rnd)); cor3Placed.push({ kind: 'chandelier', x: cx, z: cz, nx: 0, nz: 0 }); }
+    }
+    vcMerge(g, 8100 + ri); vcMerge(fg, 8200 + ri);
+    for (const grp of [g, fg]) grp.traverse(o => { if (o.isMesh && o.material === vcMats().glow) o.castShadow = false; });
+  });
+}
+
 // 3막 부패한 성 메시 빌드(2막 buildCastleMesh와 동일 좌표계·배치 구조)
 const corTileY = new Map();   // "x,y" → 그 바닥 타일의 y 오프셋(장식을 같은 높이에 얹는 데 쓴다)
 function buildCorruptMesh(dgn) {
@@ -11018,9 +11218,19 @@ function buildCorruptMesh(dgn) {
   const corridorSet = new Set(corridorTiles.map(c => c.x + ',' + c.y));
   const wxf = (gx) => (gx - MAP_W / 2) * TILE, wzf = (gy) => (gy - MAP_H / 2) * TILE;
   const isF = (x, y) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && grid[y][x] > 0;
+  // v800: 석판을 한 장씩 깐 바닥 + 살 번짐 텍스처(복도 살길 띠도 이 번짐이 대신한다). 핏줄·발광 균열은 그대로 얹는다
+  let c3s = (player.floor * 2246822519 + 7) >>> 0; const c3r = () => { c3s = (c3s * 1664525 + 1013904223) >>> 0; return c3s / 4294967296; };
+  if (COR3) buildCas2Floor(dgn, new Set(), c3r, cor3CreepField(dgn, player.floor * 11 + 5), COR3F);
   // 바닥(뼈빛 석조) + 핏줄·발광 균열
   for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
-    if (grid[y][x] > 0) {
+    if (grid[y][x] > 0 && COR3) {
+      corTileY.set(x + ',' + y, 0);
+      if (grid[y][x] === 1 && Math.random() < 0.13) makeFloorVeins(floorGroup, wxf(x), wzf(y), 0);
+      if (grid[y][x] === 1 && Math.random() < 0.045) {
+        const crack = new THREE.Mesh(new THREE.BoxGeometry(TILE * 0.55, 0.08, 0.22), getGlowMat(COR.glow));
+        crack.position.set(wxf(x), 0.05, wzf(y)); crack.rotation.y = Math.random() * Math.PI; floorGroup.add(crack);
+      }
+    } else if (grid[y][x] > 0) {
       const fg = COR_V2 ? corFloorGeos[(x * 3 + y * 5) % corFloorGeos.length]
                         : casFloorGeos[(x + y) % casFloorGeos.length];
       const f = new THREE.Mesh(fg, corFloorMats[(x * 2 + y) % corFloorMats.length]);
@@ -11060,6 +11270,7 @@ function buildCorruptMesh(dgn) {
   // 복도: 살이 기어간 길(카펫 대체 — 멍든 자주 지방질 띠 + 핏줄)
   for (const { x, y } of corridorTiles) {
     if (grid[y][x] !== 1) continue;
+    if (COR3) { if (Math.random() < 0.5) makeFloorVeins(floorGroup, wxf(x), wzf(y), 0); continue; }   // 살길은 바닥 번짐 텍스처가 대신한다
     const horiz = isF(x - 1, y) || isF(x + 1, y);
     const lng = TILE * 0.96, shrt = TILE * 0.52;
     const fleshPath = new THREE.Mesh(new THREE.BoxGeometry(horiz ? lng : shrt, 0.07, horiz ? shrt : lng), [corMatBruise, corMatFleshB, corMatBruiseB][(x + y) % 3]);
@@ -11118,6 +11329,7 @@ function buildCorruptMesh(dgn) {
     if (grid[y][x] !== 1 || Math.random() > 0.1) continue;
     for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) { if (!isF(x + dx, y + dy)) { makeGlowTumor(wallGroup, wxf(x) + dx * TILE * 0.4, 0.15, wzf(y) + dy * TILE * 0.4); break; } }
   }
+  if (COR3) buildCor3Decor(dgn, c3r);   // v800: 부패한 성의 흔적(썩은 깃발·먹힌 석상·제단·뼈·사슬 해골·알주머니·핏물 웅덩이)
 }
 
 let stairsMesh = null;
