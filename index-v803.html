@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v802'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v803'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -20056,14 +20056,15 @@ function placeStairs(dgn) {
   // 계단은 항상 보스 방(= 그 층 가장 큰 방)에서 나온다. 보스 층이면 보스와 같은 방.
   const last = pickBossRoom(dgn);
   stairsRoom = last;
-  const sx = (last.cx - MAP_W / 2) * TILE, sz = (last.cy - MAP_H / 2) * TILE;
+  let sx = (last.cx - MAP_W / 2) * TILE, sz = (last.cy - MAP_H / 2) * TILE;
+  if (CLEAR_SPOT) { const sp = findClearSpot(last, sx, sz, 3 * STAIR_W + 0.3); sx = sp.x; sz = sp.z; }   // v803: 받침 아랫반경 + 여유
   const g = new THREE.Group();
   const baseGeo = new THREE.CylinderGeometry(2.5 * STAIR_W, 3 * STAIR_W, 0.5, 6);   // 높이 0.5 는 그대로
   const base = new THREE.Mesh(baseGeo, darkMetal); base.castShadow = true; base.receiveShadow = true; g.add(base);
   const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.6, 0), getGlowMat(0xf6e05e)); orb.position.y = 1.5; g.add(orb); g._orb = orb;
   orb.add(makeGlowSprite(0xf6e05e, 2.8, 0.5)); // 계단 구슬 빛번짐
   const glow = new THREE.PointLight(0xf6e05e, 2, 8); glow.position.y = 1.5; g.add(glow);
-  g.position.set(sx, 0.25, sz); snapToGround(g); scene.add(g); stairsMesh = g;
+  g.position.set(sx, 0.25, sz); snapToGround(g); scene.add(g); stairsMesh = g; g._dgn = dungeon;
 }
 
 // 1층 전용: 시작 방(rooms[0])에 마을로 돌아가는 '상행' 계단 설치(파란 오브).
@@ -20076,7 +20077,8 @@ function placeReturnStairs(dgn) {
   const cx = (r0.cx - MAP_W / 2) * TILE, cz = (r0.cy - MAP_H / 2) * TILE;
   // 플레이어 스폰점(방 중앙)과 겹치지 않게 방 안쪽으로 한 칸 옆으로 오프셋
   const off = Math.min((r0.w || 3) * TILE * 0.30, TILE * 1.6);
-  const sx = cx + off, sz = cz + off;
+  let sx = cx + off, sz = cz + off;
+  if (CLEAR_SPOT) { const sp = findClearSpot(r0, sx, sz, 2.8 * STAIR_W + 0.3); sx = sp.x; sz = sp.z; }
   const g = new THREE.Group();
   const baseGeo = new THREE.CylinderGeometry(2.3 * STAIR_W, 2.8 * STAIR_W, 0.5, 6);   // 높이 0.5 는 그대로
   const base = new THREE.Mesh(baseGeo, darkMetal); base.castShadow = true; base.receiveShadow = true; g.add(base);
@@ -20085,7 +20087,7 @@ function placeReturnStairs(dgn) {
   orb.add(makeGlowSprite(0x6fd0ff, 2.6, 0.5)); // 귀환 계단 구슬 빛번짐
   const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.7, 5), getGlowMat(0x9fe4ff)); arrow.position.y = 2.3; g.add(arrow);
   const glow = new THREE.PointLight(0x6fd0ff, 2, 8); glow.position.y = 1.5; g.add(glow);
-  g.position.set(sx, 0.25, sz); snapToGround(g); scene.add(g); returnStairsMesh = g;
+  g.position.set(sx, 0.25, sz); snapToGround(g); scene.add(g); returnStairsMesh = g; g._dgn = dungeon;
 }
 // 던전 1층 → 마을로 귀환(회차 정리 후 마을 모드). 테스트 모드는 유지.
 function returnToTown() {
@@ -20119,10 +20121,46 @@ let lastChestFloor = 0; // 0 = 아직 한 번도 획득 안 함(시작 기준)
 
 // 방 안에서 벽·장식 충돌체와 겹치지 않는 빈 자리 탐색(선호 위치부터 나선형 샘플링).
 // 못 찾으면 원위치 반환(기존 동작 유지).
+// v803: 계단·귀환 계단·상자·회복의 샘·함정 방 상자 자리. 예전엔 충돌체(walls)만 봤는데 장식 충돌체는 보이는 크기보다
+// 훨씬 작다(3막 종양 더미: 충돌체 1.0 · 보이는 반경 약 2.2) — 비켜 놓아도 눈으로는 겹쳤고, 계단·함정 상자는 아예 안 비켜서
+// 방 가운데 장식 속에 박혀 못 쓰는 층이 있었다(실측 1~90층 195개 중 충돌체 겹침 30). 이제 '보이는 장식'의 실제 바운딩 박스
+// (floorGroup·wallGroup 최상위 자식 중 방 칸 위의 작은 것)까지 보고, 방 안을 0.5 간격으로 훑어 원하는 자리에서 가장 가까운
+// 빈자리를 고른다. 그래도 없으면 그 자리의 장식을 치운다(clearDecorAround). ?clearspot=0 이면 예전 동작.
+const CLEAR_SPOT = !/[?&]clearspot=0/.test(location.search);
+const _fpBox = new THREE.Box3();
+function decorFootprints() {
+  const out = [];
+  for (const G of [floorGroup, wallGroup]) for (const c of G.children) {
+    if (!c.visible || c.userData.isFloorTile) continue;
+    _fpBox.setFromObject(c); if (_fpBox.isEmpty()) continue;
+    const sx = _fpBox.max.x - _fpBox.min.x, sz = _fpBox.max.z - _fpBox.min.z;
+    if (sx > TILE * 1.6 || sz > TILE * 1.6 || _fpBox.max.y < 0.25) continue;      // 청크 병합 메시·벽 줄·납작한 바닥 무늬는 뺀다
+    const gx = Math.round((_fpBox.min.x + _fpBox.max.x) / 2 / TILE + MAP_W / 2), gy = Math.round((_fpBox.min.z + _fpBox.max.z) / 2 / TILE + MAP_H / 2);
+    if (!wallGrid || !wallGrid[gy] || !(wallGrid[gy][gx] > 0)) continue;          // 벽 칸에 선 것(벽 타일·벽 장식)은 뺀다
+    out.push({ o: c, x0: _fpBox.min.x, x1: _fpBox.max.x, z0: _fpBox.min.z, z1: _fpBox.max.z, big: Math.max(sx, sz) > 0.9 || _fpBox.max.y > 0.9 });
+  }
+  return out;
+}
+const _fpHit = (f, x, z, R) => Math.hypot(Math.max(f.x0, Math.min(f.x1, x)) - x, Math.max(f.z0, Math.min(f.z1, z)) - z) < R;
 function findClearSpot(r, px, pz, clearR) {
   const minX = (r.x + 1 - MAP_W / 2) * TILE, maxX = (r.x + r.w - 1 - MAP_W / 2) * TILE;
   const minZ = (r.y + 1 - MAP_H / 2) * TILE, maxZ = (r.y + r.h - 1 - MAP_H / 2) * TILE;
   const overlaps = (x, z) => { for (const w of walls) { if (Math.abs(x - w.x) < w.halfW + clearR && Math.abs(z - w.z) < w.halfD + clearR) return true; } return false; };
+  if (CLEAR_SPOT) {
+    const fp = decorFootprints();
+    for (const o of [stairsMesh, returnStairsMesh, chestMesh, fountainMesh, trapChestMesh]) if (o && o.parent && o._dgn === dungeon) fp.push({ x0: o.position.x - 1.5, x1: o.position.x + 1.5, z0: o.position.z - 1.5, z1: o.position.z + 1.5, big: true });   // 먼저 놓인 상호작용 물체끼리도 안 겹치게
+    const blocked = (x, z, R) => overlaps(x, z) || fp.some(f => _fpHit(f, x, z, R + (f.big ? 0.35 : 0.1)));
+    // 방 안쪽(벽 칸 반 칸 안) 전체를 0.5 간격으로 — 원하는 자리에서 가까운 순
+    const x0 = (r.x - MAP_W / 2) * TILE - TILE / 2 + clearR, x1 = (r.x + r.w - 1 - MAP_W / 2) * TILE + TILE / 2 - clearR;
+    const z0 = (r.y - MAP_H / 2) * TILE - TILE / 2 + clearR, z1 = (r.y + r.h - 1 - MAP_H / 2) * TILE + TILE / 2 - clearR;
+    let best = null, bd = Infinity;
+    for (let x = x0; x <= x1 + 1e-6; x += 0.5) for (let z = z0; z <= z1 + 1e-6; z += 0.5) {
+      const d = (x - px) ** 2 + (z - pz) ** 2; if (d >= bd || blocked(x, z, clearR)) continue; bd = d; best = { x, z };
+    }
+    if (best) return best;
+    clearDecorAround(px, pz, clearR);   // 빈자리가 없으면 원하는 자리의 장식을 치운다 — 못 쓰게 되는 것보다 낫다
+    return { x: px, z: pz };
+  }
   if (!overlaps(px, pz)) return { x: px, z: pz };
   for (let ring = 1; ring <= 7; ring++) {
     const rad = ring * 0.8;
@@ -20134,6 +20172,11 @@ function findClearSpot(r, px, pz, clearR) {
     }
   }
   return { x: px, z: pz };
+}
+// 자리 주변 장식을 숨기고 그 장식 충돌체를 뺀다(벽 충돌체는 건드리지 않는다)
+function clearDecorAround(x, z, R) {
+  for (const f of decorFootprints()) if (_fpHit(f, x, z, R + 0.2)) f.o.visible = false;
+  for (let i = walls.length - 1; i >= 0; i--) { const w = walls[i]; if (w.isDecor && Math.abs(x - w.x) < w.halfW + R && Math.abs(z - w.z) < w.halfD + R) walls.splice(i, 1); }
 }
 function placeInteractables(dgn) {
   if (chestMesh) { scene.remove(chestMesh); chestMesh = null; }
@@ -20160,7 +20203,7 @@ function placeInteractables(dgn) {
       const lid = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.25, 0.65), getLowPolyMat(0x6b4420)); lid.position.y = 0.7; lid.castShadow = true; g.add(lid);
       const lock = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, 0.1), getLowPolyMat(0xf6e05e, true)); lock.position.set(0, 0.45, 0.33); g.add(lock);
       const glow = new THREE.PointLight(0xffcc55, 1.2, 4); glow.position.y = 1.0; g.add(glow);
-      g.position.set(cx, 0, cz); snapToGround(g); scene.add(g); chestMesh = g; chestMesh._opened = false;
+      g.position.set(cx, 0, cz); snapToGround(g); scene.add(g); chestMesh = g; chestMesh._opened = false; g._dgn = dungeon;
       // 주의: 스폰 시점이 아니라 실제 '획득(open)' 시점에만 lastChestFloor를 갱신한다.
       if (forcedChest) toast(_i18n('📦 어딘가에 보물상자가 있습니다!'), 3000);
     }
@@ -20197,7 +20240,7 @@ function placeInteractables(dgn) {
       const basin = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, 0.5, 10), getLowPolyMat(0x556677, true)); basin.position.y = 0.25; basin.receiveShadow = true; g.add(basin);
       const water = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.1, 12), new THREE.MeshBasicMaterial({ color: 0x55ccff, transparent: true, opacity: 0.8, fog: false })); water.position.y = 0.5; g.add(g._water = water);
       const glow = new THREE.PointLight(0x55ccff, 1.6, 6); glow.position.y = 1.2; g.add(glow);
-      g.position.set(fx, 0, fz); scene.add(g); fountainMesh = g; fountainMesh._used = false;
+      g.position.set(fx, 0, fz); scene.add(g); fountainMesh = g; fountainMesh._used = false; g._dgn = dungeon;
     }
   }
 }
@@ -20226,14 +20269,15 @@ function placeTrapRoom(dgn) {
   const r = pick(cand);
   trapRoom = r;
   trapState = 'armed';
-  const cx = (r.cx - MAP_W / 2) * TILE, cz = (r.cy - MAP_H / 2) * TILE;
+  let cx = (r.cx - MAP_W / 2) * TILE, cz = (r.cy - MAP_H / 2) * TILE;
+  if (CLEAR_SPOT) { const sp = findClearSpot(r, cx, cz, 0.9); cx = sp.x; cz = sp.z; }   // v803: 장식과 겹침 회피
   // 보상 상자: 처음엔 평범한 황금 자물쇠라 일반 상자처럼 보인다(접촉 시 함정 발동).
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.7, 0.7), getLowPolyMat(0x8a5a2b)); body.position.y = 0.35; body.castShadow = true; g.add(body);
   const lid = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.28, 0.75), getLowPolyMat(0x6b4420)); lid.position.y = 0.8; lid.castShadow = true; g.add(lid);
   const lock = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.25, 0.12), getLowPolyMat(0xf6e05e, true)); lock.position.set(0, 0.5, 0.38); lock.name = 'trapLock'; g.add(lock);
   const glow = new THREE.PointLight(0xffcc55, 1.4, 5); glow.position.y = 1.1; g.add(glow);
-  g.position.set(cx, 0, cz); scene.add(g); trapChestMesh = g; trapChestMesh._opened = false;
+  g.position.set(cx, 0, cz); scene.add(g); trapChestMesh = g; trapChestMesh._opened = false; g._dgn = dungeon;
 }
 // 함정 방 입구를 막는 반투명 마법 장벽 생성(방 둘레의 벽 통로를 막음)
 function activateTrapBarriers() {
