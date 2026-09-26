@@ -4168,7 +4168,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v800'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v801'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -5531,9 +5531,23 @@ function releasePixelSnap() {
   camera.updateMatrixWorld(true); _pxSnapped = false;
 }
 const _invVP = new THREE.Matrix4();
+// 컷아웃 중심(캐릭터 가슴 높이의 화면 픽셀 좌표). 씬은 저해상도 렌더타깃(lowResW×lowResH)에 그려지므로 gl_FragCoord 도 그 해상도 기준이다.
+// v801: 예전에는 update() 안에서 계산했는데, 그 시점은 카메라 추적(이번 프레임 위치)보다 앞이고 camera.matrixWorldInverse 도
+// 지난 프레임 렌더 때 값이라 원이 한 프레임 전 카메라 기준으로 찍혔다 — 카메라가 부드럽게 따라가는 동안(4·dt) 원이 캐릭터 뒤로 처졌다.
+// 이제 픽셀 스냅까지 끝난 '이번 프레임에 실제로 그리는 카메라'로 렌더 직전에 계산한다(?cutsync=0 이면 예전 동작).
+const CUT_SYNC = !/[?&]cutsync=0/.test(location.search);
+const _cutV = new THREE.Vector3();
+function updateCutoutScreen() {
+  const wp = player.obj.position;
+  cutoutUniforms.uPlayerPos.value.copy(wp);
+  _cutV.set(wp.x, wp.y + 1.3, wp.z).project(camera);   // NDC (-1..1)
+  cutoutUniforms.uPlayerScreen.value.set((_cutV.x * 0.5 + 0.5) * lowResW, (_cutV.y * 0.5 + 0.5) * lowResH);   // gl_FragCoord 처럼 y 가 위로 증가
+  cutoutUniforms.uScreenRadius.value = lowResH * 0.17;   // 화면 높이에 비례한 반경(캐릭터 주변만)
+}
 function renderWithPost(sceneToRender) {
   updateBlobShadows();
   applyPixelSnap();
+  if (CUT_SYNC && player && player.obj) { camera.updateMatrixWorld(true); updateCutoutScreen(); }   // 스냅된(또는 px=0 이면 이번 프레임) 카메라 기준
   moonFollow(sceneToRender);                              // ③ 색 패스가 굽기 전에 절두체를 옮긴다
   torchShadowTick(sceneToRender);                         // ④ 횃불 그림자는 N 프레임에 한 번
   if (SHADOW_ONCE) renderer.shadowMap.autoUpdate = true;  // ① 색 패스에서만 굽는다
@@ -22100,18 +22114,8 @@ function update(dt) {
   if (player.mixer) player.mixer.update(dt);
 
   // Shader Uniform (벽 투시를 위해 현재 플레이어 좌표 전달)
-  cutoutUniforms.uPlayerPos.value.copy(player.obj.position);
-  // 캐릭터 가슴 높이의 화면(픽셀) 좌표 계산 → 화면공간 컷아웃에 사용
-  // 씬은 저해상도 렌더타깃(rt: lowResW×lowResH)에 그려지므로 gl_FragCoord도 그 해상도 기준이다.
-  {
-    const wp = player.obj.position;
-    const v = new THREE.Vector3(wp.x, wp.y + 1.3, wp.z);
-    v.project(camera); // NDC (-1..1)
-    const sx = (v.x * 0.5 + 0.5) * lowResW;
-    const sy = (v.y * 0.5 + 0.5) * lowResH; // gl_FragCoord와 동일하게 y가 위로 증가
-    cutoutUniforms.uPlayerScreen.value.set(sx, sy);
-    cutoutUniforms.uScreenRadius.value = lowResH * 0.17; // 화면 높이에 비례한 반경(축소 — 캐릭터 주변만)
-  }
+  // v801: 기본은 renderWithPost 가 렌더 직전에 계산한다(updateCutoutScreen). 여기는 ?cutsync=0(예전 동작)일 때만.
+  if (!CUT_SYNC) updateCutoutScreen();
 
   if (isCharging) {
     chargeTime += dt;
