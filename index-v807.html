@@ -4170,7 +4170,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v806'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v807'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -9637,6 +9637,26 @@ function buildGroundHeight(floorNo) {
   }
 }
 
+// v807: 웅덩이 자리를 그 안의 가장 낮은 단으로 평평하게 판다(수면이 복셀 바닥에 묻히지 않게). 그 뒤 단차 제한을 다시 돌려
+// 둘레가 한 단씩 내려앉게 한다. applyGroundRelief(장식·수면을 칸 높이로 올리고 복셀 메시를 굽는다)보다 먼저 불러야 한다.
+function digPoolBasins() {
+  if (!ROCKS1 || !groundH || !cavernPoolSpots.length) return;
+  const S = _gSub(), X0 = _gX0(), Z0 = _gZ0();
+  for (const p of cavernPoolSpots) {
+    const i0 = Math.max(0, Math.floor((p.x - p.r - X0) / S)), i1 = Math.min(gSubW - 1, Math.floor((p.x + p.r - X0) / S));
+    const j0 = Math.max(0, Math.floor((p.z - p.r - Z0) / S)), j1 = Math.min(gSubH - 1, Math.floor((p.z + p.r - Z0) / S));
+    const inside = (i, j) => Math.hypot(X0 + (i + 0.5) * S - p.x, Z0 + (j + 0.5) * S - p.z) <= p.r;
+    let lo = Infinity; for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (inside(i, j)) lo = Math.min(lo, groundH[j * gSubW + i]);
+    if (lo === Infinity) continue;
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (inside(i, j)) groundH[j * gSubW + i] = lo;
+  }
+  if (VOX_ON) for (let pass = 0; pass < 3; pass++) for (let j = 0; j < gSubH; j++) for (let i = 0; i < gSubW; i++) {
+    const k = j * gSubW + i; let lo = groundH[k];
+    if (i > 0) lo = Math.min(lo, groundH[k - 1] + VOX_STEP); if (i < gSubW - 1) lo = Math.min(lo, groundH[k + 1] + VOX_STEP);
+    if (j > 0) lo = Math.min(lo, groundH[k - gSubW] + VOX_STEP); if (j < gSubH - 1) lo = Math.min(lo, groundH[k + gSubW] + VOX_STEP);
+    groundH[k] = lo;
+  }
+}
 // 월드 좌표의 지면 높이. 필드가 없으면(마을·쉼터·전부 꺼짐) 항상 0 — 예전과 완전히 같다.
 // 복셀이므로 **칸 안에서는 평평하다**(보간하지 않는다) — 그래야 발이 단 위에 딱 선다.
 function groundHeightAt(wx, wz) {
@@ -12292,7 +12312,7 @@ function buildCav1Walls(dgn) {
     const me = new THREE.Mesh(g, mt.vine); me.castShadow = false; me.receiveShadow = true; me.userData.noRelief = true; wallGroup.add(me);
   }
 }
-function buildDungeonMesh(dgn) { buildDungeonMeshInner(dgn); applyGroundRelief(dgn); _moonBakeFloor = -1; _torchFrame = 0; /* ③④ 새 층은 달빛·횃불 그림자를 첫 프레임에 굽는다 */ }
+function buildDungeonMesh(dgn) { cavernPoolSpots.length = 0; buildDungeonMeshInner(dgn); applyGroundRelief(dgn); _moonBakeFloor = -1; _torchFrame = 0; /* ③④ 새 층은 달빛·횃불 그림자를 첫 프레임에 굽는다 */ }
 function buildDungeonMeshInner(dgn) {
   // 이전 층 던전 메시를 GPU에서 해제(dispose)하며 비운다. remove만 하면 벽·바닥 수천 개가 누적 → 컨텍스트 손실.
   // 단, 전역 공유 지오메트리/머티리얼(모든 층이 재사용)은 dispose 제외(해제하면 다음 층에서 깨짐).
@@ -12440,6 +12460,16 @@ function buildDungeonMeshInner(dgn) {
           const pebble = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12 + Math.random()*0.16, 0), (Math.random()<0.5)?pebbleMat:pebbleMat2);
           pebble.position.set(wx + (Math.random()-0.5)*TILE*0.8, 0, wz + (Math.random()-0.5)*TILE*0.8); pebble.castShadow = true; floorGroup.add(pebble);
         }
+        // v807: 흩어진 돌 — 크기·자세를 흩고 가끔 두세 개가 모여 있게(웅덩이 고리 돌이 하던 몫을 바닥 전체로)
+        if (ROCKS1 && Math.random() < 0.2) {
+          const n = Math.random() < 0.3 ? 2 + Math.floor(Math.random() * 2) : 1, cx = wx + (Math.random() - 0.5) * TILE * 0.8, cz = wz + (Math.random() - 0.5) * TILE * 0.8;
+          for (let k = 0; k < n; k++) {
+            const r = 0.12 + Math.random() * 0.2, st = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), (Math.random() < 0.5) ? pebbleMat : pebbleMat2);
+            st.position.set(cx + (Math.random() - 0.5) * 0.9 * (k ? 1 : 0), r * 0.25, cz + (Math.random() - 0.5) * 0.9 * (k ? 1 : 0));
+            st.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3); st.scale.y = 0.6 + Math.random() * 0.35;
+            st.castShadow = true; floorGroup.add(st);
+          }
+        }
         // 고인 물웅덩이(모양은 makeCavernPool 참고 — 원판이 아니라 불규칙한 외곽선)
         if (Math.random() < 0.05) {
           const poolMat = getLowPolyMat(0x2f5a4e); poolMat.emissive = new THREE.Color(0x2f5a4e); poolMat.emissiveIntensity = 0.3;
@@ -12466,6 +12496,7 @@ function buildDungeonMeshInner(dgn) {
   markArch(wallGroup);   // 1막 벽 타일(장식은 뒤에 붙으므로 여기서 벽만 잡힌다)
   // 이끼 동굴 장식 배치(방·복도 기준)
   buildCavernDecor(dgn);
+  digPoolBasins();   // v807: 웅덩이 자리 파기 — 잔디가 지면 높이를 읽기 전에(판 자리에 풀이 떠 있지 않게)
   buildGrass(grid, mossSpots); // 1막 숲 동굴: 끝 밝은 풀밭(이끼 위 집중)
   // 골렘 층(45~): 골렘과 닮은 위장 바위 더미를 깔아 플레이어를 헷갈리게
   if (player.floor >= 45) buildGolemDecoys(dgn);
@@ -13573,7 +13604,7 @@ function makeGrassMesh(tufts, opts) {
   return mesh;
 }
 function buildGrass(grid, mossSpots, edgeBias) {
-  const tufts = [];
+  let tufts = [];
   // 1) 이끼 패치 위에 풀 집중(우거짐 — 습하고 비옥한 곳)
   for (const m of (mossSpots || [])) {
     const n = 5 + Math.floor(Math.random() * 4); // 이끼당 풀 포기 5~8
@@ -13610,6 +13641,7 @@ function buildGrass(grid, mossSpots, edgeBias) {
     // 조명을 못 받으므로 막 분위기를 tint로 맞춘다(1막 숲 동굴은 어둑한 초록, 2막 성은 달빛 냉색).
     dgnPGrass.setTint(edgeBias ? 0x55637e : 0x71805e);
     const CS = 2.4;
+    if (ROCKS1 && cavernPoolSpots.length) tufts = tufts.filter(t => !cavernPoolSpots.some(p => Math.hypot(t.x - p.x, t.z - p.z) < p.r + CS * 0.6));   // v807: 물 위엔 풀이 안 난다
     dgnPGrass.setCells(tufts.map(t => [t.x - CS / 2, t.z - CS / 2, groundHeightAt(t.x, t.z)]));
     return;
   }
@@ -13705,6 +13737,12 @@ function makeGlowShroom(x, y, z) {
 // 테두리 돌도 반드시 '같은 외곽선 위'에 놓아야 한다 — 원둘레에 놓으면 돌이 다시 원을 그려서
 // 웅덩이만 고쳐 봐야 소용이 없다.
 const WPOOL = !/[?&]wpool=0/.test(location.search);
+// v807: 웅덩이 둘레의 돌 고리를 없애고 1막 바닥 전체에 돌을 흩는다 + 웅덩이 자리 복셀 바닥을 우묵하게 판다(?rocks1=0 이면 v806).
+// 물이 없고 돌만 보이던 것은 복셀 바닥 탓이다 — 수면은 웅덩이 중심 칸 높이로만 올라가는데 둘레 칸이 한두 단(0.31~0.63) 높으면
+// 수면이 통째로 바닥 속에 묻히고 그보다 높이 솟은 테두리 돌만 남았다. 웅덩이 자리를 그 안의 가장 낮은 단으로 평평하게 파 두면
+// 수면이 항상 드러나고, 단차 제한(한 단)을 다시 돌려 둘레가 계단처럼 내려앉은 웅덩이가 된다.
+const ROCKS1 = !/[?&]rocks1=0/.test(location.search);
+const cavernPoolSpots = [];   // 이번 층 웅덩이 {x, z, r} — buildDungeonMesh 가 높이 필드를 판 뒤 비운다
 function makeCavernPool(wx, wz, poolMat, stoneMat) {
   const R = TILE * (0.33 + Math.random() * 0.08); // 외곽선의 '가장 먼' 반지름(아래 정규화)
   if (!WPOOL) {
@@ -13767,6 +13805,7 @@ function makeCavernPool(wx, wz, poolMat, stoneMat) {
   const pool = new THREE.Mesh(geo, poolMat);
   pool.rotation.x = -Math.PI / 2; pool.position.set(wx, 0.015, wz); floorGroup.add(pool);
   cavernWaters.push({ mesh: pool, ph: Math.random() * 10 });
+  if (ROCKS1) { cavernPoolSpots.push({ x: wx, z: wz, r: R * 1.2 }); return; }   // v807: 돌 고리 없음(돌은 바닥 전체에 흩는다)
   // 테두리 돌: 외곽선 바로 바깥에, 각도·크기·자세를 흩어서
   const n = 7 + Math.floor(Math.random() * 5);
   for (let a = 0; a < n; a++) {
@@ -21181,7 +21220,10 @@ function updateCavernDecor(dt) {
     if (sh.sprite) sh.sprite.material.opacity = 0.26 + f * 0.13; // 빛번짐 맥동
   }
   for (const w of cavernWaters) {
-    w.mesh.position.y = 0.02 + Math.sin(t * 1.6 + w.ph) * 0.01;
+    // v807: 수면 출렁임은 '지면으로 올린 높이' 위에서 — 예전엔 절대값 0.02 를 매 프레임 대입해 applyGroundRelief 가 올려 둔
+    // 높이를 지워 버렸고, 복셀 바닥(1막)에서 수면이 통째로 바닥 속에 묻혀 테두리 돌만 보였다(실측: 수면 0.02 · 발밑 지면 0.31).
+    if (ROCKS1 && w.by === undefined) w.by = w.mesh.position.y - 0.015;
+    w.mesh.position.y = (ROCKS1 ? w.by : 0) + 0.02 + Math.sin(t * 1.6 + w.ph) * 0.01;
     if (w.mesh.material) w.mesh.material.emissiveIntensity = 0.25 + Math.sin(t * 1.2 + w.ph) * 0.08;
   }
   for (const sf of cavernShafts) {
