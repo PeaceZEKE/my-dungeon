@@ -4155,6 +4155,9 @@ const BGM2 = !/[?&]bgm2=0/.test(location.search);
 const AMB_ON = !/[?&]amb=0/.test(location.search);
 const EYES_ON = !/[?&]eyes=0/.test(location.search);
 const LOWHP_ON = !/[?&]lowhp=0/.test(location.search);
+// v809: 던전 어둠 — 횃불 밖·화면 가장자리의 어두운 픽셀을 포스트에서 더 누른다(?dark=0 끔 · ?darkstr=N 세기, 기본 0.8)
+const DARK_ON = !/[?&]dark=0/.test(location.search);
+const DARK_STR = (() => { const m = location.search.match(/[?&]darkstr=([0-9.]+)/); const v = m ? parseFloat(m[1]) : 0.8; return isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8; })();
 // 픽셀아트 잔디(인스턴싱 빌보드). ?pgrass=0 이면 예전 3D 풀잎 메시로 돌아간다.
 // 쓰는 곳보다 위에서 선언해야 한다 — 모듈 최상위 코드가 즉시 실행되므로 아래에 두면 TDZ로 부팅이 깨진다.
 const PGRASS = !/[?&]pgrass=0/.test(location.search);
@@ -4174,7 +4177,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v808'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v809'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -5407,7 +5410,14 @@ const quadMat = new THREE.ShaderMaterial({
     uVig: { value: 0.5 },                                   // 비네트 강도(0=없음)
     uLowHp: { value: 0 },                                   // v808: 저체력 연출 세기(0=끔 → 셰이더가 통째로 건너뛴다)
     uLowPulse: { value: 0 },                                // v808: 심장 박동 맥동(0~1)
-    uFocusY: { value: 0.52 },                               // 틸트시프트 초점 중심(화면 Y, 0=아래 1=위)
+    uDarkStr: { value: 0 },                                 // v809: 던전 어둠 세기(0=끔 → 셰이더가 통째로 건너뛴다)
+    uDarkP: { value: new THREE.Vector2(0, 0) },             // v809: 어둠의 중심(플레이어 월드 XZ)
+    uDarkR: { value: new THREE.Vector2(5.5, 12) },          // v809: 어둠이 시작·끝나는 반지름(월드 단위, TILE 1.1 → 2.4칸)
+    uEye: { value: new THREE.Vector4(0, 0, 0, 0) },         // v809: 어둠 속의 눈 — (화면 uv x, y, 시선 깊이, 불투명도). w=0 이면 안 그린다
+    uEyeShape: { value: new THREE.Vector4(3, 2, 1, 6) },    // v809: (눈 폭, 눈 높이, 가운데 틈 절반, 번짐 반경) — 전부 저해상도 텍셀
+    uEyeCol: { value: new THREE.Color(0xff6a28) },
+    uEyeGlow: { value: new THREE.Color(0x5a1604) },
+    uFocusY: { value: 0.52 },                             // 틸트시프트 초점 중심(화면 Y, 0=아래 1=위)
     uFocusW: { value: 0.18 },                               // 초점 밴드 반폭(이 안은 완전 선명)
     uBlurMax: { value: 1.5 },                               // 최대 블러 반경(저해상도 텍셀 단위)
     // 틸트시프트(미니어처 흐림)는 픽셀 경계를 뭉개서 픽셀아트와 정면으로 충돌한다 → px 모드에선 끈다.
@@ -5469,6 +5479,13 @@ const quadMat = new THREE.ShaderMaterial({
     uniform float uVig;
     uniform float uLowHp;
     uniform float uLowPulse;
+    uniform float uDarkStr;
+    uniform vec2 uDarkP;
+    uniform vec2 uDarkR;
+    uniform vec4 uEye;
+    uniform vec4 uEyeShape;
+    uniform vec3 uEyeCol;
+    uniform vec3 uEyeGlow;
     uniform float uFocusY;
     uniform float uFocusW;
     uniform float uBlurMax;
@@ -5705,6 +5722,27 @@ const quadMat = new THREE.ShaderMaterial({
       vec2 vc = vUv - 0.5;                                // 비네트(가장자리 어둡게 — 디오라마 집중)
       float vig = 1.0 - dot(vc, vc) * uVig;
       graded *= clamp(vig, 0.0, 1.0);
+      // v809: 던전 어둠 — 횃불(플레이어)에서 멀수록 · 화면 가장자리일수록 '어두운 픽셀'을 더 눌러 빛 밖을 어둠이 삼키게 한다.
+      // 채색 그림자(uShadowColor)·대기 원근이 빛 밖을 탁한 바닥색으로 들어 올려 두던 것을 여기서 되누른다.
+      // 밝은 픽셀(벽 횃불 불빛·발광체)은 밝기로 골라 살린다 — 빛이 닿은 곳만 보인다. 어둠 속의 눈은 이 뒤에 그리므로 안 눌린다.
+      if (uDarkStr > 0.001) {
+        float gLk = dot(graded, vec3(0.299, 0.587, 0.114));
+        float keep = smoothstep(0.32, 0.62, gLk);
+        if (keep < 0.999) {                                 // 밝은 픽셀·화면 가장자리는 깊이를 안 읽고 끝낸다
+          float dk = smoothstep(0.04, 0.24, dot(vc, vc));
+          if (dk < 0.999) {
+            float dzk = texture2D(tDepth, uv).x;
+            float fd = 1.0;
+            if (dzk < 0.9999) {
+              vec4 wpk = uInvVP * vec4(uv * 2.0 - 1.0, dzk * 2.0 - 1.0, 1.0);
+              wpk /= wpk.w;
+              fd = smoothstep(uDarkR.x, uDarkR.y, length(wpk.xz - uDarkP));
+            }
+            dk = max(dk, fd);
+          }
+          graded *= 1.0 - uDarkStr * dk * (1.0 - keep);
+        }
+      }
       // v808: 저체력 — 화면 채도가 빠지고 가장자리가 심장 박동에 맞춰 붉게 조인다. 양자화 앞이라 픽셀아트 계단을 그대로 탄다
       if (uLowHp > 0.0) {
         float edge = smoothstep(0.25, 1.4, dot(vc, vc) * 4.0);
@@ -5712,6 +5750,20 @@ const quadMat = new THREE.ShaderMaterial({
         graded = mix(graded, vec3(gL), uLowHp * 0.4);
         float red = edge * uLowHp * (0.35 + 0.65 * uLowPulse);
         graded = mix(graded, graded * vec3(0.35, 0.08, 0.08) + vec3(0.22, 0.0, 0.02), red * 0.85);
+      }
+      // v809: 어둠 속의 눈 — 스프라이트가 아니라 여기서 텍셀 단위로 찍는다. 색 보정·대기 원근·어둠·비네트를 전부 지난 뒤라
+      // 눈만 적은 색 그대로 뜨고, 텍셀 격자에 딱 붙는다. 앞에 가린 것(벽·캐릭터)이 있으면 깊이로 숨긴다.
+      // 모양은 한 눈이 아랫줄 w 텍셀 + 윗줄 바깥쪽 w-1 텍셀(안쪽 윗모서리가 빠져 '\ /' 로 치켜뜬 눈). 감으면 아랫줄만.
+      if (uEye.w > 0.001) {
+        vec2 dp = floor(uv / uTexel) - floor(uEye.xy / uTexel);
+        float vis = step(uEye.z, linearizeDepth(texture2D(tDepth, uv).x) + 0.4);
+        float ax = dp.x >= 0.0 ? dp.x : -dp.x - 1.0;   // 텍셀 0 과 -1 사이를 기준으로 좌우 대칭
+        float inRow = step(uEyeShape.z, ax) * step(ax, uEyeShape.z + uEyeShape.x - 1.0);
+        float eye = inRow * step(0.0, dp.y) * step(dp.y, uEyeShape.y - 1.0);
+        eye *= 1.0 - step(0.5, dp.y) * step(ax, uEyeShape.z);    // 윗줄 안쪽 텍셀 빼기
+        float hr = length(dp * vec2(0.55, 1.0)) / uEyeShape.w;
+        graded += uEyeGlow * max(0.0, 1.0 - hr) * max(0.0, 1.0 - hr) * vis * uEye.w;
+        graded = mix(graded, uEyeCol, eye * vis * uEye.w);
       }
       // === 색 양자화 + 오더드 디더링(픽셀아트 모드) ===
       // 연속 그라디언트를 단계로 끊되, 끊기 직전에 베이어 임계값을 더해 밴딩을 점 패턴으로 흩는다.
@@ -5944,10 +5996,11 @@ function renderWithPost(sceneToRender) {
   }
   // 구름 그림자는 깊이에서 월드 좌표를 되돌리므로, 색·깊이를 찍은 그 카메라(픽셀 스냅된 상태)의
   // 역행렬이어야 한다 — releasePixelSnap 전에 갱신할 것.
-  if (quadMat.uniforms.uCloudStr.value > 0.001) {
+  if (quadMat.uniforms.uCloudStr.value > 0.001 || quadMat.uniforms.uDarkStr.value > 0.001) {   // v809: 던전 어둠도 같은 역행렬로 월드 XZ 를 되돌린다
     _invVP.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).invert();
     quadMat.uniforms.uInvVP.value.copy(_invVP);
   }
+  if (EYES_ON) updateEyesScreen(sceneToRender);   // v809: 어둠 속의 눈 — 스냅된 카메라로 투영(컷아웃 원과 같은 이유)
   // SSAO는 뷰 공간에서 계산하므로 투영 행렬과 그 역행렬만 있으면 된다(카메라 스냅과 무관하지만
   // 화면비·FOV가 바뀔 수 있으므로 여기서 같이 갱신한다).
   if (quadMat.uniforms.uAOStr.value > 0.001) {
@@ -9061,12 +9114,14 @@ function updateBattleMusic(dt) {
 //  ② 저체력(LOWHP_ON): 체력 35% 아래부터 심장 박동 + 화면 채도가 빠지고 가장자리가 박동에 맞춰 붉게 조인다(포스트 uLowHp·uLowPulse).
 //     체력이 차면 uLowHp 가 정확히 0 으로 돌아가 셰이더가 통째로 건너뛴다 — 평소 화면은 v807 과 같다.
 //  ③ 어둠 속의 눈(EYES_ON): 조용할 때 가끔 화면 안 어둠에 눈 한 쌍이 떠 깜빡이다 사라진다. 다가가거나 싸움이 붙으면 으르렁대며 달아난다.
-//     난수는 자체 LCG(hrnd) — Math.random 을 먹으면 층 생성이 달라진다. 스프라이트는 첫 등장 때 만든다(generateUUID 도 Math.random 을 먹는다).
+//     난수는 자체 LCG(hrnd) — Math.random 을 먹으면 층 생성이 달라진다. v809 부터 눈은 THREE 객체가 아니라 포스트 셰이더가 찍는다(updateEyesScreen).
+//  ④ 어둠(DARK_ON, v809): 횃불 밖·화면 가장자리의 어두운 픽셀을 포스트에서 더 누른다(uDarkStr). 눈은 그 뒤에 찍혀 안 눌린다.
 let _hrs = 0x6d2b79f5;
 const hrnd = () => { _hrs = (_hrs * 1664525 + 1013904223) >>> 0; return _hrs / 4294967296; };
 const horror = { lowHp: 0, beatT: 0, pulseT: 9, eyes: null, eyesCd: 12, dgn: null };
-const EYE_COL = { 1: [0xff5a26, 0xff3a10], 2: [0x6ec8e8, 0x2a8cc0], 3: [0x98b020, 0x6a9010] };   // [눈, 번짐] — 눈은 블룸 임계 아래(휘도 0.52 · 0.69 · 0.60)
-const _eyeV = new THREE.Vector3(), _eyeR = new THREE.Vector3();
+// [눈, 번짐] — 포스트의 색 보정·어둠을 다 지난 뒤에 찍으므로 적은 색이 그대로 화면에 나온다
+const EYE_COL = { 1: [0xff6a28, 0x5a1604], 2: [0x9ae8ff, 0x0e3a52], 3: [0xd0f048, 0x3a4a08] };
+const _eyeV = new THREE.Vector3(), _eyeS = new THREE.Vector3();
 function horrorFight() {   // 싸움 판정 — 음악과 같은 기준(깨어난 적 4.5칸 · 보스 9칸)이지만 음악 스위치와 무관하다
   if (!player.alive) return false;
   const p = player.obj.position;
@@ -9094,11 +9149,23 @@ function updateHorror(dt) {
   quadMat.uniforms.uLowPulse.value = Math.min(1, Math.exp(-pt * 8) + (pt > 0.2 ? 0.7 * Math.exp(-(pt - 0.2) * 8) : 0));
   // ③ 어둠 속의 눈
   if (EYES_ON) updateEyes(dt, fight);
+  // ④ 어둠: 중심은 플레이어(횃불이 달린 자리)
+  if (DARK_ON) { quadMat.uniforms.uDarkStr.value = DARK_STR; quadMat.uniforms.uDarkP.value.set(player.obj.position.x, player.obj.position.z); }
 }
-function leaveHorror() {   // 마을·쉼터: 환경음을 끄고 저체력 화면을 거둔다(체력은 그대로라 던전에 돌아가면 다시 켜진다)
+function leaveHorror() {   // 마을·쉼터: 환경음을 끄고 저체력 화면·어둠을 거둔다(체력은 그대로라 던전에 돌아가면 다시 켜진다)
   if (AMB_ON && SFX && SFX.ambSet) SFX.ambSet(null);
   if (quadMat.uniforms.uLowHp.value) quadMat.uniforms.uLowHp.value = 0;
+  quadMat.uniforms.uDarkStr.value = 0;
   horror.lowHp = 0; horror.beatT = 0;
+}
+// 렌더 직전(픽셀 스냅된 카메라)에 눈 자리를 화면 uv 로 투영해 포스트에 넘긴다. 던전 씬이 아니면 끈다
+function updateEyesScreen(sceneToRender) {
+  const U = quadMat.uniforms, E = horror.eyes;
+  if (!E || !E.active || E.a <= 0.001 || sceneToRender !== scene) { U.uEye.value.w = 0; return; }
+  _eyeS.copy(E.pos).project(camera);
+  const vz = -_eyeV.copy(E.pos).applyMatrix4(camera.matrixWorldInverse).z;
+  U.uEye.value.set(_eyeS.x * 0.5 + 0.5, _eyeS.y * 0.5 + 0.5, vz, E.a);
+  U.uEyeShape.value.set(E.w, E.shut ? 1 : 2, 1, 5 + E.w);
 }
 function eyesOnFloor(x, z) {
   const G = dungeon && dungeon.grid; if (!G) return false;
@@ -9107,10 +9174,10 @@ function eyesOnFloor(x, z) {
 }
 function updateEyes(dt, fight) {
   let E = horror.eyes;
-  if (horror.dgn !== dungeon) { horror.dgn = dungeon; horror.eyesCd = Math.max(horror.eyesCd, 8 + hrnd() * 8); if (E) { E.active = false; E.grp.visible = false; } }
-  if (E && E.active && !player.alive) { E.active = false; E.grp.visible = false; }
+  if (horror.dgn !== dungeon) { horror.dgn = dungeon; horror.eyesCd = Math.max(horror.eyesCd, 8 + hrnd() * 8); if (E) E.active = false; }
+  if (E && E.active && !player.alive) E.active = false;
   if (E && E.active) {
-    const p = player.obj.position, d = Math.hypot(E.grp.position.x - p.x, E.grp.position.z - p.z);
+    const p = player.obj.position, d = Math.hypot(E.pos.x - p.x, E.pos.z - p.z);
     if (E.st !== 'out' && (fight || d < TILE * 1.3)) {   // 들켰다 — 으르렁대고 달아난다
       E.st = 'out'; E.t = 0; E.outDur = 0.22;
       if (SFX && SFX.ambCue) { SFX.ambCue('growl', E.pan); SFX.ambCue('flee', E.pan, 0.45); }
@@ -9121,11 +9188,10 @@ function updateEyes(dt, fight) {
     else if (E.st === 'stay') { if (E.t >= E.stay) { E.st = 'out'; E.t = 0; E.outDur = 0.6; } }
     else {
       a = Math.max(0, 1 - E.t / E.outDur);
-      if (E.t >= E.outDur) { E.active = false; E.grp.visible = false; horror.eyesCd = (14 + hrnd() * 16) * (currentAct() === 3 ? 0.7 : 1); return; }
+      if (E.t >= E.outDur) { E.active = false; E.a = 0; horror.eyesCd = (14 + hrnd() * 16) * (currentAct() === 3 ? 0.7 : 1); return; }
     }
-    E.blink -= dt; if (E.blink <= -0.12) E.blink = 1.5 + hrnd() * 2.5;   // 0.12초 감았다 뜬다
-    E.l.scale.y = E.r.scale.y = (E.blink < 0 && E.st !== 'out') ? 0.02 : E.h;
-    E.mat.opacity = a; E.halo.material.opacity = a * 0.3;
+    E.blink -= dt; if (E.blink <= -0.12) E.blink = 1.5 + hrnd() * 2.5;   // 0.12초 가늘게 감았다 뜬다
+    E.shut = E.blink < 0 && E.st !== 'out'; E.a = a;
     return;
   }
   horror.eyesCd -= dt;
@@ -9146,22 +9212,11 @@ function updateEyes(dt, fight) {
     const sz = 0.85 + hrnd() * 0.45, y = groundHeightAt(x, z) + 0.7 + sz * 0.45;
     _eyeV.set(x, y, z).project(camera);
     if (Math.abs(_eyeV.x) > 0.85 || Math.abs(_eyeV.y) > 0.85 || _eyeV.z > 1) continue;
-    if (!E) {   // 첫 등장 때 만든다. THREE 객체 생성자는 generateUUID 로 Math.random 을 먹으므로 그동안만 hrnd 로 바꿔 끼운다(골렘 빌더와 같은 요령)
-      const mr = Math.random; Math.random = hrnd;
-      try {
-        const mat = new THREE.SpriteMaterial({ color: 0xff5a26, transparent: true, opacity: 0, depthWrite: false, fog: false, toneMapped: false });
-        const grp = new THREE.Group(), l = new THREE.Sprite(mat), rr = new THREE.Sprite(mat), halo = makeGlowSprite(0xff3a10, 1.2, 0);
-        grp.add(l, rr, halo); E = horror.eyes = { grp, mat, l, r: rr, halo, active: false };
-      } finally { Math.random = mr; }
-    }
-    if (E.grp.parent !== scene) scene.add(E.grp);
+    if (!E) E = horror.eyes = { pos: new THREE.Vector3(), active: false, a: 0 };   // Vector3 는 uuid 가 없어 난수를 안 먹는다
     const col = EYE_COL[currentAct()] || EYE_COL[1];
-    E.mat.color.setHex(col[0]); E.halo.material.color.setHex(col[1]);
-    _eyeR.setFromMatrixColumn(camera.matrixWorld, 0); _eyeR.y = 0; _eyeR.normalize();   // 화면 가로 방향으로 두 눈을 벌린다
-    const gap = 0.25 * sz; E.h = 0.15 * sz;   // 내부 해상도에서 눈 하나가 3×2 픽셀 안팎(더 작으면 점 두 개로 안 읽힌다)
-    E.l.position.set(-_eyeR.x * gap, 0, -_eyeR.z * gap); E.r.position.set(_eyeR.x * gap, 0, _eyeR.z * gap);
-    E.l.scale.set(0.28 * sz, E.h, 1); E.r.scale.set(0.28 * sz, E.h, 1); E.halo.scale.set(1.4 * sz, 1.4 * sz, 1);
-    E.grp.position.set(x, y, z); E.grp.visible = true; E.mat.opacity = 0; E.halo.material.opacity = 0;
+    quadMat.uniforms.uEyeCol.value.setHex(col[0]); quadMat.uniforms.uEyeGlow.value.setHex(col[1]);
+    E.w = sz < 1.05 ? 3 : 4;   // 눈 하나 폭(저해상도 텍셀). 높이는 2(감으면 1), 두 눈 사이 2
+    E.pos.set(x, y, z); E.a = 0; E.shut = false;
     E.active = true; E.st = 'in'; E.t = 0; E.stay = 3 + hrnd() * 4; E.blink = 1 + hrnd() * 2; E.dgn = dungeon;
     E.pan = Math.max(-1, Math.min(1, _eyeV.x)) * 0.8;
     if (hrnd() < 0.4 && SFX && SFX.ambCue) SFX.ambCue('whisper', E.pan, 0.3);
@@ -26047,18 +26102,18 @@ function tick(now) {
   if (inTown) {
     // 마을 모드: 마을 씬을 같은 픽셀화 파이프라인으로 렌더
     updateTownMode(dt);
-    if (AMB_ON || LOWHP_ON) leaveHorror();
+    if (AMB_ON || LOWHP_ON || DARK_ON) leaveHorror();
     renderWithPost(townScene);
   } else if (inRest) {
     // 여행자의 쉼터(허브): 동일 파이프라인으로 렌더
     updateRestMode(dt);
-    if (AMB_ON || LOWHP_ON) leaveHorror();
+    if (AMB_ON || LOWHP_ON || DARK_ON) leaveHorror();
     renderWithPost(restScene);
   } else {
     cullSceneLights(camera);   // 동시 점등 광원 수 제한(흰 화면 방지) — 적 가시성이 켜진 광원을 참조하므로 update 전에
     if (player.alive && !rewardPaused) update(dt);
     updateBattleMusic(dt);   // v806: 전투 배경음악(서서히 켜지고 꺼짐)
-    if (AMB_ON || EYES_ON || LOWHP_ON) updateHorror(dt);   // v808: 환경음 · 어둠 속의 눈 · 저체력 연출
+    if (AMB_ON || EYES_ON || LOWHP_ON || DARK_ON) updateHorror(dt);   // v808: 환경음 · 어둠 속의 눈 · 저체력 연출 · v809 어둠
     renderWithPost(scene);
     drawMinimap();
   }
