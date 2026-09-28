@@ -4162,6 +4162,8 @@ const DARK_ON = !/[?&]dark=0/.test(location.search);
 const LORE_ON = !/[?&]lore=0/.test(location.search);
 const GHOST_ON = !/[?&]ghost=0/.test(location.search);
 const A3BEAT_ON = !/[?&]a3beat=0/.test(location.search);
+// v811: 횃불 불안정 — 가끔 꺼질 듯 훅 어두워졌다 돌아오고, 근처에 적이 있으면(싸우기 전) 자주 떨린다(?torchfx=0)
+const TORCHFX_ON = !/[?&]torchfx=0/.test(location.search);
 const DARK_STR = (() => { const m = location.search.match(/[?&]darkstr=([0-9.]+)/); const v = m ? parseFloat(m[1]) : 0.8; return isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8; })();
 // 픽셀아트 잔디(인스턴싱 빌보드). ?pgrass=0 이면 예전 3D 풀잎 메시로 돌아간다.
 // 쓰는 곳보다 위에서 선언해야 한다 — 모듈 최상위 코드가 즉시 실행되므로 아래에 두면 TDZ로 부팅이 깨진다.
@@ -4182,7 +4184,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v810'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v811'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -5017,6 +5019,12 @@ const SFX = (() => {
         const bg = c.createGain(); bg.gain.setValueAtTime(v * (2.2 - k * 0.45), tt); bg.gain.exponentialRampToValueAtTime(0.0001, tt + 0.06); b.connect(bp); bp.connect(bg); bg.connect(out); b.start(tt, arnd() * 4); b.stop(tt + 0.07);
       }
     },
+    sputter(c, out, t, v) {   // v811: 횃불이 꺼질 듯 푸석이는 소리 — 저역 '훅' + 짧은 탁탁 튐 몇 번
+      const n = c.createBufferSource(); n.buffer = ambNoise(c); const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(900, t); lp.frequency.exponentialRampToValueAtTime(200, t + 0.35);
+      const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(v, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4); n.connect(lp); lp.connect(g); g.connect(out); n.start(t, arnd() * 4); n.stop(t + 0.42);
+      for (let k = 0, m = 3 + Math.floor(arnd() * 4); k < m; k++) { const tt = t + 0.05 + arnd() * 0.5, b = c.createBufferSource(); b.buffer = ambNoise(c); const hp = c.createBiquadFilter(); hp.type = 'bandpass'; hp.frequency.value = 1800 + arnd() * 2000; hp.Q.value = 2;
+        const bg = c.createGain(); bg.gain.setValueAtTime(v * (0.5 + arnd() * 0.5), tt); bg.gain.exponentialRampToValueAtTime(0.0001, tt + 0.025); b.connect(hp); hp.connect(bg); bg.connect(out); b.start(tt, arnd() * 4); b.stop(tt + 0.03); }
+    },
     thump(c, out, t, v) {   // v810 3막: 벽 속 거대한 심장 '두-근' — 플레이어 심장(heartbeat)보다 낮고 뭉개진 소리. 벽 맥동과 같은 순간에 친다
       [[0, 1], [0.24, 0.6]].forEach(([dt, k]) => { const tt = t + dt, o = osc(c, 'sine', 50), g = c.createGain(); o.frequency.setValueAtTime(50, tt); o.frequency.exponentialRampToValueAtTime(30, tt + 0.18);
         g.gain.setValueAtTime(0.0001, tt); g.gain.linearRampToValueAtTime(v * k, tt + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.34); o.connect(g); g.connect(out); o.start(tt); o.stop(tt + 0.36);
@@ -5033,7 +5041,7 @@ const SFX = (() => {
     3: { drone: [['sine', 41.2, 0.009], ['triangle', 61.7, 0.006]], wind: [260, 0.05], breath: 0.1, ev: { drip: 1, squelch: 2.5, whisper: 1.5, moan: 0.8, steps: 0.5 } },
   };
   // 세기는 오프라인 렌더로 맞췄다 — 드론·바람이 깔리는 바닥(0.25초 창 RMS 0.02 안팎) 위로 가끔 소리가 두어 배 솟게
-  const AE_VOL = { drip: 0.16, creak: 0.38, whisper: 0.25, steps: 0.26, chains: 0.046, moan: 0.1, squelch: 0.22, growl: 0.1, flee: 0.25, slam: 0.12, thump: 0.1 };
+  const AE_VOL = { drip: 0.16, creak: 0.38, whisper: 0.25, steps: 0.26, chains: 0.046, moan: 0.1, squelch: 0.22, growl: 0.1, flee: 0.25, slam: 0.12, thump: 0.1, sputter: 0.12 };
   function ambDrone(c, out, t0, A) {   // 깔리는 소리: 저음 드론(느린 숨결 LFO) + 대역통과 바람(중심이 천천히 흔들림) + 3막 숨소리
     const nodes = [], lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 600; lp.connect(out); nodes.push(lp);
     A.drone.forEach(([type, f, v], k) => {
@@ -9205,6 +9213,7 @@ function updateHorror(dt) {
   // ③ 어둠 속의 눈 · v810 2막 유령
   if (EYES_ON) updateEyes(dt, fight);
   if (GHOST_ON) updateGhost(dt, fight);
+  if (TORCHFX_ON) updateTorchFx(dt, fight);
   // ④ 어둠: 중심은 플레이어(횃불이 달린 자리)
   if (DARK_ON) { quadMat.uniforms.uDarkStr.value = DARK_STR; quadMat.uniforms.uDarkP.value.set(player.obj.position.x, player.obj.position.z); }
 }
@@ -9213,6 +9222,42 @@ function leaveHorror() {   // 마을·쉼터: 환경음을 끄고 저체력 화�
   if (quadMat.uniforms.uLowHp.value) quadMat.uniforms.uLowHp.value = 0;
   quadMat.uniforms.uDarkStr.value = 0;
   horror.lowHp = 0; horror.beatT = 0;
+  if (TORCHFX_ON && horror.tf) { torch.intensity = horror.tf.b0; nearLight.intensity = horror.tf.b1; viewLight.intensity = horror.tf.b2; horror.tf.ev = null; if (horror.tf.lit0 !== undefined && dgnPGrass && dgnPGrass.uniforms) dgnPGrass.uniforms.uLit.value.x = horror.tf.lit0; }
+}
+// v811: 횃불 불안정. 평소엔 아무 일도 없다(세기가 정확히 기본값 — 화면이 v810 과 같다).
+//  · 꺼질 듯함(gutter): 0.08초에 훅 꺼져 들다(35% 안팎까지) 0.3~0.7초 푸석이며 떨고 0.4초에 걸쳐 돌아온다. 평소 25~45초에 한 번.
+//  · 근처(5칸)에 적이 있는데 아직 싸움 전이면 신경질적으로 떨린다 — 0.15초짜리 작은 떨림이 1.5~4초마다, 꺼질 듯함도 8~16초로 잦아진다.
+//  · 싸우는 중에는 안 한다(시야를 뺏어 억울하게 맞지 않게). 난수는 hrnd(Math.random 을 먹지 않는다).
+function updateTorchFx(dt, fight) {
+  let T = horror.tf;
+  if (!T) T = horror.tf = { b0: torch.intensity, b1: nearLight.intensity, b2: viewLight.intensity, cd: 15, fcd: 3, ev: null, dgn: null };
+  if (T.dgn !== dungeon) { T.dgn = dungeon; T.cd = Math.max(T.cd, 12 + hrnd() * 8); T.ev = null; }
+  let near = false;
+  if (!fight && player.alive) { const p = player.obj.position; for (const e of enemies) { if (!e || e.isDead || !e.obj) continue; if (Math.hypot(e.obj.position.x - p.x, e.obj.position.z - p.z) < TILE * 5) { near = true; break; } } }
+  if (T.ev) {
+    const E = T.ev; E.t += dt;
+    if (E.t >= E.dur || fight) T.ev = null;
+  } else if (!fight && player.alive) {
+    T.cd -= dt; T.fcd -= dt;
+    if (T.cd <= 0) {   // 꺼질 듯함
+      const hold = 0.3 + hrnd() * 0.4;
+      T.ev = { t: 0, fall: 0.08, hold, rise: 0.4, dur: 0.08 + hold + 0.4, depth: 0.55 + hrnd() * 0.15, ph: hrnd() * 6 };
+      T.cd = near ? 8 + hrnd() * 8 : 25 + hrnd() * 20; T.fcd = 1.5 + hrnd() * 2;
+      if (SFX && SFX.ambCue) SFX.ambCue('sputter', 0);
+    } else if (near && T.fcd <= 0) {   // 작은 떨림
+      T.ev = { t: 0, fall: 0.04, hold: 0.06, rise: 0.08, dur: 0.18, depth: 0.2 + hrnd() * 0.15, ph: hrnd() * 6 };
+      T.fcd = 1.5 + hrnd() * 2.5;
+    }
+  }
+  let m = 1;
+  if (T.ev) {
+    const E = T.ev, t = E.t, env = t < E.fall ? t / E.fall : t < E.fall + E.hold ? 1 : Math.max(0, 1 - (t - E.fall - E.hold) / E.rise);
+    m = 1 - env * E.depth * (0.75 + 0.25 * Math.sin(t * 43 + E.ph) * Math.sin(t * 17 + E.ph * 2));   // 푸석이며 떤다
+  }
+  torch.intensity = T.b0 * m; nearLight.intensity = T.b1 * (0.4 + 0.6 * m); viewLight.intensity = T.b2 * m;   // 발밑 근접광은 덜 줄여 캐릭터는 보이게
+  // 픽셀 잔디는 조명을 안 받고 자체 거리 감쇠(uLit.x = 밝은 반경)만 쓴다 — 세기 m 이면 같은 밝기의 반경은 √m 배
+  if (dgnPGrass && dgnPGrass.uniforms && dgnPGrass.uniforms.uLit) { const U = dgnPGrass.uniforms.uLit.value; if (T.lit0 === undefined) T.lit0 = U.x; if (m < 1 || U.x !== T.lit0) U.x = T.lit0 * Math.sqrt(m); }
+  T.m = m;
 }
 // 렌더 직전(픽셀 스냅된 카메라)에 눈 자리를 화면 uv 로 투영해 포스트에 넘긴다. 던전 씬이 아니면 끈다
 function updateGhostScreen(sceneToRender) {   // v810: 유령 발 위치를 화면 uv 로(가림 깊이는 몸 가운데 기준)
@@ -26360,18 +26405,18 @@ function tick(now) {
   if (inTown) {
     // 마을 모드: 마을 씬을 같은 픽셀화 파이프라인으로 렌더
     updateTownMode(dt);
-    if (AMB_ON || LOWHP_ON || DARK_ON) leaveHorror();
+    if (AMB_ON || LOWHP_ON || DARK_ON || TORCHFX_ON) leaveHorror();
     renderWithPost(townScene);
   } else if (inRest) {
     // 여행자의 쉼터(허브): 동일 파이프라인으로 렌더
     updateRestMode(dt);
-    if (AMB_ON || LOWHP_ON || DARK_ON) leaveHorror();
+    if (AMB_ON || LOWHP_ON || DARK_ON || TORCHFX_ON) leaveHorror();
     renderWithPost(restScene);
   } else {
     cullSceneLights(camera);   // 동시 점등 광원 수 제한(흰 화면 방지) — 적 가시성이 켜진 광원을 참조하므로 update 전에
     if (player.alive && !rewardPaused) update(dt);
     updateBattleMusic(dt);   // v806: 전투 배경음악(서서히 켜지고 꺼짐)
-    if (AMB_ON || EYES_ON || LOWHP_ON || DARK_ON) updateHorror(dt);   // v808: 환경음 · 어둠 속의 눈 · 저체력 연출 · v809 어둠
+    if (AMB_ON || EYES_ON || LOWHP_ON || DARK_ON || TORCHFX_ON) updateHorror(dt);   // v808: 환경음 · 어둠 속의 눈 · 저체력 연출 · v809 어둠
     renderWithPost(scene);
     drawMinimap();
   }
