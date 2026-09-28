@@ -4157,6 +4157,11 @@ const EYES_ON = !/[?&]eyes=0/.test(location.search);
 const LOWHP_ON = !/[?&]lowhp=0/.test(location.search);
 // v809: 던전 어둠 — 횃불 밖·화면 가장자리의 어두운 픽셀을 포스트에서 더 누른다(?dark=0 끔 · ?darkstr=N 세기, 기본 0.8)
 const DARK_ON = !/[?&]dark=0/.test(location.search);
+// v810: 환경으로 이야기하기(?lore=0 — 1·2막 끌려간 핏자국·손톱자국·벽 할퀸 자국·쓰러진 모험가) · 2막 문 닫히는 소리 + 스쳐 가는 유령(?ghost=0) ·
+// 3막 숨 쉬는 벽이 심장 박동에 맞춰 뛴다(?a3beat=0)
+const LORE_ON = !/[?&]lore=0/.test(location.search);
+const GHOST_ON = !/[?&]ghost=0/.test(location.search);
+const A3BEAT_ON = !/[?&]a3beat=0/.test(location.search);
 const DARK_STR = (() => { const m = location.search.match(/[?&]darkstr=([0-9.]+)/); const v = m ? parseFloat(m[1]) : 0.8; return isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8; })();
 // 픽셀아트 잔디(인스턴싱 빌보드). ?pgrass=0 이면 예전 3D 풀잎 메시로 돌아간다.
 // 쓰는 곳보다 위에서 선언해야 한다 — 모듈 최상위 코드가 즉시 실행되므로 아래에 두면 TDZ로 부팅이 깨진다.
@@ -4177,7 +4182,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v809'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v810'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -5002,15 +5007,33 @@ const SFX = (() => {
       a.connect(lp); b.connect(lp); lp.connect(am); am.connect(g); g.connect(out); for (const o of [a, b, tr]) { o.start(t); o.stop(t + 0.2 + dur * 1.05); }
     },
     flee(c, out, t, v) { AE.steps(c, out, t, v, 5, 0.22, -1); },   // 달아나는 발소리(빠르게 멀어진다)
+    slam(c, out, t, v) {   // v810 2막: 먼 곳에서 무거운 문이 쾅 닫힌다 — 낮은 쿵(사인 55→32 + 저역 노이즈) 뒤로 문짝·빗장이 덜컥이는 짧은 소리 몇 번
+      const o = osc(c, 'sine', 55), g = c.createGain(); o.frequency.setValueAtTime(58, t); o.frequency.exponentialRampToValueAtTime(32, t + 0.35);
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(v, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7); o.connect(g); g.connect(out); o.start(t); o.stop(t + 0.75);
+      const n = c.createBufferSource(); n.buffer = ambNoise(c); const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 260;
+      const ng = c.createGain(); ng.gain.setValueAtTime(v * 1.4, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.3); n.connect(lp); lp.connect(ng); ng.connect(out); n.start(t, arnd() * 4); n.stop(t + 0.32);
+      for (let k = 0, m = 2 + Math.floor(arnd() * 3); k < m; k++) {
+        const tt = t + 0.1 + k * (0.07 + arnd() * 0.08), b = c.createBufferSource(); b.buffer = ambNoise(c); const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 600 + arnd() * 800; bp.Q.value = 4;   // 폰 스피커에서도 들리게 덜컥임은 중역으로
+        const bg = c.createGain(); bg.gain.setValueAtTime(v * (2.2 - k * 0.45), tt); bg.gain.exponentialRampToValueAtTime(0.0001, tt + 0.06); b.connect(bp); bp.connect(bg); bg.connect(out); b.start(tt, arnd() * 4); b.stop(tt + 0.07);
+      }
+    },
+    thump(c, out, t, v) {   // v810 3막: 벽 속 거대한 심장 '두-근' — 플레이어 심장(heartbeat)보다 낮고 뭉개진 소리. 벽 맥동과 같은 순간에 친다
+      [[0, 1], [0.24, 0.6]].forEach(([dt, k]) => { const tt = t + dt, o = osc(c, 'sine', 50), g = c.createGain(); o.frequency.setValueAtTime(50, tt); o.frequency.exponentialRampToValueAtTime(30, tt + 0.18);
+        g.gain.setValueAtTime(0.0001, tt); g.gain.linearRampToValueAtTime(v * k, tt + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.34); o.connect(g); g.connect(out); o.start(tt); o.stop(tt + 0.36);
+        const n = c.createBufferSource(); n.buffer = ambNoise(c); const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 180;
+        const ng = c.createGain(); ng.gain.setValueAtTime(v * k * 0.9, tt); ng.gain.exponentialRampToValueAtTime(0.0001, tt + 0.16); n.connect(lp); lp.connect(ng); ng.connect(out); n.start(tt, arnd() * 4); n.stop(tt + 0.18);
+        const tr = osc(c, 'triangle', 110), tg = c.createGain(); tr.frequency.setValueAtTime(110, tt); tr.frequency.exponentialRampToValueAtTime(60, tt + 0.12);   // 폰 스피커용 중역 '툭'
+        tg.gain.setValueAtTime(v * k * 0.45, tt); tg.gain.exponentialRampToValueAtTime(0.0001, tt + 0.16); tr.connect(tg); tg.connect(out); tr.start(tt); tr.stop(tt + 0.18); });
+    },
   };
   // 막별: 드론 [파형, Hz, 세기] · 바람 [대역 중심 Hz, 세기] · 3막 숨소리 · 가끔 소리 가중치
   const AMB_ACT = {
     1: { drone: [['sine', 55, 0.008], ['triangle', 82.4, 0.006]], wind: [380, 0.06], ev: { drip: 4, creak: 1, whisper: 0.8, steps: 1.2 } },
-    2: { drone: [['sine', 49, 0.008], ['sawtooth', 73.4, 0.003], ['sine', 98, 0.004]], wind: [520, 0.055], ev: { drip: 1.5, creak: 1.4, chains: 1.5, moan: 1, whisper: 1, steps: 1.2 } },
+    2: { drone: [['sine', 49, 0.008], ['sawtooth', 73.4, 0.003], ['sine', 98, 0.004]], wind: [520, 0.055], ev: Object.assign({ drip: 1.5, creak: 1.4, chains: 1.5, moan: 1, whisper: 1, steps: 1.2 }, GHOST_ON ? { slam: 0.8 } : {}) },
     3: { drone: [['sine', 41.2, 0.009], ['triangle', 61.7, 0.006]], wind: [260, 0.05], breath: 0.1, ev: { drip: 1, squelch: 2.5, whisper: 1.5, moan: 0.8, steps: 0.5 } },
   };
   // 세기는 오프라인 렌더로 맞췄다 — 드론·바람이 깔리는 바닥(0.25초 창 RMS 0.02 안팎) 위로 가끔 소리가 두어 배 솟게
-  const AE_VOL = { drip: 0.16, creak: 0.38, whisper: 0.25, steps: 0.26, chains: 0.046, moan: 0.1, squelch: 0.22, growl: 0.1, flee: 0.25 };
+  const AE_VOL = { drip: 0.16, creak: 0.38, whisper: 0.25, steps: 0.26, chains: 0.046, moan: 0.1, squelch: 0.22, growl: 0.1, flee: 0.25, slam: 0.12, thump: 0.1 };
   function ambDrone(c, out, t0, A) {   // 깔리는 소리: 저음 드론(느린 숨결 LFO) + 대역통과 바람(중심이 천천히 흔들림) + 3막 숨소리
     const nodes = [], lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 600; lp.connect(out); nodes.push(lp);
     A.drone.forEach(([type, f, v], k) => {
@@ -5417,6 +5440,11 @@ const quadMat = new THREE.ShaderMaterial({
     uEyeShape: { value: new THREE.Vector4(3, 2, 1, 6) },    // v809: (눈 폭, 눈 높이, 가운데 틈 절반, 번짐 반경) — 전부 저해상도 텍셀
     uEyeCol: { value: new THREE.Color(0xff6a28) },
     uEyeGlow: { value: new THREE.Color(0x5a1604) },
+    uGhost: { value: new THREE.Vector4(0, 0, 0, 0) },       // v810: 2막 유령 — (발 위치 화면 uv x, y, 시선 깊이, 불투명도). w=0 이면 안 그린다
+    uGhostFlip: { value: 0 },                               // v810: 1 이면 좌우 뒤집기(가는 방향을 본다)
+    tGhost: { value: null },                                // v810: 유령 모양 14×24 텍셀 마스크(0 빈칸 · 1 옷 · 2 두건 속 어둠 · 3 눈)
+    uGhostCol: { value: new THREE.Color(0xa8d4e0) },
+    uGhostEye: { value: new THREE.Color(0xe8fbff) },
     uFocusY: { value: 0.52 },                             // 틸트시프트 초점 중심(화면 Y, 0=아래 1=위)
     uFocusW: { value: 0.18 },                               // 초점 밴드 반폭(이 안은 완전 선명)
     uBlurMax: { value: 1.5 },                               // 최대 블러 반경(저해상도 텍셀 단위)
@@ -5486,6 +5514,11 @@ const quadMat = new THREE.ShaderMaterial({
     uniform vec4 uEyeShape;
     uniform vec3 uEyeCol;
     uniform vec3 uEyeGlow;
+    uniform vec4 uGhost;
+    uniform float uGhostFlip;
+    uniform sampler2D tGhost;
+    uniform vec3 uGhostCol;
+    uniform vec3 uGhostEye;
     uniform float uFocusY;
     uniform float uFocusW;
     uniform float uBlurMax;
@@ -5765,6 +5798,19 @@ const quadMat = new THREE.ShaderMaterial({
         graded += uEyeGlow * max(0.0, 1.0 - hr) * max(0.0, 1.0 - hr) * vis * uEye.w;
         graded = mix(graded, uEyeCol, eye * vis * uEye.w);
       }
+      // v810: 2막 스쳐 가는 유령 — 눈과 같은 요령으로 여기서 텍셀 단위로 찍는다(어둠·색 보정에 안 눌린다).
+      // 반투명은 알파 혼합이 아니라 베이어 디더(픽셀아트 투명) — 아래(옷자락)로 갈수록 성기다. 앞에 가린 것이 있으면 깊이로 숨긴다
+      if (uGhost.w > 0.001) {
+        vec2 gp = floor(uv / uTexel) - floor(uGhost.xy / uTexel) + vec2(7.0, 0.0);
+        if (uGhostFlip > 0.5) gp.x = 13.0 - gp.x;
+        if (gp.x >= 0.0 && gp.x < 14.0 && gp.y >= 0.0 && gp.y < 24.0) {
+          float gm = floor(texture2D(tGhost, (gp + 0.5) / vec2(14.0, 24.0)).r * 3.0 + 0.5);
+          if (gm > 0.5 && uGhost.z <= linearizeDepth(texture2D(tDepth, uv).x) + 0.6) {
+            float ga = uGhost.w * (gm > 2.5 ? 1.0 : mix(0.2, 0.8, clamp(gp.y / 14.0, 0.0, 1.0)));
+            if (ga > bayer8(uv / uTexel)) graded = gm > 2.5 ? uGhostEye : (gm > 1.5 ? graded * 0.3 : mix(graded, uGhostCol, 0.85));
+          }
+        }
+      }
       // === 색 양자화 + 오더드 디더링(픽셀아트 모드) ===
       // 연속 그라디언트를 단계로 끊되, 끊기 직전에 베이어 임계값을 더해 밴딩을 점 패턴으로 흩는다.
       // 좌표는 화면 픽셀이 아니라 '저해상도 텍셀' 기준이어야 패턴이 픽셀 격자에 정확히 붙는다.
@@ -6000,7 +6046,8 @@ function renderWithPost(sceneToRender) {
     _invVP.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).invert();
     quadMat.uniforms.uInvVP.value.copy(_invVP);
   }
-  if (EYES_ON) updateEyesScreen(sceneToRender);   // v809: 어둠 속의 눈 — 스냅된 카메라로 투영(컷아웃 원과 같은 이유)
+  if (EYES_ON) updateEyesScreen(sceneToRender);
+  if (GHOST_ON) updateGhostScreen(sceneToRender);   // v810: 2막 유령   // v809: 어둠 속의 눈 — 스냅된 카메라로 투영(컷아웃 원과 같은 이유)
   // SSAO는 뷰 공간에서 계산하므로 투영 행렬과 그 역행렬만 있으면 된다(카메라 스냅과 무관하지만
   // 화면비·FOV가 바뀔 수 있으므로 여기서 같이 갱신한다).
   if (quadMat.uniforms.uAOStr.value > 0.001) {
@@ -9118,7 +9165,10 @@ function updateBattleMusic(dt) {
 //  ④ 어둠(DARK_ON, v809): 횃불 밖·화면 가장자리의 어두운 픽셀을 포스트에서 더 누른다(uDarkStr). 눈은 그 뒤에 찍혀 안 눌린다.
 let _hrs = 0x6d2b79f5;
 const hrnd = () => { _hrs = (_hrs * 1664525 + 1013904223) >>> 0; return _hrs / 4294967296; };
-const horror = { lowHp: 0, beatT: 0, pulseT: 9, eyes: null, eyesCd: 12, dgn: null };
+const horror = { lowHp: 0, beatT: 0, pulseT: 9, eyes: null, eyesCd: 12, dgn: null, ghost: null, ghostCd: 20, a3T: 0 };
+let a3BeatT = 9;   // v810: 3막 벽 박동 — 마지막 박동 이후 시간(updateCavernDecor 가 읽는다)
+// '두-근' 모양(0 → 1 → 둘째 박 0.6): 벽 맥동과 저체력 화면이 같은 모양을 쓴다
+function a3BeatEnv(t) { return t < 0 ? 0 : Math.exp(-t * 7) + (t > 0.24 ? 0.6 * Math.exp(-(t - 0.24) * 7) : 0); }
 // [눈, 번짐] — 포스트의 색 보정·어둠을 다 지난 뒤에 찍으므로 적은 색이 그대로 화면에 나온다
 const EYE_COL = { 1: [0xff6a28, 0x5a1604], 2: [0x9ae8ff, 0x0e3a52], 3: [0xd0f048, 0x3a4a08] };
 const _eyeV = new THREE.Vector3(), _eyeS = new THREE.Vector3();
@@ -9144,11 +9194,17 @@ function updateHorror(dt) {
     horror.beatT -= dt;
     if (horror.beatT <= 0) { horror.beatT = 1.0 - 0.45 * sev; horror.pulseT = 0; if (SFX && SFX.heartbeat) SFX.heartbeat(0.2 + 0.3 * sev); }
   } else horror.beatT = 0;
+  // v810 3막: 숨 쉬는 벽의 박동 — 플레이어 심장이 뛰고 있으면(저체력) 그 박동에 맞추고, 아니면 1.6초마다 벽 속 심장이 스스로 뛴다(환경음이 켜져 있으면 소리도)
+  if (A3BEAT_ON && currentAct() === 3) {
+    if (sev > 0) a3BeatT = horror.pulseT;
+    else { horror.a3T -= dt; a3BeatT += dt; if (horror.a3T <= 0) { horror.a3T = 1.6; a3BeatT = 0; if (AMB_ON && SFX && SFX.ambCurrent && SFX.ambCurrent() === 3) SFX.ambCue('thump', 0); } }
+  }
   const pt = horror.pulseT;
   quadMat.uniforms.uLowHp.value = horror.lowHp;
   quadMat.uniforms.uLowPulse.value = Math.min(1, Math.exp(-pt * 8) + (pt > 0.2 ? 0.7 * Math.exp(-(pt - 0.2) * 8) : 0));
-  // ③ 어둠 속의 눈
+  // ③ 어둠 속의 눈 · v810 2막 유령
   if (EYES_ON) updateEyes(dt, fight);
+  if (GHOST_ON) updateGhost(dt, fight);
   // ④ 어둠: 중심은 플레이어(횃불이 달린 자리)
   if (DARK_ON) { quadMat.uniforms.uDarkStr.value = DARK_STR; quadMat.uniforms.uDarkP.value.set(player.obj.position.x, player.obj.position.z); }
 }
@@ -9159,6 +9215,14 @@ function leaveHorror() {   // 마을·쉼터: 환경음을 끄고 저체력 화�
   horror.lowHp = 0; horror.beatT = 0;
 }
 // 렌더 직전(픽셀 스냅된 카메라)에 눈 자리를 화면 uv 로 투영해 포스트에 넘긴다. 던전 씬이 아니면 끈다
+function updateGhostScreen(sceneToRender) {   // v810: 유령 발 위치를 화면 uv 로(가림 깊이는 몸 가운데 기준)
+  const U = quadMat.uniforms, G = horror.ghost;
+  if (!G || !G.active || G.a <= 0.001 || sceneToRender !== scene) { U.uGhost.value.w = 0; return; }
+  const gy = groundHeightAt(G.pos.x, G.pos.z) + 0.25 + G.bob;
+  _eyeS.set(G.pos.x, gy, G.pos.z).project(camera);
+  const vz = -_eyeV.set(G.pos.x, gy + 1.0, G.pos.z).applyMatrix4(camera.matrixWorldInverse).z;
+  U.uGhost.value.set(_eyeS.x * 0.5 + 0.5, _eyeS.y * 0.5 + 0.5, vz, G.a); U.uGhostFlip.value = G.flip;
+}
 function updateEyesScreen(sceneToRender) {
   const U = quadMat.uniforms, E = horror.eyes;
   if (!E || !E.active || E.a <= 0.001 || sceneToRender !== scene) { U.uEye.value.w = 0; return; }
@@ -9166,6 +9230,55 @@ function updateEyesScreen(sceneToRender) {
   const vz = -_eyeV.copy(E.pos).applyMatrix4(camera.matrixWorldInverse).z;
   U.uEye.value.set(_eyeS.x * 0.5 + 0.5, _eyeS.y * 0.5 + 0.5, vz, E.a);
   U.uEyeShape.value.set(E.w, E.shut ? 1 : 2, 1, 5 + E.w);
+}
+// v810: 2막 스쳐 가는 유령 — 조용할 때(30~60초에 한 번, 눈과 겹치지 않게) 화면 가장자리 어둠에서 두건 쓴 형체가 화면 가로로 미끄러져 지나간다.
+// 포스트 셰이더가 14×24 텍셀 마스크를 찍는다(uGhost). 다가가거나 싸움이 붙거나 바닥이 끝나면 흩어진다.
+function ghostMaskTex() {
+  const W = 14, H = 24, d = new Uint8Array(W * H * 4), cx = 6.5, hem = [2, 1, 0, 1, 3, 1, 0, 2, 1, 0, 1, 2, 0, 2];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const dx = x - cx; let m = 0;
+    if (dx * dx / 17.6 + (y - 18.5) * (y - 18.5) / 21.2 <= 1) m = 1;                  // 두건
+    if (y >= 1 && y <= 16) { const hw = 3.2 + (16 - y) * 0.22; if (Math.abs(dx) <= hw || (y >= 9 && y <= 13 && Math.abs(dx) <= hw + 1.2)) m = 1; }   // 옷(아래로 퍼짐) + 늘어진 소매
+    if (y < hem[x]) m = 0;                                                           // 너덜너덜한 옷자락
+    if (dx * dx / 5.8 + (y - 18) * (y - 18) / 6.8 <= 1) m = 2;                       // 두건 속 어둠
+    if (y === 18 && (x === 5 || x === 8)) m = 3;                                     // 눈
+    const i = (y * W + x) * 4; d[i] = Math.round(m / 3 * 255); d[i + 3] = 255;
+  }
+  const t = new THREE.DataTexture(d, W, H, THREE.RGBAFormat); t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.needsUpdate = true; return t;
+}
+function updateGhost(dt, fight) {
+  let G = horror.ghost;
+  if (G && G.active && (G.dgn !== dungeon || !player.alive || currentAct() !== 2)) { G.active = false; G.a = 0; }
+  if (G && G.active) {
+    G.t += dt; G.pos.addScaledVector(G.dir, G.speed * dt);
+    const p = player.obj.position, d = Math.hypot(G.pos.x - p.x, G.pos.z - p.z);
+    if (!G.out && (fight || d < TILE * 1.3 || G.t > G.dur || !eyesOnFloor(G.pos.x, G.pos.z))) { G.out = true; G.ot = 0; G.outDur = G.t > G.dur ? 0.7 : 0.3; }
+    let a = Math.min(1, G.t / 0.7);
+    if (G.out) { G.ot += dt; a *= Math.max(0, 1 - G.ot / G.outDur); if (G.ot >= G.outDur) { G.active = false; G.a = 0; horror.ghostCd = 30 + hrnd() * 30; return; } }
+    G.a = a * 0.9; G.bob = Math.sin(G.t * 2.4) * 0.12;
+    return;
+  }
+  horror.ghostCd -= dt;
+  if (fight || horror.ghostCd > 0 || currentAct() !== 2 || !player.alive || !dungeon || !dungeon.grid || (horror.eyes && horror.eyes.active)) return;
+  const p = player.obj.position, gy0 = groundHeightAt(p.x, p.z);
+  _eyeS.setFromMatrixColumn(camera.matrixWorld, 0); _eyeS.y = 0; _eyeS.normalize();   // 화면 가로(카메라 오른쪽)
+  const rx = _eyeS.x, rz = _eyeS.z;
+  for (let k = 0; k < 12; k++) {
+    let sx = hrnd() * 2 - 1, sy = hrnd() * 2 - 1; const m = Math.max(Math.abs(sx), Math.abs(sy)) || 1, sc = (0.45 + hrnd() * 0.3) / m; sx *= sc; sy *= sc;
+    _eyeV.set(sx, sy, 0.5).unproject(camera).sub(camera.position); if (_eyeV.y > -1e-3) continue;
+    const tr = (gy0 - camera.position.y) / _eyeV.y, x = camera.position.x + _eyeV.x * tr, z = camera.position.z + _eyeV.z * tr;
+    if (Math.hypot(x - p.x, z - p.z) < TILE * 1.8) continue;
+    const dir = hrnd() < 0.5 ? 1 : -1, sxw = x - rx * dir * 1.8, szw = z - rz * dir * 1.8;
+    let ok = true; for (let q = 0; q <= 4 && ok; q++) { const t = q / 4 * 3.6, qx = sxw + rx * dir * t, qz = szw + rz * dir * t; if (!eyesOnFloor(qx, qz) || !eyesOnFloor(qx + 0.85, qz + 0.85)) ok = false; }
+    if (!ok || enemies.some(e => e && !e.isDead && e.obj && Math.hypot(e.obj.position.x - x, e.obj.position.z - z) < 4)) continue;
+    if (!quadMat.uniforms.tGhost.value) { const mr = Math.random; Math.random = hrnd; try { quadMat.uniforms.tGhost.value = ghostMaskTex(); } finally { Math.random = mr; } }   // 텍스처도 uuid 를 먹는다
+    if (!G) G = horror.ghost = { pos: new THREE.Vector3(), dir: new THREE.Vector3(), active: false, a: 0 };
+    G.pos.set(sxw, 0, szw); G.dir.set(rx * dir, 0, rz * dir); G.flip = dir < 0 ? 1 : 0; G.speed = 1.5; G.dur = 2.4; G.t = 0; G.out = false; G.a = 0; G.bob = 0; G.active = true; G.dgn = dungeon;
+    const pan = Math.max(-1, Math.min(1, sx)) * 0.8;
+    if (SFX && SFX.ambCue && hrnd() < 0.6) SFX.ambCue(hrnd() < 0.5 ? 'moan' : 'whisper', pan, 0.2);
+    return;
+  }
+  horror.ghostCd = 2;
 }
 function eyesOnFloor(x, z) {
   const G = dungeon && dungeon.grid; if (!G) return false;
@@ -9195,7 +9308,7 @@ function updateEyes(dt, fight) {
     return;
   }
   horror.eyesCd -= dt;
-  if (fight || horror.eyesCd > 0 || !player.alive || !dungeon || !dungeon.grid) return;
+  if (fight || horror.eyesCd > 0 || !player.alive || !dungeon || !dungeon.grid || (horror.ghost && horror.ghost.active)) return;
   const p = player.obj.position, gy0 = groundHeightAt(p.x, p.z);
   for (let k = 0; k < 12; k++) {
     // 화면 가장자리 띠(중심에서 45~80%)의 한 점을 골라 발밑 높이 평면으로 되쏜다 — 화면비(세로 모바일 포함)에 저절로 맞는다
@@ -12144,6 +12257,144 @@ function buildCor3Decor(dgn, rnd) {
   });
 }
 
+// ===== v810: 환경으로 이야기하기(LORE_ON, 1·2막) — 방에서 복도로 끌려간 핏자국(시작부 손톱자국·웅덩이) · 벽 할퀸 자국(2막) · 벽에 기대 쓰러진 모험가 =====
+// 배치는 층 번호 시드 자체 난수. THREE 객체 생성자가 generateUUID 로 Math.random 을 먹으므로 짓는 동안만 그 난수로 바꿔 끼운다
+// (골렘 빌더 요령) — 그래서 ?lore=0 과 층 생성 난수 흐름이 같다.
+const LORE_BLOOD = [0x4a0c10, 0x3e0a0d, 0x340809, 0x521014];   // 마른 피(횃불 밑에서 새빨갛게 뜨지 않게 어둡게)
+const lorePlaced = [];   // 배치 기록(검증용)
+function buildLoreDecor(dgn, act) {
+  let s = (((player.floor | 0) * 2654435761) ^ 0x5bd1e995) >>> 0;
+  const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  const mr = Math.random; Math.random = rnd;
+  try { buildLoreInner(dgn, act, rnd); } finally { Math.random = mr; }
+}
+function buildLoreInner(dgn, act, rnd) {
+  lorePlaced.length = 0;
+  const { grid, rooms, corridorTiles } = dgn, isF = (x, y) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && grid[y][x] > 0;
+  const cor = new Set(corridorTiles.map(c => c.x + ',' + c.y)), wx = gx => (gx - MAP_W / 2) * TILE, wz = gy => (gy - MAP_H / 2) * TILE;
+  const cellOf = (x, z) => [Math.round(x / TILE + MAP_W / 2), Math.round(z / TILE + MAP_H / 2)];
+  const trap = new Set(collapseTiles.map(c => c.gx + ',' + c.gy)), boss = pickBossRoom(dgn), pk = a => a[Math.floor(rnd() * a.length)];
+  const BLOOD = act === 2 ? [0x2e090b, 0x280709, 0x200506, 0x34090c] : LORE_BLOOD;   // 2막은 달빛·환경광이 밝아 같은 색이 새빨갛게 뜬다
+  // 바닥 무늬 높이: 1막 복셀은 그 자리 지면 + 0.03, 2막 석판은 가장 높은 석판(+0.105) 위, ?vox=0 1막 타일은 윗면 위
+  const BASE = act === 2 ? 0.12 : 0.26;
+  let lay = 0; const FY = (x, z, local) => (local ? 0.03 : groundH ? groundHeightAt(x, z) + 0.03 : BASE) + (lay++ % 5) * 0.004;   // 겹친 무늬끼리 깊이 싸움 없게 조금씩 띄운다
+  const decal = (g, x, z, len, wid, ang, hex, local) => { const m = cas2Part(g, new THREE.PlaneGeometry(wid, len), hex, x, FY(x, z, local), z, 'solid', 0.08); m.rotation.set(-Math.PI / 2, 0, ang); return m; };
+  const blot = (g, x, z, R, hex, k, local) => { const sh = new THREE.Shape(), n = 7, ph = rnd() * 6;
+    for (let i = 0; i < n; i++) { const t = i / n * 6.2832 + ph, r = R * (0.62 + rnd() * 0.45); i ? sh.lineTo(Math.cos(t) * r, Math.sin(t) * r) : sh.moveTo(Math.cos(t) * r, Math.sin(t) * r); }
+    const m = cas2Part(g, new THREE.ShapeGeometry(sh), hex, x, FY(x, z, local), z, k || 'solid', 0.06); m.rotation.x = -Math.PI / 2; return m; };
+  const finish = (g, seed) => { for (const m of vcMerge(g, seed)) { m.castShadow = false; m.receiveShadow = true; } };
+  // ── ① 끌려간 핏자국: 방 안 웅덩이에서 문간을 지나 복도 어둠 속으로 두 줄 끌린 자국이 가늘어지며 끊긴다
+  const doorsOf = r => { const out = []; for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const ex = x + dx, ey = y + dy, inR = ex >= r.x && ex < r.x + r.w && ey >= r.y && ey < r.y + r.h; if (!inR && cor.has(ex + ',' + ey)) out.push({ x, y, dx, dy }); } return out; };
+  const cand = rooms.filter(r => r !== boss && doorsOf(r).length);
+  const nTrail = Math.min(cand.length, 1 + (rnd() < 0.5 ? 1 : 0)), usedRooms = new Set();
+  for (let t = 0; t < nTrail; t++) {
+    const r = cand.splice(Math.floor(rnd() * cand.length), 1)[0]; usedRooms.add(r);
+    const d = pk(doorsOf(r)), inR = (x, y) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+    // 시작 칸: 문간에서 방 안쪽으로 1~2칸, 옆으로 0~1칸
+    let sx = d.x - d.dx * (1 + Math.floor(rnd() * 2)), sy = d.y - d.dy * (1 + Math.floor(rnd() * 2)); const lat = Math.floor(rnd() * 3) - 1;
+    if (inR(sx + d.dy * lat, sy + d.dx * lat)) { sx += d.dy * lat; sy += d.dx * lat; } if (!inR(sx, sy)) { sx = d.x; sy = d.y; }
+    const cells = [[sx, sy]]; if (sx !== d.x || sy !== d.y) cells.push([d.x, d.y]);
+    let cx = d.x + d.dx, cy = d.y + d.dy, px = d.x, py = d.y; cells.push([cx, cy]);
+    for (let k = 0, n = 2 + Math.floor(rnd() * 3); k < n; k++) {   // 복도를 따라 2~4칸 더
+      const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([ax, ay]) => [cx + ax, cy + ay]).filter(([ax, ay]) => cor.has(ax + ',' + ay) && !(ax === px && ay === py) && !inR(ax, ay));
+      if (!nb.length) break; const nx = pk(nb); px = cx; py = cy; cx = nx[0]; cy = nx[1]; cells.push([cx, cy]);
+    }
+    const pts = cells.map(([x, y], i) => ({ x: wx(x) + (i ? 0 : (rnd() - 0.5) * 1.5), z: wz(y) + (i ? 0 : (rnd() - 0.5) * 1.5) }));
+    const g = new THREE.Group(); g.userData.noRelief = true; floorGroup.add(g);
+    const seg = []; let L = 0; for (let i = 1; i < pts.length; i++) { const dd = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z); seg.push(dd); L += dd; }
+    const at = u => { let dd = u * L; for (let i = 0; i < seg.length; i++) { if (dd <= seg[i] || i === seg.length - 1) { const k = seg[i] ? Math.min(1, dd / seg[i]) : 0, ex = (pts[i + 1].x - pts[i].x) / (seg[i] || 1), ez = (pts[i + 1].z - pts[i].z) / (seg[i] || 1);
+      return { x: pts[i].x + (pts[i + 1].x - pts[i].x) * k, z: pts[i].z + (pts[i + 1].z - pts[i].z) * k, dx: ex, dz: ez }; } dd -= seg[i]; } };
+    const ok = (x, z) => { const [gx, gy] = cellOf(x, z); return isF(gx, gy) && !trap.has(gx + ',' + gy); };
+    const N = Math.floor(L / 0.28), ph = rnd() * 6, p0 = at(0);
+    // 시작부: 웅덩이 + 튄 자국 + 끌려가지 않으려 긁은 손톱자국(끌린 방향 반대로 네 줄)
+    if (ok(p0.x, p0.z)) {
+      const pa = Math.atan2(-p0.dx, -p0.dz);   // 마른 웅덩이: 끌려간 쪽으로 길쭉한 얼룩 셋을 겹친다(한 장이면 빨간 원판, 윤기 재질이면 횃불에 번쩍인다)
+      for (let i = 0; i < 3; i++) { const o = i * 0.35, m = blot(g, p0.x + p0.dx * o + (rnd() - 0.5) * 0.3, p0.z + p0.dz * o + (rnd() - 0.5) * 0.3, (0.75 - i * 0.18) * (0.9 + rnd() * 0.3), [0x1c0607, 0x260809, 0x30090b][i]); m.rotation.z = pa + (rnd() - 0.5) * 0.5; m.scale.set(0.75, 1.35, 1); }
+      for (let i = 0; i < 6; i++) { const a = rnd() * 6.28, rr = 0.9 + rnd() * 0.9; if (ok(p0.x + Math.cos(a) * rr, p0.z + Math.sin(a) * rr)) blot(g, p0.x + Math.cos(a) * rr, p0.z + Math.sin(a) * rr, 0.05 + rnd() * 0.1, pk(BLOOD)); }
+      const bx = p0.x - p0.dx * 0.9, bz = p0.z - p0.dz * 0.9, ang = Math.atan2(-p0.dx, -p0.dz);
+      for (let i = 0; i < 4; i++) { const o = (i - 1.5) * 0.13, x = bx - p0.dz * o, z = bz + p0.dx * o; if (ok(x, z)) decal(g, x, z, 0.5 + rnd() * 0.25, 0.045, ang + (rnd() - 0.5) * 0.12, i % 2 ? 0x120c0a : 0x2a0a0b); }
+    }
+    for (let i = 2; i < N; i++) {
+      const u = i / N, p = at(u), qx = -p.dz, qz = p.dx, wob = Math.sin(ph + u * L * 0.7) * 0.22, fade = 1 - u * 0.85;
+      if (rnd() > 0.3 + fade * 0.65) continue;   // 뒤로 갈수록 끊긴다
+      const x = p.x + qx * wob, z = p.z + qz * wob, ang = Math.atan2(-p.dx, -p.dz);
+      for (const sd of [-1, 1]) if (rnd() < 0.88) { const o = sd * (0.17 + rnd() * 0.07), ex = x + qx * o, ez = z + qz * o; if (ok(ex, ez)) decal(g, ex, ez, 0.26 + rnd() * 0.22, (0.07 + rnd() * 0.08) * (0.35 + fade * 0.65), ang + (rnd() - 0.5) * 0.2, pk(BLOOD)); }
+      if (u < 0.2 && rnd() < 0.4 && ok(x, z)) decal(g, x, z, 0.55, (0.12 + rnd() * 0.1) * fade, ang, pk(BLOOD));   // 앞쪽은 가운데도 길게 번져 있다(짧고 넓으면 두 줄 사이 가로대가 돼 사다리로 보인다)
+      if (rnd() < 0.2 * fade + 0.04) { const ex = x + (rnd() - 0.5) * 1.0, ez = z + (rnd() - 0.5) * 1.0; if (ok(ex, ez)) blot(g, ex, ez, 0.04 + rnd() * 0.08, pk(BLOOD)); }
+    }
+    finish(g, 8400 + t); lorePlaced.push({ kind: 'trail', x: p0.x, z: p0.z, cells: cells.length });
+  }
+  // ── ② 쓰러진 모험가: 뒤쪽 벽(면이 카메라를 봄)에 기대 주저앉은 해골 + 투구·검·방패·배낭(1막은 꺼진 횃불)
+  const spots = [];
+  rooms.forEach((r, ri) => { if (ri === 0 || r === boss) return; const inR = (x, y) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+    for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) for (const [dx, dy] of [[-1, 0], [0, -1]]) {
+      if (isF(x + dx, y + dy)) continue; let bad = trap.has(x + ',' + y);
+      for (const [ex, ey] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const k = (x + ex) + ',' + (y + ey); if ((cor.has(k) && !inR(x + ex, y + ey)) || trap.has(k)) bad = true; }
+      if (!bad) spots.push({ r, x, y, nx: -dx, nz: -dy }); } });
+  for (let i = spots.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [spots[i], spots[j]] = [spots[j], spots[i]]; }
+  spots.sort((a, b) => (usedRooms.has(a.r) ? 1 : 0) - (usedRooms.has(b.r) ? 1 : 0));   // 핏자국이 없는 방부터
+  const fp = decorFootprints(), clear = (x, z, R) => !walls.some(w => Math.abs(x - w.x) < w.halfW + R && Math.abs(z - w.z) < w.halfD + R) && !fp.some(f => _fpHit(f, x, z, R))
+    && !cas2Placed.some(q => act === 2 && Math.hypot(q.x - x, q.z - z) < 2.2) && !lorePlaced.some(q => q.kind === 'body' && Math.hypot(q.x - x, q.z - z) < 6);
+  const nBody = 1 + (rnd() < 0.5 ? 1 : 0); let made = 0;
+  for (const s of spots) {
+    if (made >= nBody) break;
+    let pos = null; for (const back of [1.55, 1.15, 0.75]) { const x = wx(s.x) - s.nx * back, z = wz(s.y) - s.nz * back; if (clear(x, z, 0.75)) { pos = { x, z, back }; break; } }
+    if (!pos) continue;
+    const g = new THREE.Group(); floorGroup.add(g); loreBody(g, pos.x, pos.z, s.nx, s.nz, act, rnd, blot);
+    finish(g, 8500 + made);
+    for (const c of g.children) c.geometry.translate(-pos.x, 0, -pos.z);   // 그룹을 자기 자리에 두어야 지면 올리기(applyGroundRelief)가 그 자리 높이를 쓴다
+    g.position.set(pos.x, act === 2 ? 0.09 : groundH ? 0 : 0.22, pos.z);   // 2막은 들린 석판(+0.105) 위, ?vox=0 1막은 타일 윗면 위(복셀이면 applyGroundRelief 가 올린다)
+    addDecorCollider(pos.x + s.nx * 0.45, pos.z + s.nz * 0.45, 0.5);
+    lorePlaced.push({ kind: 'body', x: pos.x, z: pos.z, nx: s.nx, nz: s.nz }); made++;
+  }
+  // ── ③ 벽 할퀸 자국(2막 — 1막은 벽이 울퉁불퉁한 바위라 떠 보인다): 카메라를 보는 벽면에 비스듬한 네 줄(깊게 파인 검은 골 + 긁혀 드러난 밝은 돌)
+  if (act === 2) {
+    const g = new THREE.Group(); wallGroup.add(g); let n = 0;
+    const face = CAS2W ? 0.24 : 0.1;
+    for (const s of spots) {
+      if (n >= 2 + Math.floor(rnd() * 2)) break;
+      const fx = wx(s.x) - s.nx * (TILE * 0.5 - face), fz = wz(s.y) - s.nz * (TILE * 0.5 - face);
+      if (cas2Placed.some(q => Math.hypot(q.x - wx(s.x), q.z - wz(s.y)) < TILE * 0.9) || lorePlaced.some(q => Math.hypot(q.x - fx, q.z - fz) < 3)) continue;
+      const ux = -s.nz, uz = s.nx, ry = Math.atan2(s.nx, s.nz), tilt = (rnd() < 0.5 ? 1 : -1) * (0.35 + rnd() * 0.25), y0 = 1.5 + rnd() * 1.0, off = (rnd() - 0.5) * 2.4;
+      for (let i = 0; i < 4; i++) {
+        const o = off + (i - 1.5) * 0.2, L = 1.0 + rnd() * 0.5 - Math.abs(i - 1.5) * 0.15, y = y0 - Math.abs(i - 1.5) * 0.1;
+        cas2Part(g, new THREE.BoxGeometry(0.065, L, 0.05), 0x100c0b, fx + ux * o, y, fz + uz * o, 'solid', 0.04).rotation.set(0, ry, tilt, 'YXZ');
+        cas2Part(g, new THREE.BoxGeometry(0.035, L * 0.92, 0.05), 0x8a8478, fx + ux * (o + 0.05), y + 0.02, fz + uz * (o + 0.05), 'solid', 0.06).rotation.set(0, ry, tilt, 'YXZ');
+      }
+      lorePlaced.push({ kind: 'scratch', x: fx, z: fz }); n++;
+    }
+    finish(g, 8600);
+  }
+}
+// 쓰러진 모험가 하나(월드 좌표로 짓는다 — 부른 쪽이 그룹 원점으로 옮긴다). 지면 높이는 그룹째 올리므로 여기선 0 기준
+function loreBody(g, x, z, nx, nz, act, rnd, blot) {
+  const ux = -nz, uz = nx, ry = Math.atan2(nx, nz), W = (lx, lz) => [x + ux * lx + nx * lz, z + uz * lx + nz * lz];
+  blot(g, x + nx * 0.4, z + nz * 0.4, 0.75 + rnd() * 0.3, rnd() < 0.5 ? 0x2e0a0b : 0x3a0c0e, 'solid', true);   // 밑에 마른 핏자국
+  cor3Ribs(g, x + nx * 0.45, z + nz * 0.45, ry + Math.PI / 2, rnd);
+  const fallen = rnd() < 0.35;   // 머리가 굴러떨어진 쪽
+  if (fallen) { const [a, b] = W((rnd() - 0.5) * 1.6, 1.3 + rnd() * 0.5); cor3Skull(g, a, 0, b, rnd() * 6.28, rnd); }
+  else { const [a, b] = W(0.1, 0.6); cor3Skull(g, a, 0.35, b, ry + 0.4, rnd); }
+  for (const sd of [-1, 1]) { const [a, b] = W(sd * 0.25, 1.05); cor3Bone(g, a, b, 0.8, ry + sd * 0.25, 0, rnd); }   // 뻗은 다리
+  { const [a, b] = W(0.55, 0.75); cor3Bone(g, a, b, 0.6, ry + 1.1 + rnd() * 0.4, 0, rnd); }   // 방 쪽으로 뻗은 팔
+  // 투구(녹슨 반구) — 옆에 굴러 있다
+  { const [a, b] = W(-0.75 - rnd() * 0.3, 0.5 + rnd() * 0.4); const h = cas2Part(g, new THREE.SphereGeometry(0.27, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), 0x5a524a, a, 0.02, b, 'metal', 0.06); h.rotation.set(0.9 + rnd() * 0.5, rnd() * 6.28, 0.3, 'YXZ');
+    cas2Part(g, new THREE.BoxGeometry(0.5, 0.05, 0.08), 0x4a443e, a, 0.12, b, 'metal').rotation.y = rnd() * 6.28; }
+  // 부러진 검: 날 · 코등이 · 손잡이
+  { const [a, b] = W(0.6 + rnd() * 0.4, 1.3 + rnd() * 0.4), sa = ry + (rnd() - 0.5) * 1.6, ca = Math.cos(sa), sn = Math.sin(sa), len = 0.7 + rnd() * 0.5;
+    cas2Part(g, new THREE.BoxGeometry(0.1, 0.03, len), 0x8a8a84, a, 0.04, b, 'metal', 0.04).rotation.y = sa;
+    cas2Part(g, new THREE.BoxGeometry(0.38, 0.05, 0.07), 0x6a5634, a - sn * (len / 2 + 0.03), 0.05, b - ca * (len / 2 + 0.03), 'metal').rotation.y = sa;
+    cas2Part(g, new THREE.BoxGeometry(0.06, 0.05, 0.28), 0x3a2a1a, a - sn * (len / 2 + 0.2), 0.05, b - ca * (len / 2 + 0.2), 'solid').rotation.y = sa; }
+  // 방패(둥근 나무 + 쇠테) — 벽에 기대 있다
+  if (rnd() < 0.6) { const [a, b] = W(-0.95, 0.25); const sh = cas2Part(g, new THREE.CylinderGeometry(0.42, 0.42, 0.07, 8), act === 2 ? 0x3e3026 : 0x4a3626, a, 0.42, b, 'solid'); sh.rotation.set(Math.PI / 2 - 0.35, ry, 0, 'YXZ');
+    const rim = cas2Part(g, new THREE.CylinderGeometry(0.46, 0.46, 0.05, 8), 0x3a3834, a - nx * 0.02, 0.42, b - nz * 0.02, 'metal'); rim.rotation.set(Math.PI / 2 - 0.35, ry, 0, 'YXZ'); }
+  // 배낭
+  { const [a, b] = W(0.85, 0.3); cas2Part(g, new THREE.BoxGeometry(0.46, 0.34, 0.3), 0x4a3a26, a, 0.17, b, 'cloth').rotation.y = ry + 0.3; cas2Part(g, new THREE.BoxGeometry(0.48, 0.08, 0.32), 0x3a2c1c, a, 0.36, b, 'cloth').rotation.y = ry + 0.3; }
+  // 1막: 꺼진 횃불
+  if (act === 1) { const [a, b] = W(-0.3, 1.5), sa = rnd() * 6.28; cas2Part(g, new THREE.CylinderGeometry(0.04, 0.05, 0.7, 5), 0x3a2a1a, a, 0.05, b).rotation.set(Math.PI / 2, sa, 0, 'YXZ');
+    cas2Part(g, new THREE.CylinderGeometry(0.08, 0.06, 0.16, 5), 0x141010, a + Math.sin(sa) * 0.4, 0.06, b + Math.cos(sa) * 0.4).rotation.set(Math.PI / 2, sa, 0, 'YXZ'); }
+}
+
 // 3막 부패한 성 메시 빌드(2막 buildCastleMesh와 동일 좌표계·배치 구조)
 const corTileY = new Map();   // "x,y" → 그 바닥 타일의 y 오프셋(장식을 같은 높이에 얹는 데 쓴다)
 function buildCorruptMesh(dgn) {
@@ -12764,6 +13015,7 @@ function buildDungeonMeshInner(dgn) {
     collapseTiles.length = 0;
     buildCollapseTraps(dgn);
     buildCastleMesh(dgn);
+    if (LORE_ON) buildLoreDecor(dgn, 2);   // v810: 끌려간 핏자국·벽 할퀸 자국·쓰러진 모험가(함정 칸·소품 자리는 피한다)
     // 골렘 위장 바위: 골렘은 45층부터 나오는데 45층은 2막이라, 예전엔 1막 경로 끝에만
     // 호출이 있어서 한 번도 실행되지 않았다(1막은 30층까지라 floor>=45가 참이 될 수 없다).
     // 막 분기마다 조기 return이라 골렘이 나오는 2·3막 경로에 각각 걸어 준다.
@@ -12856,6 +13108,7 @@ function buildDungeonMeshInner(dgn) {
   // 무너지는 바닥 함정(2막: 31~60층) — 1막 경로에선 함수 내부 floor 가드로 자동 차단
   collapseTiles.length = 0; // 층 전환 시 옛 함정 제거(메시는 floorGroup dispose로 정리됨)
   buildCollapseTraps(dgn);
+  if (LORE_ON) buildLoreDecor(dgn, 1);   // v810: 끌려간 핏자국·쓰러진 모험가(잔디·웅덩이 판 뒤 — 지면 높이가 확정된 다음)
 }
 
 // 골렘 위장용 바위 더미: 휴면 골렘과 비슷한 둥근 회백색 바위 무더기(발광·약점 없음).
@@ -21555,16 +21808,21 @@ function updateCavernDecor(dt) {
     tc.flame.rotation.y = Math.sin(t * 7 + tc.ph) * 0.15;
   }
   // 3막 맥동 종양: 살덩이가 숨 쉬듯 부풀고 줄며, 발광 결절·점광이 함께 명멸
+  // v810: 3막 벽 박동(A3BEAT_ON) — 느린 숨은 반으로 줄이고 박동(두-근)을 얹는다. 덩어리마다 0~0.06초만 어긋낸다
+  // (플레이어에서 퍼져 나가게 늦췄더니 화면 속 가장 가까운 덩어리도 소리보다 0.4초 늦게 뛰어 박자가 안 맞았다)
+  const A3B = A3BEAT_ON && currentAct() === 3;
   for (const cp of corruptPulses) {
-    const b = 1.0 + Math.sin(t * 1.5 + cp.ph) * 0.055 + Math.sin(t * 3.3 + cp.ph * 1.7) * 0.025;
+    const e = A3B ? a3BeatEnv(a3BeatT - (cp.ph % 1) * 0.06) : 0;
+    const b = 1.0 + (Math.sin(t * 1.5 + cp.ph) * 0.055 + Math.sin(t * 3.3 + cp.ph * 1.7) * 0.025) * (A3B ? 0.5 : 1) + e * 0.07;
     if (cp.mesh) { cp.mesh.scale.set(b, 2.0 - b, b); } // 부풀면 낮아지는 점성 숨쉬기
-    if (cp.glow) { const g = 1.0 + Math.sin(t * 2.2 + cp.ph) * 0.3; cp.glow.scale.setScalar(g); }
-    if (cp.light) cp.light.intensity = cp.baseI * (1.0 + Math.sin(t * 2.2 + cp.ph) * 0.3 + Math.sin(t * 5.1 + cp.ph) * 0.12);
-    if (cp.sprite) cp.sprite.material.opacity = 0.3 + (1.0 + Math.sin(t * 2.2 + cp.ph) * 0.5) * 0.14; // 빛번짐 명멸
+    if (cp.glow) { const g = 1.0 + Math.sin(t * 2.2 + cp.ph) * 0.3 * (A3B ? 0.5 : 1) + e * 0.35; cp.glow.scale.setScalar(g); }
+    if (cp.light) cp.light.intensity = cp.baseI * (1.0 + (Math.sin(t * 2.2 + cp.ph) * 0.3 + Math.sin(t * 5.1 + cp.ph) * 0.12) * (A3B ? 0.5 : 1) + e * 0.5);
+    if (cp.sprite) cp.sprite.material.opacity = 0.3 + (1.0 + Math.sin(t * 2.2 + cp.ph) * 0.5 * (A3B ? 0.5 : 1) + e * 0.6) * 0.14; // 빛번짐 명멸
   }
   // 산호 숨쉬기: 느리게 부풀었다 줄어든다. 부풀면 조금 낮아져야(y 반대로) 점성 있게 보인다.
   for (const cb of corruptBreath) {
-    const b2 = 1 + Math.sin(t * 1.15 + cb.ph) * cb.amp + Math.sin(t * 2.6 + cb.ph * 1.7) * cb.amp * 0.35;
+    const e = A3B ? a3BeatEnv(a3BeatT - (cb.ph % 1) * 0.06) : 0;
+    const b2 = 1 + (Math.sin(t * 1.15 + cb.ph) * cb.amp + Math.sin(t * 2.6 + cb.ph * 1.7) * cb.amp * 0.35) * (A3B ? 0.5 : 1) + e * cb.amp * 1.8;
     cb.m.scale.set(b2, 2 - b2, b2);
   }
   for (const sh of cavernShrooms) {
