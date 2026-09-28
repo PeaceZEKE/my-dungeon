@@ -4151,6 +4151,10 @@ const DEV_MODE = AD_TEST || /[?&]dev=1/.test(location.search);
 const PX_MODE = !/[?&]px=0/.test(location.search);
 // v806: 새 배경음악(켈트풍 마을 · 일반 전투 · 보스 전투, 전투 시작/끝에 서서히 켜지고 꺼짐). ?bgm2=0 이면 예전 마을 화음 패드만
 const BGM2 = !/[?&]bgm2=0/.test(location.search);
+// v808: 공포 분위기 — 던전 환경음(?amb=0) · 어둠 속의 눈(?eyes=0) · 저체력 심장 박동 + 붉은 가장자리(?lowhp=0)
+const AMB_ON = !/[?&]amb=0/.test(location.search);
+const EYES_ON = !/[?&]eyes=0/.test(location.search);
+const LOWHP_ON = !/[?&]lowhp=0/.test(location.search);
 // 픽셀아트 잔디(인스턴싱 빌보드). ?pgrass=0 이면 예전 3D 풀잎 메시로 돌아간다.
 // 쓰는 곳보다 위에서 선언해야 한다 — 모듈 최상위 코드가 즉시 실행되므로 아래에 두면 TDZ로 부팅이 깨진다.
 const PGRASS = !/[?&]pgrass=0/.test(location.search);
@@ -4170,7 +4174,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v807'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v808'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -4914,7 +4918,176 @@ const SFX = (() => {
   function musicStart() { if (BGM2) musicSet('town', 2.0, 1.2); else oldMusicStart(); }
   function musicStop() { if (BGM2) musicSet(null, 0, 0.8); else oldMusicStop(); }
 
-  return { swing, hit, hurt, block, parry, glint, chargeStart, chargeStop, release, resume: ac, musicStart, musicStop, musicSet, musicCurrent, musicRender, suspendForAd, resumeAfterAd, isAdMuted };
+  // ===== v808: 던전 환경음(AMB_ON) — 막마다 깔리는 드론·바람 + 가끔 들리는 소리(물방울·삐걱임·속삭임·먼 발소리·사슬·신음·질척임) =====
+  // 음악 버스(musBus)의 출력·리버브를 같이 쓴다(동굴 울림). 전투가 붙으면 ambDuck 으로 줄인다.
+  // 노이즈·배치는 전부 arnd(자체 난수) — Math.random 을 먹으면 환경음이 켜지는 시점에 따라 던전 생성이 달라진다.
+  const _an = new WeakMap();
+  function ambNoise(c) { let b = _an.get(c); if (b) return b; const len = c.sampleRate * 5; b = c.createBuffer(1, len, c.sampleRate); const d = b.getChannelData(0); for (let i = 0; i < len; i++) d[i] = arnd() * 2 - 1; _an.set(c, b); return b; }
+  function panOut(c, out, pan) {   // 좌우로 흩어 '어딘가에서' 들리게(StereoPanner 가 없으면 그냥 통과)
+    if (!c.createStereoPanner || !pan) return out;
+    const p = c.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); p.connect(out); return p;
+  }
+  const AE = {
+    drip(c, out, t, v) {   // 물방울 '톡': 짧은 사인이 위로 튄다(물방울 속 공기 방울 공명)
+      const f = 900 + arnd() * 700, o = osc(c, 'sine', f), g = c.createGain();
+      o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 1.7, t + 0.05);
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(v, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+      o.connect(g); g.connect(out); o.start(t); o.stop(t + 0.13);
+    },
+    creak(c, out, t, v) {   // 삐걱임: 낮은 톱니 → 대역통과, 음정이 흔들리고 사각 트레몰로로 '끼익끽' 끊긴다
+      const dur = 0.8 + arnd() * 0.9, f = 70 + arnd() * 70, o = osc(c, 'sawtooth', f), bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 900 + arnd() * 700; bp.Q.value = 4;
+      o.frequency.setValueAtTime(f, t); for (let k = 1; k <= 4; k++) o.frequency.linearRampToValueAtTime(f * (0.8 + arnd() * 0.5), t + dur * k / 4);
+      const tr = osc(c, 'square', 11 + arnd() * 9), tg = c.createGain(), am = c.createGain(); tg.gain.value = 0.5; am.gain.value = 0.5; tr.connect(tg); tg.connect(am.gain);
+      const g = c.createGain(); env(g, t, 0.15, v, dur - 0.35, 0.2);
+      o.connect(bp); bp.connect(am); am.connect(g); g.connect(out); o.start(t); tr.start(t); o.stop(t + dur + 0.05); tr.stop(t + dur + 0.05);
+    },
+    whisper(c, out, t, v) {   // 속삭임: 노이즈 → 고역 통과 → 모음 포먼트 둘. 음절마다 포먼트를 바꿔 알아들을 수 없는 '말'로
+      const n = c.createBufferSource(); n.buffer = ambNoise(c); n.loop = true;
+      const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 700;
+      const f1 = c.createBiquadFilter(), f2 = c.createBiquadFilter(); f1.type = f2.type = 'bandpass'; f1.Q.value = 5; f2.Q.value = 7;
+      const g = c.createGain(); g.gain.setValueAtTime(0.0001, t);
+      const V = [[700, 1200], [400, 2200], [320, 900], [600, 1700], [500, 2500]], syl = 4 + Math.floor(arnd() * 5); let u = t;
+      for (let k = 0; k < syl; k++) {
+        const d = 0.09 + arnd() * 0.16, fm = V[Math.floor(arnd() * V.length)], pk = v * (0.5 + arnd() * 0.5);
+        f1.frequency.setValueAtTime(fm[0], u); f2.frequency.setValueAtTime(fm[1], u);
+        g.gain.linearRampToValueAtTime(pk, u + d * 0.3); g.gain.linearRampToValueAtTime(pk * 0.15, u + d);
+        u += d + (arnd() < 0.3 ? 0.08 + arnd() * 0.12 : 0.01);
+      }
+      g.gain.linearRampToValueAtTime(0.0001, u + 0.1);
+      n.connect(hp); hp.connect(f1); hp.connect(f2); f1.connect(g); f2.connect(g); g.connect(out); n.start(t, arnd() * 4); n.stop(u + 0.15);
+    },
+    steps(c, out, t, v, n, gap, dir) {   // 먼 발소리: 둔탁한 노이즈 + 낮은 삼각파 '쿵'. dir > 0 이면 다가오고 < 0 이면 멀어진다
+      n = n || 3 + Math.floor(arnd() * 4); gap = gap || 0.42 + arnd() * 0.2; dir = dir || (arnd() < 0.5 ? 1 : -1);
+      for (let k = 0; k < n; k++) {
+        const tt = t + k * gap + (arnd() - 0.5) * 0.04, a = n > 1 ? k / (n - 1) : 1, vv = v * (dir > 0 ? 0.35 + 0.65 * a : 1 - 0.65 * a) * (k % 2 ? 0.85 : 1);
+        const s = c.createBufferSource(); s.buffer = ambNoise(c); const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420;
+        const g = c.createGain(); g.gain.setValueAtTime(vv, tt); g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.09); s.connect(lp); lp.connect(g); g.connect(out); s.start(tt, arnd() * 4); s.stop(tt + 0.1);
+        const o = osc(c, 'triangle', 130), og = c.createGain(); o.frequency.setValueAtTime(130, tt); o.frequency.exponentialRampToValueAtTime(60, tt + 0.08);
+        og.gain.setValueAtTime(vv * 0.8, tt); og.gain.exponentialRampToValueAtTime(0.0001, tt + 0.12); o.connect(og); og.connect(out); o.start(tt); o.stop(tt + 0.13);
+      }
+    },
+    chains(c, out, t, v) {   // 사슬 짤랑: 비배음 사인 셋(1 · 1.47 · 2.09)을 짧게 여러 번
+      const k = 3 + Math.floor(arnd() * 5);
+      for (let j = 0; j < k; j++) {
+        const tt = t + j * (0.05 + arnd() * 0.13), f = 1800 + arnd() * 1600, vv = v * (0.5 + arnd() * 0.5);
+        [1, 1.47, 2.09].forEach((r, q) => { const o = osc(c, 'sine', f * r), g = c.createGain(); g.gain.setValueAtTime(0.0001, tt); g.gain.linearRampToValueAtTime(vv / (q + 1), tt + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.18 - q * 0.04); o.connect(g); g.connect(out); o.start(tt); o.stop(tt + 0.2); });
+      }
+    },
+    moan(c, out, t, v) {   // 먼 신음: 톱니 → 모음 포먼트('오', 480·820Hz) → 로우패스. 살짝 올랐다 천천히 떨어지는 음정 + 떨림
+      const dur = 1.5 + arnd() * 1.3, f = 130 + arnd() * 70, o = osc(c, 'sawtooth', f);
+      o.frequency.setValueAtTime(f, t); o.frequency.linearRampToValueAtTime(f * 1.08, t + dur * 0.3); o.frequency.exponentialRampToValueAtTime(f * 0.7, t + dur);
+      const lf = osc(c, 'sine', 4 + arnd() * 2), vg = c.createGain(); vg.gain.value = 18; lf.connect(vg); vg.connect(o.detune);
+      const f1 = c.createBiquadFilter(), f2 = c.createBiquadFilter(), lp = c.createBiquadFilter(); f1.type = f2.type = 'bandpass'; f1.frequency.value = 480; f1.Q.value = 4; f2.frequency.value = 820; f2.Q.value = 6; lp.type = 'lowpass'; lp.frequency.value = 900;
+      const g = c.createGain(); env(g, t, dur * 0.35, v, dur * 0.2, dur * 0.45);
+      o.connect(f1); o.connect(f2); f1.connect(lp); f2.connect(lp); lp.connect(g); g.connect(out); o.start(t); lf.start(t); o.stop(t + dur + 0.05); lf.stop(t + dur + 0.05);
+    },
+    squelch(c, out, t, v) {   // 질척임(3막): 노이즈 → 공진 로우패스를 훑어 '쩍' — 한두세 번
+      const k = 1 + Math.floor(arnd() * 3);
+      for (let j = 0; j < k; j++) {
+        const tt = t + j * (0.12 + arnd() * 0.2), d = 0.12 + arnd() * 0.15, f0 = 250 + arnd() * 250;
+        const s = c.createBufferSource(); s.buffer = ambNoise(c); const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 12;
+        lp.frequency.setValueAtTime(f0, tt); lp.frequency.exponentialRampToValueAtTime(f0 * (2.5 + arnd() * 2), tt + d * 0.6); lp.frequency.exponentialRampToValueAtTime(f0 * 0.8, tt + d);
+        const g = c.createGain(); g.gain.setValueAtTime(0.0001, tt); g.gain.linearRampToValueAtTime(v, tt + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, tt + d);
+        s.connect(lp); lp.connect(g); g.connect(out); s.start(tt, arnd() * 4); s.stop(tt + d + 0.02);
+      }
+    },
+    growl(c, out, t, v) {   // 낮은 으르렁(어둠 속의 눈이 물러날 때): 톱니 둘 → 로우패스, 빠른 떨림으로 목 울림
+      const dur = 0.9 + arnd() * 0.5, f = 62 + arnd() * 16, a = osc(c, 'sawtooth', f, -12), b = osc(c, 'sawtooth', f * 1.5, 8), lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 520; lp.Q.value = 2;
+      a.frequency.setValueAtTime(f, t); a.frequency.linearRampToValueAtTime(f * 0.85, t + dur);
+      const tr = osc(c, 'sine', 16 + arnd() * 8), tg = c.createGain(), am = c.createGain(); tg.gain.value = 0.35; am.gain.value = 0.65; tr.connect(tg); tg.connect(am.gain);
+      const g = c.createGain(); env(g, t, 0.18, v, dur * 0.4, dur * 0.6);
+      a.connect(lp); b.connect(lp); lp.connect(am); am.connect(g); g.connect(out); for (const o of [a, b, tr]) { o.start(t); o.stop(t + 0.2 + dur * 1.05); }
+    },
+    flee(c, out, t, v) { AE.steps(c, out, t, v, 5, 0.22, -1); },   // 달아나는 발소리(빠르게 멀어진다)
+  };
+  // 막별: 드론 [파형, Hz, 세기] · 바람 [대역 중심 Hz, 세기] · 3막 숨소리 · 가끔 소리 가중치
+  const AMB_ACT = {
+    1: { drone: [['sine', 55, 0.008], ['triangle', 82.4, 0.006]], wind: [380, 0.06], ev: { drip: 4, creak: 1, whisper: 0.8, steps: 1.2 } },
+    2: { drone: [['sine', 49, 0.008], ['sawtooth', 73.4, 0.003], ['sine', 98, 0.004]], wind: [520, 0.055], ev: { drip: 1.5, creak: 1.4, chains: 1.5, moan: 1, whisper: 1, steps: 1.2 } },
+    3: { drone: [['sine', 41.2, 0.009], ['triangle', 61.7, 0.006]], wind: [260, 0.05], breath: 0.1, ev: { drip: 1, squelch: 2.5, whisper: 1.5, moan: 0.8, steps: 0.5 } },
+  };
+  // 세기는 오프라인 렌더로 맞췄다 — 드론·바람이 깔리는 바닥(0.25초 창 RMS 0.02 안팎) 위로 가끔 소리가 두어 배 솟게
+  const AE_VOL = { drip: 0.16, creak: 0.38, whisper: 0.25, steps: 0.26, chains: 0.046, moan: 0.1, squelch: 0.22, growl: 0.1, flee: 0.25 };
+  function ambDrone(c, out, t0, A) {   // 깔리는 소리: 저음 드론(느린 숨결 LFO) + 대역통과 바람(중심이 천천히 흔들림) + 3막 숨소리
+    const nodes = [], lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 600; lp.connect(out); nodes.push(lp);
+    A.drone.forEach(([type, f, v], k) => {
+      const o = osc(c, type, f, (k ? 1 : -1) * 4), g = c.createGain(); g.gain.value = v;
+      const lf = osc(c, 'sine', 0.05 + k * 0.031), lg = c.createGain(); lg.gain.value = v * 0.45; lf.connect(lg); lg.connect(g.gain);
+      o.connect(g); g.connect(lp); o.start(t0); lf.start(t0); nodes.push(o, lf, g, lg);
+    });
+    const n = c.createBufferSource(); n.buffer = ambNoise(c); n.loop = true;
+    const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = A.wind[0]; bp.Q.value = 1.4;
+    const wl = osc(c, 'sine', 0.07), wg = c.createGain(); wg.gain.value = A.wind[0] * 0.45; wl.connect(wg); wg.connect(bp.frequency);
+    const wv = c.createGain(); wv.gain.value = A.wind[1]; const wl2 = osc(c, 'sine', 0.043), wg2 = c.createGain(); wg2.gain.value = A.wind[1] * 0.6; wl2.connect(wg2); wg2.connect(wv.gain);
+    const wlp = c.createBiquadFilter(); wlp.type = 'lowpass'; wlp.frequency.value = A.wind[0] * 2.2;   // 대역통과 치마로 새는 쉬익 소리를 덮어 가끔 소리가 묻히지 않게
+    n.connect(bp); bp.connect(wlp); wlp.connect(wv); wv.connect(out); n.start(t0); wl.start(t0); wl2.start(t0); nodes.push(n, bp, wlp, wl, wg, wv, wl2, wg2);
+    if (A.breath) {   // 3막: 살아 있는 벽이 숨 쉰다 — 저역 노이즈가 0.22Hz 로 부풀었다 가라앉음
+      const b = c.createBufferSource(); b.buffer = ambNoise(c); b.loop = true; const bl = c.createBiquadFilter(); bl.type = 'lowpass'; bl.frequency.value = 320;
+      const bg = c.createGain(); bg.gain.value = A.breath * 0.5; const bo = osc(c, 'sine', 0.22), bog = c.createGain(); bog.gain.value = A.breath * 0.5; bo.connect(bog); bog.connect(bg.gain);
+      b.connect(bl); bl.connect(bg); bg.connect(out); b.start(t0, 1.3); bo.start(t0); nodes.push(b, bl, bg, bo, bog);
+    }
+    return nodes;
+  }
+  function ambEvent(c, out, t, A, force, pan) {   // 가끔 소리 하나(가중 추첨, 좌우 무작위). 물방울은 40% 로 한 번 더 떨어진다
+    let name = force;
+    if (!name) { const ev = A.ev; let sum = 0; for (const k in ev) sum += ev[k]; let r = arnd() * sum; for (const k in ev) { r -= ev[k]; if (r <= 0) { name = k; break; } } if (!name) name = Object.keys(ev)[0]; }
+    const o = panOut(c, out, pan === undefined ? (arnd() * 2 - 1) * 0.9 : pan), v = AE_VOL[name] * (0.6 + arnd() * 0.4);
+    AE[name](c, o, t, v);
+    if (name === 'drip' && arnd() < 0.4) AE.drip(c, o, t + 0.25 + arnd() * 0.6, v * 0.7);
+    return name;
+  }
+  let curAmb = null;
+  // 환경음 바꾸기: act = 1 | 2 | 3 | null. 이전 것은 1.5초에 걸쳐 줄고 새 것은 3초에 걸쳐 커진다(매 프레임 불러도 같은 막이면 바로 돌아간다)
+  function ambSet(act) {
+    act = act || null;
+    if ((curAmb ? curAmb.act : null) === act) return;
+    if (curAmb) {
+      const o = curAmb; curAmb = null; clearInterval(o.timer);
+      try { const g = o.bus.gain, now = o.c.currentTime; g.cancelScheduledValues(now); g.setValueAtTime(Math.max(0.0001, g.value), now); g.linearRampToValueAtTime(0.0001, now + 1.5); } catch (e) {}
+      setTimeout(() => { for (const n of o.nodes) { try { if (n.stop) n.stop(); } catch (e) {} try { n.disconnect(); } catch (e) {} } try { o.bus.disconnect(); o.duck.disconnect(); o.send.disconnect(); } catch (e) {} }, 2500);
+    }
+    const A = act && AMB_ACT[act]; if (!A) return;
+    const c = ac(); if (!c) return;
+    const B = musBus(c), bus = c.createGain(), duck = c.createGain(), send = c.createGain(), now = c.currentTime;
+    bus.gain.setValueAtTime(0.0001, now); bus.gain.linearRampToValueAtTime(1, now + 3);
+    duck.gain.value = 1; send.gain.value = 0.6;
+    bus.connect(duck); duck.connect(B.out); duck.connect(send); send.connect(B.rev);
+    const a = { act, A, bus, duck, send, c, nodes: ambDrone(c, bus, now + 0.05, A), next: now + 2 + arnd() * 3, ducked: false };
+    a.timer = setInterval(() => {
+      const cc = ac(); if (!cc || curAmb !== a) return;
+      if (a.next < cc.currentTime - 0.5) a.next = cc.currentTime + 1 + arnd() * 3;   // 탭이 가려졌다 돌아오면 밀린 소리를 몰아 틀지 않는다
+      if (a.next < cc.currentTime + 0.3) { try { ambEvent(cc, a.bus, a.next, a.A); } catch (e) {} a.next += 2.5 + arnd() * 5; }
+    }, 200);
+    curAmb = a;
+  }
+  function ambCurrent() { return curAmb ? curAmb.act : null; }
+  function ambDuck(on) { const a = curAmb; if (!a || a.ducked === !!on) return; a.ducked = !!on; try { a.duck.gain.setTargetAtTime(on ? 0.4 : 1, a.c.currentTime, 0.6); } catch (e) {} }
+  // 소리 하나를 지금 바로(어둠 속의 눈 등). 환경음이 꺼져 있어도 음악 버스로 울린다 — 효과음이지 배경음이 아니다
+  function ambCue(name, pan, delay) {
+    const c = ac(); if (!c || !AE[name]) return;
+    try { ambEvent(c, curAmb ? curAmb.bus : musBus(c).out, c.currentTime + 0.02 + (delay || 0), null, name, pan); } catch (e) {}
+  }
+  // 검증용: 환경음을 오프라인으로 secs 초 렌더. only = 'drone' 이면 드론만, 소리 이름이면 그 소리만 2초마다
+  function ambRender(act, secs, sr, only) {
+    const A = AMB_ACT[act], rate = sr || 22050, c = new OfflineAudioContext(2, Math.ceil((secs + 3) * rate), rate), B = musBus(c);
+    const bus = c.createGain(), send = c.createGain(); bus.gain.value = 1; send.gain.value = 0.6; bus.connect(B.out); bus.connect(send); send.connect(B.rev);
+    if (!only || only === 'drone') ambDrone(c, bus, 0, A);
+    if (only !== 'drone') { let t = 0.5; while (t < secs) { ambEvent(c, bus, t, A, only); t += only ? 2 : 2.5 + arnd() * 5; } }
+    return c.startRendering();
+  }
+  // 저체력 심장 박동 '두-근': 쿵 두 번(0.2초 간격, 둘째는 0.7배). 사인 72→40 + 삼각 120→70 → 로우패스. 음악 스위치와 무관(효과음)
+  function heartbeat(v, c0, t0) {
+    const c = c0 || ac(); if (!c) return; const t = t0 !== undefined ? t0 : c.currentTime + 0.01;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 650; lp.connect(c.destination);
+    [[0, 1], [0.2, 0.7]].forEach(([dt, k]) => {
+      const tt = t + dt, a = osc(c, 'sine', 72), b = osc(c, 'triangle', 120), g = c.createGain(), gb = c.createGain(); gb.gain.value = 0.55;
+      a.frequency.setValueAtTime(72, tt); a.frequency.exponentialRampToValueAtTime(40, tt + 0.12); b.frequency.setValueAtTime(120, tt); b.frequency.exponentialRampToValueAtTime(70, tt + 0.1);
+      g.gain.setValueAtTime(0.0001, tt); g.gain.linearRampToValueAtTime(v * k, tt + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.22);
+      a.connect(g); b.connect(gb); gb.connect(g); g.connect(lp); a.start(tt); b.start(tt); a.stop(tt + 0.24); b.stop(tt + 0.24);
+    });
+  }
+
+  return { swing, hit, hurt, block, parry, glint, chargeStart, chargeStop, release, resume: ac, musicStart, musicStop, musicSet, musicCurrent, musicRender, ambSet, ambCurrent, ambDuck, ambCue, ambRender, heartbeat, suspendForAd, resumeAfterAd, isAdMuted };
 })();
 
 const PIXEL_SCALE = 2;
@@ -5232,6 +5405,8 @@ const quadMat = new THREE.ShaderMaterial({
     uCon: { value: 1.07 },                                  // 대비(1=원본)
     uSplit: { value: new THREE.Vector3(0.045, 0.012, -0.05) }, // 스플릿 토닝: 밝은 곳 따뜻하게/어두운 곳 차갑게
     uVig: { value: 0.5 },                                   // 비네트 강도(0=없음)
+    uLowHp: { value: 0 },                                   // v808: 저체력 연출 세기(0=끔 → 셰이더가 통째로 건너뛴다)
+    uLowPulse: { value: 0 },                                // v808: 심장 박동 맥동(0~1)
     uFocusY: { value: 0.52 },                               // 틸트시프트 초점 중심(화면 Y, 0=아래 1=위)
     uFocusW: { value: 0.18 },                               // 초점 밴드 반폭(이 안은 완전 선명)
     uBlurMax: { value: 1.5 },                               // 최대 블러 반경(저해상도 텍셀 단위)
@@ -5292,6 +5467,8 @@ const quadMat = new THREE.ShaderMaterial({
     uniform float uCon;
     uniform vec3 uSplit;
     uniform float uVig;
+    uniform float uLowHp;
+    uniform float uLowPulse;
     uniform float uFocusY;
     uniform float uFocusW;
     uniform float uBlurMax;
@@ -5528,6 +5705,14 @@ const quadMat = new THREE.ShaderMaterial({
       vec2 vc = vUv - 0.5;                                // 비네트(가장자리 어둡게 — 디오라마 집중)
       float vig = 1.0 - dot(vc, vc) * uVig;
       graded *= clamp(vig, 0.0, 1.0);
+      // v808: 저체력 — 화면 채도가 빠지고 가장자리가 심장 박동에 맞춰 붉게 조인다. 양자화 앞이라 픽셀아트 계단을 그대로 탄다
+      if (uLowHp > 0.0) {
+        float edge = smoothstep(0.25, 1.4, dot(vc, vc) * 4.0);
+        float gL = dot(graded, vec3(0.299, 0.587, 0.114));
+        graded = mix(graded, vec3(gL), uLowHp * 0.4);
+        float red = edge * uLowHp * (0.35 + 0.65 * uLowPulse);
+        graded = mix(graded, graded * vec3(0.35, 0.08, 0.08) + vec3(0.22, 0.0, 0.02), red * 0.85);
+      }
       // === 색 양자화 + 오더드 디더링(픽셀아트 모드) ===
       // 연속 그라디언트를 단계로 끊되, 끊기 직전에 베이어 임계값을 더해 밴딩을 점 패턴으로 흩는다.
       // 좌표는 화면 픽셀이 아니라 '저해상도 텍셀' 기준이어야 패턴이 픽셀 격자에 정확히 붙는다.
@@ -8870,6 +9055,119 @@ function updateBattleMusic(dt) {
   if (!want) SFX.musicSet(null, 0, 3.0);                   // 싸움 끝: 3초에 걸쳐 사그라든다
   else if (!cur || cur === 'town') SFX.musicSet(want, 1.6, 1.0);   // 싸움 시작: 1.6초에 걸쳐 커진다
   else SFX.musicSet(want, 1.0, 1.4);                        // 일반 → 보스: 겹쳐 바뀐다
+}
+// v808: 공포 분위기 — 던전에서만 매 프레임(updateBattleMusic 바로 뒤).
+//  ① 환경음(AMB_ON): 막마다 깔리는 드론·바람 + 가끔 들리는 소리. 싸움이 붙으면 줄인다. 음악 버튼을 따른다.
+//  ② 저체력(LOWHP_ON): 체력 35% 아래부터 심장 박동 + 화면 채도가 빠지고 가장자리가 박동에 맞춰 붉게 조인다(포스트 uLowHp·uLowPulse).
+//     체력이 차면 uLowHp 가 정확히 0 으로 돌아가 셰이더가 통째로 건너뛴다 — 평소 화면은 v807 과 같다.
+//  ③ 어둠 속의 눈(EYES_ON): 조용할 때 가끔 화면 안 어둠에 눈 한 쌍이 떠 깜빡이다 사라진다. 다가가거나 싸움이 붙으면 으르렁대며 달아난다.
+//     난수는 자체 LCG(hrnd) — Math.random 을 먹으면 층 생성이 달라진다. 스프라이트는 첫 등장 때 만든다(generateUUID 도 Math.random 을 먹는다).
+let _hrs = 0x6d2b79f5;
+const hrnd = () => { _hrs = (_hrs * 1664525 + 1013904223) >>> 0; return _hrs / 4294967296; };
+const horror = { lowHp: 0, beatT: 0, pulseT: 9, eyes: null, eyesCd: 12, dgn: null };
+const EYE_COL = { 1: [0xff5a26, 0xff3a10], 2: [0x6ec8e8, 0x2a8cc0], 3: [0x98b020, 0x6a9010] };   // [눈, 번짐] — 눈은 블룸 임계 아래(휘도 0.52 · 0.69 · 0.60)
+const _eyeV = new THREE.Vector3(), _eyeR = new THREE.Vector3();
+function horrorFight() {   // 싸움 판정 — 음악과 같은 기준(깨어난 적 4.5칸 · 보스 9칸)이지만 음악 스위치와 무관하다
+  if (!player.alive) return false;
+  const p = player.obj.position;
+  for (const e of enemies) {
+    if (!e || e.isDead || e.awake === false || !e.obj) continue;
+    if (Math.hypot(e.obj.position.x - p.x, e.obj.position.z - p.z) < TILE * (e.isBoss ? 9 : 4.5)) return true;
+  }
+  return false;
+}
+function updateHorror(dt) {
+  const fight = horrorFight();
+  if (AMB_ON && SFX && SFX.ambSet) { SFX.ambSet(townMusicOn && player.alive ? currentAct() : null); SFX.ambDuck(fight); }
+  // ② 저체력: 35% → 0, 10% → 1. 박동 간격 1.0 → 0.55초, 소리 0.2 → 0.5
+  let sev = 0;
+  if (LOWHP_ON && player.alive && player.hpMax > 0) sev = Math.max(0, Math.min(1, (0.35 - player.hp / player.hpMax) / 0.25));
+  horror.lowHp += (sev - horror.lowHp) * Math.min(1, dt * 3);
+  if (sev <= 0 && horror.lowHp < 0.002) horror.lowHp = 0;
+  horror.pulseT += dt;
+  if (sev > 0) {
+    horror.beatT -= dt;
+    if (horror.beatT <= 0) { horror.beatT = 1.0 - 0.45 * sev; horror.pulseT = 0; if (SFX && SFX.heartbeat) SFX.heartbeat(0.2 + 0.3 * sev); }
+  } else horror.beatT = 0;
+  const pt = horror.pulseT;
+  quadMat.uniforms.uLowHp.value = horror.lowHp;
+  quadMat.uniforms.uLowPulse.value = Math.min(1, Math.exp(-pt * 8) + (pt > 0.2 ? 0.7 * Math.exp(-(pt - 0.2) * 8) : 0));
+  // ③ 어둠 속의 눈
+  if (EYES_ON) updateEyes(dt, fight);
+}
+function leaveHorror() {   // 마을·쉼터: 환경음을 끄고 저체력 화면을 거둔다(체력은 그대로라 던전에 돌아가면 다시 켜진다)
+  if (AMB_ON && SFX && SFX.ambSet) SFX.ambSet(null);
+  if (quadMat.uniforms.uLowHp.value) quadMat.uniforms.uLowHp.value = 0;
+  horror.lowHp = 0; horror.beatT = 0;
+}
+function eyesOnFloor(x, z) {
+  const G = dungeon && dungeon.grid; if (!G) return false;
+  const gx = Math.round(x / TILE + MAP_W / 2), gy = Math.round(z / TILE + MAP_H / 2);
+  return gx >= 0 && gy >= 0 && gx < MAP_W && gy < MAP_H && !!G[gy] && G[gy][gx] === 1;
+}
+function updateEyes(dt, fight) {
+  let E = horror.eyes;
+  if (horror.dgn !== dungeon) { horror.dgn = dungeon; horror.eyesCd = Math.max(horror.eyesCd, 8 + hrnd() * 8); if (E) { E.active = false; E.grp.visible = false; } }
+  if (E && E.active && !player.alive) { E.active = false; E.grp.visible = false; }
+  if (E && E.active) {
+    const p = player.obj.position, d = Math.hypot(E.grp.position.x - p.x, E.grp.position.z - p.z);
+    if (E.st !== 'out' && (fight || d < TILE * 1.3)) {   // 들켰다 — 으르렁대고 달아난다
+      E.st = 'out'; E.t = 0; E.outDur = 0.22;
+      if (SFX && SFX.ambCue) { SFX.ambCue('growl', E.pan); SFX.ambCue('flee', E.pan, 0.45); }
+    }
+    E.t += dt;
+    let a = 1;
+    if (E.st === 'in') { a = Math.min(1, E.t / 0.8); if (E.t >= 0.8) { E.st = 'stay'; E.t = 0; } }
+    else if (E.st === 'stay') { if (E.t >= E.stay) { E.st = 'out'; E.t = 0; E.outDur = 0.6; } }
+    else {
+      a = Math.max(0, 1 - E.t / E.outDur);
+      if (E.t >= E.outDur) { E.active = false; E.grp.visible = false; horror.eyesCd = (14 + hrnd() * 16) * (currentAct() === 3 ? 0.7 : 1); return; }
+    }
+    E.blink -= dt; if (E.blink <= -0.12) E.blink = 1.5 + hrnd() * 2.5;   // 0.12초 감았다 뜬다
+    E.l.scale.y = E.r.scale.y = (E.blink < 0 && E.st !== 'out') ? 0.02 : E.h;
+    E.mat.opacity = a; E.halo.material.opacity = a * 0.3;
+    return;
+  }
+  horror.eyesCd -= dt;
+  if (fight || horror.eyesCd > 0 || !player.alive || !dungeon || !dungeon.grid) return;
+  const p = player.obj.position, gy0 = groundHeightAt(p.x, p.z);
+  for (let k = 0; k < 12; k++) {
+    // 화면 가장자리 띠(중심에서 45~80%)의 한 점을 골라 발밑 높이 평면으로 되쏜다 — 화면비(세로 모바일 포함)에 저절로 맞는다
+    let sx = hrnd() * 2 - 1, sy = hrnd() * 2 - 1; const m = Math.max(Math.abs(sx), Math.abs(sy)) || 1, s = (0.45 + hrnd() * 0.35) / m; sx *= s; sy *= s;
+    _eyeV.set(sx, sy, 0.5).unproject(camera).sub(camera.position);
+    if (_eyeV.y > -1e-3) continue;
+    const tr = (gy0 - camera.position.y) / _eyeV.y, x = camera.position.x + _eyeV.x * tr, z = camera.position.z + _eyeV.z * tr;
+    if (Math.hypot(x - p.x, z - p.z) < TILE * 1.7) continue;
+    if (!eyesOnFloor(x, z)) continue;
+    // 카메라 쪽(+x,+z)으로 벽 칸이 있으면 벽에 가려 안 보인다
+    if (!eyesOnFloor(x + 0.85, z + 0.85) || !eyesOnFloor(x + 1.7, z + 1.7) || !eyesOnFloor(x + 2.55, z + 2.55)) continue;
+    if (walls.some(w => Math.abs(x - w.x) < w.halfW + 0.4 && Math.abs(z - w.z) < w.halfD + 0.4)) continue;
+    if (enemies.some(e => e && !e.isDead && e.obj && Math.hypot(e.obj.position.x - x, e.obj.position.z - z) < 3)) continue;
+    const sz = 0.85 + hrnd() * 0.45, y = groundHeightAt(x, z) + 0.7 + sz * 0.45;
+    _eyeV.set(x, y, z).project(camera);
+    if (Math.abs(_eyeV.x) > 0.85 || Math.abs(_eyeV.y) > 0.85 || _eyeV.z > 1) continue;
+    if (!E) {   // 첫 등장 때 만든다. THREE 객체 생성자는 generateUUID 로 Math.random 을 먹으므로 그동안만 hrnd 로 바꿔 끼운다(골렘 빌더와 같은 요령)
+      const mr = Math.random; Math.random = hrnd;
+      try {
+        const mat = new THREE.SpriteMaterial({ color: 0xff5a26, transparent: true, opacity: 0, depthWrite: false, fog: false, toneMapped: false });
+        const grp = new THREE.Group(), l = new THREE.Sprite(mat), rr = new THREE.Sprite(mat), halo = makeGlowSprite(0xff3a10, 1.2, 0);
+        grp.add(l, rr, halo); E = horror.eyes = { grp, mat, l, r: rr, halo, active: false };
+      } finally { Math.random = mr; }
+    }
+    if (E.grp.parent !== scene) scene.add(E.grp);
+    const col = EYE_COL[currentAct()] || EYE_COL[1];
+    E.mat.color.setHex(col[0]); E.halo.material.color.setHex(col[1]);
+    _eyeR.setFromMatrixColumn(camera.matrixWorld, 0); _eyeR.y = 0; _eyeR.normalize();   // 화면 가로 방향으로 두 눈을 벌린다
+    const gap = 0.25 * sz; E.h = 0.15 * sz;   // 내부 해상도에서 눈 하나가 3×2 픽셀 안팎(더 작으면 점 두 개로 안 읽힌다)
+    E.l.position.set(-_eyeR.x * gap, 0, -_eyeR.z * gap); E.r.position.set(_eyeR.x * gap, 0, _eyeR.z * gap);
+    E.l.scale.set(0.28 * sz, E.h, 1); E.r.scale.set(0.28 * sz, E.h, 1); E.halo.scale.set(1.4 * sz, 1.4 * sz, 1);
+    E.grp.position.set(x, y, z); E.grp.visible = true; E.mat.opacity = 0; E.halo.material.opacity = 0;
+    E.active = true; E.st = 'in'; E.t = 0; E.stay = 3 + hrnd() * 4; E.blink = 1 + hrnd() * 2; E.dgn = dungeon;
+    E.pan = Math.max(-1, Math.min(1, _eyeV.x)) * 0.8;
+    if (hrnd() < 0.4 && SFX && SFX.ambCue) SFX.ambCue('whisper', E.pan, 0.3);
+    return;
+  }
+  horror.eyesCd = 1.5;   // 자리가 없으면 잠시 뒤 다시
 }
 let townTimeAuto = true; // true면 실제 시각에 따라 낮/밤 자동 전환, false면 버튼으로 수동 고정
 // 실제 기기 시각으로 낮/밤 판단: 6시~18시는 낮, 그 외는 밤
@@ -25749,15 +26047,18 @@ function tick(now) {
   if (inTown) {
     // 마을 모드: 마을 씬을 같은 픽셀화 파이프라인으로 렌더
     updateTownMode(dt);
+    if (AMB_ON || LOWHP_ON) leaveHorror();
     renderWithPost(townScene);
   } else if (inRest) {
     // 여행자의 쉼터(허브): 동일 파이프라인으로 렌더
     updateRestMode(dt);
+    if (AMB_ON || LOWHP_ON) leaveHorror();
     renderWithPost(restScene);
   } else {
     cullSceneLights(camera);   // 동시 점등 광원 수 제한(흰 화면 방지) — 적 가시성이 켜진 광원을 참조하므로 update 전에
     if (player.alive && !rewardPaused) update(dt);
     updateBattleMusic(dt);   // v806: 전투 배경음악(서서히 켜지고 꺼짐)
+    if (AMB_ON || EYES_ON || LOWHP_ON) updateHorror(dt);   // v808: 환경음 · 어둠 속의 눈 · 저체력 연출
     renderWithPost(scene);
     drawMinimap();
   }
