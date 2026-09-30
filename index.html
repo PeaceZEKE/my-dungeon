@@ -4164,6 +4164,8 @@ const GHOST_ON = !/[?&]ghost=0/.test(location.search);
 const A3BEAT_ON = !/[?&]a3beat=0/.test(location.search);
 // v811: 횃불 불안정 — 가끔 꺼질 듯 훅 어두워졌다 돌아오고, 근처에 적이 있으면(싸우기 전) 자주 떨린다(?torchfx=0)
 const TORCHFX_ON = !/[?&]torchfx=0/.test(location.search);
+// v812: 몬스터 끼임 해소 — 벽 모서리 대각선 관통 수정 + 벽·장식과 겹친 몬스터 빼내기 + 막히면 격자 길찾기로 돌아가기(?unstick=0 으로 끔)
+const UNSTICK_ON = !/[?&]unstick=0/.test(location.search);
 const DARK_STR = (() => { const m = location.search.match(/[?&]darkstr=([0-9.]+)/); const v = m ? parseFloat(m[1]) : 0.8; return isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8; })();
 // 픽셀아트 잔디(인스턴싱 빌보드). ?pgrass=0 이면 예전 3D 풀잎 메시로 돌아간다.
 // 쓰는 곳보다 위에서 선언해야 한다 — 모듈 최상위 코드가 즉시 실행되므로 아래에 두면 TDZ로 부팅이 깨진다.
@@ -4184,7 +4186,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v811'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v812'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -9142,6 +9144,53 @@ let townMusicOn = true; // 마을 배경음악 on/off
 // v806: 던전 전투 배경음악 — 평소엔 조용하다가 싸움이 붙으면 서서히 커지고, 적이 없어지고 몇 초 지나면 서서히 꺼진다.
 // '싸움' = 깨어난 적이 4.5칸 안(보스는 9칸 안). 보스를 한 번 만나면 그 싸움이 끝날 때까지 보스 곡을 유지한다(일반 곡으로 안 돌아간다).
 // 켜고 끄는 것은 음악 버튼(townMusicOn)을 따른다. 곡 상태는 SFX 엔진이 들고 있어 마을·쉼터 곡과 섞여도 어긋나지 않는다.
+// ===== v812: 몬스터 끼임 해소 =====
+// 측정(근접 몬스터 120마리 · 층 11개 · 방마다 20초 추격): 15% 가 마지막 5초 동안 못 움직였다(1·2막 벽 타일과 겹쳐 박힌 것 7 · 벽 모서리에 걸린 것 11).
+// 원인 셋 — ① 이동을 X·Z 축별로 '이동 전 위치'에 대고 검사해서, 대각선으로 벽 모서리에 다가가면 두 축이 각각 통과하고 합쳐서는 벽 안으로 들어간다
+// (들어가면 두 축이 다 막혀 영영 못 나온다) ② 3막 장식(산호·제단·뼈 무더기) 충돌체와 겹친 채 생성된다(458마리 중 17) ③ 길찾기가 없어 벽·기둥 뒤에서 직진만 한다.
+// 고침 — ① X 를 옮긴 뒤 Z 를 그 새 위치로 검사 ② 막힌 것으로 감지되면 겹친 충돌체 밖 가장 가까운 자리로 미끄러져 나온다 ③ 막히면 플레이어 칸 기준 BFS 거리를 따라 다음 칸 쪽으로 잠시 돌아간다.
+const navMap = { dgn: null, cx: -1, cy: -1, d: null, w: 0, h: 0 };
+function navUpdate() {   // 플레이어가 칸을 옮겼을 때만 다시 계산(맵 ≤ 40×40 이라 싸다)
+  const g = wallGrid; if (!g || !dungeon) return false;
+  const cx = Math.round(player.obj.position.x / TILE + MAP_W / 2), cy = Math.round(player.obj.position.z / TILE + MAP_H / 2);
+  if (navMap.dgn === dungeon && navMap.cx === cx && navMap.cy === cy) return true;
+  const W = MAP_W, H = MAP_H; if (!navMap.d || navMap.w !== W || navMap.h !== H) { navMap.d = new Int16Array(W * H); navMap.w = W; navMap.h = H; }
+  const d = navMap.d; d.fill(-1);
+  if (cx < 0 || cy < 0 || cx >= W || cy >= H || !(g[cy] && g[cy][cx] > 0)) { navMap.dgn = dungeon; navMap.cx = cx; navMap.cy = cy; return false; }
+  const q = [cx + cy * W]; d[cx + cy * W] = 0;
+  for (let i = 0; i < q.length; i++) { const c = q[i], x = c % W, y = (c / W) | 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H || d[nx + ny * W] >= 0 || !(g[ny] && g[ny][nx] > 0)) continue; d[nx + ny * W] = d[c] + 1; q.push(nx + ny * W); } }
+  navMap.dgn = dungeon; navMap.cx = cx; navMap.cy = cy; return true;
+}
+function navStep(e) {   // 이 몬스터 칸에서 플레이어에 더 가까운 이웃 칸 중심(월드 좌표). 이미 같은 칸이거나 길이 없으면 null
+  if (!navUpdate()) return null;
+  const W = navMap.w, H = navMap.h, d = navMap.d, g = wallGrid;
+  const x = Math.round(e.obj.position.x / TILE + W / 2), y = Math.round(e.obj.position.z / TILE + H / 2);
+  if (x < 0 || y < 0 || x >= W || y >= H || d[x + y * W] <= 0) return null;
+  let best = null, bd = d[x + y * W];
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue; const dd = d[nx + ny * W]; if (dd < 0 || dd >= bd) continue;
+    if (dx && dy && (!(g[y] && g[y][x + dx] > 0) || !(g[y + dy] && g[y + dy][x] > 0))) continue;   // 대각선은 양옆이 트여 있을 때만(모서리 베기 방지)
+    bd = dd; best = [nx, ny];
+  }
+  return best ? { x: (best[0] - W / 2) * TILE, z: (best[1] - H / 2) * TILE } : null;
+}
+function wallOverlapAt(x, z, r) { for (const w of walls) if (Math.abs(x - w.x) < w.halfW + r && Math.abs(z - w.z) < w.halfD + r) return w; return null; }
+function navSteer(e, ux, uz, step) {   // 가려는 방향 앞이 충돌체면 ±30°씩 틀어 가며 처음 트인 방향을 고른다(막혔던 쪽 e._navSide 를 먼저)
+  const r = e.radius, x = e.obj.position.x, z = e.obj.position.z, base = Math.atan2(uz, ux), side = e._navSide || 1;
+  for (const a of [0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.3, -2.3]) {
+    const ang = base + a * side, dx = Math.cos(ang), dz = Math.sin(ang);
+    if (!wallOverlapAt(x + dx * step, z + dz * step, r)) return [dx, dz];
+  }
+  return [ux, uz];
+}
+function escapeSpot(e) {   // 겹친 충돌체 밖에서 가장 가까운 빈자리(4방향 → 안 되면 링 탐색). 없으면 null
+  const px = e.obj.position.x, pz = e.obj.position.z, r = e.radius; const hit = wallOverlapAt(px, pz, r); if (!hit) return null;
+  const c = [[hit.x + hit.halfW + r + 0.05, pz], [hit.x - hit.halfW - r - 0.05, pz], [px, hit.z + hit.halfD + r + 0.05], [px, hit.z - hit.halfD - r - 0.05]].sort((a, b) => Math.hypot(a[0] - px, a[1] - pz) - Math.hypot(b[0] - px, b[1] - pz));
+  for (const [x, z] of c) if (!wallOverlapAt(x, z, r)) return { x, z };
+  for (let ring = 1; ring <= 8; ring++) for (let a = 0; a < 12; a++) { const x = px + Math.cos(a / 12 * 6.283) * ring * 0.6, z = pz + Math.sin(a / 12 * 6.283) * ring * 0.6; if (!wallOverlapAt(x, z, r)) return { x, z }; }
+  return null;
+}
 let bgmHold = 0, bgmBoss = false;
 function updateBattleMusic(dt) {
   if (!BGM2 || !SFX || !SFX.musicSet) return;
@@ -25642,14 +25691,50 @@ function update(dt) {
       }
       }
     }
+    if (UNSTICK_ON && !e.isDead) {
+      // ── v812 끼임 감지: 0.4초마다 '가려던 거리' 대비 '실제로 간 거리'를 본다. 25% 미만이면 막힌 것
+      const want = Math.hypot(nx, nz);
+      if (e._skT === undefined) { e._skT = 0; e._skW = 0; e._skX = e.obj.position.x; e._skZ = e.obj.position.z; e._navT = 0; e._esc = null; }
+      e._skT += dt; e._skW += want;
+      if (e._skT >= 0.4) {
+        const moved = Math.hypot(e.obj.position.x - e._skX, e.obj.position.z - e._skZ);
+        if (e._skW > 0.15 && moved < e._skW * 0.25 && e.swingTimer <= 0) {
+          const esc = escapeSpot(e);
+          if (esc) e._esc = esc;                                   // 충돌체와 겹쳐 있다 → 밖으로 미끄러져 나온다
+          else { e._navT = 2.5; e._navSide = (e._navSide || 1) * -1; }   // 겹치진 않았다 → 격자 길로 돌아간다(다시 막히면 옆으로 틀어 방향을 바꾼다)
+        }
+        e._skT = 0; e._skW = 0; e._skX = e.obj.position.x; e._skZ = e.obj.position.z;
+      }
+      if (e._esc) {   // 미끄러져 나오는 중(초속 5) — 충돌 검사는 건너뛴다
+        const ex = e._esc.x - e.obj.position.x, ez = e._esc.z - e.obj.position.z, ed = Math.hypot(ex, ez);
+        if (ed < 0.08) e._esc = null; else { const st = Math.min(ed, 5 * dt); e.obj.position.x += ex / ed * st; e.obj.position.z += ez / ed * st; }
+        nx = 0; nz = 0;
+      } else if (e._navT > 0 && want > 0 && e.swingTimer <= 0) {
+        e._navT -= dt;
+        const wp = navStep(e);
+        if (wp) {   // 다음 칸 중심 쪽으로(속도는 원래 가려던 만큼). 다시 막혔던 쪽이면 옆으로 조금 틀어 준다
+          let ux = wp.x - e.obj.position.x, uz = wp.z - e.obj.position.z; const ul = Math.hypot(ux, uz) || 1; ux /= ul; uz /= ul;
+          const dir = navSteer(e, ux, uz, Math.max(0.7, e.radius + 0.4)); nx = dir[0] * want; nz = dir[1] * want;
+        }
+      }
+    }
     const eTotalWx = nx + e.kbX * dt, eTotalWz = nz + e.kbZ * dt;
     
     let bX = false, bZ = false;
+    if (UNSTICK_ON) {
+      // v812: X 를 옮긴 뒤 Z 는 '옮긴 X' 로 검사한다(예전엔 둘 다 이전 위치로 검사해 벽 모서리를 대각선으로 뚫고 들어갔다)
+      const r = e.radius;
+      for (const w of walls) if (Math.abs(e.obj.position.x + eTotalWx - w.x) < w.halfW + r && Math.abs(e.obj.position.z - w.z) < w.halfD + r) { bX = true; break; }
+      if (!bX) e.obj.position.x += eTotalWx;
+      for (const w of walls) if (Math.abs(e.obj.position.x - w.x) < w.halfW + r && Math.abs(e.obj.position.z + eTotalWz - w.z) < w.halfD + r) { bZ = true; break; }
+      if (!bZ) e.obj.position.z += eTotalWz;
+    } else {
     for (const w of walls) {
       if (!bX && Math.abs(e.obj.position.x + eTotalWx - w.x) < w.halfW + e.radius && Math.abs(e.obj.position.z - w.z) < w.halfD + e.radius) bX = true;
       if (!bZ && Math.abs(e.obj.position.x - w.x) < w.halfW + e.radius && Math.abs(e.obj.position.z + eTotalWz - w.z) < w.halfD + e.radius) bZ = true;
     }
     if (!bX) e.obj.position.x += eTotalWx; if (!bZ) e.obj.position.z += eTotalWz;
+    }
     // 지형: 발밑 지면 높이를 baseY로 삼는다. 리그가 y를 직접 쓰는 타입(곤충 보행·비행)은
     // 다음 프레임에 baseY 기준으로 다시 계산하고, 안 쓰는 타입은 여기서 차이만큼 따라 올라간다.
     // 블롭 그림자도 baseY를 기준으로 돌기 때문에 한 곳만 맞춰 두면 같이 따라온다.
