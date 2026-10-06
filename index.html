@@ -9175,6 +9175,76 @@ function navStep(e) {   // 이 몬스터 칸에서 플레이어에 더 가까운
   }
   return best ? { x: (best[0] - W / 2) * TILE, z: (best[1] - H / 2) * TILE } : null;
 }
+// 촘촘한 길찾기(1유닛 칸): 칸 단위 BFS 는 장식 충돌체를 모른다 — 다음 칸 중심이 기둥 둘 사이 1.06 틈(몸 지름 1.0) 너머라 셋이 거기 끼어 밀치기만 했다(77층).
+// 충돌체를 몸 반지름(0.25 단위로 올림)만큼 부풀려 막힌 칸을 찍고, 플레이어 칸에서 BFS. 반지름마다 따로 들고 막힌 몬스터가 있을 때만 계산한다.
+const navFine = { buckets: new Map() };
+function navFineGet(rb) {
+  const g = wallGrid; if (!g || !dungeon) return null;
+  const S = 5, h = TILE / S, FW = MAP_W * S, FH = MAP_H * S, x0 = (-MAP_W / 2 - 0.5) * TILE, z0 = (-MAP_H / 2 - 0.5) * TILE;
+  let B = navFine.buckets.get(rb);
+  if (!B || B.dgn !== dungeon || B.FW !== FW || B.FH !== FH) { B = { dgn: dungeon, FW, FH, blk: new Uint8Array(FW * FH), d: new Int32Array(FW * FH), wn: -1, pc: -1 }; navFine.buckets.set(rb, B); }
+  const stOn = stairsMesh && stairsMesh.position.y > -10, wkey = walls.length + (stOn ? '|' + stairsMesh.position.x + ',' + stairsMesh.position.z : '');
+  if (B.wn !== wkey) {   // 충돌체가 바뀌면(보스 바위·장식 치우기·계단 등장) 막힌 칸을 다시 찍는다
+    const blk = B.blk; blk.fill(1);
+    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) if (g[y] && g[y][x] > 0) for (let j = 0; j < S; j++) blk.fill(0, (y * S + j) * FW + x * S, (y * S + j) * FW + x * S + S);
+    for (const w of walls) {
+      const i0 = Math.max(0, Math.floor((w.x - w.halfW - rb - x0) / h - 0.5)), i1 = Math.min(FW - 1, Math.ceil((w.x + w.halfW + rb - x0) / h - 0.5));
+      const j0 = Math.max(0, Math.floor((w.z - w.halfD - rb - z0) / h - 0.5)), j1 = Math.min(FH - 1, Math.ceil((w.z + w.halfD + rb - z0) / h - 0.5));
+      // 0.05 여유: 칸 중심이 부풀린 경계에 딱 걸리면(|23−20| = 2.5 + 0.5) 길은 트였다고 하는데 몸은 22.9999999 에서 벽에 막혔다
+      for (let j = j0; j <= j1; j++) { const cz = z0 + (j + 0.5) * h; if (Math.abs(cz - w.z) >= w.halfD + rb + 0.05) continue;
+        for (let i = i0; i <= i1; i++) { const cx = x0 + (i + 0.5) * h; if (Math.abs(cx - w.x) < w.halfW + rb + 0.05) blk[j * FW + i] = 1; } }
+    }
+    if (stOn) {   // 계단 받침은 충돌체가 아니라 매 프레임 둥글게 밀어낸다 — 길이 받침을 지나가면 밀려나기를 되풀이하며 그 자리에 섰다
+      const R = 2.6 * STAIR_W + rb + 0.05, sx = stairsMesh.position.x, sz = stairsMesh.position.z;
+      for (let j = Math.max(0, Math.floor((sz - R - z0) / h)); j <= Math.min(FH - 1, Math.ceil((sz + R - z0) / h)); j++)
+        for (let i = Math.max(0, Math.floor((sx - R - x0) / h)); i <= Math.min(FW - 1, Math.ceil((sx + R - x0) / h)); i++)
+          if (Math.hypot(x0 + (i + 0.5) * h - sx, z0 + (j + 0.5) * h - sz) < R) blk[j * FW + i] = 1;
+    }
+    B.wn = wkey; B.pc = -1;
+  }
+  const pi = Math.floor((player.obj.position.x - x0) / h), pj = Math.floor((player.obj.position.z - z0) / h);
+  if (pi < 0 || pj < 0 || pi >= FW || pj >= FH) return null;
+  const pc = pj * FW + pi;
+  if (B.pc !== pc) {   // 플레이어가 칸을 옮겼을 때만 BFS. 플레이어 칸이 막혀 있으면(이 몸집으로는 못 서는 자리) 둘레 3칸의 빈칸에서 시작
+    const d = B.d, blk = B.blk; d.fill(-1); const q = [];
+    for (let r = 0; r <= 3 && !q.length; r++) for (let j = pj - r; j <= pj + r; j++) for (let i = pi - r; i <= pi + r; i++) {
+      if (Math.max(Math.abs(i - pi), Math.abs(j - pj)) !== r || i < 0 || j < 0 || i >= FW || j >= FH) continue; const c = j * FW + i; if (!blk[c] && d[c] < 0) { d[c] = 0; q.push(c); } }
+    for (let k = 0; k < q.length; k++) { const c = q[k], i = c % FW, j = (c / FW) | 0, dc = d[c] + 1;
+      if (i > 0 && !blk[c - 1] && d[c - 1] < 0) { d[c - 1] = dc; q.push(c - 1); }
+      if (i < FW - 1 && !blk[c + 1] && d[c + 1] < 0) { d[c + 1] = dc; q.push(c + 1); }
+      if (j > 0 && !blk[c - FW] && d[c - FW] < 0) { d[c - FW] = dc; q.push(c - FW); }
+      if (j < FH - 1 && !blk[c + FW] && d[c + FW] < 0) { d[c + FW] = dc; q.push(c + FW); } }
+    B.pc = pc;
+  }
+  B.x0 = x0; B.z0 = z0; B.h = h; return B;
+}
+function navFineStep(e) {   // 이 몸집이 지나갈 수 있는 칸만 밟아 플레이어 쪽으로 다음 칸 중심. 이미 플레이어 칸이거나 길이 없으면 null
+  e._navD = undefined;
+  const rb = Math.ceil(e.radius / 0.25 - 1e-6) * 0.25, B = navFineGet(rb); if (!B) return null;
+  const { FW, FH, d, blk, x0, z0, h } = B;
+  let i = Math.floor((e.obj.position.x - x0) / h), j = Math.floor((e.obj.position.z - z0) / h);
+  if (i < 0 || j < 0 || i >= FW || j >= FH) return null;
+  if (d[j * FW + i] < 0) {   // 벽에 바짝 붙어 막힌 칸에 서 있다 → 둘레 2칸에서 닿는 가장 가까운 칸으로
+    let best = -1, bd = 1e9;
+    for (let jj = j - 2; jj <= j + 2; jj++) for (let ii = i - 2; ii <= i + 2; ii++) { if (ii < 0 || jj < 0 || ii >= FW || jj >= FH) continue; const c = jj * FW + ii; if (d[c] < 0) continue; const k = (ii - i) * (ii - i) + (jj - j) * (jj - j); if (k < bd) { bd = k; best = c; } }
+    if (best >= 0) e._navD = d[best] * h;
+    return best < 0 ? null : { x: x0 + (best % FW + 0.5) * h, z: z0 + (((best / FW) | 0) + 0.5) * h };
+  }
+  const c0 = j * FW + i; e._navD = d[c0] * h; if (d[c0] === 0) return null;
+  let best = -1, bd = d[c0];
+  for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= FW || jj >= FH) continue; const c = jj * FW + ii;
+    if (d[c] < 0 || d[c] >= bd) continue;
+    if (di && dj && (blk[j * FW + ii] || blk[jj * FW + i])) continue;   // 대각선은 양옆이 트여 있을 때만
+    bd = d[c]; best = c;
+  }
+  return best < 0 ? null : { x: x0 + (best % FW + 0.5) * h, z: z0 + (((best / FW) | 0) + 0.5) * h };
+}
+function navLineClear(e) {   // 플레이어까지 곧은 길에 충돌체가 없나(길찾기를 끝내도 되나)
+  const x = e.obj.position.x, z = e.obj.position.z, tx = player.obj.position.x, tz = player.obj.position.z, L = Math.hypot(tx - x, tz - z), n = Math.ceil(L / 0.5);
+  for (let k = 1; k < n; k++) if (wallOverlapAt(x + (tx - x) * k / n, z + (tz - z) * k / n, e.radius * 0.9)) return false;
+  return true;
+}
 function wallOverlapAt(x, z, r) { for (const w of walls) if (Math.abs(x - w.x) < w.halfW + r && Math.abs(z - w.z) < w.halfD + r) return w; return null; }
 function navSteer(e, ux, uz, step) {   // 가려는 방향 앞이 충돌체면 ±30°씩 틀어 가며 처음 트인 방향을 고른다(막혔던 쪽 e._navSide 를 먼저)
   const r = e.radius, x = e.obj.position.x, z = e.obj.position.z, base = Math.atan2(uz, ux), side = e._navSide || 1;
@@ -24096,7 +24166,10 @@ function update(dt) {
       // 시야 밖이라도 깨어있고(이미 발견된 상태) 충분히 가까우면 행동은 계속한다.
       // 보이지만 않을 뿐 등 뒤에서 다가오거나 공격할 수 있어 긴장감 유지.
       const distToPlayer = Math.hypot(e.obj.position.x - player.obj.position.x, e.obj.position.z - player.obj.position.z);
-      if (e.awake === false || distToPlayer > TILE * 5) continue;
+      // v812: 길찾기로 돌아가는 중이면 남은 길이 18칸 안인 동안 계속 움직인다 — 곧은 거리로 자르면 벽 너머 플레이어를 돌아가다
+      // 5칸 밖으로 나가는 순간 그 자리에 얼어붙었다(돌아가는 길은 원래 플레이어에게서 멀어지는 쪽으로 시작한다)
+      const navGo = UNSTICK_ON && e._navT > 0 && e._navD !== undefined && e._navD < TILE * 18;
+      if (e.awake === false || (distToPlayer > TILE * 5 && !navGo)) continue;
       // 시야 밖에서도 행동하기 위해 그대로 진행. visible은 false라 화면엔 안 보임.
     }
 
@@ -25707,14 +25780,22 @@ function update(dt) {
       }
       if (e._esc) {   // 미끄러져 나오는 중(초속 5) — 충돌 검사는 건너뛴다
         const ex = e._esc.x - e.obj.position.x, ez = e._esc.z - e.obj.position.z, ed = Math.hypot(ex, ez);
-        if (ed < 0.08) e._esc = null; else { const st = Math.min(ed, 5 * dt); e.obj.position.x += ex / ed * st; e.obj.position.z += ez / ed * st; }
+        // 다 왔으면 그 자리에 딱 붙인다(겹침이 0.02 처럼 얕으면 빈자리가 문턱보다 가까워 한 발도 안 움직이고 끝나기를 되풀이했다)
+        if (ed < 0.08) { e.obj.position.x = e._esc.x; e.obj.position.z = e._esc.z; e._esc = null; } else { const st = Math.min(ed, 5 * dt); e.obj.position.x += ex / ed * st; e.obj.position.z += ez / ed * st; }
         nx = 0; nz = 0;
       } else if (e._navT > 0 && want > 0 && e.swingTimer <= 0) {
         e._navT -= dt;
+        if (e._navT <= 0 && !navLineClear(e)) e._navT = 1.0;   // 아직 곧은 길이 막혀 있으면 길찾기를 이어 간다(풀자마자 같은 자리로 되돌아가 다시 끼던 것)
+        const fp = navFineStep(e);
+        if (fp) {   // 촘촘한 길: 몸집만큼 부풀린 충돌체를 피해 다음 칸 중심으로(속도는 원래 가려던 만큼)
+          let ux = fp.x - e.obj.position.x, uz = fp.z - e.obj.position.z; const ul = Math.hypot(ux, uz) || 1;
+          nx = ux / ul * want; nz = uz / ul * want;
+        } else {
         const wp = navStep(e);
-        if (wp) {   // 다음 칸 중심 쪽으로(속도는 원래 가려던 만큼). 다시 막혔던 쪽이면 옆으로 조금 틀어 준다
+        if (wp) {   // 촘촘한 길이 없으면(큰 몸집이 복도를 못 지나는 등) 칸 단위 길로. 다시 막혔던 쪽이면 옆으로 조금 틀어 준다
           let ux = wp.x - e.obj.position.x, uz = wp.z - e.obj.position.z; const ul = Math.hypot(ux, uz) || 1; ux /= ul; uz /= ul;
           const dir = navSteer(e, ux, uz, Math.max(0.7, e.radius + 0.4)); nx = dir[0] * want; nz = dir[1] * want;
+        }
         }
       }
     }
