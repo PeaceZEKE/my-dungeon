@@ -4166,6 +4166,8 @@ const A3BEAT_ON = !/[?&]a3beat=0/.test(location.search);
 const TORCHFX_ON = !/[?&]torchfx=0/.test(location.search);
 // v812: 몬스터 끼임 해소 — 벽 모서리 대각선 관통 수정 + 벽·장식과 겹친 몬스터 빼내기 + 막히면 격자 길찾기로 돌아가기(?unstick=0 으로 끔)
 const UNSTICK_ON = !/[?&]unstick=0/.test(location.search);
+// v813: 몬스터끼리 붐빔 — 서로 밀 때 양보 순위(공격 중 > 다가오는 근접 > 원거리·쉬는 몬스터) + 앞이 몬스터로 막히면 플레이어 둘레로 비켜 걷고, 두 번 안 되면 1초 기다림(?crowd=0 으로 끔)
+const CROWD_ON = !/[?&]crowd=0/.test(location.search);
 const DARK_STR = (() => { const m = location.search.match(/[?&]darkstr=([0-9.]+)/); const v = m ? parseFloat(m[1]) : 0.8; return isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8; })();
 // 픽셀아트 잔디(인스턴싱 빌보드). ?pgrass=0 이면 예전 3D 풀잎 메시로 돌아간다.
 // 쓰는 곳보다 위에서 선언해야 한다 — 모듈 최상위 코드가 즉시 실행되므로 아래에 두면 TDZ로 부팅이 깨진다.
@@ -4186,7 +4188,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v812'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v813'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -25765,6 +25767,16 @@ function update(dt) {
       }
     }
     if (UNSTICK_ON && !e.isDead) {
+      if (CROWD_ON && !e.isRanged && e.swingTimer <= 0 && (nx || nz)) {
+        if (e._cwHold > 0) { e._cwHold -= dt; nx = 0; nz = 0; }   // 공격 자리가 다 찼다 → 앞 몬스터 등을 밀며 제자리걸음하지 말고 서서 기다린다
+        else if (e._cwSide && e._cwSide.t > 0) {   // 플레이어 둘레(접선)로 비켜 걷기 — 빈 자리를 찾는다
+          e._cwSide.t -= dt; const sp = Math.hypot(nx, nz), u = d || 1, s2 = e._cwSide.s;
+          let tx = -dz / u * s2 * 0.9 + dx / u * 0.35, tz = dx / u * s2 * 0.9 + dz / u * 0.35; const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
+          if (wallOverlapAt(e.obj.position.x + tx * (e.radius + 0.3), e.obj.position.z + tz * (e.radius + 0.3), e.radius)) e._cwSide.s = -s2;   // 벽이면 반대쪽으로
+          nx = tx * sp; nz = tz * sp;
+          if (e._cwSide.t <= 0) e.surroundAngle = Math.atan2(e.obj.position.z - player.obj.position.z, e.obj.position.x - player.obj.position.x);   // 옮긴 자리에서 곧장 파고들게
+        }
+      }
       // ── v812 끼임 감지: 0.4초마다 '가려던 거리' 대비 '실제로 간 거리'를 본다. 25% 미만이면 막힌 것
       const want = Math.hypot(nx, nz);
       if (e._skT === undefined) { e._skT = 0; e._skW = 0; e._skX = e.obj.position.x; e._skZ = e.obj.position.z; e._navT = 0; e._esc = null; }
@@ -25773,9 +25785,24 @@ function update(dt) {
         const moved = Math.hypot(e.obj.position.x - e._skX, e.obj.position.z - e._skZ);
         if (e._skW > 0.15 && moved < e._skW * 0.25 && e.swingTimer <= 0) {
           const esc = escapeSpot(e);
+          // v813: 충돌체 문제가 아니고 가려는 쪽에 몬스터가 붙어 있으면 길찾기가 아니라 비켜 걷기(길찾기는 몬스터를 모른다 — 같은 자리로 되돌아간다)
+          let blocker = null;
+          if (CROWD_ON && !esc && !e.isRanged) { const wl = Math.hypot(nx, nz) || 1;
+            for (const o of enemies) { if (o === e || o.isDead) continue; const ox = o.obj.position.x - e.obj.position.x, oz = o.obj.position.z - e.obj.position.z, ol = Math.hypot(ox, oz);
+              if (ol < e.radius + o.radius + 0.25 && ol > 1e-4 && (ox * nx + oz * nz) / (ol * wl) > 0.3) { blocker = o; break; } } }
+          if (blocker) {
+            e._cwTry = (e._cwTry || 0) + 1;
+            if (e._cwTry > 2) { e._cwHold = 1.0; e._cwTry = 0; e._cwSide = null; }
+            else {   // 이웃이 적은 쪽으로(같으면 번갈아)
+              const px2 = player.obj.position.x, pz2 = player.obj.position.z, u = d || 1, tX = -dz / u, tZ = dx / u; let cntL = 0, cntR = 0;
+              for (const o of enemies) { if (o === e || o.isDead) continue; const qx = o.obj.position.x - e.obj.position.x, qz = o.obj.position.z - e.obj.position.z; if (qx * qx + qz * qz > 9) continue; if (qx * tX + qz * tZ > 0) cntR++; else cntL++; }
+              e._cwSide = { t: 0.6, s: cntR < cntL ? 1 : cntL < cntR ? -1 : ((e._cwTry & 1) ? 1 : -1) };
+            }
+          } else
           if (esc) e._esc = esc;                                   // 충돌체와 겹쳐 있다 → 밖으로 미끄러져 나온다
           else { e._navT = 2.5; e._navSide = (e._navSide || 1) * -1; }   // 겹치진 않았다 → 격자 길로 돌아간다(다시 막히면 옆으로 틀어 방향을 바꾼다)
         }
+        else if (e._skW > 0.15 && moved > e._skW * 0.6) e._cwTry = 0;
         e._skT = 0; e._skW = 0; e._skX = e.obj.position.x; e._skZ = e.obj.position.z;
       }
       if (e._esc) {   // 미끄러져 나오는 중(초속 5) — 충돌 검사는 건너뛴다
@@ -25860,7 +25887,15 @@ function update(dt) {
       if (Math.abs(odx) > minOD || Math.abs(odz) > minOD) continue;
       const odist = Math.hypot(odx, odz);
       if (odist < minOD && odist > 0.0001) {
-        const push = (minOD - odist) * 0.5; // 절반만 밀어냄(상대도 자기 차례에 밀려남)
+        // v813: 양보 순위 — 반반이면 서 있는 원거리 몬스터가 벽처럼 근접을 막고, 다가오는 몬스터가 공격 중인 몬스터를 사거리 밖으로 밀어냈다.
+        // 순위가 낮은 쪽이 80% 를 밀려난다(상대는 자기 차례에 20%). 같으면 예전처럼 반반.
+        let share = 0.5;
+        if (CROWD_ON) {
+          const rk = (q, qd) => q.isBoss ? 4 : (q.swingTimer > 0 || (!q.isRanged && qd <= (player.radius + q.radius) + 0.6 + 0.15)) ? 3 : (!q.isRanged && q.awake !== false) ? 2 : 1;
+          const ra = rk(e, d), rb = rk(o, Math.hypot(player.obj.position.x - o.obj.position.x, player.obj.position.z - o.obj.position.z));
+          share = ra < rb ? 0.8 : ra > rb ? 0.2 : 0.5;
+        }
+        const push = (minOD - odist) * share; // 내 몫만 밀어냄(상대도 자기 차례에 밀려남)
         const nxp = e.obj.position.x + (odx / odist) * push;
         const nzp = e.obj.position.z + (odz / odist) * push;
         let blocked = false;
