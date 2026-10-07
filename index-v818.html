@@ -187,6 +187,13 @@
 #hud2 .dslot .cnt { left: auto; top: auto; right: -10px; bottom: 0; transform: none; }
 #hud2 .hints { right: 20px; bottom: 20px; display: grid; grid-template-columns: auto auto; gap: 7px 10px; align-items: center; font-size: 15px; }
 #hud2 .hints .k { justify-self: end; }
+#hud2 .buffs { display: flex; flex-wrap: wrap; gap: 6px 8px; margin-top: 8px; min-height: 30px; }
+#hud2 .bw { display: flex; align-items: flex-end; gap: 2px; }
+#hud2 .buff { position: relative; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; background-size: 30px 30px; image-rendering: pixelated; }
+#hud2 .buff .ar { position: absolute; left: -5px; top: -6px; }
+#hud2 .bw .n { margin-bottom: -2px; font-family: 'UI2Px7', monospace; font-size: 16px; line-height: 16px; color: #f3ead2; -webkit-font-smoothing: none;
+  text-shadow: 1px 0 #000, -1px 0 #000, 0 1px #000, 0 -1px #000, 1px 1px #000, -1px 1px #000, 1px -1px #000, -1px -1px #000; }
+#hud2 .buff .cd { position: absolute; left: 2px; right: 2px; top: 2px; height: 0; max-height: 26px; background: rgba(4,6,12,.62); }
 /* 예전 HUD·미니맵은 숨긴다(값은 계속 갱신된다) */
 body.ui2 #hud, body.ui2 #minimap { display: none !important; }
 /* 알림: 위쪽 가운데 · 남색 띠 + 끝이 디더로 흩어지는 금선(그림은 toast() 가 크기를 재서 찍는다) */
@@ -4356,7 +4363,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v817'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v818'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -23538,6 +23545,7 @@ const STAT_INFO = {
 const STAT_KEYS = ['atk', 'atkSpeed', 'hp'];
 
 function applyStat(stat, amount) {
+  if (player.runBuff && stat in player.runBuff) player.runBuff[stat] += amount;
   if (stat === 'atk') { player.atk += amount; }
   else if (stat === 'atkSpeed') { player.atkSpeed += amount; }
   else if (stat === 'hp') { player.hpMax += amount; player.hp += amount; }
@@ -26483,6 +26491,7 @@ function upgradeLevel(key) { return charUpgrades()[key] || 0; }
 function upgradeCost(def) { return Math.round(def.baseCost * Math.pow(def.growth, upgradeLevel(def.key))); }
 // 강화 레벨을 플레이어 시작 능력치에 적용
 function applyMetaUpgrades() {
+  player.runBuff = { atk: 0, atkSpeed: 0, hp: 0 };   // v818: 이번 회차에 보상·스탯 물약으로 얻은 양(HUD 버프 칸) — 회차 시작마다 0
   const hpLv = upgradeLevel('hp'), atkLv = upgradeLevel('atk'), staLv = upgradeLevel('sta'), spdLv = upgradeLevel('speed');
   // 캐릭터별 기본 능력치 분기: 기사는 체력 높고 공격력 보통, 마법사는 체력 낮고 공격력 높음
   const isMage = (selectedChar === 'mage');
@@ -26519,7 +26528,8 @@ function saveRun() {
       chestFloor: lastChestFloor,
       reviveUsed: runReviveUsed, // 이번 회차 광고 부활 사용 여부
       metaGold: meta.gold, // 층 진입 시점의 영구 골드(이어하기 시 이 값으로 되돌림)
-      char: selectedChar   // 진행 중 캐릭터(이어하기 시 외형 복원)
+      char: selectedChar,  // 진행 중 캐릭터(이어하기 시 외형 복원)
+      buffs: player.runBuff // v818: 버프 칸 표시용 누적량
     };
     localStorage.setItem('dungeon_run', JSON.stringify(data));
   } catch (e) {}
@@ -26701,6 +26711,7 @@ function resumeGame() {
   player.hpMax = r.hpMax || 100; player.hp = Math.min(r.hp || player.hpMax, player.hpMax);
   player.lv = r.lv || 1; player.exp = r.exp || 0; player.expMax = r.expMax || 10;
   player.atk = r.atk || 12; player.speed = r.speed || 6.5;
+  player.runBuff = Object.assign({ atk: 0, atkSpeed: 0, hp: 0 }, r.buffs || {});
   player.staMax = r.staMax || 100; player.sta = r.sta || player.staMax;
   player.kills = r.kills || 0; player.noHitFloors = r.noHitFloors || 0; player.hitThisFloor = false;
   player.potions = (typeof r.potions === 'number') ? r.potions : 1;
@@ -26872,6 +26883,9 @@ var ui2 = (() => {   // var: 이 줄보다 먼저 정의된 toast()·refreshSkil
     cleaver: { p: { k: '#0b0a0c', w: '#ffffff', l: '#b8c2d2', b: '#7a4a24' }, a: ['............', '.kkkkkkk....', '.kwwwwwwk...', '.kwllllwwk..', '.kwllllllwk.', '.kwlllllllk.', '..kwkwkwkkk.', '...k.k.kkbk.', '........kbk.', '........kbk.', '.........k..', '............'] },
     boot: { p: { k: '#0b0a0c', b: '#7a4f2c', B: '#a8703e', y: '#d8b24a' }, a: ['............', '...kkkkk....', '...kBBbk....', '...kyyyk....', '...kBBbk....', '...kBBbk....', '...kBBbkk...', '...kBBBbbkk.', '..kBBBBBbbbk', '..kbbbbbbbbk', '..kkkkkkkkkk', '............'] },
   });
+  ICON.up = { p: { k: '#0b0a0c', g: '#9be07a', G: '#4a9a3a' }, a: ['.....kk.....', '....kggk....', '...kgggGk...', '..kggggGGk..', '..kkkggGkk..', '....kgGk....', '....kgGk....', '....kkkk....', '............', '............', '............', '............'] };
+  ICON.down = { p: { k: '#0b0a0c', g: '#ff8f7e', G: '#a83a30' }, a: ICON.up.a.slice(0, 8).reverse().concat(['............', '............', '............', '............']) };
+  ICON.chain = { p: { k: '#0b0a0c', w: '#d8dee8', l: '#8e9aae' }, a: ['............', '..kkk.......', '.kwlwk......', '.kl.lk......', '.kwlwkkk....', '..kkkwlwk...', '....kl.lk...', '....kwlwkkk.', '.....kkkwlwk', '.......kl.lk', '.......kwlwk', '........kkk.'] };
   ICON.dagger = { p: { k: '#0b0a0c', w: '#ffffff', l: '#d8c8a0', y: '#d8b24a', b: '#7a4a24' }, a: ICON.sword.a };
   ICON.chitin = genIcon(g => { for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) { const dx = x - 5.5, dy = y - 6.8; if (y >= 3 && y <= 11 && (dx * dx) / 16 + (dy * dy) / 16 <= 1) g[y][x] = (x === 5 || x === 6) && y > 3 ? 'k' : (x < 6 ? 'G' : 'g'); else if (y >= 1 && y <= 2 && Math.abs(dx) < 2) g[y][x] = 'd'; } for (const [x, y] of [[1, 5], [10, 5], [0, 8], [11, 8]]) g[y][x] = 'd'; g[4][3] = 'w'; }, { k: '#0b0a0c', g: '#4a7a3a', G: '#7ab05a', d: '#3a3020', w: '#d8f0b0' });
   ICON.seal = genIcon(g => { for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) { const dx = x - 5.5, dy = y - 5.5; if (Math.abs(dx) + Math.abs(dy) <= 5) g[y][x] = (dx < 0 && dy < 0) ? 'w' : (dx < 0 || dy < 0) ? 'c' : 'C'; } }, { k: '#0b0a0c', w: '#d8fbff', c: '#6fdcf2', C: '#2a8ab0' });
@@ -26918,6 +26932,7 @@ var ui2 = (() => {   // var: 이 줄보다 먼저 정의된 toast()·refreshSkil
       <div class="bar" data-d="track" style="height:12px"><div class="fill" id="u2Lag" style="background:#e45a4f"></div><div class="fill" id="u2HpF"></div></div>
       <div class="bar" data-d="track" style="height:8px;margin-top:4px"><div class="fill" id="u2Sta"></div></div>
       <div class="bar xp"><div class="fill" id="u2Exp"></div></div>
+      <div class="buffs" id="u2Buffs"></div>
     </div>
   </div>
   <div class="plate" style="width:${(PW + WG * 2) * PX}px;height:${PH * PX}px">${pxImg(pxPlate(PW, PH, WG), PW + WG * 2, PH)}<div class="t sh"><span class="pxf2 ol2" id="u2Fl">1</span><span class="fl">${_i18n('층')}</span></div><div class="act sh" id="u2Act"></div></div>
@@ -26929,7 +26944,7 @@ var ui2 = (() => {   // var: 이 줄보다 먼저 정의된 toast()·refreshSkil
   document.body.appendChild(root);
   document.body.classList.add('ui2'); if (mob) document.body.classList.add('ui2m');
   const $u = id => document.getElementById(id);
-  const E = { por: $u('u2Por'), lv: $u('u2Lv'), cls: $u('u2Cls'), hp: $u('u2Hp'), hpM: $u('u2HpM'), lag: $u('u2Lag'), hpF: $u('u2HpF'), sta: $u('u2Sta'), exp: $u('u2Exp'), fl: $u('u2Fl'), act: $u('u2Act'), map: $u('u2Map'), gold: $u('u2Gold'), foe: $u('u2Foe'), pot: $u('u2Pot'), guard: $u('u2Guard'), s: [$u('u2S0'), $u('u2S1')] };
+  const E = { por: $u('u2Por'), lv: $u('u2Lv'), cls: $u('u2Cls'), hp: $u('u2Hp'), hpM: $u('u2HpM'), lag: $u('u2Lag'), hpF: $u('u2HpF'), sta: $u('u2Sta'), exp: $u('u2Exp'), fl: $u('u2Fl'), act: $u('u2Act'), map: $u('u2Map'), gold: $u('u2Gold'), foe: $u('u2Foe'), pot: $u('u2Pot'), guard: $u('u2Guard'), buffs: $u('u2Buffs'), s: [$u('u2S0'), $u('u2S1')] };
   const mctx = E.map.getContext('2d'), mimg = mctx.createImageData(MM, MM);
   const diaOn = pxDia(SLOT), diaCd = pxDia(SLOT, { bg: C.nvD }), diaEmpty = pxDia(SLOT, { bg: 'rgba(6,8,16,.6)' });
 
@@ -27061,6 +27076,27 @@ var ui2 = (() => {   // var: 이 줄보다 먼저 정의된 toast()·refreshSkil
       if (bb && (bb._u2 !== cls || !bb.querySelector('img'))) { bb._u2 = cls; bb.innerHTML = ic(GUARD_IC[cls] || 'shield', 4); }
     }
     if (dungeon && dungeon.discovered && (mmT -= dt) <= 0) { mmT = 0.1; drawMap(A.acc); }
+    drawBuffs();
+  }
+  // ── 버프 칸(v818): 이번 회차 보상·스탯 물약 누적(금 테) + 잠깐 걸리는 상태(남은 시간만큼 어둡게 덮임 · 해로운 것은 붉은 테) ──
+  const BUFF_BG = { up: pxRR(15, 15, 2, { line: 'rgba(217,181,108,.85)', dark: C.k, fill: 'rgba(10,14,28,.78)' }), dn: pxRR(15, 15, 2, { line: '#e45a4f', dark: C.k, fill: 'rgba(28,10,12,.78)' }) };
+  const buffMax = {};
+  function drawBuffs() {
+    const rb = player.runBuff || {}, list = [];
+    if (rb.atk > 0) list.push(['atk', 'sword', 'up', String(Math.round(rb.atk)), 0]);
+    if (rb.atkSpeed > 0) list.push(['spd', 'bolt', 'up', String(Math.round(rb.atkSpeed * 100)), 0]);
+    if (rb.hp > 0) list.push(['hp', 'heart', 'up', String(Math.round(rb.hp)), 0]);
+    const timed = (k, v, icn, kind) => { if (v > 0) { buffMax[k] = Math.max(buffMax[k] || 0, v); list.push([k, icn, kind, '', 1 - v / buffMax[k]]); } else buffMax[k] = 0; };
+    timed('boost', player.dodgeBoostT || 0, 'boot', 'up');
+    timed('root', player.rooted || 0, 'chain', 'dn');
+    timed('slow', player.iceSlow || 0, 'crystal', 'dn');
+    const key = list.map(b => b[0] + b[3]).join(',');
+    if (prev.buffKey !== key) {
+      prev.buffKey = key;
+      E.buffs.innerHTML = list.map(b => `<div class="bw"><div class="buff" style="background-image:url(${BUFF_BG[b[2]]})">${ic(b[1], 2)}<span class="ar">${ic(b[2] === 'up' ? 'up' : 'down', 1)}</span><i class="cd"></i></div>${b[3] ? `<span class="n">${b[3]}</span>` : ''}</div>`).join('');
+    }
+    const cds = E.buffs.querySelectorAll('.cd');
+    list.forEach((b, i) => { const v = (b[4] * 100).toFixed(0) + '%'; if (cds[i] && cds[i]._v !== v) { cds[i]._v = v; cds[i].style.height = v; } });
   }
   // 스킬 버튼(모바일): 이모지 대신 픽셀 아이콘
   function skillIcon(iconEl, id) { if (iconEl.dataset.u2 !== id) { iconEl.dataset.u2 = id; iconEl.innerHTML = ic(SK_IC[id] || 'spark', 3); } }
