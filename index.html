@@ -4378,6 +4378,9 @@ const WRAITH_CD0_MIN = WRAITH2 ? 1.8 : 1.0, WRAITH_CD0_RND = WRAITH2 ? 0.8 : 0.7
 const WRAITH_GROUP_GAP = WRAITH2 ? 3.0 : 0;  // 무리 공용 간격(초). 혼령 하나가 공격을 시작하면 이 시간 동안 다른 혼령은 기다린다 — 무리 전체 분당 20타 상한. 1.5 는 오히려 피격이 늘었다(아래 CLAUDE.md)
 let wraithClock = 0, wraithLastStrike = -99;
 const WTELE = !/[?&]wtele=0/.test(location.search); // v828: 혼령 공격 예고 — 사라지기 전 0.4초 '불붙는 윈드업'(본체가 부풀며 영체가 켜짐 → 무너짐) + 쉿 소리 + 바닥 호 안내 + hitPending 신호(패링·방어·회피가 걸린다). 0 = v827 동작(0.18초 소멸만)
+const SW2 = !/[?&]sw2=0/.test(location.search);   // v829: 40층 시종장 보스전 길이 조정 — 붙자마자 도망가지 않게(근접 거리에 2초 붙어 있어야 근접 회피 순간이동 · 확률 60 → 40%) + 순간이동 착지 15 → 10 유닛 우선 + 체력 ×0.75 + 2페이즈 소환 3.5~5 → 6~8초 + 2페이즈 화염 장판을 피할 수 있게(반지름 5.5 → 3.75 · 3 → 2개 · 간격 3.5~5 → 4.5~6초). 시종장만(얼음 여왕은 그대로). 0 = v828 동작
+const SW2_NEAR_HOLD = 2.0, SW2_NEAR_CHANCE = 0.4, SW2_NEAR_R = 6.5;  // 근접 회피 순간이동: 플레이어가 SW2_NEAR_R(실제 근접 거리) 안에 이만큼 붙어 있은 뒤에만 · 그때 확률. 11 유닛(SW_NEAR)으로 세면 걸어 들어오는 동안 다 차 버린다
+const IQ2 = !/[?&]iq2=0/.test(location.search);   // v830: 60층 얼음 여왕 보스전 조정 — 순간이동을 시종장 v829 규칙으로(근접 거리 2초 · 40% · 착지 10 유닛 우선) + 고드름 연사 간격 0.28 → 0.42초(폭풍 0.16 → 0.28) · 재장전 2.0 → 2.5초(폭풍 1.2 → 1.8) · 한 발 0.9 → 0.6배. 0 = v829 동작
 const WT_DUR = 0.4, WT_SWELL = 0.26;       // 윈드업 전체 · 그중 부푸는 구간(나머지는 무너져 사라짐 — 예전 소멸 0.18초를 대신한다)
 let _wtrs = 0x2545f491;                    // 안내 호 THREE 객체를 만드는 동안 Math.random 대신 쓰는 자체 난수(uuid 가 게임 난수를 먹지 않게)
 const _wtr = () => { _wtrs = (_wtrs * 1664525 + 1013904223) >>> 0; return _wtrs / 4294967296; };  // 게임 시계(update 가 dt 를 더함) · 마지막으로 공격을 시작한 시각
@@ -4404,7 +4407,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v828'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v830'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -16534,7 +16537,7 @@ function spawnIcicleMissile(e, ic) {
   // 원뿔 기하는 +y가 길이축, dir:-1로 만들어져 뾰족한 끝이 +y쪽 → +y를 비행 방향으로 정렬(끝이 앞으로)
   ic.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dirX, 0, dirZ).normalize());
   // 투사체 등록: mesh가 곧 고드름 실물. life 종료/피격 시 일반 투사체처럼 scene에서 제거됨.
-  fireballs.push({ mesh: ic, mat: ic.material, vx: dirX * speed, vz: dirZ * speed, damage: Math.floor(e.damage * 0.9), life: 3.2, owner: e, reflected: false, _iqIcicle: true });
+  fireballs.push({ mesh: ic, mat: ic.material, vx: dirX * speed, vz: dirZ * speed, damage: Math.floor(e.damage * (IQ2 ? 0.6 : 0.9)), life: 3.2, owner: e, reflected: false, _iqIcicle: true }); // v830: 0.9 면 한 발이 거의 다 한 방 상한(최대 체력 40%)에 걸렸다
 }
 
 // 발사 높이는 리그마다 다르다 — 기본 1.0×스케일이지만 3막 보스는 몸집이 실물 크기라
@@ -21146,6 +21149,8 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
     if (type === 'skeleton') sp *= 0.95; // 스켈레톤 보스도 너무 느리지 않게(이동 속도 ↑)
     // 얼음 여왕(최종 보스): 직전 흑기사보다 확실히 위로 살짝만 상향(순간이동·마법형이라 HP 과하면 늘어짐 → +20%만)
     if (type === 'icequeen') hp *= 1.2;
+    // v829(SW2): 시종장은 순간이동 탓에 붙어 있을 수 있는 시간이 흑기사의 1/5 안팎 — 체력을 그만큼은 아니어도 0.75 배로(봇 실측 기사 212 → 약 90초 목표)
+    if (type === 'servantwraith' && SW2) hp *= 0.75;
   }
   // 원거리 캐스터: 체력 낮은 딜러 역할(체력 ×0.7, 공격력 근접의 1.75배 = 기본 ×0.8 → ×1.4)
   // v826: 원거리 배율은 막별(RANGED_DMG_MUL_ACT) — 1.75 를 막 배율 위에 그대로 얹으면 2·3막 투사체 한 방이 체력의 40~55% 가 됐다(점프가 없어 피할 수단이 걷기뿐)
@@ -25343,12 +25348,17 @@ function update(dt) {
 
     // ===== 흑기사(darkknight) 보스: 횡베기(기본·좌우 가로베기) · 대지 가르기(특수, HP70%↓) · 돌진(갭클로저) =====
     // ===== 시종장의 망령(servantwraith) — 마법형 기본 패턴: 촛불 투사체 + 순간이동 =====
+    // v830 버그 수정: 순간이동형 보스가 얼면(마법사 빙결 패링) 아래 보스 블록을 건너뛰고 일반 근접 적 코드로 떨어졌다 —
+    // 얼음 여왕 리그엔 다리가 없어 limbs.legR 에서 예외 → 얼어 있는 2.5초 동안 매 프레임 update 가 끊기고 렌더도 건너뛰어 화면이 멈췄다. 얼어 있는 동안은 제자리.
+    if (e.isBoss && (e.type === 'servantwraith' || e.type === 'icequeen') && e.frozen > 0) continue;
     if (e.isBoss && (e.type === 'servantwraith' || e.type === 'icequeen') && e.frozen <= 0) {
       const dx = player.obj.position.x - e.obj.position.x, dz = player.obj.position.z - e.obj.position.z;
       const d = Math.hypot(dx, dz) || 1;
       e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI; // 항상 플레이어를 향함
       e.swCd = Math.max(0, e.swCd - dt);
       e.swSummonCd = Math.max(0, e.swSummonCd - dt);
+      // v829(SW2): 플레이어가 근접 거리(6.5)에 붙어 있은 시간 — 근접 회피 순간이동은 이게 찬 뒤에만(붙자마자 사라지면 근접 직업은 한 대도 못 넣는다)
+      e._swNearT = (d < SW2_NEAR_R) ? (e._swNearT || 0) + dt : Math.max(0, (e._swNearT || 0) - dt * 2);
 
       // ===== 얼음 여왕 전용: 서리 장판(영역 압박) + 빙결 가두기(포박) =====
       if (e.type === 'icequeen') {
@@ -25471,9 +25481,9 @@ function update(dt) {
           // 발사: 순간이동/소환 중이 아니고 발사 간격이 지났으면 고드름 실물을 하나씩 쏨
           if ((e.swState === 'none' || e.swState === undefined) && e.iqFireCd <= 0) {
             const ic = halo[e.iqHaloIdx];
-            if (ic) { spawnIcicleMissile(e, ic); e.iqFireCd = e.iqStorm ? 0.16 : 0.28; } // 강설 폭풍 중 연사 가속. spawnIcicleMissile이 ic를 scene으로 떼어냄
+            if (ic) { spawnIcicleMissile(e, ic); e.iqFireCd = IQ2 ? (e.iqStorm ? 0.28 : 0.42) : (e.iqStorm ? 0.16 : 0.28); } // v830: 붙어서 싸우는 근접 직업이 3 유닛 거리에서 0.15초 만에 날아오는 연사를 그대로 맞았다 // 강설 폭풍 중 연사 가속. spawnIcicleMissile이 ic를 scene으로 떼어냄
             e.iqHaloIdx++;
-            if (e.iqHaloIdx >= halo.length) e.iqReloadCd = e.iqStorm ? 1.2 : 2.0; // 다 쏨 → 재충전(폭풍 중 단축)
+            if (e.iqHaloIdx >= halo.length) e.iqReloadCd = IQ2 ? (e.iqStorm ? 1.8 : 2.5) : (e.iqStorm ? 1.2 : 2.0); // 다 쏨 → 재충전(폭풍 중 단축)
           }
         }
       }
@@ -25513,8 +25523,10 @@ function update(dt) {
           // 플레이어 현재 위치 근처 1곳(예고 보고 피하게) + 주변 랜덤 2곳
           const spots = [[player.obj.position.x, player.obj.position.z]];
           for (let s = 0; s < 4; s++) { const a = Math.random() * Math.PI * 2, r = TILE * (1.5 + Math.random() * 2.5); spots.push([player.obj.position.x + Math.cos(a) * r, player.obj.position.z + Math.sin(a) * r]); }
-          for (const [sx, sz] of spots) { if (made >= 3) break; if (onFloor(sx, sz)) { spawnFirePool(sx, sz, TILE * 1.1, poolDmg, e); made++; } }
-          e.swPoolCd = 3.5 + Math.random() * 1.5; // 다음 장판까지
+          // v829(SW2): 반지름 5.5 → 3.75 — 첫 장판이 발밑에 깔리는데 예고가 0.9초라, 5.5 면 가운데서 걸어 나가는 데만 0.88초(반응 시간을 더하면 못 피한다). 3.75 면 반응 0.25 + 0.62초
+          const poolR = SW2 ? TILE * 0.75 : TILE * 1.1, poolN = SW2 ? 2 : 3;
+          for (const [sx, sz] of spots) { if (made >= poolN) break; if (onFloor(sx, sz)) { spawnFirePool(sx, sz, poolR, poolDmg, e); made++; } }
+          e.swPoolCd = SW2 ? 4.5 + Math.random() * 1.5 : 3.5 + Math.random() * 1.5; // 다음 장판까지
         }
       }
 
@@ -25594,7 +25606,7 @@ function update(dt) {
         }
         if (e.swTimer <= 0) {
           e.swState = 'none'; e.swCd = 1.2;
-          e.swSummonCd = e.swPhase2 ? (3.5 + Math.random() * 1.5) : (7.0 + Math.random() * 2); // 페이즈2: 소환 가속
+          e.swSummonCd = e.swPhase2 ? ((SW2 && e.type === 'servantwraith') ? 6.0 + Math.random() * 2.0 : 3.5 + Math.random() * 1.5) : (7.0 + Math.random() * 2); // 페이즈2: 소환 가속(v829 시종장 3.5~5 → 6~8초 — 혼령 둘이 늘 붙어 있어 보스에 손을 못 댔다)
         }
         continue;
       }
@@ -25606,9 +25618,11 @@ function update(dt) {
         // 피격 회피는 무조건 순간이동. 그 외엔: 순간이동 직후면 공격 강제(연속 순간이동 방지),
         // 가까우면 60%만 순간이동(40%는 촛불 견제), 멀면 소환/촛불. 너무 멀면(SW_FAR) 추격 순간이동.
         const tooFar = d > SW_FAR;
-        const wantBlink = e.swHitFlee || tooFar || (!e.swJustBlinked && d < SW_NEAR && Math.random() < 0.6);
+        const swRule2 = (SW2 && e.type === 'servantwraith') || (IQ2 && e.type === 'icequeen');   // v829/v830: 붙자마자 도망가지 않는 순간이동 규칙
+        const swNearOk = !swRule2 || (e._swNearT || 0) >= SW2_NEAR_HOLD;
+        const wantBlink = e.swHitFlee || tooFar || (!e.swJustBlinked && d < SW_NEAR && swNearOk && Math.random() < (swRule2 ? SW2_NEAR_CHANCE : 0.6));
         if (wantBlink) {
-          e.swHitFlee = false; e.swJustBlinked = true;
+          e.swHitFlee = false; e.swJustBlinked = true; e._swNearT = 0;
           // 플레이어가 붙음 → 순간이동 위치 탐색: 벽/방 밖을 피해 유효한 바닥을 고른다.
           const baseAng = Math.atan2(-dz, -dx) + (Math.random() - 0.5) * 1.2; // 보스 반대편 기준 + 랜덤
           const rad = e.radius + 0.4;
@@ -25634,7 +25648,8 @@ function update(dt) {
           };
           let found = null;
           // 거리(3→2타일) × 각도(반대편 중심으로 퍼지게) 여러 후보 시도
-          for (const dist of [TILE * 3.0, TILE * 2.4, TILE * 2.0, TILE * 1.6]) {
+          // v829(SW2): 시종장은 10 유닛(2칸) 거리부터 찾는다 — 15 유닛부터 찾으면 매번 방 끝까지 달아나 다시 걸어가는 데 2초 넘게 든다(봇 실측 순간이동 46번 × 명중 1번)
+          for (const dist of (swRule2 ? [TILE * 2.0, TILE * 2.4, TILE * 1.6, TILE * 3.0] : [TILE * 3.0, TILE * 2.4, TILE * 2.0, TILE * 1.6])) {
             for (let a = 0; a < 12 && !found; a++) {
               const off = (a % 2 === 0 ? 1 : -1) * Math.ceil(a / 2) * 0.5; // 0, ±0.5, ±1.0, ±1.5 …
               const ang = baseAng + off;
@@ -26500,7 +26515,7 @@ function update(dt) {
       const eSin = Math.sin(e.phase);
       // 3막 곤충(다리 6개·날개)은 사람형 리그가 아니라 자체 보행/비행 리그를 돌린다
       if (e.limbs.bug) updateBugRig(e, dt, moveSpd > 0.1);
-      else { e.limbs.legR.rotation.x = eSin * 0.8; e.limbs.legL.rotation.x = -eSin * 0.8; }
+      else if (e.limbs.legR && e.limbs.legL) { e.limbs.legR.rotation.x = eSin * 0.8; e.limbs.legL.rotation.x = -eSin * 0.8; } // 다리 없는 리그(얼음 여왕)가 이 길로 와도 죽지 않게(v830)
 
       let eArmRX = -eSin * 0.5, eArmRZ = 0, eArmLX = eSin * 0.5, eArmLZ = 0;
       if (e.isRanged) {

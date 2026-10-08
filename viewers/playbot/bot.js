@@ -57,7 +57,11 @@ window.__botStep = function (dt) {
   for (const f of fireballs) if (f.mesh && !f.reflected) projs.push({ x: f.mesh.position.x, z: f.mesh.position.z, vx: f.vx, vz: f.vz });
   for (const c of thrownClubs) if (c.mesh && !c.embedded) projs.push({ x: c.mesh.position.x, z: c.mesh.position.z, vx: c.vx, vz: c.vz });
   for (const f of projs) { const rx = P.x - f.x, rz = P.z - f.z, v2 = f.vx * f.vx + f.vz * f.vz; if (v2 < 1) continue; const t = (rx * f.vx + rz * f.vz) / v2; if (t < 0 || t > 0.7) continue; const cx = f.x + f.vx * t, cz = f.z + f.vz * t; const pd = Math.hypot(P.x - cx, P.z - cz); if (pd > 1.3) continue; const sv = Math.hypot(f.vx, f.vz); let ex = -f.vz / sv, ez = f.vx / sv; if ((P.x - cx) * ex + (P.z - cz) * ez < 0) { ex = -ex; ez = -ez; } evade = { x: ex, z: ez }; B.fl.evades = (B.fl.evades || 0) + 1; break; }
-  if (!evade) for (const pl of firePools) { if (pl.state !== 'active' && pl.state !== 'telegraph') continue; const d = Math.hypot(P.x - pl.x, P.z - pl.z); if (d < pl.radius + 0.6) { const u = d || 1; evade = { x: (P.x - pl.x) / u, z: (P.z - pl.z) / u }; B.fl.evades = (B.fl.evades || 0) + 1; break; } }
+  // 장판: 중심 반대 방향이 벽에 막혀 있으면 그 자리에 갇힌다(사람은 벽을 따라 옆으로 빠진다) — 16 방향 중 1.5·3 유닛 앞이 트였고 장판 밖으로 나가는 쪽을 고른다(v829)
+  if (!evade) for (const pl of firePools) { if (pl.state !== 'active' && pl.state !== 'telegraph') continue; const d = Math.hypot(P.x - pl.x, P.z - pl.z); if (d < pl.radius + 0.6) { const u = d || 1, ax = (P.x - pl.x) / u, az = (P.z - pl.z) / u; let bx = ax, bz = az;
+    const G = navFineGet(0.5); if (G) { const free = (x, z) => { const i = Math.floor((x - G.x0) / G.h), j = Math.floor((z - G.z0) / G.h); return i >= 0 && j >= 0 && i < G.FW && j < G.FH && !G.blk[j * G.FW + i]; }; let best = -9;
+      for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2, cx = Math.cos(a), cz = Math.sin(a); if (!free(P.x + cx * 1.5, P.z + cz * 1.5) || !free(P.x + cx * 3, P.z + cz * 3)) continue; const sc = cx * ax + cz * az; if (sc > best) { best = sc; bx = cx; bz = cz; } } }
+    evade = { x: bx, z: bz }; B.fl.evades = (B.fl.evades || 0) + 1; break; } }
   // 물약
   if (player.hp < player.hpMax * 0.4 && player.potions > 0) { usePotion(); B.fl.potions++; }
   // 목표·이동
