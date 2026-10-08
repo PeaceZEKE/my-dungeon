@@ -4372,6 +4372,15 @@ const RANGED_DMG_MUL_ACT = BAL3 ? [1.75, 1.3, 1.15] : [1.75, 1.75, 1.75]; // 막
 const HIT_CAP_MOB = BAL3 ? 0.40 : 9;   // 일반 몬스터 한 방 상한(최대 체력 비율). 1막 최대 실측 33% 라 1막은 안 걸린다
 const HIT_CAP_BOSS = BAL3 ? 0.40 : 9;  // 보스 한 방 상한(90층 왕 맨몸 80% · 흑기사 49% → 40%. 1막 오크 보스 36% 는 안 걸린다)
 const WRAITH_DMG_MUL = 0.9;           // 혼령 공격력 배율(예전엔 원거리 1.75 를 그대로 받았다)
+const WRAITH2 = !/[?&]wraith2=0/.test(location.search); // v827: 혼령 히트앤런 빈도 조정 — 타격 뒤 쿨 2~3 → 3.4~4.6초 · 첫 타격 1~1.7 → 1.8~2.6초 · 무리 공용 간격(한 마리가 덤비면 3초 동안 다른 혼령은 못 덤빔). 0 = v826 동작
+const WRAITH_CD_MIN = WRAITH2 ? 3.4 : 2.0, WRAITH_CD_RND = WRAITH2 ? 1.2 : 1.0;   // 타격(복귀) 뒤 다음 공격까지
+const WRAITH_CD0_MIN = WRAITH2 ? 1.8 : 1.0, WRAITH_CD0_RND = WRAITH2 ? 0.8 : 0.7; // 깨어나서 첫 공격까지
+const WRAITH_GROUP_GAP = WRAITH2 ? 3.0 : 0;  // 무리 공용 간격(초). 혼령 하나가 공격을 시작하면 이 시간 동안 다른 혼령은 기다린다 — 무리 전체 분당 20타 상한. 1.5 는 오히려 피격이 늘었다(아래 CLAUDE.md)
+let wraithClock = 0, wraithLastStrike = -99;
+const WTELE = !/[?&]wtele=0/.test(location.search); // v828: 혼령 공격 예고 — 사라지기 전 0.4초 '불붙는 윈드업'(본체가 부풀며 영체가 켜짐 → 무너짐) + 쉿 소리 + 바닥 호 안내 + hitPending 신호(패링·방어·회피가 걸린다). 0 = v827 동작(0.18초 소멸만)
+const WT_DUR = 0.4, WT_SWELL = 0.26;       // 윈드업 전체 · 그중 부푸는 구간(나머지는 무너져 사라짐 — 예전 소멸 0.18초를 대신한다)
+let _wtrs = 0x2545f491;                    // 안내 호 THREE 객체를 만드는 동안 Math.random 대신 쓰는 자체 난수(uuid 가 게임 난수를 먹지 않게)
+const _wtr = () => { _wtrs = (_wtrs * 1664525 + 1013904223) >>> 0; return _wtrs / 4294967296; };  // 게임 시계(update 가 dt 를 더함) · 마지막으로 공격을 시작한 시각
 const TUT_ON = !/[?&]tut=0/.test(location.search);     // v823: 온보딩 길잡이(처음 겪는 상황마다 한 번 뜨는 안내 띠). 0 = 끔 · ?tutreset=1 이면 본 기록을 지운다
 const HITFX_ON = !/[?&]hitfx=0/.test(location.search); // v822: 데미지 숫자(DOM) + 플레이어 피격 화면 흔들림. 0 = 끔
 const UI2_ON = !/[?&]ui2=0/.test(location.search);   // v814: UI v2 던전 HUD(픽셀 장식 · 세리프 · 초상화). 0 = 예전 HUD
@@ -4395,7 +4404,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v826'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v828'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -5369,6 +5378,20 @@ const SFX = (() => {
     return c.startRendering();
   }
   // 저체력 심장 박동 '두-근': 쿵 두 번(0.2초 간격, 둘째는 0.7배). 사인 72→40 + 삼각 120→70 → 로우패스. 음악 스위치와 무관(효과음)
+  // v828: 혼령 공격 예고 — 숨을 들이켜는 듯한 높은 '스읍' + 희미한 울음(폰 스피커용 중역). 음악 버튼과 무관한 효과음. pan −1(왼쪽)~1(오른쪽)
+  function wraithHiss(pan, v) {
+    const c = ac(); if (!c) return; const t = c.currentTime + 0.005; v = v || 0.22;
+    const out = c.createGain(); out.gain.value = 1; let tail = out;
+    if (c.createStereoPanner) { const sp = c.createStereoPanner(); sp.pan.value = Math.max(-1, Math.min(1, pan || 0)); out.connect(sp); tail = sp; }
+    tail.connect(c.destination);
+    const n = c.createBufferSource(); n.buffer = ambNoise(c); const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 3.2;
+    bp.frequency.setValueAtTime(1700, t); bp.frequency.exponentialRampToValueAtTime(5200, t + 0.34);
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.3); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
+    n.connect(bp); bp.connect(g); g.connect(out); n.start(t, arnd() * 4); n.stop(t + 0.4);
+    const o = c.createOscillator(); o.type = 'triangle'; o.frequency.setValueAtTime(760, t); o.frequency.exponentialRampToValueAtTime(1250, t + 0.36);
+    const og = c.createGain(); og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(v * 0.22, t + 0.28); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
+    o.connect(og); og.connect(out); o.start(t); o.stop(t + 0.4);
+  }
   function heartbeat(v, c0, t0) {
     const c = c0 || ac(); if (!c) return; const t = t0 !== undefined ? t0 : c.currentTime + 0.01;
     const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 650; lp.connect(c.destination);
@@ -5380,7 +5403,7 @@ const SFX = (() => {
     });
   }
 
-  return { swing, hit, hurt, block, parry, glint, chargeStart, chargeStop, release, resume: ac, musicStart, musicStop, musicSet, musicCurrent, musicRender, ambSet, ambCurrent, ambDuck, ambCue, ambRender, heartbeat, suspendForAd, resumeAfterAd, isAdMuted };
+  return { swing, hit, hurt, block, parry, glint, chargeStart, chargeStop, release, resume: ac, musicStart, musicStop, musicSet, musicCurrent, musicRender, ambSet, ambCurrent, ambDuck, ambCue, ambRender, heartbeat, wraithHiss, suspendForAd, resumeAfterAd, isAdMuted };
 })();
 
 const PIXEL_SCALE = 2;
@@ -15355,6 +15378,40 @@ function spawnAttackGuide(kind, x, z, yaw, dur, opts) {
   return mesh;
 }
 
+// v828: 혼령 공격 예고 — 혼령에서 목표까지 '실제 돌진 호'(진행 방향 오른쪽으로 amt 만큼 휨, 돌진 코드와 같은 식)를 바닥에 그린다.
+// 목표 쪽으로 갈수록 넓어져 '여기로 덮친다'가 읽힌다. 윈드업 동안은 매 프레임 플레이어를 따라가고 돌진이 시작되면 고정된다.
+// 수명은 parryRings(guideBlink)가 맡는다 — 혼령이 도중에 죽어도 저절로 사라진다.
+const WT_SEG = 18;
+function wraithGuideMake(life) {
+  const _r = Math.random; Math.random = _wtr;   // THREE 생성자 uuid 가 게임 난수를 먹지 않게
+  try {
+    const pos = new Float32Array((WT_SEG + 1) * 2 * 3), idx = [];
+    for (let i = 0; i < WT_SEG; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setIndex(idx);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x8fd8ff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, fog: false, toneMapped: false });
+    const mesh = new THREE.Mesh(geo, mat); mesh.frustumCulled = false; mesh.renderOrder = 2;
+    scene.add(mesh);
+    const ring = { mesh, mat, life, delay: 0, scale: 1, grow: 0, guideBlink: true, guideMax: 0.4 };
+    parryRings.push(ring);
+    return ring;
+  } finally { Math.random = _r; }
+}
+function wraithGuideSet(ring, sx, sz, tx, tz, amt) {
+  if (!ring || !ring.mesh.parent) return;       // 이미 수명이 다해 치워졌다
+  const a = ring.mesh.geometry.attributes.position;
+  let dx = tx - sx, dz = tz - sz; const L = Math.hypot(dx, dz) || 1; dx /= L; dz /= L;
+  const rx = dz, rz = -dx;                      // 진행 방향 오른쪽 수직 — 돌진 호(arcRx/arcRz)와 같은 식
+  for (let i = 0; i <= WT_SEG; i++) {
+    const p = i / WT_SEG, bow = Math.sin(p * Math.PI) * amt, dbow = Math.cos(p * Math.PI) * Math.PI * amt;
+    const cx = sx + (tx - sx) * p + rx * bow, cz = sz + (tz - sz) * p + rz * bow;
+    let ux = (tx - sx) + rx * dbow, uz = (tz - sz) + rz * dbow; const ul = Math.hypot(ux, uz) || 1; ux /= ul; uz /= ul;
+    const w = 0.08 + 0.22 * p;                  // 반폭: 혼령 쪽 0.08 → 목표 쪽 0.30(더 굵으면 UI 띠처럼 읽힌다)
+    const y = groundHeightAt(cx, cz) + 0.14;    // 2막 석판(+0.105)·핏자국(+0.12) 위
+    a.setXYZ(i * 2, cx - uz * w, y, cz + ux * w); a.setXYZ(i * 2 + 1, cx + uz * w, y, cz - ux * w);
+  }
+  a.needsUpdate = true;
+}
+
 // 시각 연출만 담당(피해 판정은 호출부에서 선분 거리로 처리). 폐허 성 바닥이 쩍 갈라지는 느낌.
 
 // ===== 흑기사 분노: 천장 낙석(엄폐물) + 화염 벽 광역기 =====
@@ -17792,6 +17849,8 @@ function buildWraithBody(grp, bodyGrp, headGrp, limbs) {
     tail.add(cone);
   }
   spectral.add(tail); spectral.userData.tail = tail;
+  // v828(WTELE): 영체는 발광 파츠 — 적 밝기 시스템(applyEnemyDim, 플레이어 시야각 기반)에서 빼야 뒤·옆에서 덮치는 혼령의 예고가 어둠 속에서도 보인다
+  if (WTELE) spectral.traverse(c => { if (c.isMesh && c.material) c.material._glowMat = true; });
   spectral.position.y = 0.95; spectral.visible = false;
   grp.add(spectral); limbs.spectral = spectral;
 }
@@ -24003,6 +24062,7 @@ function hasClearPath(x0, z0, x1, z1) {
 
 function update(dt) {
   if (SMEAR_ON) tickSmearTrails(dt);   // 아무도 안 굴린 잔상 사그라뜨리기(보스가 죽거나 얼어도 안 남게)
+  wraithClock += dt;                   // v827: 혼령 무리 공용 간격용 게임 시계
   player.attackCooldown = Math.max(0, player.attackCooldown - dt); player.hurtCooldown = Math.max(0, player.hurtCooldown - dt);
   parryTimer -= dt; parryFlashTimer = Math.max(0, parryFlashTimer - dt);
   // 스태미나: 방어 유지 중 소모, 그 외엔 지연 후 자동 회복
@@ -24382,6 +24442,8 @@ function update(dt) {
     const _tF = (e.type === 'rotheart') ? 1 : enemyLightFactor(e.obj.position.x, e.obj.position.z);
     e._visF = (e._visF === undefined) ? _tF : e._visF + (_tF - e._visF) * Math.min(1, dt * 6); // 스르륵 보간
     e.obj.visible = e._visF > 0.03;
+    // v828(WTELE): 혼령이 예고~돌진~복귀 중이면 시야 밖이어도 그린다 — 본체는 어둠 계수대로 묻히고 발광 영체(_glowMat)만 어둠 속에 켜진다
+    if (WTELE && e.type === 'wraith' && (e.hrState === 'windup' || e.hrState === 'dashArc' || e.hrState === 'retreatArc')) e.obj.visible = true;
     if (e.obj.visible) applyEnemyDim(e, e._visF);
     
     // 부패의 심장: 이동·공격이 없다. 맥동과 껍질 여닫기만 하고 일반 AI는 통째로 건너뛴다.
@@ -25970,8 +26032,9 @@ function update(dt) {
     }
 
     // ===== 혼령(wraith): 사라졌다 푸른 영체로 — 오른쪽 호로 파고들어 할퀴고, 왼쪽 호로 제자리 복귀 =====
+    // v828(WTELE): hover → windup(0.4초: 부풂 0.26 · 무너짐 0.14, 바닥 호가 플레이어를 따라감) → dashArc(목표 고정) → retreatArc
     if (e.type === 'wraith' && !e.isBoss) {
-      if (e.hrState === undefined) { e.hrState = 'hover'; e.hrCd = 1.0 + Math.random() * 0.7; }
+      if (e.hrState === undefined) { e.hrState = 'hover'; e.hrCd = WRAITH_CD0_MIN + Math.random() * WRAITH_CD0_RND; }
       const tnow = performance.now() * 0.001;
       const HOVER_DIST = TILE * 1.8;        // 평소 유지 거리(1.8타일)
       const ENGAGE_MAX = TILE * 2.1;        // 공격 개시 사거리(약 1.8타일 + 유지오차 보정)
@@ -25998,9 +26061,63 @@ function update(dt) {
         if (e.limbs.armR) e.limbs.armR.rotation.x += (0.2 - e.limbs.armR.rotation.x) * 6 * dt;
         if (e.limbs.armL) e.limbs.armL.rotation.x += (0.2 - e.limbs.armL.rotation.x) * 6 * dt;
         // 공격 개시: 쿨다운 끝 + 사거리 안(가까이 맴돌아 자연히 화면 안) + 빙결 아님
-        if (e.hrCd <= 0 && d <= ENGAGE_MAX && e.frozen <= 0) {
+        // v827: 무리 공용 간격 — 다른 혼령이 방금 덤볐으면 기다린다(여럿이 동시에 꽂히는 것을 막는다)
+        if (e.hrCd <= 0 && d <= ENGAGE_MAX && e.frozen <= 0 && (wraithClock - wraithLastStrike) >= WRAITH_GROUP_GAP) {
+          wraithLastStrike = wraithClock;
           e.anchorX = e.obj.position.x; e.anchorZ = e.obj.position.z; // 원래 자리 기억
-          e.hrState = 'vanish'; e.hrTimer = VANISH_DUR;
+          if (WTELE) {
+            // v828: 불붙는 윈드업 — 이것이 혼령의 '무기 치켜듦'. hitPending/swingTimer 를 세워 다른 근접 적과 같은 신호 규약을 탄다
+            e.hrState = 'windup'; e.hrTimer = WT_DUR; e.hitPending = true;
+            e.swingTimer = WT_DUR + ARC_DUR * Math.max(0, 1 - STRIKE_DIST / Math.max(0.01, d));
+            e._wtGuide = wraithGuideMake(WT_DUR + ARC_DUR + 0.15);
+            wraithGuideSet(e._wtGuide, e.obj.position.x, e.obj.position.z, player.obj.position.x, player.obj.position.z, ARC_AMT);
+            if (e.limbs.spectral) { e.limbs.spectral.visible = true; e.limbs.spectral.scale.setScalar(0.2); } // 본체 가슴에서 영체가 켜진다
+            // 쉿 소리: 화면 가로(+x−z)로 좌우를 나누고 멀수록 조금 작게 — 화면 밖에서 오는 혼령도 귀로 먼저 잡힌다
+            const sx = ((e.obj.position.x - player.obj.position.x) - (e.obj.position.z - player.obj.position.z)) * Math.SQRT1_2;
+            SFX.wraithHiss(Math.max(-1, Math.min(1, sx / 10)), 0.22 * Math.max(0.45, Math.min(1, 1 - (d - 8) / 20)));
+          } else {
+            e.hrState = 'vanish'; e.hrTimer = VANISH_DUR;
+          }
+        }
+        continue;
+      }
+      if (e.hrState === 'windup') {
+        // v828: 0~0.26초 본체가 부풀고 영체가 차오름 → 0.26~0.4초 본체가 영체 속으로 무너진다. 그동안 바닥 호가 플레이어를 따라간다.
+        e.hrTimer -= dt * sm;
+        const el = WT_DUR - Math.max(0, e.hrTimer);
+        e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
+        e.obj.position.y = e.baseY + 0.1;                                   // 부유를 멈추고 숨을 들이켠다
+        let bs;
+        if (el < WT_SWELL) { const w = el / WT_SWELL; bs = 1 + 0.15 * (1 - (1 - w) * (1 - w)); }
+        else { const w = Math.min(1, (el - WT_SWELL) / (WT_DUR - WT_SWELL)); bs = Math.max(0.001, 1.15 * (1 - w * w)); }
+        if (e.limbs.bodyGrp) e.limbs.bodyGrp.scale.setScalar(bs);
+        if (e.limbs.head) e.limbs.head.scale.setScalar(bs);
+        if (e.limbs.armR) e.limbs.armR.rotation.x += (-0.9 - e.limbs.armR.rotation.x) * 10 * dt; // 두 팔을 뒤로 젖혀 웅크림
+        if (e.limbs.armL) e.limbs.armL.rotation.x += (-0.9 - e.limbs.armL.rotation.x) * 10 * dt;
+        if (e.limbs.spectral) {
+          const fl = 0.9 + Math.sin(performance.now() * 0.02 + e.phase) * 0.15;
+          e.limbs.spectral.scale.setScalar((0.2 + 0.8 * Math.min(1, el / WT_DUR)) * fl);
+          const tg = e.limbs.spectral.userData.tail; if (tg) tg.rotation.z += dt * 12;
+          // 가슴 안에 두면 어두운 몸통에 가린다 — 카메라 쪽(월드 +x+z)으로 0.45 내밀어 '영혼이 빠져나오는' 모양으로
+          const ry = e.obj.rotation.y, wx = 0.318, wz = 0.318;
+          e.limbs.spectral.position.set(wx * Math.cos(ry) - wz * Math.sin(ry), 1.0, wx * Math.sin(ry) + wz * Math.cos(ry));
+        }
+        e.swingTimer = Math.max(0.001, e.hrTimer) + ARC_DUR * Math.max(0, 1 - STRIKE_DIST / Math.max(0.01, d));
+        wraithGuideSet(e._wtGuide, e.obj.position.x, e.obj.position.z, player.obj.position.x, player.obj.position.z, ARC_AMT);
+        if (e.hrTimer <= 0) {
+          setBody(false);
+          if (e.limbs.bodyGrp) e.limbs.bodyGrp.scale.setScalar(1);
+          if (e.limbs.head) e.limbs.head.scale.setScalar(1);
+          e.arcSx = e.obj.position.x; e.arcSz = e.obj.position.z;
+          e.arcTx = player.obj.position.x; e.arcTz = player.obj.position.z;       // 여기서 목표 고정 — 돌진 중엔 따라오지 않는다(걸어서 피할 수 있게)
+          let ddx = e.arcTx - e.arcSx, ddz = e.arcTz - e.arcSz; const dl = Math.hypot(ddx, ddz) || 1; ddx /= dl; ddz /= dl;
+          e.arcRx = ddz; e.arcRz = -ddx;
+          e.arcP = 0; e.hrHit = false;
+          e._wtPHit = Math.max(0, 1 - STRIKE_DIST / dl);                         // 명중 예상 지점(호 진행률) — swingTimer 를 남은 시간으로 맞춘다
+          wraithGuideSet(e._wtGuide, e.arcSx, e.arcSz, e.arcTx, e.arcTz, ARC_AMT); // 고정된 호와 정확히 같게
+          if (e.limbs.spectral) { e.limbs.spectral.scale.setScalar(1); e.limbs.spectral.position.set(0, 0.95, 0); }
+          e._prevAx = undefined; e._prevAz = undefined;
+          e.hrState = 'dashArc';
         }
         continue;
       }
@@ -26053,8 +26170,10 @@ function update(dt) {
         if (e.hrState === 'dashArc') {
           // 접근 중 명중 판정(1회)
           const nd = Math.hypot(player.obj.position.x - e.obj.position.x, player.obj.position.z - e.obj.position.z);
-          if (!e.hrHit && nd <= STRIKE_DIST) { e.hrHit = true; damagePlayer(e.damage, e); }
+          if (!e.hrHit && nd <= STRIKE_DIST) { e.hrHit = true; e.hitPending = false; e.swingTimer = 0; damagePlayer(e.damage, e); }
+          else if (WTELE && !e.hrHit) e.swingTimer = Math.max(0.001, ((e._wtPHit || 0.8) - p) * ARC_DUR / Math.max(0.05, sm)); // 명중까지 남은 시간(봇·신호용)
           if (p >= 1) {
+            e.hitPending = false; e.swingTimer = 0;
             // 빠지는 호: 진행(B→A)이 반대이므로 '같은' 오른쪽 수직 공식을 써도 공간상 반대편(왼쪽)으로 휜다.
             e.arcSx = e.obj.position.x; e.arcSz = e.obj.position.z;
             e.arcTx = (e.anchorX !== undefined ? e.anchorX : e.obj.position.x);
@@ -26067,7 +26186,7 @@ function update(dt) {
           if (p >= 1) {
             if (e.limbs.spectral) { e.limbs.spectral.visible = false; e.limbs.spectral.scale.setScalar(1); } // 영체 사라지고
             setBody(true);                                          // 본체 다시 등장
-            e.hrState = 'hover'; e.hrCd = 2.0 + Math.random() * 1.0; // 다음 공격까지(공속 더 느리게)
+            e.hrState = 'hover'; e.hrCd = WRAITH_CD_MIN + Math.random() * WRAITH_CD_RND; // 다음 공격까지(v827: 3.4~4.6초. 예전 2~3초)
           }
         }
         continue;
