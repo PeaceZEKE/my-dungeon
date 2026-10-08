@@ -4414,7 +4414,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v836'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v837'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -23198,7 +23198,7 @@ function lvfxBuild() {
     const pillar = new THREE.Mesh(pilGeo, mkMat(
       'uniform float uA, uT; varying vec2 vUv; varying float vRim; void main(){ float h = vUv.y; float fall = pow(1.0 - h, 1.6);' +
       ' float flow = 0.62 + 0.38 * sin(h * 16.0 - uT * 13.0 + sin(vUv.x * 37.7) * 1.4);' +
-      ' float a = uA * fall * flow * (0.24 + 0.76 * pow(vRim, 1.3)); gl_FragColor = vec4(mix(vec3(1.0, 0.78, 0.2), vec3(1.0, 0.97, 0.7), fall), a); }', pilA, null, rimV()));
+      ' float a = uA * fall * flow * (0.14 + 0.86 * pow(vRim, 1.3)); gl_FragColor = vec4(mix(vec3(1.0, 0.78, 0.2), vec3(1.0, 0.97, 0.7), fall), a); }', pilA, null, rimV()));
     // 오라: 캐릭터를 감싸는 불꽃 띠 — 각도마다 높이가 다르게 일렁이고 위로 갈수록 바깥으로 벌어진다
     const auraA = { value: 0 };
     const auGeo = new THREE.CylinderGeometry(1, 1, 1, 40, 6, true); auGeo.translate(0, 0.5, 0);
@@ -23207,7 +23207,7 @@ function lvfxBuild() {
       ' float top = 0.55 + 0.22 * sin(u * 5.0 + uT * 9.0) + 0.14 * sin(u * 11.0 - uT * 13.0) + 0.09 * sin(u * 3.0 + uT * 5.0);' +
       ' if (vUv.y > top) discard;' +
       ' float edge = smoothstep(top - 0.32, top, vUv.y);' +
-      ' float a = uA * (0.26 + 0.74 * edge) * (0.36 + 0.64 * vRim) * (0.75 + 0.25 * sin(vUv.y * 22.0 - uT * 18.0));' +
+      ' float a = uA * (0.22 + 0.78 * edge) * (0.24 + 0.76 * vRim) * (0.75 + 0.25 * sin(vUv.y * 22.0 - uT * 18.0));' +
       ' gl_FragColor = vec4(mix(vec3(1.0, 0.72, 0.14), vec3(1.0, 0.95, 0.55), edge), a); }', auraA, null,
       rimV('p.xz *= 1.0 + 0.45 * uv.y * uv.y')));
     // 빛 입자: 기둥 안에서 위로 솟는 세로 줄(v835 — 처음엔 길쭉하다가 위로 갈수록 짧아지며 사라진다).
@@ -23245,14 +23245,14 @@ function lvfxTick(dt) {
   const rk = Math.min(1, t / 0.55);
   F.ring.scale.setScalar(0.35 + 1.55 * (1 - (1 - rk) * (1 - rk)));
   F.ringA.value = 0.95 * (1 - rk);
-  F.discA.value = 0.95 * sm(0, 0.12, t) * fadeOut;
+  F.discA.value = 0.65 * sm(0, 0.12, t) * fadeOut;
   // 기둥: 0.08~0.4초에 솟고, 1초부터 가늘어지며 사라짐
   const rise = sm(0.08, 0.4, t);
   F.pillar.scale.set(0.95 * (1 - 0.7 * sm(0.95, LVFX_DUR, t)), Math.max(0.001, 4.4 * rise), 0.95 * (1 - 0.7 * sm(0.95, LVFX_DUR, t)));
-  F.pilA.value = (0.62 + 0.4 * (1 - sm(0.35, 0.6, t))) * sm(0.05, 0.2, t) * fadeOut;   // 솟는 순간 번쩍 → 오라가 켜지면 가라앉음
+  F.pilA.value = (0.4 + 0.36 * (1 - sm(0.35, 0.6, t))) * sm(0.05, 0.2, t) * fadeOut;   // 솟는 순간 번쩍 → 오라가 켜지면 가라앉음
   // 오라: 기둥이 다 솟을 무렵 켜져 일렁이다 사라짐
   F.aura.scale.set(0.6, 2.5, 0.6);
-  F.auraA.value = 1.0 * sm(0.22, 0.42, t) * (1 - sm(1.0, 1.42, t));
+  F.auraA.value = 0.68 * sm(0.22, 0.42, t) * (1 - sm(1.0, 1.42, t));
   // 빛 입자: 진행도 k(0 = 바닥 · 1 = 꼭대기)에 따라 길이 1.9 → 0, 폭 0.13 → 0.06, 꼭대기 근처에서 흐려짐.
   // 아이소 카메라는 세로를 0.475 배로 눌러 보이므로 길이를 넉넉히 잡는다(0.95 는 화면에서 2~3 텍셀이라 점처럼 보였다)
   // 폭 방향은 카메라 오른쪽(아이소 카메라라 화면 가로 = 월드 (1, 0, -1)/√2) — 세로 줄이 늘 화면에서 세로로 보인다
@@ -23269,10 +23269,10 @@ function lvfxTick(dt) {
     v[b + 6] = cx - RX * hw; v[b + 7] = yT; v[b + 8] = cz - RZ * hw;   // 꼬리 왼쪽
     v[b + 9] = cx + RX * hw; v[b + 10] = yT; v[b + 11] = cz + RZ * hw; // 꼬리 오른쪽
     const head = 1 - sm(0.7, 1.0, k);
-    F.sa[i * 4] = F.sa[i * 4 + 1] = head; F.sa[i * 4 + 2] = F.sa[i * 4 + 3] = 0.35 * head;   // 꼬리도 조금 남겨 줄로 읽히게
+    F.sa[i * 4] = F.sa[i * 4 + 1] = head; F.sa[i * 4 + 2] = F.sa[i * 4 + 3] = 0.2 * head;   // 꼬리도 조금 남겨 줄로 읽히게
   }
   F.sparks.geometry.attributes.position.needsUpdate = true; F.sparks.geometry.attributes.aA.needsUpdate = true;
-  F.spA.value = 1.0 * sm(0.12, 0.3, t) * fadeOut;
+  F.spA.value = 0.78 * sm(0.12, 0.3, t) * fadeOut;
 }
 // 물약 버튼 표시 갱신(개수)
 function refreshPotionBtn() {
