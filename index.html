@@ -4370,7 +4370,8 @@ const A3B_ON = !/[?&]a3b=0/.test(location.search);    // v822: 3막 일반 몹 �
 const BAL3 = !/[?&]bal3=0/.test(location.search);   // v826: 2·3막 체감 조정 — 원거리 배율을 막별로(1막 1.75 그대로 · 2막 1.3 · 3막 1.15) + 한 방 상한(일반 40% · 보스 45% of 최대 체력). 0 = v825 수치
 const RANGED_DMG_MUL_ACT = BAL3 ? [1.75, 1.3, 1.15] : [1.75, 1.75, 1.75]; // 막별 원거리 몬스터 공격력 배율(봇 실측: 2막 혼령 한 방 42% · 3막 농침벌 54% → 31%·33%)
 const HIT_CAP_MOB = BAL3 ? 0.40 : 9;   // 일반 몬스터 한 방 상한(최대 체력 비율). 1막 최대 실측 33% 라 1막은 안 걸린다
-const HIT_CAP_BOSS = BAL3 ? 0.45 : 9;  // 보스 한 방 상한(90층 왕 맨몸 80% → 45%)
+const HIT_CAP_BOSS = BAL3 ? 0.40 : 9;  // 보스 한 방 상한(90층 왕 맨몸 80% · 흑기사 49% → 40%. 1막 오크 보스 36% 는 안 걸린다)
+const WRAITH_DMG_MUL = 0.9;           // 혼령 공격력 배율(예전엔 원거리 1.75 를 그대로 받았다)
 const TUT_ON = !/[?&]tut=0/.test(location.search);     // v823: 온보딩 길잡이(처음 겪는 상황마다 한 번 뜨는 안내 띠). 0 = 끔 · ?tutreset=1 이면 본 기록을 지운다
 const HITFX_ON = !/[?&]hitfx=0/.test(location.search); // v822: 데미지 숫자(DOM) + 플레이어 피격 화면 흔들림. 0 = 끔
 const UI2_ON = !/[?&]ui2=0/.test(location.search);   // v814: UI v2 던전 HUD(픽셀 장식 · 세리프 · 초상화). 0 = 예전 HUD
@@ -21091,7 +21092,7 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
   // v826: 원거리 배율은 막별(RANGED_DMG_MUL_ACT) — 1.75 를 막 배율 위에 그대로 얹으면 2·3막 투사체 한 방이 체력의 40~55% 가 됐다(점프가 없어 피할 수단이 걷기뿐)
   const rangedMul = RANGED_DMG_MUL_ACT[Math.min(RANGED_DMG_MUL_ACT.length - 1, Math.floor((player.floor - 1) / 30))];
   if (isRanged && type !== 'wraith') { hp *= 0.7; dmg *= rangedMul; exp = Math.floor(exp * 1.3); sp *= 0.82; armorMat = getLowPolyMat(0x2b4c8c); } // 일반 원거리: 약간 느리게(카이팅 균형)
-  if (type === 'wraith') { hp *= 0.7; dmg *= rangedMul; exp = Math.floor(exp * 1.3); } // 혼령: 원거리 딜러(맷집 약·고화력). 돌진형이라 속도 페널티는 없음.
+  if (type === 'wraith') { hp *= 0.7; dmg *= (BAL3 ? WRAITH_DMG_MUL : rangedMul); exp = Math.floor(exp * 1.3); } // 혼령: 맷집 약한 돌진형. v826: 벽을 뚫고 와 예고 없이 닿는 접촉 타격이라 원거리 배율(1.75)을 얹지 않는다 — 봇 실측 2막 1위 피해원(층당 6타·한 방 31%)
   // 막(Act) 강화: 2막 이후 몬스터는 1막보다 확실히 강하게(체력·공격력 상향). 막마다 누적.
   const actIdx = Math.floor((player.floor - 1) / 30); // 0=1막, 1=2막, 2=3막…
   if (actIdx >= 1) {
