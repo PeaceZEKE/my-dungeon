@@ -4342,6 +4342,13 @@ const TORCHFX_ON = !/[?&]torchfx=0/.test(location.search);
 const UNSTICK_ON = !/[?&]unstick=0/.test(location.search);
 // v813: 몬스터끼리 붐빔 — 서로 밀 때 양보 순위(공격 중 > 다가오는 근접 > 원거리·쉬는 몬스터) + 앞이 몬스터로 막히면 플레이어 둘레로 비켜 걷고, 두 번 안 되면 1초 기다림(?crowd=0 으로 끔)
 const CROWD_ON = !/[?&]crowd=0/.test(location.search);
+const BAL2 = !/[?&]bal=0/.test(location.search);     // v821: 수치 재조정(성장 곡선·막 배율·궁수·마법사 방어·투사체 치명타). 0 = v820 수치
+const EXP_GROWTH = BAL2 ? 1.4 : 1.5;                  // 레벨업 요구 경험치 배율(1.5 는 25레벨 근처에서 성장이 사실상 멈췄다)
+const HP_PER_LV = (lv) => BAL2 ? 12 + Math.floor(lv / 2) : 15; // 레벨업 체력 — 레벨이 오를수록 조금씩 더(적 피해는 층에 선형인데 레벨은 포화한다)
+const ACT_HP_MUL = BAL2 ? 0.35 : 0.6;                 // 막당 몬스터 체력 가산(2막 ×1.35 · 3막 ×1.7. 예전 ×1.6 · ×2.2)
+const ACT_DMG_MUL = BAL2 ? 0.15 : 0.4;                // 막당 몬스터 공격력 가산(2막 ×1.15 · 3막 ×1.3. 예전 ×1.4 · ×1.8 — 90층 왕 한 방이 플레이어 체력의 122% 였다)
+const ARCHER_ARROW_MUL = BAL2 ? 1.5 : 1.0;            // 궁수 화살 발당 배수(근접 판정이 없어 기사·마법사의 절반이었다)
+const MAGE_SHIELD_LEAK = BAL2 ? 0.25 : 0;             // 마법사 보호막이 새는 비율(예전 0 = 전방위 100% 차단. 기사 정면 방어는 20% 가 샌다)
 const UI2_ON = !/[?&]ui2=0/.test(location.search);   // v814: UI v2 던전 HUD(픽셀 장식 · 세리프 · 초상화). 0 = 예전 HUD
 const DARK_STR = (() => { const m = location.search.match(/[?&]darkstr=([0-9.]+)/); const v = m ? parseFloat(m[1]) : 0.8; return isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8; })();
 // 픽셀아트 잔디(인스턴싱 빌보드). ?pgrass=0 이면 예전 3D 풀잎 메시로 돌아간다.
@@ -4363,7 +4370,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v820'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v821'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -14891,6 +14898,13 @@ const critParticleMats = [
 ];
 const critStarGeo = new THREE.OctahedronGeometry(0.16); // 별/보석 모양(일반 큐브와 구분)
 // 크리티컬 임팩트: 금빛 별 파편 분출 + 흰 충격 링 + 순간 섬광
+// v821: 투사체 치명타 — 대장간 crit 확률로 1.6 배. 연출은 근접 치명타(dealSwingDamage)와 같은 것을 짧게.
+function projCritMul(e) {
+  const c = (typeof smithBonus === 'function') ? smithBonus('crit') : 0;
+  if (!(c > 0) || Math.random() >= c) return 1;
+  if (e && e.obj) { spawnCritEffect(e.obj.position.x, e.obj.position.y + (e.scale || 1), e.obj.position.z); flashObj(e.obj, e, true); hitStop = Math.max(hitStop, 0.06); }
+  return 1.6;
+}
 function spawnCritEffect(x, y, z) {
   // 금빛 별 파편(위로 더 크게 솟구침)
   for (let i = 0; i < 18; i++) {
@@ -16210,7 +16224,7 @@ function spawnArrow(multiplier) {
     count = Math.max(3, count);
     totalAngle = Math.max(Math.PI / 5, totalAngle); // 최소 약 36도 펼침
   }
-  const baseDmg = Math.floor(player.atk + 4);     // 발당 데미지(차지 이득은 '발 수/각도')
+  const baseDmg = Math.floor((player.atk + 4) * ARCHER_ARROW_MUL); // 발당 데미지(차지 이득은 '발 수/각도'). v821: ×1.5 — 근접 판정이 없는 몫
   const range = TILE * (1.2 + t * 1.2);   // 약공격 1.2타일 → 회피콤보(t0.5) 1.8 → 풀차지 2.4타일 (배수 1:1.5:2 유지)
   const speed = 26;
   if (combo) {
@@ -16273,6 +16287,7 @@ function updateSlashes(dt) {
         // 시종장: 순간이동 중(안개로 흩어짐/재출현)엔 무적 — 검기 통과
         if ((e.type === 'servantwraith' || e.type === 'icequeen') && (e.swState === 'blinkOut' || e.swState === 'blinkIn')) continue;
         s.hitSet.add(e);
+        const cm = BAL2 ? projCritMul(e) : 1; // v821: 투사체에도 대장간 치명타(예전엔 근접 판정에만 걸려 궁수는 혜택이 0이었다)
         // 골렘: 정면 무적(바위 갑옷). 등 뒤만 약점. 검기도 동일 적용.
         if (e.type === 'golem') {
           if (!e.golemAwake) {
@@ -16291,7 +16306,7 @@ function updateSlashes(dt) {
             continue;
           }
           // 등 뒤 = 약점(1.5배) + 등 코어 번쩍
-          e.hp -= Math.floor(s.damage * 1.5); alertRoom(e);
+          e.hp -= Math.floor(s.damage * 1.5 * cm); alertRoom(e);
           const dd = Math.hypot(dx, dz) || 1; e.kbX = (dx / dd) * 14; e.kbZ = (dz / dd) * 14;
           spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale, e.obj.position.z, 1.3); flashObj(e.obj, e);
           if (e.limbs && e.limbs._glWeakMat) e.limbs._glWeakMat.emissiveIntensity = 3.0;
@@ -16301,7 +16316,7 @@ function updateSlashes(dt) {
           continue;
         }
         if (a3Blocked(e)) continue;
-        e.hp -= Math.max(1, Math.floor(s.damage * ckGuardMul(e))); // 부패한 왕 방패 방어
+        e.hp -= Math.max(1, Math.floor(s.damage * cm * ckGuardMul(e))); // 부패한 왕 방패 방어
         alertRoom(e); // 피격 시 같은 방 몬스터 전체 어그로(멀리서 쏴도 방 전체가 눈치챔)
         const d = Math.hypot(dx, dz) || 1;
         e.kbX = (dx / d) * 14; e.kbZ = (dz / d) * 14;
@@ -21021,8 +21036,8 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
   // 막(Act) 강화: 2막 이후 몬스터는 1막보다 확실히 강하게(체력·공격력 상향). 막마다 누적.
   const actIdx = Math.floor((player.floor - 1) / 30); // 0=1막, 1=2막, 2=3막…
   if (actIdx >= 1) {
-    const hpMul = 1 + actIdx * 0.6;   // 2막 ×1.6, 3막 ×2.2 …
-    const dmgMul = 1 + actIdx * 0.4;  // 2막 ×1.4, 3막 ×1.8 …
+    const hpMul = 1 + actIdx * ACT_HP_MUL;   // v821: 2막 ×1.35, 3막 ×1.7 … (예전 0.6: ×1.6 · ×2.2)
+    const dmgMul = 1 + actIdx * ACT_DMG_MUL;  // v821: 2막 ×1.15, 3막 ×1.3 … (예전 0.4: ×1.4 · ×1.8)
     hp *= hpMul; dmg *= dmgMul; exp = Math.floor(exp * (1 + actIdx * 0.4));
   }
 
@@ -23660,7 +23675,8 @@ function floorSweepBonus() {
   updateHUD();
 }
 function checkLevelUp() {
-  if (player.exp >= player.expMax) { player.lv++; player.exp -= player.expMax; player.expMax = Math.floor(player.expMax * 1.5); player.hpMax += 15; player.hp = player.hpMax; player.atk += 4; toast('✦ LEVEL UP! Lv.' + player.lv); }
+  // v821: 소탕 보너스처럼 한 번에 큰 경험치가 들어와도 밀린 레벨을 다 올린다(예전 if 는 처치당 1레벨)
+  while (player.exp >= player.expMax) { player.lv++; player.exp -= player.expMax; player.expMax = Math.floor(player.expMax * EXP_GROWTH); player.hpMax += HP_PER_LV(player.lv); player.hp = player.hpMax; player.atk += 4; toast('✦ LEVEL UP! Lv.' + player.lv); }
 }
 
 function damagePlayer(amount, enemyObj) {
@@ -23701,6 +23717,13 @@ function damagePlayer(amount, enemyObj) {
       $('shieldEffect').style.opacity = '0.6'; setTimeout(() => { $('shieldEffect').style.opacity = '0'; }, 100);
       SFX.block();
       if (player.manaShieldMat) { player.manaShieldMat.opacity = 0.55; } // 피격 시 잠깐 진하게
+      // v821: 보호막은 전방위지만 25% 가 샌다(기사 정면 방어 20% 와 비슷) — 예전엔 함정까지 100% 차단이라 기사 방어보다 우월했다
+      if (MAGE_SHIELD_LEAK > 0) {
+        player.hp -= Math.max(1, Math.round(amount * MAGE_SHIELD_LEAK)); player.hitThisFloor = true;
+        $('hurt').style.opacity = '1'; setTimeout(() => { $('hurt').style.opacity = '0'; }, 150);
+        if ((bossTestMode || godInvuln) && player.hp <= 0) player.hp = 1;
+        updateHUD(); if (player.hp <= 0) { player.hurtCooldown = 0.18; die(); return; }
+      }
     }
     player.hurtCooldown = 0.18;
     return;
@@ -26531,9 +26554,10 @@ function applyMetaUpgrades() {
   player.runBuff = { atk: 0, atkSpeed: 0, hp: 0 };   // v818: 이번 회차에 보상·스탯 물약으로 얻은 양(HUD 버프 칸) — 회차 시작마다 0
   const hpLv = upgradeLevel('hp'), atkLv = upgradeLevel('atk'), staLv = upgradeLevel('sta'), spdLv = upgradeLevel('speed');
   // 캐릭터별 기본 능력치 분기: 기사는 체력 높고 공격력 보통, 마법사는 체력 낮고 공격력 높음
-  const isMage = (selectedChar === 'mage');
-  const baseHp  = isMage ? 75  : 130;
-  const baseAtk = isMage ? 18  : 12;
+  const isMage = (selectedChar === 'mage'), isArcher = (selectedChar === 'archer');
+  // v821: 궁수는 기사와 같은 130/12 였는데 근접 판정이 없어 기본 피해가 절반이었다 — 체력은 기사·마법사 사이, 공격은 살짝 위
+  const baseHp  = isMage ? 75  : (isArcher && BAL2) ? 110 : 130;
+  const baseAtk = isMage ? 18  : (isArcher && BAL2) ? 14 : 12;
   // 3막 장비 보너스(공격력·최대 체력)는 여기서 한 번에 얹는다 — 이 게임의 모든 피해가
   // player.atk에서 파생되므로 타격 지점마다 곱할 필요가 없다. 대장간은 마을에 있고
   // 던전 입장이 이 함수를 다시 부르므로 장비를 바꾸면 다음 회차부터 반영된다.
@@ -29227,12 +29251,15 @@ function continueFromRest() {
 // 마을 단축 진입용: 지정 층부터 새 회차 시작(레벨/스탯 대략 스케일)
 function startRunAtFloorReset(n) {
   defeatedBosses.clear(); lastChestFloor = 0; player.alive = true;
-  const lv = Math.max(1, Math.floor(n / 2));
-  player.lv = lv; player.exp = 0; player.expMax = Math.floor(10 * Math.pow(1.5, Math.min(lv - 1, 20)));
+  // v821: 레벨은 그 층까지 전부 소탕했을 때의 기대 레벨(시뮬레이션: 31층 22 · 61층 27). 체력·경험치 요구량은 레벨업 곡선을 그대로 따라 쌓는다
+  const lv = BAL2 ? (n >= 61 ? 27 : 22) : Math.max(1, Math.floor(n / 2));
+  let expMax = 10, hpGain = 0; for (let l = 2; l <= lv; l++) { expMax = Math.floor(expMax * EXP_GROWTH); hpGain += HP_PER_LV(l); }
+  player.lv = lv; player.exp = 0; player.expMax = BAL2 ? expMax : Math.floor(10 * Math.pow(1.5, Math.min(lv - 1, 20)));
   player.atkSpeed = 1.0; player.kills = 0; player.floor = n;
   staRegenCooldown = 0; player.gold = 0; runGold = 0; runMaterials = {}; player.noHitFloors = 0; player.hitThisFloor = false;
+  player.potions = 1; runReviveUsed = false; bossRewardQueue.length = 0; bossRewardCur = null; // v821: 직전 판 잔량·부활 사용 여부가 남던 것 초기화
   applyMetaUpgrades(); // 기본 스탯 + 메타
-  player.hpMax += (lv - 1) * 15; player.atk += (lv - 1) * 4; player.hp = player.hpMax;
+  player.hpMax += hpGain; player.atk += (lv - 1) * 4; player.hp = player.hpMax;
   runStartTime = Date.now();
   if ($('rewardOverlay')) $('rewardOverlay').classList.add('hidden'); rewardPaused = false;
   toast('▼ Floor ' + n + _i18n(' — 다음 막'));
