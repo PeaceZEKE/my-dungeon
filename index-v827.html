@@ -4372,10 +4372,10 @@ const RANGED_DMG_MUL_ACT = BAL3 ? [1.75, 1.3, 1.15] : [1.75, 1.75, 1.75]; // 막
 const HIT_CAP_MOB = BAL3 ? 0.40 : 9;   // 일반 몬스터 한 방 상한(최대 체력 비율). 1막 최대 실측 33% 라 1막은 안 걸린다
 const HIT_CAP_BOSS = BAL3 ? 0.40 : 9;  // 보스 한 방 상한(90층 왕 맨몸 80% · 흑기사 49% → 40%. 1막 오크 보스 36% 는 안 걸린다)
 const WRAITH_DMG_MUL = 0.9;           // 혼령 공격력 배율(예전엔 원거리 1.75 를 그대로 받았다)
-const WRAITH2 = !/[?&]wraith2=0/.test(location.search); // v827: 혼령 히트앤런 빈도 조정 — 타격 뒤 쿨 2~3 → 3.4~4.6초 · 첫 타격 1~1.7 → 1.8~2.6초 · 무리 공용 간격(한 마리가 덤비면 1.5초 동안 다른 혼령은 못 덤빔). 0 = v826 동작
+const WRAITH2 = !/[?&]wraith2=0/.test(location.search); // v827: 혼령 히트앤런 빈도 조정 — 타격 뒤 쿨 2~3 → 3.4~4.6초 · 첫 타격 1~1.7 → 1.8~2.6초 · 무리 공용 간격(한 마리가 덤비면 3초 동안 다른 혼령은 못 덤빔). 0 = v826 동작
 const WRAITH_CD_MIN = WRAITH2 ? 3.4 : 2.0, WRAITH_CD_RND = WRAITH2 ? 1.2 : 1.0;   // 타격(복귀) 뒤 다음 공격까지
 const WRAITH_CD0_MIN = WRAITH2 ? 1.8 : 1.0, WRAITH_CD0_RND = WRAITH2 ? 0.8 : 0.7; // 깨어나서 첫 공격까지
-const WRAITH_GROUP_GAP = WRAITH2 ? 1.5 : 0;  // 무리 공용 간격(초). 혼령 하나가 공격을 시작하면 이 시간 동안 다른 혼령은 기다린다
+const WRAITH_GROUP_GAP = WRAITH2 ? 3.0 : 0;  // 무리 공용 간격(초). 혼령 하나가 공격을 시작하면 이 시간 동안 다른 혼령은 기다린다 — 무리 전체 분당 20타 상한. 1.5 는 오히려 피격이 늘었다(아래 CLAUDE.md)
 let wraithClock = 0, wraithLastStrike = -99;  // 게임 시계(update 가 dt 를 더함) · 마지막으로 공격을 시작한 시각
 const TUT_ON = !/[?&]tut=0/.test(location.search);     // v823: 온보딩 길잡이(처음 겪는 상황마다 한 번 뜨는 안내 띠). 0 = 끔 · ?tutreset=1 이면 본 기록을 지운다
 const HITFX_ON = !/[?&]hitfx=0/.test(location.search); // v822: 데미지 숫자(DOM) + 플레이어 피격 화면 흔들림. 0 = 끔
