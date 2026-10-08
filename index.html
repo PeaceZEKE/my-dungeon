@@ -4406,7 +4406,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v829'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v830'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -25347,6 +25347,9 @@ function update(dt) {
 
     // ===== 흑기사(darkknight) 보스: 횡베기(기본·좌우 가로베기) · 대지 가르기(특수, HP70%↓) · 돌진(갭클로저) =====
     // ===== 시종장의 망령(servantwraith) — 마법형 기본 패턴: 촛불 투사체 + 순간이동 =====
+    // v830 버그 수정: 순간이동형 보스가 얼면(마법사 빙결 패링) 아래 보스 블록을 건너뛰고 일반 근접 적 코드로 떨어졌다 —
+    // 얼음 여왕 리그엔 다리가 없어 limbs.legR 에서 예외 → 얼어 있는 2.5초 동안 매 프레임 update 가 끊기고 렌더도 건너뛰어 화면이 멈췄다. 얼어 있는 동안은 제자리.
+    if (e.isBoss && (e.type === 'servantwraith' || e.type === 'icequeen') && e.frozen > 0) continue;
     if (e.isBoss && (e.type === 'servantwraith' || e.type === 'icequeen') && e.frozen <= 0) {
       const dx = player.obj.position.x - e.obj.position.x, dz = player.obj.position.z - e.obj.position.z;
       const d = Math.hypot(dx, dz) || 1;
@@ -26510,7 +26513,7 @@ function update(dt) {
       const eSin = Math.sin(e.phase);
       // 3막 곤충(다리 6개·날개)은 사람형 리그가 아니라 자체 보행/비행 리그를 돌린다
       if (e.limbs.bug) updateBugRig(e, dt, moveSpd > 0.1);
-      else { e.limbs.legR.rotation.x = eSin * 0.8; e.limbs.legL.rotation.x = -eSin * 0.8; }
+      else if (e.limbs.legR && e.limbs.legL) { e.limbs.legR.rotation.x = eSin * 0.8; e.limbs.legL.rotation.x = -eSin * 0.8; } // 다리 없는 리그(얼음 여왕)가 이 길로 와도 죽지 않게(v830)
 
       let eArmRX = -eSin * 0.5, eArmRZ = 0, eArmLX = eSin * 0.5, eArmLZ = 0;
       if (e.isRanged) {
