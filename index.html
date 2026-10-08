@@ -23748,7 +23748,7 @@ function damagePlayer(amount, enemyObj) {
   const def = (typeof smithBonus === 'function') ? Math.min(0.6, smithBonus('defense')) : 0;
   if (def > 0) amount = Math.max(1, Math.round(amount * (1 - def)));
   // v826: 한 방 상한 — 어떤 적도 한 번에 최대 체력의 40%(보스 45%)를 넘게 못 깎는다. 투사체는 주인(owner)의 보스 여부를 넘긴다
-  { const cap = Math.ceil(player.hpMax * ((enemyObj && enemyObj.isBoss) ? HIT_CAP_BOSS : HIT_CAP_MOB)); if (amount > cap) amount = cap; }
+  if (player.floor > 30) { const cap = Math.ceil(player.hpMax * ((enemyObj && enemyObj.isBoss) ? HIT_CAP_BOSS : HIT_CAP_MOB)); if (amount > cap) amount = cap; } // 2막부터(1막은 바이트 단위로 그대로 — 30층 오크 보스 최대 43% 가 걸리지 않게)
   if (player.dodgeT > 0) {
     // 궁수: 적 공격 타이밍에 맞춘 회피 = 완벽 회피 → 순간 이속 버스트(기사 패링에 대응)
     if (selectedChar === 'archer') {
