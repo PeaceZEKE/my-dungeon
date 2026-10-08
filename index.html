@@ -70,7 +70,8 @@
     opacity:0; transition:opacity .35s; box-shadow:0 4px 12px rgba(0,0,0,0.5); }
   #tipBar.show { opacity:1; }
   #tipBar .t { font-size:11px; letter-spacing:2px; color:#d9b56c; margin-bottom:3px; font-weight:700; }
-  #tipBar.m { bottom:14px; max-width:min(520px,54vw); font-size:13px; padding:8px 12px; }
+  #tipBar.m { bottom:12px; max-width:min(400px,46vw); font-size:11px; line-height:1.4; padding:4px 8px; }
+  #tipBar.m .t { font-size:9px; letter-spacing:1px; margin-bottom:1px; }
 
   #dmgNums { position:fixed; inset:0; pointer-events:none; z-index:6; overflow:hidden; }
   #dmgNums .dn { position:absolute; left:0; top:0; font-family:'UI2Px','Galmuri9',monospace; font-size:20px; line-height:1; color:#f3ead2; white-space:nowrap; -webkit-font-smoothing:none; will-change:transform,opacity;
@@ -215,6 +216,7 @@ body.ui2 #toast { top: 108px; bottom: auto; transform: translateX(-50%) scale(va
   padding: 10px 70px; line-height: 1.4; border-radius: 0; box-shadow: none; max-width: 96vw; width: max-content; text-align: center;
   text-shadow: 0 1px 0 rgba(0,0,0,.95), 0 0 8px rgba(0,0,0,.7); }
 body.ui2.ui2m #toast { top: 86px; font-size: 16px; padding: 9px 56px; }
+body.ui2 #tipBar.m { border-width: 10px !important; border-image-width: 10px !important; padding: 3px 6px !important; } /* v825: 모바일 길잡이 띠 축소 */
 /* 모바일 버튼: 자리·크기·터치는 그대로 · 그림만(배경은 JS 가 찍은 픽셀 원·마름모) */
 body.ui2 .joy-base, body.ui2 .joy-stick, body.ui2 #btnBlock, body.ui2 .potion-btn, body.ui2 .skill-btn { border: none; border-radius: 0; box-shadow: none; image-rendering: pixelated; }
 body.ui2 .skill-btn { background: var(--u2dia) center / 62px 62px no-repeat; }
@@ -4388,7 +4390,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v824'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v825'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
