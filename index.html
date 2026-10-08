@@ -77,6 +77,7 @@
     text-shadow:1px 0 #000,-1px 0 #000,0 1px #000,0 -1px #000,1px 1px #000,-1px -1px #000,1px -1px #000,-1px 1px #000; }
   #dmgNums .dn.crit { color:#ffd86b; font-size:28px; }
   #dmgNums .dn.hurt { color:#ff6a5a; }
+  #dmgNums .dn.skill { color:#8fe3ff; } /* v824: 스킬·반사·폭발 피해 */
   #hurt { position:fixed; inset:0; pointer-events:none; z-index:5;
     background: radial-gradient(ellipse at center, rgba(229,62,62,0) 50%, rgba(229,62,62,0.6) 100%);
     opacity:0; transition: opacity .15s; }
@@ -4387,7 +4388,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v823'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v824'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -16201,7 +16202,7 @@ function fireballExplode(x, z, radius, damage, sourceSlash) {
       // 골렘은 폭발도 등 뒤만(정면 바위 갑옷) — 광역이라 절반만 적용
       if (e.type === 'golem' && !e.golemAwake) continue;
       if (a3Blocked(e)) continue;
-      e.hp -= Math.floor(damage * 0.4); flashObj(e.obj, e); alertRoom(e);
+      { const fd = Math.floor(damage * 0.4); e.hp -= fd; dmgNumAdd(e.obj.position.x, e.obj.position.y + (e.scale || 1) * 1.3, e.obj.position.z, String(fd), 'skill'); } flashObj(e.obj, e); alertRoom(e); // v824 숫자
       if (e.hp <= 0) killEnemy(e);
     }
   }
@@ -16626,7 +16627,7 @@ function updateFireballs(dt) {
         const edx = e.obj.position.x - f.mesh.position.x, edz = e.obj.position.z - f.mesh.position.z;
         if (Math.hypot(edx, edz) < 0.8 + e.radius) {
           if (a3Blocked(e)) continue;
-          e.hp -= Math.min(f.damage, Math.ceil(e.hpMax * 0.25)); // 반격 상한(즉사 방지)
+          { const fd = Math.min(f.damage, Math.ceil(e.hpMax * 0.25)); e.hp -= fd; dmgNumAdd(e.obj.position.x, e.obj.position.y + (e.scale || 1) * 1.3, e.obj.position.z, String(fd), 'skill'); } // 반격 상한(즉사 방지) · v824 숫자
           const d3 = Math.hypot(edx, edz) || 1; e.kbX = (edx / d3) * 16; e.kbZ = (edz / d3) * 16;
           spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale, e.obj.position.z, 1.2); flashObj(e.obj, e);
           SFX.hit(1.2);
@@ -22754,7 +22755,7 @@ function smithThorns(srcEnemy) {
     const dd = Math.hypot(e.obj.position.x - x, e.obj.position.z - z);
     if (dd < R) {
       if (a3Blocked(e)) continue;
-      e.hp -= dmg; flashObj(e.obj, e); alertRoom(e);
+      e.hp -= dmg; dmgNumAdd(e.obj.position.x, e.obj.position.y + (e.scale || 1) * 1.3, e.obj.position.z, String(dmg), 'skill'); flashObj(e.obj, e); alertRoom(e); // v824 숫자
       igniteEnemy(e); // 폭발 대신 적이 불타오르는 이펙트
       if (e.hp <= 0) killEnemy(e);
     }
@@ -23059,9 +23060,9 @@ function skillAreaDamage(R, dmgMul, coneDir, coneCos, kbForce) {
     }
     // 대장간 치명타도 스킬에 적용
     const critCh = (typeof smithBonus === 'function') ? smithBonus('crit') : 0;
-    if (critCh > 0 && Math.random() < critCh) dmg = Math.floor(dmg * 1.6);
+    let skCrit = false; if (critCh > 0 && Math.random() < critCh) { dmg = Math.floor(dmg * 1.6); skCrit = true; }
     if (a3Blocked(e)) continue;
-    e.hp -= dmg; alertRoom(e);
+    e.hp -= dmg; alertRoom(e); dmgNumAdd(e.obj.position.x, e.obj.position.y + (e.scale || 1) * 1.3, e.obj.position.z, String(dmg), skCrit ? 'crit' : 'skill'); // v824 숫자
     if (kbForce) { e.kbX = (dx / d) * kbForce; e.kbZ = (dz / d) * kbForce; }
     spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale, e.obj.position.z, dmgMul); flashObj(e.obj, e);
     hitCount++;
@@ -23171,9 +23172,9 @@ function skillMageChain() {
     // 피해
     let dmg = Math.floor((player.atk + 4) * dmgMul);
     const critCh = (typeof smithBonus === 'function') ? smithBonus('crit') : 0;
-    if (critCh > 0 && Math.random() < critCh) dmg = Math.floor(dmg * 1.6);
+    let skCrit = false; if (critCh > 0 && Math.random() < critCh) { dmg = Math.floor(dmg * 1.6); skCrit = true; }
     if (a3Blocked(cur)) break;
-    cur.hp -= dmg; alertRoom(cur);
+    cur.hp -= dmg; alertRoom(cur); dmgNumAdd(cur.obj.position.x, cur.obj.position.y + (cur.scale || 1) * 1.3, cur.obj.position.z, String(dmg), skCrit ? 'crit' : 'skill'); // v824 숫자
     spawnLightningSpark(cur.obj.position.x, cur.obj.position.y + cur.scale, cur.obj.position.z); flashObj(cur.obj);
     hit.add(cur);
     if (cur.hp <= 0) killEnemy(cur);
@@ -23363,9 +23364,9 @@ function updateArrowRains(dt) {
           if (dd < r.radius + e.radius) {
             let dmg = r.dmg;
             const critCh = (typeof smithBonus === 'function') ? smithBonus('crit') : 0;
-            if (critCh > 0 && Math.random() < critCh) dmg = Math.floor(dmg * 1.6);
+            let skCrit = false; if (critCh > 0 && Math.random() < critCh) { dmg = Math.floor(dmg * 1.6); skCrit = true; }
             if (a3Blocked(e)) continue;
-            e.hp -= dmg; alertRoom(e); flashObj(e.obj, e);
+            e.hp -= dmg; alertRoom(e); flashObj(e.obj, e); dmgNumAdd(e.obj.position.x, e.obj.position.y + (e.scale || 1) * 1.3, e.obj.position.z, String(dmg), skCrit ? 'crit' : 'skill'); // v824 숫자
             if (e.hp <= 0) killEnemy(e);
           }
         }
@@ -23496,7 +23497,7 @@ function dealSwingDamage(multiplier) {
     if (d < p.R + 0.6) {
       // 실제 공격 데미지로 hp를 깎음(적과 동일 공식). 강공격(multiplier↑)은 한 번에 더 많이 깎임.
       const iceDmg = Math.floor((player.atk + Math.random() * 4) * multiplier);
-      p.hp -= iceDmg;
+      p.hp -= iceDmg; dmgNumAdd(p.x, 1.6, p.z, String(iceDmg), ''); // v824 숫자
       // 기둥 번쩍(강하게 친 만큼 더 밝게) + 타격 이펙트
       const flash = 2.0 + Math.min(2.0, multiplier);
       for (const pl of p.pillars) { if (pl.material && pl.visible) { pl.material.emissiveIntensity = flash; } }
@@ -23811,7 +23812,7 @@ function damagePlayer(amount, enemyObj) {
       let reflectDmg = Math.floor(amount * 2.0);
       // 반격 상한: 적 최대 체력의 25%를 넘지 않게(특히 보스가 한 방에 죽는 것 방지)
       reflectDmg = Math.min(reflectDmg, Math.ceil(enemyObj.hpMax * 0.25));
-      enemyObj.hp -= reflectDmg;
+      enemyObj.hp -= reflectDmg; dmgNumAdd(enemyObj.obj.position.x, enemyObj.obj.position.y + (enemyObj.scale || 1) * 1.3, enemyObj.obj.position.z, String(reflectDmg), 'skill'); // v824 숫자
       spawnHitEffect(enemyObj.obj.position.x, enemyObj.obj.position.y + (enemyObj.scale || 1), enemyObj.obj.position.z, 1.4); flashObj(enemyObj.obj);
       if (enemyObj.hp <= 0) killEnemy(enemyObj);
       player.hurtCooldown = 0.15; // 무피해
