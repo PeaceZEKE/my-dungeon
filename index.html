@@ -4414,7 +4414,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v837'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v838'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -11017,7 +11017,10 @@ function followGround(rec, mesh) {
 }
 
 // ===== 막(Act) 판정: 1막=1~30층(이끼 동굴), 2막=31~60층(무너진 성), 3막=61~90층(부패한 성) =====
-function currentAct() { if (!player) return 1; if (player.floor >= 61) return 3; return (player.floor >= 31) ? 2 : 1; }
+// v838: 막 길이·마지막 구현 막을 상수로(기획서 3절 — 4막 착수 전 일반화). 막 = ⌈층 / 30⌉ 을 마지막 구현 막에서 자른다.
+// LAST_ACT 를 4 로 올리면 descend(90층 쉼터가 더는 끝이 아님)·진행도 보고·방 개수 표가 같이 따라온다.
+const ACT_LEN = 30, LAST_ACT = 3;
+function currentAct() { if (!player) return 1; return Math.min(LAST_ACT, Math.max(1, Math.ceil(player.floor / ACT_LEN))); }
 
 // ===== 절차적 도트 텍스처(HD-2D풍) =====
 // 흑백 명도 패턴을 코드로 생성해 재질 색에 곱함 — 팔레트는 유지하고 도트 디테일만 추가.
@@ -13171,8 +13174,9 @@ function generateDungeon() {
   // 1막=1~30층, 2막=31~60층, … 각 막의 1층째에는 1막 1층처럼 작고 아담하게 시작.
   const actStart = (Math.floor((player.floor - 1) / 30)) * 30 + 1; // 1,31,61,…
   const floorInAct = player.floor - actStart + 1;                  // 1~30
-  // 막별 시작 방 개수: 1막=3개, 2막(31~60층)=4개, 이후 막도 필요시 조정.
-  const actBaseRooms = (actStart === 61) ? 5 : (actStart === 31) ? 4 : 3;
+  // 막별 시작 방 개수(기획서 8-2): 1막 3 · 2막 4 · 3막 5 · 4·5막 5(계획). 표 밖은 마지막 값.
+  const ACT_BASE_ROOMS = [3, 4, 5, 5, 5];
+  const actBaseRooms = ACT_BASE_ROOMS[Math.min(ACT_BASE_ROOMS.length, Math.ceil(actStart / ACT_LEN)) - 1];
   // 목표 방 개수: 막 안에서 4층마다 1개씩 증가, 보스층은 적게.
   let targetRooms;
   if (isBossFloor) targetRooms = actBaseRooms + Math.floor(Math.random() * 2); // 시작개수~+1(단순)
@@ -26812,13 +26816,20 @@ function update(dt) {
 
 function descend() {
   if (!player.hitThisFloor) player.noHitFloors++; player.hitThisFloor = false;
-  // 막 사이 쉼터: 30층(보스)을 클리어하면 다음 층 대신 여행자의 쉼터로 진입
+  // 막 사이 쉼터: 막 마지막 층(30·60·90…, 보스)을 클리어하면 다음 층 대신 여행자의 쉼터로 진입한다.
   // v819: 쉼터 도착을 저장한다(saveRun 이 inRest 를 보고 rest 필드를 넣는다) — 예전엔 보스층 시작 상태만 남아 이어하면 보스를 또 잡았다
-  if (player.floor === 30) { meta.restUnlocked = true; saveMeta(); restIsFinal = false; restNextFloor = 31; player.potions++; toast(_i18n('🧪 회복 물약 +1 (1막 클리어!)'), 2500); enterRest(true); saveRun(); cgShowMidgame(); return; } // 막 전환 = 안전한 쉼터 도착 직후라 광고 지점으로 적합
-  // 60층(2막 최종 보스=얼음 여왕) 클리어 → 쉼터 → 3막(부패한 성, 61층)으로 이어짐
-  if (player.floor === 60) { meta.act2Cleared = true; saveMeta(); restIsFinal = false; restNextFloor = 61; player.potions++; toast(_i18n('🧪 회복 물약 +1 (2막 클리어!)'), 2500); enterRest(true); saveRun(); cgShowMidgame(); return; } // 막 전환 = 안전한 쉼터 도착 직후라 광고 지점으로 적합
-  // 90층(3막 최종) 클리어: 현재 콘텐츠의 끝 → 쉼터로(다음 막 입구 막힘 안내)
-  if (player.floor === 90) { restIsFinal = true; restNextFloor = 91; player.potions++; toast(_i18n('🧪 회복 물약 +1 (3막 클리어!)'), 2500); enterRest(true); saveRun(); cgShowMidgame(); return; } // 막 전환 = 안전한 쉼터 도착 직후라 광고 지점으로 적합
+  // v838: 30·60·90 세 줄을 하나로. 해금 기록은 예전 키(1막 restUnlocked · 2막 act2Cleared)를 그대로 쓰고 actCleared(최고 막)를 같이 남긴다.
+  //       마지막 구현 막(LAST_ACT)을 깨면 쉼터가 '끝'(다음 막 입구 막힘 · 출구는 정산 → 마을).
+  if (player.floor % ACT_LEN === 0) {
+    const act = player.floor / ACT_LEN;
+    if (act === 1) meta.restUnlocked = true;
+    if (act === 2) meta.act2Cleared = true;
+    if (!(meta.actCleared >= act)) meta.actCleared = act;
+    saveMeta();
+    restIsFinal = act >= LAST_ACT; restNextFloor = player.floor + 1; player.potions++;
+    toast(_i18n('🧪 회복 물약 +1 (' + act + '막 클리어!)'), 2500);
+    enterRest(true); saveRun(); cgShowMidgame(); return;   // 막 전환 = 안전한 쉼터 도착 직후라 광고 지점으로 적합
+  }
   player.floor += 1; toast('▼ Floor ' + player.floor); player.hp = Math.min(player.hpMax, player.hp + 25); startFloor(); updateFloorJumpPanel();
 }
 function startFloor() {
@@ -26826,8 +26837,8 @@ function startFloor() {
   if (typeof dmgNumClear === 'function') dmgNumClear(); // v822: 지난 층 데미지 숫자 정리
   if (typeof hideHowtoHint === 'function') hideHowtoHint(); // 던전 진입 시 조작 힌트 정리
   cgGameplayStart(); // CrazyGames 통계
-  // 진행도 보고: 현재 콘텐츠의 끝인 90층 기준(테스트 회차는 제외)
-  if (!godMode) { try { if (cgReady) window.CrazyGames.SDK.game.reportGameCompletedPercentage(Math.max(0, Math.min(100, Math.round(player.floor / 90 * 100)))); } catch (e) {} }
+  // 진행도 보고: 현재 콘텐츠의 끝(LAST_ACT 막의 마지막 층 = 90층) 기준(테스트 회차는 제외)
+  if (!godMode) { try { if (cgReady) window.CrazyGames.SDK.game.reportGameCompletedPercentage(Math.max(0, Math.min(100, Math.round(player.floor / (LAST_ACT * ACT_LEN) * 100)))); } catch (e) {} }
   for (const f of fireballs) scene.remove(f.mesh); fireballs.length = 0;
   for (const c of thrownClubs) scene.remove(c.mesh); thrownClubs.length = 0;
   for (const s of slashes) scene.remove(s.mesh); slashes.length = 0;
