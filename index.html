@@ -4378,6 +4378,8 @@ const WRAITH_CD0_MIN = WRAITH2 ? 1.8 : 1.0, WRAITH_CD0_RND = WRAITH2 ? 0.8 : 0.7
 const WRAITH_GROUP_GAP = WRAITH2 ? 3.0 : 0;  // 무리 공용 간격(초). 혼령 하나가 공격을 시작하면 이 시간 동안 다른 혼령은 기다린다 — 무리 전체 분당 20타 상한. 1.5 는 오히려 피격이 늘었다(아래 CLAUDE.md)
 let wraithClock = 0, wraithLastStrike = -99;
 const WTELE = !/[?&]wtele=0/.test(location.search); // v828: 혼령 공격 예고 — 사라지기 전 0.4초 '불붙는 윈드업'(본체가 부풀며 영체가 켜짐 → 무너짐) + 쉿 소리 + 바닥 호 안내 + hitPending 신호(패링·방어·회피가 걸린다). 0 = v827 동작(0.18초 소멸만)
+const SW2 = !/[?&]sw2=0/.test(location.search);   // v829: 40층 시종장 보스전 길이 조정 — 붙자마자 도망가지 않게(가까이 1.6초 붙어 있어야 근접 회피 순간이동 · 확률 60 → 40%) + 2페이즈 화염 장판을 피할 수 있게(반지름 5.5 → 3.75 · 3 → 2개 · 간격 3.5~5 → 4.5~6초). 시종장만(얼음 여왕은 그대로). 0 = v828 동작
+const SW2_NEAR_HOLD = 1.6, SW2_NEAR_CHANCE = 0.4;  // 근접 회피 순간이동: 플레이어가 SW_NEAR 안에 이만큼 붙어 있은 뒤에만 · 그때 확률
 const WT_DUR = 0.4, WT_SWELL = 0.26;       // 윈드업 전체 · 그중 부푸는 구간(나머지는 무너져 사라짐 — 예전 소멸 0.18초를 대신한다)
 let _wtrs = 0x2545f491;                    // 안내 호 THREE 객체를 만드는 동안 Math.random 대신 쓰는 자체 난수(uuid 가 게임 난수를 먹지 않게)
 const _wtr = () => { _wtrs = (_wtrs * 1664525 + 1013904223) >>> 0; return _wtrs / 4294967296; };  // 게임 시계(update 가 dt 를 더함) · 마지막으로 공격을 시작한 시각
@@ -4404,7 +4406,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v828'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v829'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -25349,6 +25351,8 @@ function update(dt) {
       e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI; // 항상 플레이어를 향함
       e.swCd = Math.max(0, e.swCd - dt);
       e.swSummonCd = Math.max(0, e.swSummonCd - dt);
+      // v829(SW2): 플레이어가 가까이(2.2칸) 붙어 있은 시간 — 근접 회피 순간이동은 이게 찬 뒤에만(붙자마자 사라지면 근접 직업은 한 대도 못 넣는다)
+      e._swNearT = (d < TILE * 2.2) ? (e._swNearT || 0) + dt : Math.max(0, (e._swNearT || 0) - dt * 2);
 
       // ===== 얼음 여왕 전용: 서리 장판(영역 압박) + 빙결 가두기(포박) =====
       if (e.type === 'icequeen') {
@@ -25513,8 +25517,10 @@ function update(dt) {
           // 플레이어 현재 위치 근처 1곳(예고 보고 피하게) + 주변 랜덤 2곳
           const spots = [[player.obj.position.x, player.obj.position.z]];
           for (let s = 0; s < 4; s++) { const a = Math.random() * Math.PI * 2, r = TILE * (1.5 + Math.random() * 2.5); spots.push([player.obj.position.x + Math.cos(a) * r, player.obj.position.z + Math.sin(a) * r]); }
-          for (const [sx, sz] of spots) { if (made >= 3) break; if (onFloor(sx, sz)) { spawnFirePool(sx, sz, TILE * 1.1, poolDmg, e); made++; } }
-          e.swPoolCd = 3.5 + Math.random() * 1.5; // 다음 장판까지
+          // v829(SW2): 반지름 5.5 → 3.75 — 첫 장판이 발밑에 깔리는데 예고가 0.9초라, 5.5 면 가운데서 걸어 나가는 데만 0.88초(반응 시간을 더하면 못 피한다). 3.75 면 반응 0.25 + 0.62초
+          const poolR = SW2 ? TILE * 0.75 : TILE * 1.1, poolN = SW2 ? 2 : 3;
+          for (const [sx, sz] of spots) { if (made >= poolN) break; if (onFloor(sx, sz)) { spawnFirePool(sx, sz, poolR, poolDmg, e); made++; } }
+          e.swPoolCd = SW2 ? 4.5 + Math.random() * 1.5 : 3.5 + Math.random() * 1.5; // 다음 장판까지
         }
       }
 
@@ -25606,9 +25612,10 @@ function update(dt) {
         // 피격 회피는 무조건 순간이동. 그 외엔: 순간이동 직후면 공격 강제(연속 순간이동 방지),
         // 가까우면 60%만 순간이동(40%는 촛불 견제), 멀면 소환/촛불. 너무 멀면(SW_FAR) 추격 순간이동.
         const tooFar = d > SW_FAR;
-        const wantBlink = e.swHitFlee || tooFar || (!e.swJustBlinked && d < SW_NEAR && Math.random() < 0.6);
+        const swNearOk = !(SW2 && e.type === 'servantwraith') || (e._swNearT || 0) >= SW2_NEAR_HOLD;
+        const wantBlink = e.swHitFlee || tooFar || (!e.swJustBlinked && d < SW_NEAR && swNearOk && Math.random() < ((SW2 && e.type === 'servantwraith') ? SW2_NEAR_CHANCE : 0.6));
         if (wantBlink) {
-          e.swHitFlee = false; e.swJustBlinked = true;
+          e.swHitFlee = false; e.swJustBlinked = true; e._swNearT = 0;
           // 플레이어가 붙음 → 순간이동 위치 탐색: 벽/방 밖을 피해 유효한 바닥을 고른다.
           const baseAng = Math.atan2(-dz, -dx) + (Math.random() - 0.5) * 1.2; // 보스 반대편 기준 + 랜덤
           const rad = e.radius + 0.4;
