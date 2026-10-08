@@ -4372,6 +4372,11 @@ const RANGED_DMG_MUL_ACT = BAL3 ? [1.75, 1.3, 1.15] : [1.75, 1.75, 1.75]; // 막
 const HIT_CAP_MOB = BAL3 ? 0.40 : 9;   // 일반 몬스터 한 방 상한(최대 체력 비율). 1막 최대 실측 33% 라 1막은 안 걸린다
 const HIT_CAP_BOSS = BAL3 ? 0.40 : 9;  // 보스 한 방 상한(90층 왕 맨몸 80% · 흑기사 49% → 40%. 1막 오크 보스 36% 는 안 걸린다)
 const WRAITH_DMG_MUL = 0.9;           // 혼령 공격력 배율(예전엔 원거리 1.75 를 그대로 받았다)
+const WRAITH2 = !/[?&]wraith2=0/.test(location.search); // v827: 혼령 히트앤런 빈도 조정 — 타격 뒤 쿨 2~3 → 3.4~4.6초 · 첫 타격 1~1.7 → 1.8~2.6초 · 무리 공용 간격(한 마리가 덤비면 1.5초 동안 다른 혼령은 못 덤빔). 0 = v826 동작
+const WRAITH_CD_MIN = WRAITH2 ? 3.4 : 2.0, WRAITH_CD_RND = WRAITH2 ? 1.2 : 1.0;   // 타격(복귀) 뒤 다음 공격까지
+const WRAITH_CD0_MIN = WRAITH2 ? 1.8 : 1.0, WRAITH_CD0_RND = WRAITH2 ? 0.8 : 0.7; // 깨어나서 첫 공격까지
+const WRAITH_GROUP_GAP = WRAITH2 ? 1.5 : 0;  // 무리 공용 간격(초). 혼령 하나가 공격을 시작하면 이 시간 동안 다른 혼령은 기다린다
+let wraithClock = 0, wraithLastStrike = -99;  // 게임 시계(update 가 dt 를 더함) · 마지막으로 공격을 시작한 시각
 const TUT_ON = !/[?&]tut=0/.test(location.search);     // v823: 온보딩 길잡이(처음 겪는 상황마다 한 번 뜨는 안내 띠). 0 = 끔 · ?tutreset=1 이면 본 기록을 지운다
 const HITFX_ON = !/[?&]hitfx=0/.test(location.search); // v822: 데미지 숫자(DOM) + 플레이어 피격 화면 흔들림. 0 = 끔
 const UI2_ON = !/[?&]ui2=0/.test(location.search);   // v814: UI v2 던전 HUD(픽셀 장식 · 세리프 · 초상화). 0 = 예전 HUD
@@ -4395,7 +4400,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v826'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v827'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -24003,6 +24008,7 @@ function hasClearPath(x0, z0, x1, z1) {
 
 function update(dt) {
   if (SMEAR_ON) tickSmearTrails(dt);   // 아무도 안 굴린 잔상 사그라뜨리기(보스가 죽거나 얼어도 안 남게)
+  wraithClock += dt;                   // v827: 혼령 무리 공용 간격용 게임 시계
   player.attackCooldown = Math.max(0, player.attackCooldown - dt); player.hurtCooldown = Math.max(0, player.hurtCooldown - dt);
   parryTimer -= dt; parryFlashTimer = Math.max(0, parryFlashTimer - dt);
   // 스태미나: 방어 유지 중 소모, 그 외엔 지연 후 자동 회복
@@ -25971,7 +25977,7 @@ function update(dt) {
 
     // ===== 혼령(wraith): 사라졌다 푸른 영체로 — 오른쪽 호로 파고들어 할퀴고, 왼쪽 호로 제자리 복귀 =====
     if (e.type === 'wraith' && !e.isBoss) {
-      if (e.hrState === undefined) { e.hrState = 'hover'; e.hrCd = 1.0 + Math.random() * 0.7; }
+      if (e.hrState === undefined) { e.hrState = 'hover'; e.hrCd = WRAITH_CD0_MIN + Math.random() * WRAITH_CD0_RND; }
       const tnow = performance.now() * 0.001;
       const HOVER_DIST = TILE * 1.8;        // 평소 유지 거리(1.8타일)
       const ENGAGE_MAX = TILE * 2.1;        // 공격 개시 사거리(약 1.8타일 + 유지오차 보정)
@@ -25998,7 +26004,9 @@ function update(dt) {
         if (e.limbs.armR) e.limbs.armR.rotation.x += (0.2 - e.limbs.armR.rotation.x) * 6 * dt;
         if (e.limbs.armL) e.limbs.armL.rotation.x += (0.2 - e.limbs.armL.rotation.x) * 6 * dt;
         // 공격 개시: 쿨다운 끝 + 사거리 안(가까이 맴돌아 자연히 화면 안) + 빙결 아님
-        if (e.hrCd <= 0 && d <= ENGAGE_MAX && e.frozen <= 0) {
+        // v827: 무리 공용 간격 — 다른 혼령이 방금 덤볐으면 기다린다(여럿이 동시에 꽂히는 것을 막는다)
+        if (e.hrCd <= 0 && d <= ENGAGE_MAX && e.frozen <= 0 && (wraithClock - wraithLastStrike) >= WRAITH_GROUP_GAP) {
+          wraithLastStrike = wraithClock;
           e.anchorX = e.obj.position.x; e.anchorZ = e.obj.position.z; // 원래 자리 기억
           e.hrState = 'vanish'; e.hrTimer = VANISH_DUR;
         }
@@ -26067,7 +26075,7 @@ function update(dt) {
           if (p >= 1) {
             if (e.limbs.spectral) { e.limbs.spectral.visible = false; e.limbs.spectral.scale.setScalar(1); } // 영체 사라지고
             setBody(true);                                          // 본체 다시 등장
-            e.hrState = 'hover'; e.hrCd = 2.0 + Math.random() * 1.0; // 다음 공격까지(공속 더 느리게)
+            e.hrState = 'hover'; e.hrCd = WRAITH_CD_MIN + Math.random() * WRAITH_CD_RND; // 다음 공격까지(v827: 3.4~4.6초. 예전 2~3초)
           }
         }
         continue;
