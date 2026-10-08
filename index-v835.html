@@ -4414,7 +4414,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v834'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v835'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -23210,13 +23210,19 @@ function lvfxBuild() {
       ' float a = uA * (0.22 + 0.78 * edge) * (0.3 + 0.7 * vRim) * (0.75 + 0.25 * sin(vUv.y * 22.0 - uT * 18.0));' +
       ' gl_FragColor = vec4(mix(vec3(1.0, 0.72, 0.14), vec3(1.0, 0.95, 0.55), edge), a); }', auraA, null,
       rimV('p.xz *= 1.0 + 0.45 * uv.y * uv.y')));
-    // 불티: 기둥 안에서 위로 솟는 작은 점(위치는 번호로 정해 매 프레임 CPU 로 갱신)
-    const N = 22, sp = new Float32Array(N * 3);
-    const spGeo = new THREE.BufferGeometry(); spGeo.setAttribute('position', new THREE.BufferAttribute(sp, 3));
-    const spMat = new THREE.PointsMaterial({ color: 0xfff0a0, size: 2, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, fog: false });
-    const sparks = new THREE.Points(spGeo, spMat);
+    // 빛 입자: 기둥 안에서 위로 솟는 세로 줄(v835 — 처음엔 길쭉하다가 위로 갈수록 짧아지며 사라진다).
+    // 카메라를 보는 얇은 사각형을 입자마다 하나씩 CPU 로 갱신한다(머리가 밝고 꼬리로 갈수록 투명 — 정점 알파 aA).
+    const N = 22, sp = new Float32Array(N * 4 * 3), sa = new Float32Array(N * 4), sIdx = [];
+    for (let i = 0; i < N; i++) { const b = i * 4; sIdx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2); }
+    const spGeo = new THREE.BufferGeometry(); spGeo.setAttribute('position', new THREE.BufferAttribute(sp, 3)); spGeo.setAttribute('aA', new THREE.BufferAttribute(sa, 1)); spGeo.setIndex(sIdx);
+    const spA = { value: 0 };
+    const spMat = new THREE.ShaderMaterial({ uniforms: { uA: spA },
+      vertexShader: 'attribute float aA; varying float vA; void main(){ vA = aA; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform float uA; varying float vA; void main(){ gl_FragColor = vec4(mix(vec3(1.0, 0.76, 0.22), vec3(1.0, 0.97, 0.72), vA), uA * vA); }',
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false });
+    const sparks = new THREE.Mesh(spGeo, spMat);
     for (const o of [disc, ring, pillar, aura, sparks]) { o.frustumCulled = false; o.renderOrder = 3; g.add(o); }
-    return { g, uT, discA, ring, ringA, pillar, pilA, aura, auraA, sparks, sp, spMat, N, t: -1 };
+    return { g, uT, discA, ring, ringA, pillar, pilA, aura, auraA, sparks, sp, sa, spA, N, t: -1 };
   } finally { Math.random = _r; }
 }
 function lvfxStart() {
@@ -23247,14 +23253,26 @@ function lvfxTick(dt) {
   // 오라: 기둥이 다 솟을 무렵 켜져 일렁이다 사라짐
   F.aura.scale.set(0.6, 2.5, 0.6);
   F.auraA.value = 0.85 * sm(0.22, 0.42, t) * (1 - sm(1.0, 1.42, t));
-  // 불티
+  // 빛 입자: 진행도 k(0 = 바닥 · 1 = 꼭대기)에 따라 길이 1.9 → 0, 폭 0.13 → 0.06, 꼭대기 근처에서 흐려짐.
+  // 아이소 카메라는 세로를 0.475 배로 눌러 보이므로 길이를 넉넉히 잡는다(0.95 는 화면에서 2~3 텍셀이라 점처럼 보였다)
+  // 폭 방향은 카메라 오른쪽(아이소 카메라라 화면 가로 = 월드 (1, 0, -1)/√2) — 세로 줄이 늘 화면에서 세로로 보인다
+  const RX = 0.70710678, RZ = -0.70710678;
   for (let i = 0; i < F.N; i++) {
-    const a = i * 2.39996, r = 0.25 + 0.55 * ((i * 0.618034) % 1), spd = 1.6 + 1.4 * ((i * 0.381966) % 1);
-    const y = ((t * spd + i * 0.137) % 1) * 3.2;
-    F.sp[i * 3] = Math.cos(a + t * 1.5) * r; F.sp[i * 3 + 1] = y; F.sp[i * 3 + 2] = Math.sin(a + t * 1.5) * r;
+    const a = i * 2.39996, r = 0.25 + 0.55 * ((i * 0.618034) % 1), spd = 0.75 + 0.6 * ((i * 0.381966) % 1);
+    const k = (t * spd + i * 0.137) % 1;
+    const len = 1.9 * Math.pow(1 - k, 1.4), hw = 0.065 - 0.035 * k;
+    const yH = 0.15 + k * 3.1, yT = yH - len;
+    const cx = Math.cos(a + t * 1.2) * r, cz = Math.sin(a + t * 1.2) * r;
+    const v = F.sp, b = i * 12;
+    v[b] = cx - RX * hw; v[b + 1] = yH; v[b + 2] = cz - RZ * hw;       // 머리 왼쪽
+    v[b + 3] = cx + RX * hw; v[b + 4] = yH; v[b + 5] = cz + RZ * hw;   // 머리 오른쪽
+    v[b + 6] = cx - RX * hw; v[b + 7] = yT; v[b + 8] = cz - RZ * hw;   // 꼬리 왼쪽
+    v[b + 9] = cx + RX * hw; v[b + 10] = yT; v[b + 11] = cz + RZ * hw; // 꼬리 오른쪽
+    const head = 1 - sm(0.7, 1.0, k);
+    F.sa[i * 4] = F.sa[i * 4 + 1] = head; F.sa[i * 4 + 2] = F.sa[i * 4 + 3] = 0.25 * head;   // 꼬리도 조금 남겨 줄로 읽히게
   }
-  F.sparks.geometry.attributes.position.needsUpdate = true;
-  F.spMat.opacity = 0.95 * sm(0.15, 0.3, t) * fadeOut;
+  F.sparks.geometry.attributes.position.needsUpdate = true; F.sparks.geometry.attributes.aA.needsUpdate = true;
+  F.spA.value = 0.95 * sm(0.12, 0.3, t) * fadeOut;
 }
 // 물약 버튼 표시 갱신(개수)
 function refreshPotionBtn() {
