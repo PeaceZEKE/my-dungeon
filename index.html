@@ -24654,10 +24654,11 @@ function update(dt) {
       }
     }
 
-    // ===== v822: 살덩이 거인 — 땅 내려찍기. 바닥 링 0.9초 예고 → 반경 2.2칸 충격파(공격력 1.3배 · 넉백 22). 점프로 피한다. 느리고 단단한 몸이 '피해야 할 것'을 하나 갖게 =====
+    // ===== v822: 살덩이 거인 — 땅 내려찍기. 바닥 링 1.1초 예고 → 반경 1.4칸 충격파(공격력 1.3배 · 넉백 22). 링 밖으로 걸어 나가면 피한다 —
+    //       이 게임엔 점프가 없다. 바로 옆(1.5)에서도 0.25초 안에 반응하면 7유닛을 빠져나갈 수 있는 크기(이속 6.5 × 1.1초 = 7.15). 느리고 단단한 몸이 '피해야 할 것'을 하나 갖게 =====
     if (A3B_ON && e.type === 'fleshgiant' && !e.isBoss && e.frozen <= 0 && e.limbs.armR) {
       e.fgSlamCd = Math.max(0, (e.fgSlamCd || 0) - dt);
-      const FG_R = TILE * 2.2, FG_T = 0.9;
+      const FG_R = TILE * 1.4, FG_T = 1.1;
       if (!e.fgSlam) {
         if (e.fgSlamCd <= 0 && e.swingTimer <= 0 && e.awake && d < TILE * 1.9) {
           e.fgSlam = 'tele'; e.fgSlamT = FG_T; e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
@@ -24674,8 +24675,7 @@ function update(dt) {
         if (e.fgSlamT <= 0) {
           spawnShockwave(e.obj.position.x, e.obj.position.z, FG_R); hitStop = Math.max(hitStop, 0.08);
           const sd = Math.hypot(player.obj.position.x - e.obj.position.x, player.obj.position.z - e.obj.position.z);
-          const airborne = player.obj.position.y - groundHeightAt(player.obj.position.x, player.obj.position.z) > 1.2;
-          if (sd < FG_R && !airborne) {
+          if (sd < FG_R) {
             const u = sd || 1, ddx = player.obj.position.x - e.obj.position.x, ddz = player.obj.position.z - e.obj.position.z;
             const orig = e.damage; e.damage = Math.floor(orig * 1.3); damagePlayer(e.damage, e); e.damage = orig;
             player.kbX = (ddx / u) * 22; player.kbZ = (ddz / u) * 22;
