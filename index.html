@@ -4421,7 +4421,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v843'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v844'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -10586,6 +10586,9 @@ const VOX_SKIRT = 0.6;        // 벽·바깥으로 면한 쪽에 내리는 치�
 // ?voxacts=123 처럼 막 번호를 나열해 되돌릴 수 있다.
 // v841: 4막도 복셀(레이마칭 전용) — 육각 현무암 기둥 윗면이 단을 이룬다(원화 C). ?vox4=0 이면 v840 판석 바닥
 const VOX4_ON = VOX_RAY && !/[?&]vox4=0/.test(location.search);
+// v844: 4막만 복셀 칸을 절반으로(타일당 32 → 칸 0.156 · 화면 약 2px). 단 높이(VOX_STEP 0.3125)는 그대로라 기둥 단차는 같고 윤곽·틈만 잘아진다.
+// ?vox4n=16 이면 v843. 비용은 마칭 칸 수가 두 배인데 픽셀당 고정비가 커서 프레임 +2~7%(SwiftShader) — 층을 지을 때 높이 필드·텍스처는 4배
+const VOX4_N = (() => { const m = location.search.match(/[?&]vox4n=(\d+)/); return m ? Math.max(4, Math.min(32, parseInt(m[1], 10))) : 32; })();
 const VOX_ACTS = (location.search.match(/[?&]voxacts=(\d+)/) || [])[1] || ('1' + (VOX4_ON ? '4' : ''));
 let gVoxAux = null;           // v841: 4막 서브셀마다 [기둥 톤, 표식(1 = 기둥 사이 틈 · 2 = 용암이 비치는 틈)] — 그 밖의 막은 null
 
@@ -10600,9 +10603,9 @@ function _gZ0() { return -(MAP_H / 2 + 0.5) * TILE; }
 // 던전 배치가 같아야 두 빌드를 나란히 비교할 수 있기 때문이다
 // (CLAUDE.md: 난수 소비가 달라지면 이후 층 생성이 통째로 바뀐다).
 function buildGroundHeight(floorNo) {
-  gSubN = VOX_ON ? VOX_N : 1; gVoxAux = null;
-  if (!VOX_ON && !(RELIEF > 0)) { groundH = null; return; }
   const _act = Math.min(LAST_ACT, Math.max(1, Math.ceil(floorNo / ACT_LEN)));   // v841: 4막(예전 식은 91층부터를 3막으로 셌다)
+  gSubN = VOX_ON ? (VOX_RAY && _act === 4 ? VOX4_N : VOX_N) : 1; gVoxAux = null;   // v844: 4막만 칸 절반
+  if (!VOX_ON && !(RELIEF > 0)) { groundH = null; return; }
   if (VOX_ON && VOX_ACTS.indexOf(String(_act)) < 0) { groundH = null; return; }   // 이 막은 복셀 바닥 없음(v765)
   gSubW = MAP_W * gSubN; gSubH = MAP_H * gSubN;
   let sd = (((floorNo | 0) * 2654435761) ^ 0x9e3779b9) >>> 0;
@@ -10636,8 +10639,10 @@ function buildGroundHeight(floorNo) {
       // v843: R 1.3 → 0.85(사용자: "바닥 타일 크기가 너무 크다") — 기둥 지름 약 1.7(서브셀 5~6칸). 더 줄이면 틈(서브셀 한 칸)이 기둥보다 굵어 보인다
       const R4 = 0.85, S3 = Math.sqrt(3), J4 = 0.4 * R4, W4 = 0.42 * R4 * R4;
       const NB = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
-      const ctr = (q, r) => [R4 * S3 * (q + r / 2) + (hash(q * 3 + 1, r * 5 + 2) - 0.5) * 2 * J4, R4 * 1.5 * r + (hash(q * 5 + 7, r * 3 + 11) - 0.5) * 2 * J4, (hash(q * 11 + 5, r * 7 + 3) - 0.5) * 2 * W4];
+      const ctr0 = (q, r) => [R4 * S3 * (q + r / 2) + (hash(q * 3 + 1, r * 5 + 2) - 0.5) * 2 * J4, R4 * 1.5 * r + (hash(q * 5 + 7, r * 3 + 11) - 0.5) * 2 * J4, (hash(q * 11 + 5, r * 7 + 3) - 0.5) * 2 * W4];
+      const ctrC = new Map(), ctr = (q, r) => { const key = q * 65536 + r; let c = ctrC.get(key); if (!c) { c = ctr0(q, r); ctrC.set(key, c); } return c; };   // v844: 서브셀이 4배라 기둥 중심을 캐시
       gVoxAux = new Uint8Array(gSubW * gSubH * 2);
+      const CK = 16 / gSubN;   // v844: 틈·윗면 금 폭을 칸 크기에 맞춘다(칸 절반이면 폭도 절반 — 여전히 서브셀 한 칸 굵기의 실)
       for (let j = 0; j < gSubH; j++) for (let i = 0; i < gSubW; i++) {
         const wx = X0 + (i + 0.5) * S, wz = Z0 + (j + 0.5) * S, k = j * gSubW + i;
         // 축 좌표(뾰족한 쪽이 ±z) → 정육각 반올림 → 그 격자점과 이웃 여섯 중 멱 거리가 가장 작은 기둥
@@ -10652,15 +10657,18 @@ function buildGroundHeight(floorNo) {
         }
         const edge = (b2 - b1) / (2 * Math.hypot(c2[0] - c1[0], c2[1] - c1[1]));
         const cx = c1[0], cz = c1[1];
-        const n = 0.6 * vnoise(cx / 8.0, cz / 8.0) + 0.4 * hash(q * 7 + 3, r * 13 + 5);
-        groundH[k] = Math.max(0, Math.min(VOX_LEVELS - 1, Math.floor(n * VOX_LEVELS))) * VOX_STEP;
-        gVoxAux[k * 2] = Math.floor(hash(q, r) * 255);   // 기둥 하나는 한 톤
-        if (edge < 0.12) gVoxAux[k * 2 + 1] = (0.65 * vnoise(wx / 7 + 31.7, wz / 7 + 11.3) + 0.35 * vnoise(wx / 2.6 + 5.1, wz / 2.6 + 9.4)) > 0.68 ? 2 : 1;   // 틈(폭 0.24 — 대개 서브셀 한 칸, 가끔 끊긴다) · 구역 안이면 용암
+        if (c1[3] === undefined) {   // 기둥마다 한 번(캐시): 단 높이 · 톤
+          const n = 0.6 * vnoise(cx / 8.0, cz / 8.0) + 0.4 * hash(q * 7 + 3, r * 13 + 5);
+          c1[3] = Math.max(0, Math.min(VOX_LEVELS - 1, Math.floor(n * VOX_LEVELS))) * VOX_STEP; c1[4] = Math.floor(hash(q, r) * 255);
+        }
+        groundH[k] = c1[3];
+        gVoxAux[k * 2] = c1[4];   // 기둥 하나는 한 톤
+        if (edge < 0.12 * CK) gVoxAux[k * 2 + 1] = (0.65 * vnoise(wx / 7 + 31.7, wz / 7 + 11.3) + 0.35 * vnoise(wx / 2.6 + 5.1, wz / 2.6 + 9.4)) > 0.68 ? 2 : 1;   // 틈(폭 0.24 — 대개 서브셀 한 칸, 가끔 끊긴다) · 구역 안이면 용암
         else {
           const hc = hash(q * 13 + 1, r * 17 + 9);
           if (hc < 0.22) {   // 윗면 금: 중심 근처에서 한쪽으로 뻗는 반직선(기둥이 작아져 다섯에 하나 꼴로)
             const an = hc * 28.5, tx = Math.cos(an), tz = Math.sin(an), px = wx - cx - tx * 0.1, pz = wz - cz - tz * 0.1;
-            if (px * tx + pz * tz > 0 && Math.abs(-px * tz + pz * tx) < 0.09) gVoxAux[k * 2 + 1] = 1;
+            if (px * tx + pz * tz > 0 && Math.abs(-px * tz + pz * tx) < 0.09 * CK) gVoxAux[k * 2 + 1] = 1;
           }
         }
       }
