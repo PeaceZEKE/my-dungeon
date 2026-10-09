@@ -4421,7 +4421,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v846'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v847'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -10591,6 +10591,9 @@ const VOX4_ON = VOX_RAY && !/[?&]vox4=0/.test(location.search);
 // v845: 4막 바닥 변화 — 기둥 사이 틈 폭을 이음매마다 다르게 · 용암 균열 굵기가 길을 따라 굵어졌다 가늘어짐 · 기둥마다 밝기 폭을 넓힘 ·
 // 윗면·옆면에 돌 결 노이즈(얼룩 + 잔결 + 반점). ?vox4v=0 이면 v844 와 같다
 const VOX4V = !/[?&]vox4v=0/.test(location.search);
+// v847: 4막 용암 빛 번짐 — 용암 틈에서 4칸(0.62 유닛) 안의 기둥 윗면·옆면·틈을 붉은 주황으로 물들인다(맥박을 따라 같이 밝아짐).
+// 거리는 지을 때 높이 텍스처의 알파에 구워 둔다(셰이더 추가 조회 없음). ?lglow=N 세기(기본 0.28) · 0 이면 v846 과 같다
+const LGLOW = (() => { const m = location.search.match(/[?&]lglow=([\d.]+)/); return m ? parseFloat(m[1]) : 0.28; })();
 const VOX4_N = (() => { const m = location.search.match(/[?&]vox4n=(\d+)/); return m ? Math.max(4, Math.min(32, parseInt(m[1], 10))) : 32; })();
 const VOX_ACTS = (location.search.match(/[?&]voxacts=(\d+)/) || [])[1] || ('1' + (VOX4_ON ? '4' : ''));
 let gVoxAux = null;           // v841: 4막 서브셀마다 [기둥 톤, 표식(1 = 기둥 사이 틈 · 2 = 용암이 비치는 틈)] — 그 밖의 막은 null
@@ -10858,11 +10861,12 @@ uniform vec3 uVoxPal1;
 uniform vec3 uVoxPal2;
 uniform float uVoxMode;
 uniform float uVoxStone;
+uniform float uVoxGlow;
 uniform vec3 uVoxLava;
 uniform mat4 projectionMatrix;
 varying vec3 vVoxWorld;
 vec3 vxView, vxNormal, vxWorldHit, vxWorldNrm, vxColor;
-float vxLavaK;
+float vxLavaK, vxGlowK;
 vec2 vxUv;
 // 텍셀 R = 단(0..N). 255 = 바닥이 아닌 칸(벽·바깥) — 기둥이 없어 시선이 그냥 지나간다.
 float vxColH(ivec2 c) {
@@ -10920,7 +10924,7 @@ float vxVN(vec2 p) { vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f
   return mix(mix(vxH2(i), vxH2(i + vec2(1.0, 0.0)), u.x), mix(vxH2(i + vec2(0.0, 1.0)), vxH2(i + vec2(1.0, 1.0)), u.x), u.y); }
 vec3 vxShade(ivec2 c, float h, vec3 n) {
   float hs = fract(sin(float(c.x) * 127.1 + float(c.y) * 311.7) * 43758.5453);
-  vxLavaK = 0.0;
+  vxLavaK = 0.0; vxGlowK = 0.0;
   if (uVoxMode > 0.5) {   // v841 4막: 텍셀 G = 기둥 톤(기둥 하나가 한 색) · B = 표식(1 틈 · 2 용암 틈)
     vec4 tx = texture2D(tVoxH, (vec2(c) + 0.5) / uVoxGrid);
     float sh = tx.g, fl = floor(tx.b * 255.0 + 0.5);
@@ -10936,6 +10940,7 @@ vec3 vxShade(ivec2 c, float h, vec3 n) {
       t4 *= st;
     }
     if (n.y < 0.5) t4 *= uVoxSideDim;
+    if (uVoxGlow > 0.0 && tx.a > 0.0 && fl < 1.5) vxGlowK = tx.a * tx.a * uVoxGlow * (n.y > 0.5 ? 1.0 : 1.6);   // v847: 용암 빛 번짐(틈을 향한 옆면이 더 받는다)
     if (fl > 0.5) { t4 *= 0.45; if (fl > 1.5 && n.y > 0.5) vxLavaK = 0.6 + 0.8 * hs; }   // 칸마다 G 를 흔들어 붉은 주황 ↔ 노란 주황(원화의 실금)
     return b4 * t4;
   }
@@ -10971,7 +10976,8 @@ const voxRayUniforms = {
   uVoxPal1: { value: new THREE.Color(0x322b1a) },
   uVoxPal2: { value: new THREE.Color(0x241f14) },
   uVoxMode: { value: 0 },
-  uVoxStone: { value: 0 },                      // v845: 1 = 4막 돌 결 · 기둥 밝기 폭(?vox4v=0 이면 0)                       // v841: 1 = 4막 육각 기둥(텍셀 G·B 를 읽는다)
+  uVoxStone: { value: 0 },
+  uVoxGlow: { value: 0 },                       // v847: 4막 용암 빛 번짐 세기(텍셀 알파 = 용암까지 가까움)                      // v845: 1 = 4막 돌 결 · 기둥 밝기 폭(?vox4v=0 이면 0)                       // v841: 1 = 4막 육각 기둥(텍셀 G·B 를 읽는다)
   uVoxLava: { value: new THREE.Color(1, 0.13, 0.025) }, // v841: 용암 틈 색(선형 · 맥박은 updateCavernDecor)
 };
 // 재질은 첫 사용 때 만든다 — 모듈 로드 시점에 만들면 generateUUID 가 Math.random 을 먹어
@@ -10997,7 +11003,7 @@ function _voxRayMats() {
     .replace(/vPointShadowCoord\[ i \]/g, '( pointShadowMatrix[ i ] * vec4( vxWorldHit + vxWorldNrm * pointLightShadows[ i ].shadowNormalBias, 1.0 ) )'));
   f = _vxInline(f, 'lights_fragment_end', s => s.replace(/vViewPosition/g, 'vxView'));
   // v841: 4막 용암 틈은 안개·톤매핑 뒤에 출력색으로 덮는다(기둥 실금 hellVeinMat 과 같은 색) — 발광으로 더하면 톤매핑·안개(카메라 거리 25 에서 40%)를 지나 갈색 칠이 됐다
-  f = _vxInline(f, 'fog_fragment', s => s.replace(/fogDepth/g, 'vxView.z') + '\n\tif (vxLavaK > 0.0) gl_FragColor.rgb = mix(gl_FragColor.rgb, linearToOutputTexel(vec4(uVoxLava * vec3(1.0, vxLavaK, 1.0), 1.0)).rgb, 1.0);');
+  f = _vxInline(f, 'fog_fragment', s => s.replace(/fogDepth/g, 'vxView.z') + '\n\tif (vxGlowK > 0.0) gl_FragColor.rgb += linearToOutputTexel(vec4(uVoxLava * vec3(1.0, 1.5, 1.0) * vxGlowK, 1.0)).rgb;' + '\n\tif (vxLavaK > 0.0) gl_FragColor.rgb = mix(gl_FragColor.rgb, linearToOutputTexel(vec4(uVoxLava * vec3(1.0, vxLavaK, 1.0), 1.0)).rgb, 1.0);');
   // 그림자 행렬은 원래 정점 셰이더에만 선언돼 있다. 유니폼은 프로그램 공용이라 여기 다시 선언해도 된다.
   f = f.replace('#include <shadowmap_pars_fragment>', `#include <shadowmap_pars_fragment>
 #ifdef USE_SHADOWMAP
@@ -11060,6 +11066,20 @@ function buildVoxelRayFloor(dgn) {
     if (isF && gVoxAux) { const fl = gVoxAux[k * 2 + 1]; if (fl) lv = Math.max(0, lv - 1); data[k * 4 + 1] = gVoxAux[k * 2]; data[k * 4 + 2] = fl; }   // v841: 틈은 한 단 낮게 보인다
     data[k * 4] = lv;
   }
+  // v847: 용암 틈(표식 2)에서 4칸 안의 바닥 칸에 가까움(1 → 0, 제곱근 감쇠 전)을 알파로 굽는다 — 셰이더가 제곱해 가장자리가 부드럽게 꺼진다
+  const glowOn = act === 4 && gVoxAux && LGLOW > 0;
+  if (glowOn) {
+    const GR = 4, GI = Math.ceil(GR);
+    for (let j = 0; j < gSubH; j++) for (let i = 0; i < gSubW; i++) {
+      if (gVoxAux[(j * gSubW + i) * 2 + 1] !== 2) continue;
+      for (let dj = -GI; dj <= GI; dj++) for (let di = -GI; di <= GI; di++) {
+        const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= gSubW || jj >= gSubH) continue;
+        const d = Math.hypot(di, dj); if (d > GR) continue;
+        const kk = jj * gSubW + ii; if (data[kk * 4] === 255) continue;
+        const g = Math.round(255 * (1 - d / GR)); if (g > data[kk * 4 + 3]) data[kk * 4 + 3] = g;
+      }
+    }
+  }
   if (voxRayTex) voxRayTex.dispose();
   voxRayTex = new THREE.DataTexture(data, gSubW, gSubH, THREE.RGBAFormat);
   voxRayTex.magFilter = THREE.NearestFilter; voxRayTex.minFilter = THREE.NearestFilter;
@@ -11073,6 +11093,7 @@ function buildVoxelRayFloor(dgn) {
   u.uVoxMaxH.value = (VOX_LEVELS - 1) * VOX_STEP + 0.01;
   u.uVoxMode.value = (act === 4 && gVoxAux) ? 1 : 0;
   u.uVoxStone.value = (act === 4 && gVoxAux && VOX4V) ? 1 : 0;
+  u.uVoxGlow.value = glowOn ? LGLOW : 0;
   u.uVoxPal0.value.setHex(pal[0]); u.uVoxPal1.value.setHex(pal[1]); u.uVoxPal2.value.setHex(pal[2]);
   if (voxRayColorMat.map !== map) { voxRayColorMat.map = map; voxRayColorMat.needsUpdate = true; }
   voxRayColorMat.roughness = srcMat ? srcMat.roughness : STONE_ROUGH;
@@ -13625,6 +13646,7 @@ function helNoise(seed) {   // 값 노이즈(층 시드) — 벽 실금이 몰�
     return (h(i, j) * (1 - sx) + h(i + 1, j) * sx) * (1 - sz) + (h(i, j + 1) * (1 - sx) + h(i + 1, j + 1) * sx) * sz;
   };
 }
+const hellLavaPts = [];   // v847: 용암 자리(x, y, z 이어 붙임) — 불티·연기가 여기서 솟는다
 const hellSpots = [];   // 화로·기둥 무리 자리(상호작용 물체 배치가 피한다 — decorFootprints. 병합 메시라 바운딩 박스로는 안 잡힌다)
 function buildHellAct(dgn) {
   // 배경·안개: 푸른 기가 도는 검정. 3막(0x090f10 · 0.024)보다 어둡고 짙게 — 화면 밖은 어둠이 삼킨다
@@ -13640,12 +13662,89 @@ function buildHellAct(dgn) {
   castleHemi.visible = true; castleHemi.color.setHex(0x26324a); castleHemi.groundColor.setHex(0x3a1206); castleHemi.intensity = 0.3;
   collapseTiles.length = 0;
   buildHellMesh(dgn);
+  collectHellLava();
   casDustMat.color.setHex(HEL.ember);   // 솟는 불티
   updateCastleDust(true);
 }
+// v847: 용암 틈에서 솟는 불티와 달아오른 연기(`?lember=0` 이면 끈다). 복셀 바닥이면 표식 2(용암) 칸에서, 판석 바닥이면 균열 띠의 점에서 솟는다.
+// 자리 고르기·흔들림은 자체 난수(_heR) — Math.random 을 먹으면 불티가 솟은 횟수에 따라 다음 층 생성이 달라진다. THREE 객체는 첫 사용 때 만들고 그동안 Math.random 을 바꿔 끼운다(uuid).
+const LEMBER = !/[?&]lember=0/.test(location.search);
+let hellEmb = null, _heS = 0x2545F491;
+const _heR = () => { _heS = (_heS * 1664525 + 1013904223) >>> 0; return _heS / 4294967296; };
+function collectHellLava() {
+  if (!gVoxAux || !groundH) return;   // 판석 바닥이면 crack() 이 이미 넣었다
+  for (let j = 0; j < gSubH; j++) for (let i = (j * 2) % 3; i < gSubW; i += 3) {   // 세 칸에 하나만(용암 칸이 수천 개다)
+    const k = j * gSubW + i; if (gVoxAux[k * 2 + 1] !== 2) continue;
+    const tx = (i / gSubN) | 0, ty = (j / gSubN) | 0; if (!(dungeon.grid[ty] && dungeon.grid[ty][tx] > 0)) continue;
+    hellLavaPts.push(_gX0() + (i + 0.5) * _gSub(), Math.max(0, groundH[k] - VOX_STEP) + 0.04, _gZ0() + (j + 0.5) * _gSub());
+  }
+}
+function hellEmbMake() {
+  const keep = Math.random; let sd = 0x51ed27; Math.random = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
+  try {
+    const mk = (n, size, map) => {
+      const g = new THREE.BufferGeometry(), pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      const m = new THREE.PointsMaterial({ size, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false, map: map || null });
+      const pts = new THREE.Points(g, m); pts.frustumCulled = false; pts.userData.fx = true; scene.add(pts);
+      const st = []; for (let i = 0; i < n; i++) st.push({ age: 0, life: -1 - i * 0.05, x: 0, y: -9, z: 0, vy: 0, vx: 0, vz: 0, ph: i * 1.7 });
+      return { pts, pos, col, st };
+    };
+    // 연기는 부드러운 둥근 점(가장자리로 갈수록 0) — 네모 점이면 큰 연기가 판자로 보인다
+    const cv = document.createElement('canvas'); cv.width = cv.height = 16; const cx = cv.getContext('2d');
+    const gr = cx.createRadialGradient(8, 8, 0, 8, 8, 8); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    cx.fillStyle = gr; cx.fillRect(0, 0, 16, 16);
+    const smTex = new THREE.CanvasTexture(cv);
+    hellEmb = { emb: mk(140, 0.26), smk: mk(16, 1.1, smTex), near: [], nearT: 0 };
+  } finally { Math.random = keep; }
+}
+function updateHellEmbers(dt) {
+  const on = LEMBER && hellLavaPts.length > 0 && currentAct() === 4 && !inTown && !inRest;
+  if (!on) { if (hellEmb) hellEmb.emb.pts.visible = hellEmb.smk.pts.visible = false; return; }
+  if (!hellEmb) hellEmbMake();
+  const H = hellEmb; H.emb.pts.visible = H.smk.pts.visible = true;
+  const px = player.obj.position.x, pz = player.obj.position.z;
+  if ((H.nearT -= dt) <= 0) {   // 0.5초마다 플레이어 둘레(15 유닛) 용암 자리만 추린다
+    H.nearT = 0.5; H.near.length = 0;
+    for (let i = 0; i < hellLavaPts.length; i += 3) { const dx = hellLavaPts[i] - px, dz = hellLavaPts[i + 2] - pz; if (dx * dx + dz * dz < 225) H.near.push(i); }
+  }
+  const step = (S, emberish) => {
+    for (let i = 0; i < S.st.length; i++) {
+      const e = S.st[i];
+      e.age += dt;
+      if (e.age >= e.life) {   // 다시 솟기(자리가 없으면 잠깐 쉰다)
+        if (!H.near.length) { e.age = 0; e.life = 0.3; e.y = -9; }
+        else {
+          const k = H.near[(_heR() * H.near.length) | 0];
+          e.x = hellLavaPts[k] + (_heR() - 0.5) * 0.12; e.y = hellLavaPts[k + 1]; e.z = hellLavaPts[k + 2] + (_heR() - 0.5) * 0.12;
+          e.age = -_heR() * (emberish ? 1.2 : 3.5);   // 음수 = 아직 안 솟음(한꺼번에 뿜지 않게)
+          e.life = emberish ? 1.1 + _heR() * 1.6 : 2.6 + _heR() * 1.8;
+          e.vy = emberish ? 0.9 + _heR() * 1.3 : 0.35 + _heR() * 0.25;
+          e.vx = (_heR() - 0.5) * (emberish ? 0.5 : 0.2); e.vz = (_heR() - 0.5) * (emberish ? 0.5 : 0.2);
+        }
+      }
+      let r = 0, g = 0, b = 0;
+      if (e.age > 0) {
+        const k = e.age / e.life;
+        e.y += e.vy * dt; e.x += (e.vx + Math.sin(e.age * 3 + e.ph) * (emberish ? 0.35 : 0.12)) * dt; e.z += e.vz * dt;
+        if (emberish) {   // 노란 주황 → 붉은 주황 → 꺼짐, 깜빡임(선형 색 — 출력에서 sRGB 로 밝아진다)
+          const f = (1 - k) * (0.65 + 0.35 * Math.sin(e.age * 23 + e.ph)) * Math.min(1, e.age * 6);
+          r = f * 1.4; g = f * (0.75 - 0.6 * k); b = f * (0.16 - 0.13 * k);   // 머리는 노란빛 — 붉은 용암 위에서도 갈린다
+        } else {          // 달아오른 연기: 희미한 붉은빛이 부풀며 사그라든다
+          const f = Math.sin(Math.PI * k) * 0.3;
+          r = f; g = f * 0.32; b = f * 0.12;
+        }
+      }
+      S.pos[i * 3] = e.x; S.pos[i * 3 + 1] = e.age > 0 ? e.y : -9; S.pos[i * 3 + 2] = e.z;
+      S.col[i * 3] = r; S.col[i * 3 + 1] = g; S.col[i * 3 + 2] = b;
+    }
+    S.pts.geometry.attributes.position.needsUpdate = true; S.pts.geometry.attributes.color.needsUpdate = true;
+  };
+  step(H.emb, true); step(H.smk, false);
+}
 function buildHellMesh(dgn) {
   const { grid, rooms } = dgn, T = TILE, H = CAS_WALL_H;
-  wallGrid = grid; cavernLightBudget = 6; hellSpots.length = 0; _helSeedU.value = (player.floor * 3.17) % 40;
+  wallGrid = grid; cavernLightBudget = 6; hellSpots.length = 0; hellLavaPts.length = 0; _helSeedU.value = (player.floor * 3.17) % 40;
   const inB = (x, y) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H;
   const isF = (x, y) => inB(x, y) && grid[y][x] > 0;
   const wxf = (gx) => (gx - MAP_W / 2) * T, wzf = (gy) => (gy - MAP_H / 2) * T;
@@ -13722,6 +13821,7 @@ function buildHellMesh(dgn) {
         return;
       }
       if (VA) { for (let p = 0; p < pts.length - 1; p++) { const [ax, , az] = pts[p], [bx, , bz] = pts[p + 1], L = Math.hypot(bx - ax, bz - az), n = Math.ceil(L / (GS * 0.5)); for (let t = 0; t <= n; t++) vaMark(ax + (bx - ax) * t / n, az + (bz - az) * t / n, w0 > 0.1 && p < pts.length / 2 ? GS * 1.1 : 0.01); } return; }
+      for (const q of pts) hellLavaPts.push(q[0], q[1], q[2]);
       ribbon(pts, [0, 1, 0], w0, w0 * 0.35, HEL.veinHot, dim(HEL.vein, 0.75));
     };
     // ── 육각 현무암 기둥: 칸마다(8×8 청크) 위치·법선·색·UV 를 직접 쌓는다. 카메라를 등진 옆면은 버린다(그림자를 안 지는 메시)
@@ -22822,6 +22922,7 @@ function updateSpikeTraps(dt) {
 }
 // 이끼 동굴 장식 애니메이션: 발광 버섯 맥동, 물웅덩이 잔물결, 빛줄기 먼지
 function updateCavernDecor(dt) {
+  updateHellEmbers(dt);   // v847: 아래 조기 반환보다 먼저 — 4막이 아니면 스스로 숨는다
   if (cavernShrooms.length === 0 && cavernWaters.length === 0 && cavernShafts.length === 0 && castleTorches.length === 0 && corruptPulses.length === 0 && corruptBreath.length === 0 && !castleDust.visible) return;
   const t = performance.now() / 1000;
   // v840: 4막 용암 실금 맥박(기둥·바닥 균열·줄눈) — 2.6초에 한 번 느리게 부풀었다 가라앉는다. 꼭대기에서 블룸 임계를 살짝 넘는다
