@@ -4421,7 +4421,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v848'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v849'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -10593,6 +10593,9 @@ const VOX4_ON = VOX_RAY && !/[?&]vox4=0/.test(location.search);
 const VOX4V = !/[?&]vox4v=0/.test(location.search);
 // v847: 4막 용암 빛 번짐 — 용암 틈에서 4칸(0.62 유닛) 안의 기둥 윗면·옆면·틈을 붉은 주황으로 물들인다(맥박을 따라 같이 밝아짐).
 // 거리는 지을 때 높이 텍스처의 알파에 구워 둔다(셰이더 추가 조회 없음). ?lglow=N 세기(기본 0.28) · 0 이면 v846 과 같다
+// v849: 4막 흑요석 기둥 — 바닥 기둥 열에 하나 꼴(무리 지어)을 검고 반들반들한 흑요석으로. 기둥 톤(텍스처 G) 255 를 흑요석 표식으로 쓰고
+// (그 밖의 톤은 249 까지만) 셰이더가 그 기둥만 거칠기를 낮춰 횃불 하이라이트가 맺히게 한다 · 깨진 결(조개껍데기 모양 물결) · ?obsid=0 이면 v848 과 같다
+const OBSID = !/[?&]obsid=0/.test(location.search);
 const LGLOW = (() => { const m = location.search.match(/[?&]lglow=([\d.]+)/); return m ? parseFloat(m[1]) : 0.28; })();
 const VOX4_N = (() => { const m = location.search.match(/[?&]vox4n=(\d+)/); return m ? Math.max(4, Math.min(32, parseInt(m[1], 10))) : 32; })();
 const VOX_ACTS = (location.search.match(/[?&]voxacts=(\d+)/) || [])[1] || ('1' + (VOX4_ON ? '4' : ''));
@@ -10672,6 +10675,7 @@ function buildGroundHeight(floorNo) {
         if (c1[3] === undefined) {   // 기둥마다 한 번(캐시): 단 높이 · 톤
           const n = 0.6 * vnoise(cx / 8.0, cz / 8.0) + 0.4 * hash(q * 7 + 3, r * 13 + 5);
           c1[3] = Math.max(0, Math.min(VOX_LEVELS - 1, Math.floor(n * VOX_LEVELS))) * VOX_STEP; c1[4] = Math.floor(hash(q, r) * 255);
+          if (OBSID) c1[4] = (0.6 * vnoise(cx / 5 + 13.7, cz / 5 + 41.1) + 0.4 * hash(q * 19 + 7, r * 23 + 1)) > 0.74 ? 255 : Math.min(c1[4], 249);   // v849: 흑요석(무리 지어 열에 하나 꼴)
         }
         groundH[k] = c1[3];
         gVoxAux[k * 2] = c1[4];   // 기둥 하나는 한 톤
@@ -10862,11 +10866,12 @@ uniform vec3 uVoxPal2;
 uniform float uVoxMode;
 uniform float uVoxStone;
 uniform float uVoxGlow;
+uniform float uVoxObs;
 uniform vec3 uVoxLava;
 uniform mat4 projectionMatrix;
 varying vec3 vVoxWorld;
 vec3 vxView, vxNormal, vxWorldHit, vxWorldNrm, vxColor;
-float vxLavaK, vxGlowK;
+float vxLavaK, vxGlowK, vxRough;
 vec2 vxUv;
 // 텍셀 R = 단(0..N). 255 = 바닥이 아닌 칸(벽·바깥) — 기둥이 없어 시선이 그냥 지나간다.
 float vxColH(ivec2 c) {
@@ -10924,7 +10929,7 @@ float vxVN(vec2 p) { vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f
   return mix(mix(vxH2(i), vxH2(i + vec2(1.0, 0.0)), u.x), mix(vxH2(i + vec2(0.0, 1.0)), vxH2(i + vec2(1.0, 1.0)), u.x), u.y); }
 vec3 vxShade(ivec2 c, float h, vec3 n) {
   float hs = fract(sin(float(c.x) * 127.1 + float(c.y) * 311.7) * 43758.5453);
-  vxLavaK = 0.0; vxGlowK = 0.0;
+  vxLavaK = 0.0; vxGlowK = 0.0; vxRough = -1.0;
   if (uVoxMode > 0.5) {   // v841 4막: 텍셀 G = 기둥 톤(기둥 하나가 한 색) · B = 표식(1 틈 · 2 용암 틈)
     vec4 tx = texture2D(tVoxH, (vec2(c) + 0.5) / uVoxGrid);
     float sh = tx.g, fl = floor(tx.b * 255.0 + 0.5);
@@ -10939,8 +10944,28 @@ vec3 vxShade(ivec2 c, float h, vec3 n) {
       if (gr > 0.94) st += 0.16; else if (gr < 0.05) st -= 0.24;   // 밝은 반점 · 파인 구멍
       t4 *= st;
     }
+    if (uVoxObs > 0.5 && sh > 0.99 && fl < 1.5) {   // v849: 흑요석 — 거의 검은 남보라 유리질. 검게만 두면 구멍으로 읽혀서 '유리' 신호를 셋 얹는다
+      b4 = vec3(0.075, 0.06, 0.11);
+      vec2 op = n.y > 0.5 ? vxWorldHit.xz : vec2(vxWorldHit.x - vxWorldHit.z, vxWorldHit.y * 1.4);
+      vec2 oq = floor(op / 0.104) + 0.5, ow = oq * 0.104;
+      float rip = fract(vxVN(ow / 0.55 + 7.3) * 5.0);   // 조개껍데기 모양 깨진 결(물결 등고선)
+      t4 = (0.8 + 0.06 * (h / uVoxStep)) + 0.9 * smoothstep(0.84, 0.9, rip) * (1.0 - smoothstep(0.9, 0.96, rip));
+      if (n.y > 0.5) {
+        // ① 윤곽: 화면 위쪽(−x·−z) 이웃이 틈이면 밝은 테, 아래쪽이면 한 단 어둡게 — 픽셀아트 유리 베벨
+        float fxm = floor(texture2D(tVoxH, (vec2(c + ivec2(-1, 0)) + 0.5) / uVoxGrid).b * 255.0 + 0.5);
+        float fzm = floor(texture2D(tVoxH, (vec2(c + ivec2(0, -1)) + 0.5) / uVoxGrid).b * 255.0 + 0.5);
+        float fxp = floor(texture2D(tVoxH, (vec2(c + ivec2(1, 0)) + 0.5) / uVoxGrid).b * 255.0 + 0.5);
+        float fzp = floor(texture2D(tVoxH, (vec2(c + ivec2(0, 1)) + 0.5) / uVoxGrid).b * 255.0 + 0.5);
+        if (fl < 0.5) { if (fxm > 0.5 || fzm > 0.5) t4 += 3.4; else if (fxp > 0.5 || fzp > 0.5) t4 *= 0.6; }
+        // ② 비친 빛줄기: 화면 가로(x−z)를 따라 끊기며 이어지는 사선 반사 — 월드 고정이라 걸어도 안 흐른다
+        float sk = fract((ow.x + ow.y) * 0.42 + 0.31 * vxVN(ow / 1.7 + 3.9));
+        t4 += 2.2 * step(0.47, sk) * step(sk, 0.53) * step(0.45, vxVN(ow / 0.9 + 17.1));
+      } else if (fract((vxWorldHit.x - vxWorldHit.z) * 1.1) < 0.12) t4 += 1.2;   // 옆면 세로 빛줄
+      if (vxH2(oq + 3.1) > 0.988) t4 += 2.4;   // 드문 반짝임
+      vxRough = 0.22;   // 횃불이 유리에 비친 번들거림(0.18 은 흰 얼룩이 너무 컸다)
+    }
     if (n.y < 0.5) t4 *= uVoxSideDim;
-    if (uVoxGlow > 0.0 && tx.a > 0.0 && fl < 1.5) vxGlowK = tx.a * tx.a * uVoxGlow * (n.y > 0.5 ? 1.0 : 1.6);   // v847: 용암 빛 번짐(틈을 향한 옆면이 더 받는다)
+    if (uVoxGlow > 0.0 && tx.a > 0.0 && fl < 1.5) vxGlowK = tx.a * tx.a * uVoxGlow * (n.y > 0.5 ? 1.0 : 1.6) * (uVoxObs > 0.5 && sh > 0.99 && fl < 1.5 ? 1.8 : 1.0);   // v847: 용암 빛 번짐(틈을 향한 옆면이 더 받는다) · v849: 흑요석은 거울처럼 1.8배(용암 칸은 현무암 그대로 — 흑요석 색이 섞이면 용암이 어두워진다)
     if (fl > 0.5) { t4 *= 0.45; if (fl > 1.5 && n.y > 0.5) vxLavaK = 0.6 + 0.8 * hs; }   // 칸마다 G 를 흔들어 붉은 주황 ↔ 노란 주황(원화의 실금)
     return b4 * t4;
   }
@@ -10975,9 +11000,10 @@ const voxRayUniforms = {
   uVoxPal0: { value: new THREE.Color(0x2a2417) },
   uVoxPal1: { value: new THREE.Color(0x322b1a) },
   uVoxPal2: { value: new THREE.Color(0x241f14) },
-  uVoxMode: { value: 0 },
-  uVoxStone: { value: 0 },
-  uVoxGlow: { value: 0 },                       // v847: 4막 용암 빛 번짐 세기(텍셀 알파 = 용암까지 가까움)                      // v845: 1 = 4막 돌 결 · 기둥 밝기 폭(?vox4v=0 이면 0)                       // v841: 1 = 4막 육각 기둥(텍셀 G·B 를 읽는다)
+  uVoxMode: { value: 0 },    // v841: 1 = 4막 육각 기둥(텍셀 G·B 를 읽는다)
+  uVoxStone: { value: 0 },   // v845: 1 = 4막 돌 결 · 기둥 밝기 폭(?vox4v=0 이면 0)
+  uVoxGlow: { value: 0 },    // v847: 4막 용암 빛 번짐 세기(텍셀 알파 = 용암까지 가까움)
+  uVoxObs: { value: 0 },     // v849: 1 = 4막 흑요석 기둥(텍셀 G 255)
   uVoxLava: { value: new THREE.Color(1, 0.13, 0.025) }, // v841: 용암 틈 색(선형 · 맥박은 updateCavernDecor)
 };
 // 재질은 첫 사용 때 만든다 — 모듈 로드 시점에 만들면 generateUUID 가 Math.random 을 먹어
@@ -10995,6 +11021,7 @@ function _voxRayMats() {
   f = f.replace('#include <common>', '#include <common>\n' + VOX_GLSL);
   f = _vxInline(f, 'normal_fragment_begin', () => 'vec3 normal = vxNormal;\nvec3 geometryNormal = normal;');
   f = _vxInline(f, 'map_fragment', s => s.replace(/vUv/g, 'vxUv'));
+  f = f.replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n\tif (vxRough >= 0.0) roughnessFactor = vxRough;');   // v849: 흑요석만 매끈하게
   // 그림자 좌표는 정점(프록시 상자 표면)이 아니라 맞은 지점에서 다시 만든다 — 안 그러면 벽 그림자가 어긋난다
   f = _vxInline(f, 'lights_fragment_begin', s => s
     .replace(/vViewPosition/g, 'vxView')
@@ -11094,6 +11121,7 @@ function buildVoxelRayFloor(dgn) {
   u.uVoxMode.value = (act === 4 && gVoxAux) ? 1 : 0;
   u.uVoxStone.value = (act === 4 && gVoxAux && VOX4V) ? 1 : 0;
   u.uVoxGlow.value = glowOn ? LGLOW : 0;
+  u.uVoxObs.value = (act === 4 && gVoxAux && OBSID) ? 1 : 0;
   u.uVoxPal0.value.setHex(pal[0]); u.uVoxPal1.value.setHex(pal[1]); u.uVoxPal2.value.setHex(pal[2]);
   if (voxRayColorMat.map !== map) { voxRayColorMat.map = map; voxRayColorMat.needsUpdate = true; }
   voxRayColorMat.roughness = srcMat ? srcMat.roughness : STONE_ROUGH;
