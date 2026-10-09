@@ -4421,7 +4421,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v845'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v846'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -10926,8 +10926,8 @@ vec3 vxShade(ivec2 c, float h, vec3 n) {
     float sh = tx.g, fl = floor(tx.b * 255.0 + 0.5);
     vec3 b4 = sh < 0.34 ? uVoxPal0 : (sh < 0.67 ? uVoxPal1 : uVoxPal2);
     float t4 = (0.86 + fract(sh * 17.0) * 0.22) * (0.9 + 0.06 * (h / uVoxStep)) * (0.95 + hs * 0.06);
-    if (uVoxStone > 0.5) {   // v845: 기둥마다 밝기 폭을 넓히고(0.72~1.16) 돌 결을 얹는다 — 월드 고정 0.104 격자(화면 약 1.3px)로 끊어 지글거리지 않게
-      t4 = (0.72 + fract(sh * 17.0) * 0.44) * (0.9 + 0.06 * (h / uVoxStep));
+    if (uVoxStone > 0.5) {   // v845: 기둥마다 밝기 폭을 넓히고(0.48~1.40 (v846 — v845 는 0.72~1.16)) 돌 결을 얹는다 — 월드 고정 0.104 격자(화면 약 1.3px)로 끊어 지글거리지 않게
+      t4 = (0.48 + fract(sh * 17.0) * 0.92) * (0.9 + 0.06 * (h / uVoxStep));
       vec2 sp = n.y > 0.5 ? vxWorldHit.xz : vec2(vxWorldHit.x - vxWorldHit.z, vxWorldHit.y * 1.4);
       vec2 sq = floor(sp / 0.104) + 0.5, sw = sq * 0.104 + sh * 37.0;
       float mot = vxVN(sw / 0.75) - 0.5, mid = vxVN(sw / 0.28 + 11.3) - 0.5, gr = vxH2(sq + floor(sh * 251.0));
