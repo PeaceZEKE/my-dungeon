@@ -1153,7 +1153,7 @@ function buildExecutionerBody(grp, bodyGrp, headGrp, limbs) {
   const tongue = (g, x, y, z, k, lean) => {   // 혀 하나 = 겉·속·심 세 겹(밑동을 맞춰 위로 솟게)
     [[bkOut, 0.24, 1.0], [bkMid, 0.16, 0.74], [bkCore, 0.085, 0.46]].forEach(([mat, r, h], j) => {
       const geo = new THREE.ConeGeometry(r * k, h * k, 6); geo.translate(0, h * k / 2, 0);
-      const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z + j * 0.012 * k); m.rotation.set(-0.3, 0, lean); g.add(m);
+      const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z + j * 0.012 * k); m.rotation.set(0.22, 0, lean); g.add(m);   // v865: 뒤(+z)로 살짝 — 앞(머리 쪽)으로 기울면 등에 기대 누운 불로 보였다
     });
   };
   const fireGrps = [];

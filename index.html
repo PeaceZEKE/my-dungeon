@@ -4485,7 +4485,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v864'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v865'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -23636,7 +23636,7 @@ function buildExecutionerBody(grp, bodyGrp, headGrp, limbs) {
   const tongue = (g, x, y, z, k, lean) => {   // 혀 하나 = 겉·속·심 세 겹(밑동을 맞춰 위로 솟게)
     [[bkOut, 0.24, 1.0], [bkMid, 0.16, 0.74], [bkCore, 0.085, 0.46]].forEach(([mat, r, h], j) => {
       const geo = new THREE.ConeGeometry(r * k, h * k, 6); geo.translate(0, h * k / 2, 0);
-      const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z + j * 0.012 * k); m.rotation.set(-0.3, 0, lean); g.add(m);
+      const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z + j * 0.012 * k); m.rotation.set(0.22, 0, lean); g.add(m);   // v865: 뒤(+z)로 살짝 — 앞(머리 쪽)으로 기울면 등에 기대 누운 불로 보였다
     });
   };
   const fireGrps = [];
