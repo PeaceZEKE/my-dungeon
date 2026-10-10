@@ -4394,9 +4394,8 @@ const UNSTICK_ON = !/[?&]unstick=0/.test(location.search);
 const CROWD_ON = !/[?&]crowd=0/.test(location.search);
 const BAL2 = !/[?&]bal=0/.test(location.search);     // v821: 수치 재조정(성장 곡선·막 배율·궁수·마법사 방어·투사체 치명타). 0 = v820 수치
 const EXP_GROWTH = BAL2 ? 1.4 : 1.5;                  // 레벨업 요구 경험치 배율(1.5 는 25레벨 근처에서 성장이 사실상 멈췄다)
-const BAL5 = !/[?&]bal5=0/.test(location.search);    // v871: 전체 점검(플레이 봇 1~4막 × 세 직업 8시드) — 마법사·궁수 레벨업 체력 ×1.2 · 60층 얼음 여왕 체력 ×0.65. 0 = v870 수치
-const CLS_HP_LV = () => (BAL5 && (selectedChar === 'mage' || selectedChar === 'archer')) ? 1.2 : 1;   // v871: 2막부터 마법사·궁수가 기사보다 35~40% 더 죽었다 — 체력 차는 6~7% 인데 방어 수단(기사 정면 방어 80%)이 갈랐다
-const HP_PER_LV = (lv) => BAL2 ? Math.round((12 + Math.floor(lv / 2)) * CLS_HP_LV()) : 15; // 레벨업 체력 — 레벨이 오를수록 조금씩 더(적 피해는 층에 선형인데 레벨은 포화한다)
+const BAL5 = !/[?&]bal5=0/.test(location.search);    // v871: 전체 점검(플레이 봇 1~4막 × 세 직업 8시드) — 마법사·궁수 한 방 상한 ×0.8 · 60층 얼음 여왕 체력 ×0.65. 0 = v870 수치
+const HP_PER_LV = (lv) => BAL2 ? 12 + Math.floor(lv / 2) : 15; // 레벨업 체력 — 레벨이 오를수록 조금씩 더(적 피해는 층에 선형인데 레벨은 포화한다)
 const ACT_HP_MUL = BAL2 ? 0.35 : 0.6;                 // 막당 몬스터 체력 가산(2막 ×1.35 · 3막 ×1.7. 예전 ×1.6 · ×2.2)
 const ACT_DMG_MUL = BAL2 ? 0.15 : 0.4;                // 막당 몬스터 공격력 가산(2막 ×1.15 · 3막 ×1.3. 예전 ×1.4 · ×1.8 — 90층 왕 한 방이 플레이어 체력의 122% 였다)
 const ARCHER_ARROW_MUL = BAL2 ? 1.5 : 1.0;            // 궁수 화살 발당 배수(근접 판정이 없어 기사·마법사의 절반이었다)
@@ -4406,6 +4405,9 @@ const BAL3 = !/[?&]bal3=0/.test(location.search);   // v826: 2·3막 체감 조�
 const RANGED_DMG_MUL_ACT = BAL3 ? [1.75, 1.3, 1.15] : [1.75, 1.75, 1.75]; // 막별 원거리 몬스터 공격력 배율(봇 실측: 2막 혼령 한 방 42% · 3막 농침벌 54% → 31%·33%)
 const HIT_CAP_MOB = BAL3 ? 0.40 : 9;   // 일반 몬스터 한 방 상한(최대 체력 비율). 1막 최대 실측 33% 라 1막은 안 걸린다
 const HIT_CAP_BOSS = BAL3 ? 0.40 : 9;  // 보스 한 방 상한(90층 왕 맨몸 80% · 흑기사 49% → 40%. 1막 오크 보스 36% 는 안 걸린다)
+// v871: 마법사·궁수는 상한을 0.8 배(40% → 32%) — 2막부터 기사보다 35~40% 더 죽었는데 최대 체력 차는 6~7% 뿐이고 차이는 방어 수단(기사 정면 방어 80%)에서 났다.
+// 체력을 ×1.2 로 올려 봤지만 효과가 잡음 안이었다 — 큰 공격(사냥개·임프 폭발·거인·농침벌)이 상한에 걸려 체력과 같이 커지기 때문이다. 상한이 직접 지렛대다
+const CLS_HIT_CAP = () => (BAL5 && (selectedChar === 'mage' || selectedChar === 'archer')) ? 0.8 : 1;
 const WRAITH_DMG_MUL = 0.9;           // 혼령 공격력 배율(예전엔 원거리 1.75 를 그대로 받았다)
 const WRAITH2 = !/[?&]wraith2=0/.test(location.search); // v827: 혼령 히트앤런 빈도 조정 — 타격 뒤 쿨 2~3 → 3.4~4.6초 · 첫 타격 1~1.7 → 1.8~2.6초 · 무리 공용 간격(한 마리가 덤비면 3초 동안 다른 혼령은 못 덤빔). 0 = v826 동작
 const WRAITH_CD_MIN = WRAITH2 ? 3.4 : 2.0, WRAITH_CD_RND = WRAITH2 ? 1.2 : 1.0;   // 타격(복귀) 뒤 다음 공격까지
@@ -27789,7 +27791,7 @@ function damagePlayer(amount, enemyObj) {
   if (def > 0) amount = Math.max(1, Math.round(amount * (1 - def)));
   if (dmgHazard) { const hz = Math.min(0.6, smithBonus('hazard')); if (hz > 0) amount = Math.max(1, Math.round(amount * (1 - hz))); }   // v868: 용암 비늘 갑주 — 장판·분출·용암 비
   // v826: 한 방 상한 — 어떤 적도 한 번에 최대 체력의 40%(보스 45%)를 넘게 못 깎는다. 투사체는 주인(owner)의 보스 여부를 넘긴다
-  if (player.floor > 30) { const cap = Math.ceil(player.hpMax * ((enemyObj && enemyObj.isBoss) ? HIT_CAP_BOSS : HIT_CAP_MOB)); if (amount > cap) amount = cap; } // 2막부터(1막은 바이트 단위로 그대로 — 30층 오크 보스 최대 43% 가 걸리지 않게)
+  if (player.floor > 30) { const cap = Math.ceil(player.hpMax * ((enemyObj && enemyObj.isBoss) ? HIT_CAP_BOSS : HIT_CAP_MOB) * CLS_HIT_CAP()); if (amount > cap) amount = cap; } // 2막부터(1막은 바이트 단위로 그대로 — 30층 오크 보스 최대 43% 가 걸리지 않게)
   if (player.dodgeT > 0) {
     // 궁수: 적 공격 타이밍에 맞춘 회피 = 완벽 회피 → 순간 이속 버스트(기사 패링에 대응)
     if (selectedChar === 'archer') {
