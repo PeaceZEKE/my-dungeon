@@ -50,6 +50,7 @@ const files = args.length ? args
         const root = (typeof kingObj !== 'undefined') ? kingObj
                    : (typeof bugObj !== 'undefined') ? bugObj
                    : (typeof ghoulObj !== 'undefined') ? ghoulObj
+                   : (typeof impObj !== 'undefined') ? impObj
                    : (typeof voxMesh !== 'undefined') ? voxMesh : null;
         const gl = renderer.getContext();
         const W = gl.drawingBufferWidth, H = gl.drawingBufferHeight;
