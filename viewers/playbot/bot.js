@@ -33,8 +33,12 @@ window.__botStep = function (dt) {
   const alive = enemies.filter(e => !e.isDead && e.hp > 0 && e.obj);
   const d2 = e => Math.hypot(e.obj.position.x - P.x, e.obj.position.z - P.z);
   let tgt = null, best = 1e9;
-  for (const e of alive) { if (!e.awake) continue; const d = d2(e); if (d < 30 && d < best) { best = d; tgt = e; } }
-  if (!tgt) for (const e of alive) { const d = d2(e); if (d < best) { best = d; tgt = e; } }
+  // 90층 더블 보스: 닫힌 심장·무릎 꿇은 왕은 때려도 0 — 사람이면 안내 문구를 보고 열린 심장으로 간다
+  const skipT = e => (e.type === 'rotheart' && !e.heartOpen) || (e.type === 'corruptking' && e.ckDown);
+  const openHeart = alive.find(e => e.type === 'rotheart' && e.heartOpen);
+  if (openHeart) tgt = openHeart;
+  else for (const e of alive) { if (!e.awake || skipT(e)) continue; const d = d2(e); if (d < 30 && d < best) { best = d; tgt = e; } }
+  if (!tgt) for (const e of alive) { if (skipT(e)) continue; const d = d2(e); if (d < best) { best = d; tgt = e; } }
   const boss = alive.find(e => e.isBoss);
   if (boss && boss.awake && B.bossAwakeT < 0) B.bossAwakeT = B.fl.t;
   if (B.bossAwakeT >= 0 && !boss) { B.fl.bossT = B.fl.t - B.bossAwakeT; B.bossAwakeT = -2; }
@@ -53,10 +57,12 @@ window.__botStep = function (dt) {
   if (threat && cls === 'archer' && player.dodgeCd <= 0 && player.dodgeT <= 0 && player.sta >= 30) { const ex = threat.obj.position.x - P.x, ez = threat.obj.position.z - P.z; startDodge(-ez, ex); B.fl.dodges = (B.fl.dodges || 0) + 1; }
   // 투사체·장판 회피(사람이면 옆으로 비키는 것) — 0.7초 안에 몸 1.3 안으로 지나갈 투사체는 진행 방향에 수직으로 비킨다
   let evade = null;
+  // 골렘 내려찍기(예고 0.78초 · 사방 판정 반경 ≈ 3.1) — 팔을 드는 걸 보고 0.25초 뒤 판정 밖으로 물러난다(사람의 반응). 맞은 뒤엔 다시 등 뒤로 들어간다
+  for (const e of alive) { if (e.type !== 'golem' || !e.hitPending || !(e.swingTimer > 0.22 && e.swingTimer < 0.75)) continue; const R = (player.radius + e.radius + 0.6) + 0.5 * e.scale + 0.6 + 0.5; if (d2(e) < R) { evade = window.__botEscape(e.obj.position.x, e.obj.position.z); B.fl.evadesG = (B.fl.evadesG || 0) + 1; break; } }
   const projs = [];
   for (const f of fireballs) if (f.mesh && !f.reflected) projs.push({ x: f.mesh.position.x, z: f.mesh.position.z, vx: f.vx, vz: f.vz });
   for (const c of thrownClubs) if (c.mesh && !c.embedded) projs.push({ x: c.mesh.position.x, z: c.mesh.position.z, vx: c.vx, vz: c.vz });
-  for (const f of projs) { const rx = P.x - f.x, rz = P.z - f.z, v2 = f.vx * f.vx + f.vz * f.vz; if (v2 < 1) continue; const t = (rx * f.vx + rz * f.vz) / v2; if (t < 0 || t > 0.7) continue; const cx = f.x + f.vx * t, cz = f.z + f.vz * t; const pd = Math.hypot(P.x - cx, P.z - cz); if (pd > 1.3) continue; const sv = Math.hypot(f.vx, f.vz); let ex = -f.vz / sv, ez = f.vx / sv; if ((P.x - cx) * ex + (P.z - cz) * ez < 0) { ex = -ex; ez = -ez; } evade = { x: ex, z: ez }; B.fl.evades = (B.fl.evades || 0) + 1; break; }
+  if (!evade) for (const f of projs) { const rx = P.x - f.x, rz = P.z - f.z, v2 = f.vx * f.vx + f.vz * f.vz; if (v2 < 1) continue; const t = (rx * f.vx + rz * f.vz) / v2; if (t < 0 || t > 0.7) continue; const cx = f.x + f.vx * t, cz = f.z + f.vz * t; const pd = Math.hypot(P.x - cx, P.z - cz); if (pd > 1.3) continue; const sv = Math.hypot(f.vx, f.vz); let ex = -f.vz / sv, ez = f.vx / sv; if ((P.x - cx) * ex + (P.z - cz) * ez < 0) { ex = -ex; ez = -ez; } evade = { x: ex, z: ez }; B.fl.evades = (B.fl.evades || 0) + 1; break; }
   // 장판: 중심 반대 방향이 벽에 막혀 있으면 그 자리에 갇힌다(사람은 벽을 따라 옆으로 빠진다) — 16 방향 중 1.5·3 유닛 앞이 트였고 장판 밖으로 나가는 쪽을 고른다(v829)
   if (!evade) for (const pl of firePools) { if (pl.state !== 'active' && pl.state !== 'telegraph') continue; const d = Math.hypot(P.x - pl.x, P.z - pl.z); if (d < pl.radius + 0.6) { const u = d || 1, ax = (P.x - pl.x) / u, az = (P.z - pl.z) / u; let bx = ax, bz = az;
     const G = navFineGet(0.5); if (G) { const free = (x, z) => { const i = Math.floor((x - G.x0) / G.h), j = Math.floor((z - G.z0) / G.h); return i >= 0 && j >= 0 && i < G.FW && j < G.FH && !G.blk[j * G.FW + i]; }; let best = -9;
@@ -76,6 +82,11 @@ window.__botStep = function (dt) {
   if (player.hp < player.hpMax * 0.4 && player.potions > 0) { usePotion(); B.fl.potions++; }
   // 목표·이동
   let goal = null, isStairs = false;
+  // 골렘은 정면 무적(등 뒤만 피해) — 사람이면 등 뒤로 돈다. 몸 뒤 지점을 이동 목표로 삼고, 등 뒤가 아니면 휘두르지 않는다(봇이 정면만 때려 맞기만 하던 것 — 2막 피해 1위의 정체)
+  let flank = null;
+  if (tgt && tgt.type === 'golem' && tgt.golemAwake) { const fx = Math.sin(tgt.obj.rotation.y), fz = Math.cos(tgt.obj.rotation.y), tx = P.x - tgt.obj.position.x, tz = P.z - tgt.obj.position.z, tl = Math.hypot(tx, tz) || 1;
+    const back = (fx * tx + fz * tz) / tl < -0.6, rr = cls === 'archer' ? 4.5 : 1.6 + (tgt.radius || 0.5);
+    flank = { back, x: tgt.obj.position.x - fx * rr, z: tgt.obj.position.z - fz * rr }; }
   if (tgt) goal = { x: tgt.obj.position.x, z: tgt.obj.position.z };
   else if (stairsMesh && stairsMesh.position.y > -10) { goal = { x: stairsMesh.position.x, z: stairsMesh.position.z }; isStairs = true; }
   joyVec = { x: 0, y: 0 };
@@ -85,14 +96,16 @@ window.__botStep = function (dt) {
     let reach = 0;
     if (tgt) reach = cls === 'archer' ? 5.0 : (cls === 'mage' ? 2.6 : 2.2) + (tgt.radius || 0.5) * 0.8;
     if (tgt) aimAt(goal.x, goal.z);
-    const wantMove = isStairs ? d > 0.3 : (cls === 'archer' ? (d > 5.4) : d > reach);   // v870: 궁수 약공격 사거리는 1.2칸(6) — 예전 11 에서 멈추면 화살이 안 닿아 층마다 시간 초과였다
-    const tooClose = cls === 'archer' && tgt && d < 3;
+    let wantMove = isStairs ? d > 0.3 : (cls === 'archer' ? (d > 5.4) : d > reach);
+    if (flank && !flank.back) wantMove = true;   // v870: 궁수 약공격 사거리는 1.2칸(6) — 예전 11 에서 멈추면 화살이 안 닿아 층마다 시간 초과였다
+    const tooClose = cls === 'archer' && tgt && d < 3 && !(flank && !flank.back);
     if (evade) { setJoy(evade.x, evade.z); if (isCharging) releaseCharge(); }
+    else if (flank && !flank.back) { const fdx = flank.x - P.x, fdz = flank.z - P.z; if (Math.hypot(fdx, fdz) < 4) setJoy(fdx, fdz); else window.__botNav.moveTo(flank, dt); }
     else if (wantMove) window.__botNav.moveTo(goal, dt);
     else if (tooClose) setJoy(P.x - goal.x, P.z - goal.z);
     // 공격
     if (tgt && !player.isBlocking && !player.rooted && !evade) {
-      const inRange = cls === 'archer' ? d < 6 + (tgt.radius || 0.5) : d < reach + 0.6;
+      const inRange = (cls === 'archer' ? d < 6 + (tgt.radius || 0.5) : d < reach + 0.6) && !(flank && !flank.back);
       if (isCharging) { B.chargeT -= dt; if (B.chargeT <= 0) { releaseCharge(); B.fl.atks = (B.fl.atks || 0) + 1; } }
       else if (inRange && player.attackCooldown <= 0 && swingTimer <= 0) { startCharge(); if (!isCharging) {} else { const heavy = player.sta >= 70 && (B.fl.atks || 0) % 4 === 3; B.chargeT = heavy ? 0.5 : 0.02; } }
     } else if (isCharging) { releaseCharge(); }

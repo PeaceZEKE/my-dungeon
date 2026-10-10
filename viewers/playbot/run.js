@@ -10,7 +10,7 @@ const CI = { knight: 0, mage: 1, archer: 2 }[cls];
     // 타이머를 게임 시계로: 보상 카드(처치 0.6초 뒤)·토스트 같은 setTimeout 이 실제 시계를 타면 회차마다 결과가 달라진다
     const Q = []; let tid = 1; window.setTimeout = (fn, ms) => { const id = tid++; Q.push({ id, at: window.__t + (ms || 0), fn }); return id; }; window.clearTimeout = (id) => { const i = Q.findIndex(q => q.id === id); if (i >= 0) Q.splice(i, 1); };
     window.__flushTimers = () => { for (let g = 0; g < 50; g++) { const due = Q.filter(q => q.at <= window.__t); if (!due.length) break; for (const q of due) { const i = Q.indexOf(q); if (i >= 0) Q.splice(i, 1); try { q.fn(); } catch (e) {} } } }; }, +seed);
-  await p.goto('http://localhost:8899/index.html?tut=0&hitfx=0&amb=0&bgm2=0' + (q || ''));
+  await p.goto('http://localhost:' + (process.env.PB_PORT || 8899) + '/index.html?tut=0&hitfx=0&amb=0&bgm2=0' + (q || ''));
   await p.waitForFunction(() => typeof exitTownToDungeon === 'function', null, { timeout: 60000 });
   await p.evaluate(() => { window.__t += 2000; window.__flushTimers(); });
   await p.evaluate((i) => { localStorage.clear(); document.querySelectorAll('#charChoices > *')[i].click(); }, CI);
