@@ -55,6 +55,7 @@ const files = args.length ? args
                    : (typeof houndObj !== 'undefined') ? houndObj
                    : (typeof golemObj !== 'undefined') ? golemObj
                    : (typeof beastObj !== 'undefined') ? beastObj
+                   : (typeof exObj !== 'undefined') ? exObj
                    : (typeof voxMesh !== 'undefined') ? voxMesh : null;
         const gl = renderer.getContext();
         const W = gl.drawingBufferWidth, H = gl.drawingBufferHeight;
