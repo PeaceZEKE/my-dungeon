@@ -4424,7 +4424,11 @@ const ACT4_ON = !/[?&]act4=0/.test(location.search); // v839: 4막(91~120층, �
 // BAL4 = 4막 수치 — 막 배율을 선형(×2.05·×1.45) 대신 ×1.8·×1.32 로 · 4막 보스 체력 ×0.6(성장 모델: 보스 처치 타수 60~79 → 36~41, 기획서 6-6)
 const M4_ON = ACT4_ON && !/[?&]m4=0/.test(location.search);
 const BAL4 = !/[?&]bal4=0/.test(location.search);
-const ACT4_HP_MUL = 1.8, ACT4_DMG_MUL = 1.32, ACT4_BOSS_HP = 0.6;
+// v870 BAL4B — 플레이 봇 측정(기사·마법사 × 시드 둘, 3막 대비): 4막 일반층 사망 +30~45% · 피해 +25~33% · 같은 적 수(60~77)인데 111~119층이 거의 다 300초 초과,
+// 110층 사망 4~20(3막 보스 4~8). 피해 1위 화염술사 장판 · 화염 임프 폭발 · 불의 사냥개 돌진, 110층은 처형자. 0 = v869 수치
+const BAL4B = !/[?&]bal4b=0/.test(location.search);
+const ACT4_HP_MUL = BAL4B ? 1.55 : 1.8, ACT4_DMG_MUL = 1.32, ACT4_BOSS_HP = 0.6;
+const IMP_BLAST_K = BAL4B ? 0.45 : 0.6, PYRO_POOL_K = BAL4B ? 0.35 : 0.5, HOUND_CHARGE_K = BAL4B ? 0.8 : 1, EXEC_DMG_K = BAL4B ? 0.85 : 1;
 // v856 불의 사냥개 돌진: 웅크림(예고) 0.5초 → 직선 6 유닛을 0.35초에 → 숨 고르기 0.5초. 무리 공용 간격 1.2초(v827 교훈 — 동시에 꽂히면 무적 시간이 흡수해
 // 덤빔 수 ≠ 피격 수, 떼어 놓으면 덤빔 수 = 피격 수라 무리 전체 상한으로 잡는다). 회피: 명중 반폭 = 몸 둘(0.5 + 0.55) + 0.35 ≈ 1.4 — 예고 0.5초 + 돌진 이동 시간 안에 옆으로 몸 하나 비키면 빗나간다.
 // 방향은 웅크림 앞 0.3초만 플레이어를 따라가고 마지막 0.2초는 고정(화살표가 멈추고 빨리 깜빡) — 돌진이 빨라(0.35초) 끝까지 따라가면
@@ -4496,7 +4500,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v869'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v870'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -18164,7 +18168,7 @@ const LOB_T = 0.8, LOB_R = 1.4;
 function spawnLobBolt(e) {
   const ox = e.obj.position.x, oz = e.obj.position.z, oy = (PROJ_ORIGIN_Y[e.type] || 1.0) * e.scale + groundHeightAt(ox, oz);
   const tx = player.obj.position.x, tz = player.obj.position.z, ty = groundHeightAt(tx, tz) + 0.2;
-  spawnFirePool(tx, tz, LOB_R, Math.max(1, Math.floor(e.damage * 0.5)), e, [0xff7a2a, 0xd8400c, 0xff9a40, 0xffd060], LOB_T, 2.5);
+  spawnFirePool(tx, tz, LOB_R, Math.max(1, Math.floor(e.damage * PYRO_POOL_K)), e, [0xff7a2a, 0xd8400c, 0xff9a40, 0xffd060], LOB_T, 2.5);
   const g = new THREE.Group();
   const mat = new THREE.MeshBasicMaterial({ color: 0xff8a30, toneMapped: false, fog: false });
   const m = new THREE.Mesh(fireballGeo, mat); m.scale.setScalar(1.3); g.add(m);
@@ -24487,6 +24491,7 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
     const dmgMul = (BAL4 && BAL2 && actIdx === 3) ? ACT4_DMG_MUL : 1 + actIdx * ACT_DMG_MUL;  // v821: 2막 ×1.15, 3막 ×1.3 … (예전 0.4: ×1.4 · ×1.8) · v854: 4막 ×1.32(선형이면 ×1.45)
     hp *= hpMul; dmg *= dmgMul; exp = Math.floor(exp * (1 + actIdx * 0.4));
   }
+  if (type === 'executioner') dmg *= EXEC_DMG_K;   // v870
 
   const grp = new THREE.Group();
   const bodyGrp = new THREE.Group(); const headGrp = new THREE.Group(); const limbs = {};
@@ -27467,7 +27472,7 @@ function fireImpBlastTick(e, dt) {
   spawnShockwave(x, z, 0.4);
   if (SFX && SFX.hit) SFX.hit(1.3);
   const p = player.obj.position, dp = Math.hypot(p.x - x, p.z - z);
-  if (player.alive && dp < IMP_BLAST_R + player.radius * 0.5) damagePlayer(Math.max(1, Math.floor(e.damage * 0.6)), e);
+  if (player.alive && dp < IMP_BLAST_R + player.radius * 0.5) damagePlayer(Math.max(1, Math.floor(e.damage * IMP_BLAST_K)), e);   // v870 0.6 → 0.45
   if (dp < 8) addScreenShake(0.1, 0.15);
   for (const o of enemies) {
     if (o === e || o.isDead || o.isBoss || !o.obj) continue;
@@ -30517,7 +30522,7 @@ function update(dt) {
         e.obj.rotation.y = Math.atan2(e.hhDx, e.hhDz) + Math.PI;
         ground();
         const nd = Math.hypot(player.obj.position.x - e.obj.position.x, player.obj.position.z - e.obj.position.z);
-        if (!e.hhHit && nd <= HIT) { e.hhHit = true; e.hitPending = false; e.swingTimer = 0; damagePlayer(e.damage, e); }
+        if (!e.hhHit && nd <= HIT) { e.hhHit = true; e.hitPending = false; e.swingTimer = 0; damagePlayer(Math.max(1, Math.floor(e.damage * HOUND_CHARGE_K)), e); }   // v870 돌진 ×0.8
         else if (!e.hhHit) e.swingTimer = Math.max(0.001, (nd - HIT) / HH_SPD);
         if (blocked || e.hhGone >= HH_LEN - 1e-4) {
           e.hitPending = false; e.swingTimer = 0; e.limbs._dash = false;

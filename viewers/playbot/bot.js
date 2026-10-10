@@ -83,16 +83,16 @@ window.__botStep = function (dt) {
   if (goal) {
     const d = Math.hypot(goal.x - P.x, goal.z - P.z);
     let reach = 0;
-    if (tgt) reach = cls === 'archer' ? 8.5 : (cls === 'mage' ? 2.6 : 2.2) + (tgt.radius || 0.5) * 0.8;
+    if (tgt) reach = cls === 'archer' ? 5.0 : (cls === 'mage' ? 2.6 : 2.2) + (tgt.radius || 0.5) * 0.8;
     if (tgt) aimAt(goal.x, goal.z);
-    const wantMove = isStairs ? d > 0.3 : (cls === 'archer' ? (d > 11) : d > reach);
-    const tooClose = cls === 'archer' && tgt && d < 5;
+    const wantMove = isStairs ? d > 0.3 : (cls === 'archer' ? (d > 5.4) : d > reach);   // v870: 궁수 약공격 사거리는 1.2칸(6) — 예전 11 에서 멈추면 화살이 안 닿아 층마다 시간 초과였다
+    const tooClose = cls === 'archer' && tgt && d < 3;
     if (evade) { setJoy(evade.x, evade.z); if (isCharging) releaseCharge(); }
     else if (wantMove) window.__botNav.moveTo(goal, dt);
     else if (tooClose) setJoy(P.x - goal.x, P.z - goal.z);
     // 공격
     if (tgt && !player.isBlocking && !player.rooted && !evade) {
-      const inRange = cls === 'archer' ? d < 13 : d < reach + 0.6;
+      const inRange = cls === 'archer' ? d < 6 + (tgt.radius || 0.5) : d < reach + 0.6;
       if (isCharging) { B.chargeT -= dt; if (B.chargeT <= 0) { releaseCharge(); B.fl.atks = (B.fl.atks || 0) + 1; } }
       else if (inRange && player.attackCooldown <= 0 && swingTimer <= 0) { startCharge(); if (!isCharging) {} else { const heavy = player.sta >= 70 && (B.fl.atks || 0) % 4 === 3; B.chargeT = heavy ? 0.5 : 0.02; } }
     } else if (isCharging) { releaseCharge(); }
