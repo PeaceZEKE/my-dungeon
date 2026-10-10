@@ -154,6 +154,7 @@ window.__botEscape = function (cx, cz) {
 })();
 window.__botRun = function (frames) {
   const B = window.__bot; let n = 0;
-  for (; n < frames && !B.done; n++) { window.__t += 1000 / 60; if (window.__flushTimers) window.__flushTimers(); window.__botStep(1 / 60); const hf = typeof hsFall !== 'undefined' && hsFall; if (hf) hsFallTick(1 / 60); if (player.alive && !rewardPaused && !(hf && hsFallLock())) update(1 / 60); }   // v870: 120층 격파 뒤 낙하 연출(메인 루프 몫)을 봇 루프가 대신 돌린다
+  for (; n < frames && !B.done; n++) { window.__t += 1000 / 60; if (window.__flushTimers) window.__flushTimers(); window.__botStep(1 / 60); let gdt = 1 / 60; if (typeof bossSlowT !== 'undefined' && bossSlowT >= 0) gdt *= bossSlowTick(1 / 60);   // v870: 보스 슬로모(v858)도 메인 루프 몫 — 안 돌리면 끝나지 않아 보상 카드·120층 낙하가 영영 안 온다
+    const hf = typeof hsFall !== 'undefined' && hsFall; if (hf) hsFallTick(1 / 60); if (player.alive && !rewardPaused && !(hf && hsFallLock())) update(gdt); }   // v870: 120층 격파 뒤 낙하 연출(메인 루프 몫)을 봇 루프가 대신 돌린다
   return { done: B.done, reason: B.reason, floor: player.floor, lv: player.lv, hp: Math.round(player.hp), hpMax: player.hpMax, deaths: B.deaths, t: Math.round(B.t), nFloors: B.floors.length };
 };
