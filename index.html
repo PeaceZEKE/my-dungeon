@@ -4485,7 +4485,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v863'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v864'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -23628,14 +23628,49 @@ function buildExecutionerBody(grp, bodyGrp, headGrp, limbs) {
     vein(tail, [[0, 0.06, 0.1], [0.02, -0.24, 0.42], [0.1, -0.56, 0.74]], 0.018);
     const tt = M(new THREE.ConeGeometry(0.07, 0.3, 5), hornLt); tt.position.set(0.23, -0.92, 1.52); tt.rotation.x = Math.PI / 2; tail.add(tt); }
   // ---------- 등에서 피어오르는 불(위에서 내려다보는 카메라에 가장 잘 보이는 자리 — 늘 탄다) ----------
-  const bkOut = new THREE.MeshBasicMaterial({ color: 0xff4a10, transparent: true, opacity: 0.8, fog: false, depthWrite: false, toneMapped: false });
-  const bkCore = new THREE.MeshBasicMaterial({ color: 0xffb030, transparent: true, opacity: 0.9, fog: false, depthWrite: false, toneMapped: false });
+  // v864: 어깨뼈 사이에서 머리 위로 솟는 큰 불길 — 불무더기 넷(가운데·좌·우·허리)이 따로 일렁이고 겉불(붉음)·속불(주황)·심(노랑) 세 겹 + 날름거리는 곁불 · 솟구치는 불티
+  const bkOut = new THREE.MeshBasicMaterial({ color: 0xc8240c, transparent: true, opacity: 0.66, fog: false, depthWrite: false, toneMapped: false });
+  const bkMid = new THREE.MeshBasicMaterial({ color: 0xff5a14, transparent: true, opacity: 0.82, fog: false, depthWrite: false, toneMapped: false });
+  const bkCore = new THREE.MeshBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0.95, fog: false, depthWrite: false, toneMapped: false });
   const backFire = new THREE.Group(); backFire.position.set(0, 1.95, 0.42); bodyGrp.add(backFire);
-  [[-0.2, 0, 0.0, 0.85], [0.18, 0.02, 0.06, 0.75], [0, 0.05, -0.08, 1.0]].forEach(([x, y, z, k], i) => {
-    const fo = new THREE.Mesh(new THREE.ConeGeometry(0.17 * k, 0.6 * k, 5), bkOut); fo.position.set(x, y + 0.3 * k, z); fo.rotation.x = -0.35; backFire.add(fo);
-    const fc = new THREE.Mesh(new THREE.ConeGeometry(0.09 * k, 0.38 * k, 5), bkCore); fc.position.set(x, y + 0.2 * k, z - 0.02); fc.rotation.x = -0.35; backFire.add(fc);
+  const tongue = (g, x, y, z, k, lean) => {   // 혀 하나 = 겉·속·심 세 겹(밑동을 맞춰 위로 솟게)
+    [[bkOut, 0.24, 1.0], [bkMid, 0.16, 0.74], [bkCore, 0.085, 0.46]].forEach(([mat, r, h], j) => {
+      const geo = new THREE.ConeGeometry(r * k, h * k, 6); geo.translate(0, h * k / 2, 0);
+      const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z + j * 0.012 * k); m.rotation.set(-0.3, 0, lean); g.add(m);
+    });
+  };
+  const fireGrps = [];
+  [[0, 0.02, -0.02, 1.55, 0, 2.2], [-0.3, -0.04, 0.05, 1.12, 0.32, 1.9], [0.3, -0.04, 0.05, 1.18, -0.3, 2.5], [0, -0.48, 0.14, 0.72, 0, 2.9]].forEach(([x, y, z, k, rz, f], i) => {
+    const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.z = rz; backFire.add(g);
+    tongue(g, 0, 0, 0, k, 0);
+    const n = i === 3 ? 2 : 3;   // 곁불 — 밑동 둘레에서 바깥으로 기울어 날름거린다
+    for (let j = 0; j < n; j++) { const sx = (j - (n - 1) / 2) * 0.2 * k + (rr() - 0.5) * 0.06; tongue(g, sx, 0.02, (rr() - 0.5) * 0.12, k * (0.42 + rr() * 0.2), -sx * 1.6 + (rr() - 0.5) * 0.3); }
+    g.userData = { rz, f, ph: i * 1.7 + rr() * 2 }; fireGrps.push(g);
+    c3MergeStatic(g);
   });
-  c3MergeStatic(backFire); backFire.traverse(o => { if (o.isMesh) o.userData.fx = true; });   // 불 여섯 장 → 재질별 두 메시(일렁임은 그룹째)
+  backFire.traverse(o => { if (o.isMesh) { o.userData.fx = true; o.renderOrder = o.material === bkCore ? 3 : o.material === bkMid ? 2 : 1; } });   // 심이 늘 위에 그려지게
+  // 불티 — 메시 하나에 팔면체 14개를 굽고 위치·색을 CPU 로 갱신(솟구치며 노랑 → 빨강 → 꺼짐, 가산 혼합)
+  const EMB = 14, emBase = new THREE.OctahedronGeometry(1, 0).toNonIndexed().attributes.position.array, emV = emBase.length / 3;
+  const emPos = new Float32Array(EMB * emV * 3), emCol = new Float32Array(EMB * emV * 3), emGeo = new THREE.BufferGeometry();
+  emGeo.setAttribute('position', new THREE.BufferAttribute(emPos, 3)); emGeo.setAttribute('color', new THREE.BufferAttribute(emCol, 3));
+  const emMesh = new THREE.Mesh(emGeo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, fog: false, depthWrite: false, toneMapped: false }));
+  emMesh.frustumCulled = false; emMesh.userData.fx = true; emMesh.renderOrder = 4; bodyGrp.add(emMesh);
+  const emK = []; for (let i = 0; i < EMB; i++) emK.push({ L: 0.75 + rr() * 0.6, ph: rr(), x: (rr() - 0.5) * 0.85, z: 0.4 + (rr() - 0.5) * 0.3, s: 0.7 + rr() * 0.6, w: 2 + rr() * 3 });
+  const emberTick = (t, fire) => {
+    for (let i = 0; i < EMB; i++) {
+      const e = emK[i], on = i < 9 || fire > 0.3, u = ((t / e.L) + e.ph) % 1;
+      const sz = on ? 0.085 * e.s * Math.pow(1 - u, 0.6) * (1 + 0.3 * fire) : 0;
+      const px = e.x * (1 + u * 0.6) + Math.sin(t * e.w + i) * 0.14 * u, py = 2.05 + u * (2.0 + 0.8 * fire), pz = e.z + u * 0.45;
+      const hot = 1 - u, cr = 1, cg = 0.18 + 0.72 * hot * hot, cb = 0.05 + 0.3 * hot * hot * hot, fade = Math.min(1, (1 - u) * 2.2);
+      for (let v = 0; v < emV; v++) {
+        const o = (i * emV + v) * 3;
+        emPos[o] = px + emBase[v * 3] * sz; emPos[o + 1] = py + emBase[v * 3 + 1] * sz * 1.6; emPos[o + 2] = pz + emBase[v * 3 + 2] * sz;
+        emCol[o] = cr * fade; emCol[o + 1] = cg * fade; emCol[o + 2] = cb * fade;
+      }
+    }
+    emGeo.attributes.position.needsUpdate = true; emGeo.attributes.color.needsUpdate = true;
+  };
+  emberTick(0, 0);
 
   // ---------- 처형인 대도끼(오른손) — 나무 자루 · 초승달 날 · 달군 날끝 · 뒤 가시 ----------
   // 도끼 그룹 좌표: 자루가 +y, 날은 꼭대기에서 +x 로 뻗는다. 손에는 흑기사 대검과 같은 각도로 쥔다(-π/2, π/2, 0).
@@ -23679,7 +23714,7 @@ function buildExecutionerBody(grp, bodyGrp, headGrp, limbs) {
   [aR.g, aL.g].forEach(g => c3MergeStatic(g, [aR.el, aL.el]));
   [legR, legL].forEach(g => c3MergeStatic(g));
   c3MergeStatic(clothGrp); c3MergeStatic(chainGrp); c3MergeStatic(skullGrp); c3MergeStatic(headGrp, [maskGrp, skullGrp]); c3MergeStatic(tail);
-  c3MergeStatic(bodyGrp, [headGrp, legR, legL, aR.g, aL.g, tail, backFire]);
+  c3MergeStatic(bodyGrp, [headGrp, legR, legL, aR.g, aL.g, tail, backFire, emMesh]);
 
   limbs.armR = aR.g; limbs.armL = aL.g; limbs.legR = legR; limbs.legL = legL; limbs.head = headGrp; limbs.bodyGrp = bodyGrp;
   limbs._exAxe = axe; limbs._exHand = aR.hand;
@@ -23728,8 +23763,11 @@ function buildExecutionerBody(grp, bodyGrp, headGrp, limbs) {
     lavaMat.emissiveIntensity = 0.7 + 0.3 * p + fire * 0.4;
     edgeMat.emissiveIntensity = 0.85 + 0.25 * p + heat * 1.2 + fire * 0.6;
     eyeMat.emissiveIntensity = 1.4 + 0.4 * Math.sin(t * 3.3) + heat * 0.8;
-    { const w = Math.sin(t * 15), v = Math.cos(t * 11), w2 = Math.sin(t * 23 + 1.3); backFire.scale.set(1 + 0.1 * v, 0.88 + 0.16 * Math.abs(w) + 0.08 * w2 + fire * 0.35, 1 + 0.1 * v); }
-    bkOut.opacity = 0.75 + 0.15 * fire; tail.rotation.y = 0.18 * Math.sin(t * 1.3); tail.rotation.x = 0.05 * Math.sin(t * 1.9);
+    for (const g of fireGrps) {   // 불무더기마다 따로 일렁인다 — 2페이즈엔 한 배 반 가까이 치솟는다
+      const u = g.userData, w = Math.sin(t * u.f * 6 + u.ph), v = Math.cos(t * u.f * 4.4 + u.ph * 1.3), w2 = Math.sin(t * u.f * 9.5 + u.ph * 0.7);
+      const sw = (1 + 0.12 * v) * (1 + 0.18 * fire); g.scale.set(sw, (0.8 + 0.24 * Math.abs(w) + 0.1 * w2) * (1 + 0.45 * fire), sw); g.rotation.z = u.rz + 0.07 * w2;
+    }
+    bkOut.opacity = 0.66 + 0.2 * fire; bkMid.opacity = 0.82 + 0.13 * fire; emberTick(t, fire); tail.rotation.y = 0.18 * Math.sin(t * 1.3); tail.rotation.x = 0.05 * Math.sin(t * 1.9);
     flameGrp.visible = fire > 0.02;
     if (flameGrp.visible) {
       flOut.opacity = 0.75 * fire; flCore.opacity = 0.9 * fire;
