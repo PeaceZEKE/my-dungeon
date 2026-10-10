@@ -62,6 +62,16 @@ window.__botStep = function (dt) {
     const G = navFineGet(0.5); if (G) { const free = (x, z) => { const i = Math.floor((x - G.x0) / G.h), j = Math.floor((z - G.z0) / G.h); return i >= 0 && j >= 0 && i < G.FW && j < G.FH && !G.blk[j * G.FW + i]; }; let best = -9;
       for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2, cx = Math.cos(a), cz = Math.sin(a); if (!free(P.x + cx * 1.5, P.z + cz * 1.5) || !free(P.x + cx * 3, P.z + cz * 3)) continue; const sc = cx * ax + cz * az; if (sc > best) { best = sc; bx = cx; bz = cz; } } }
     evade = { x: bx, z: bz }; B.fl.evades = (B.fl.evades || 0) + 1; break; } }
+  // v870 4막 바닥 공격 — 용암 분출 줄(예고 띠·남는 장판) · 화산탄 예고 · 바닥 고리(lbRings: 거수 내려찍기·군주 착지) · 터지기 직전 임프.
+  // 사람이면 예고를 보고 비키는 것들이라 봇도 비킨다(안 비키면 4막 피해가 과대평가된다 — v826 원칙). 가장 가까운 위험에서 트인 쪽으로
+  if (!evade && typeof lavaLines !== 'undefined') {
+    let zc = null, zd = 1e9; const near = (x, z, lim) => { const d = Math.hypot(P.x - x, P.z - z); if (d < lim && d < zd) { zd = d; zc = { x, z }; } };
+    for (const L of lavaLines) { const live = L.t < L.delay + 0.3 || (L.linger > 0 && L.t < L.delay + L.linger); if (!live) continue; const px = P.x - L.sx, pz = P.z - L.sz, al = Math.max(0, Math.min(L.len, px * L.ux + pz * L.uz)); near(L.sx + L.ux * al, L.sz + L.uz * al, L.w / 2 + 0.9); }
+    for (const m of lbMeteors) if (!m.hit) near(m.x, m.z, LB_METEOR_R + 0.7);
+    for (const r of lbRings) near(r.position.x, r.position.z, r.geometry.parameters.outerRadius + 0.7);
+    for (const e of enemies) if (e.type === 'fireimp' && e._impT >= 0) near(e.obj.position.x, e.obj.position.z, IMP_BLAST_R + 0.8);
+    if (zc) { evade = window.__botEscape(zc.x, zc.z); B.fl.evades4 = (B.fl.evades4 || 0) + 1; }
+  }
   // 물약
   if (player.hp < player.hpMax * 0.4 && player.potions > 0) { usePotion(); B.fl.potions++; }
   // 목표·이동
@@ -92,6 +102,13 @@ window.__botStep = function (dt) {
     if (B.stuckT >= 3) { B.fl.unstuck = (B.fl.unstuck || 0) + 1; B.stuckT = 0; const d = Math.hypot(goal.x - P.x, goal.z - P.z); if (d < 4) { P.x = goal.x; P.z = goal.z; } else { const nx = window.__botNav.nextCell(goal); if (nx) { P.x = nx.x; P.z = nx.z; } } }
   }
   B.lastP = { x: P.x, z: P.z };
+};
+// 위험 중심(cx, cz)에서 벗어나는 방향 — 16 방향 중 1.5·3 유닛 앞이 트였고 중심 반대에 가까운 쪽(장판 회피와 같은 요령)
+window.__botEscape = function (cx, cz) {
+  const P = player.obj.position, d = Math.hypot(P.x - cx, P.z - cz) || 1, ax = (P.x - cx) / d, az = (P.z - cz) / d; let bx = ax, bz = az;
+  const G = navFineGet(0.5); if (G) { const free = (x, z) => { const i = Math.floor((x - G.x0) / G.h), j = Math.floor((z - G.z0) / G.h); return i >= 0 && j >= 0 && i < G.FW && j < G.FH && !G.blk[j * G.FW + i]; }; let best = -9;
+    for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2, x = Math.cos(a), z = Math.sin(a); if (!free(P.x + x * 1.5, P.z + z * 1.5) || !free(P.x + x * 3, P.z + z * 3)) continue; const sc = x * ax + z * az; if (sc > best) { best = sc; bx = x; bz = z; } } }
+  return { x: bx, z: bz };
 };
 // 길찾기: navFineGet 의 1유닛 격자(충돌체를 몸 반지름만큼 부풀린 것)에서 목표 칸 → 플레이어 칸 BFS
 (function () {
@@ -137,6 +154,6 @@ window.__botStep = function (dt) {
 })();
 window.__botRun = function (frames) {
   const B = window.__bot; let n = 0;
-  for (; n < frames && !B.done; n++) { window.__t += 1000 / 60; if (window.__flushTimers) window.__flushTimers(); window.__botStep(1 / 60); if (player.alive && !rewardPaused) update(1 / 60); }
+  for (; n < frames && !B.done; n++) { window.__t += 1000 / 60; if (window.__flushTimers) window.__flushTimers(); window.__botStep(1 / 60); const hf = typeof hsFall !== 'undefined' && hsFall; if (hf) hsFallTick(1 / 60); if (player.alive && !rewardPaused && !(hf && hsFallLock())) update(1 / 60); }   // v870: 120층 격파 뒤 낙하 연출(메인 루프 몫)을 봇 루프가 대신 돌린다
   return { done: B.done, reason: B.reason, floor: player.floor, lv: player.lv, hp: Math.round(player.hp), hpMax: player.hpMax, deaths: B.deaths, t: Math.round(B.t), nFloors: B.floors.length };
 };
