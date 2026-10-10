@@ -4421,7 +4421,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v850'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v851'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -10596,10 +10596,11 @@ const VOX4V = !/[?&]vox4v=0/.test(location.search);
 // v849: 4막 흑요석 기둥 — 바닥 기둥 열에 하나 꼴(무리 지어)을 검고 반들반들한 흑요석으로. 기둥 톤(텍스처 G) 255 를 흑요석 표식으로 쓰고
 // (그 밖의 톤은 249 까지만) 셰이더가 그 기둥만 거칠기를 낮춰 횃불 하이라이트가 맺히게 한다 · 깨진 결(조개껍데기 모양 물결) · ?obsid=0 이면 v848 과 같다
 const OBSID = !/[?&]obsid=0/.test(location.search);
-const OBS_TH = (() => { const m = location.search.match(/[?&]obsth=([\d.]+)/); return m ? parseFloat(m[1]) : 0.80; })();   // v850: 흑요석 문턱(높을수록 적다 — v849 0.74)
+const OBS_TH = (() => { const m = location.search.match(/[?&]obsth=([\d.]+)/); return m ? parseFloat(m[1]) : 0.76; })();   // v850: 흑요석 문턱(높을수록 적다 — v849 0.74 · v850 0.80 · v851 0.76: 트인 곳 한가운데만 남겨 바닥의 4.3% → 1.9%)
 const LGLOW = (() => { const m = location.search.match(/[?&]lglow=([\d.]+)/); return m ? parseFloat(m[1]) : 0.28; })();
 const VOX4_N = (() => { const m = location.search.match(/[?&]vox4n=(\d+)/); return m ? Math.max(4, Math.min(32, parseInt(m[1], 10))) : 32; })();
 const VOX_ACTS = (location.search.match(/[?&]voxacts=(\d+)/) || [])[1] || ('1' + (VOX4_ON ? '4' : ''));
+let gObsCols = [];            // v851: 4막 흑요석 기둥 중심 [x, z] — addObsColliders 가 충돌체로 바꾼다
 let gVoxAux = null;           // v841: 4막 서브셀마다 [기둥 톤, 표식(1 = 기둥 사이 틈 · 2 = 용암이 비치는 틈)] — 그 밖의 막은 null
 
 let groundH = null;           // Float32Array(gSubW*gSubH) — 서브셀의 지면 높이(칸마다 평평)
@@ -10614,7 +10615,7 @@ function _gZ0() { return -(MAP_H / 2 + 0.5) * TILE; }
 // (CLAUDE.md: 난수 소비가 달라지면 이후 층 생성이 통째로 바뀐다).
 function buildGroundHeight(floorNo) {
   const _act = Math.min(LAST_ACT, Math.max(1, Math.ceil(floorNo / ACT_LEN)));   // v841: 4막(예전 식은 91층부터를 3막으로 셌다)
-  gSubN = VOX_ON ? (VOX_RAY && _act === 4 ? VOX4_N : VOX_N) : 1; gVoxAux = null;   // v844: 4막만 칸 절반
+  gSubN = VOX_ON ? (VOX_RAY && _act === 4 ? VOX4_N : VOX_N) : 1; gVoxAux = null; gObsCols = [];   // v844: 4막만 칸 절반
   if (!VOX_ON && !(RELIEF > 0)) { groundH = null; return; }
   if (VOX_ON && VOX_ACTS.indexOf(String(_act)) < 0) { groundH = null; return; }   // 이 막은 복셀 바닥 없음(v765)
   gSubW = MAP_W * gSubN; gSubH = MAP_H * gSubN;
@@ -10676,10 +10677,11 @@ function buildGroundHeight(floorNo) {
         if (c1[3] === undefined) {   // 기둥마다 한 번(캐시): 단 높이 · 톤
           const n = 0.6 * vnoise(cx / 8.0, cz / 8.0) + 0.4 * hash(q * 7 + 3, r * 13 + 5);
           c1[3] = Math.max(0, Math.min(VOX_LEVELS - 1, Math.floor(n * VOX_LEVELS))) * VOX_STEP; c1[4] = Math.floor(hash(q, r) * 255);
-          if (OBSID) {   // v849: 흑요석 · v850: 수를 줄이고(문턱 0.74 → 0.80, 바닥의 8~9% → 약 3%) 다른 기둥보다 한 단 높게 — 현무암 최고 단(2) 위의 3단
+          if (OBSID) {   // v849: 흑요석 · v850: 다른 기둥보다 한 단 높게(현무암 최고 단 2 위의 3단 — 보이는 높이는 buildVoxelRayFloor 가 톤 255 로 올린다)
+            // v851: 못 지나가는 장애물 — 발밑 높이(groundH)는 현무암 단 그대로 두고 충돌체로 막는다(addObsColliders). 트인 곳 한가운데만 남겨 수도 줄었다(바닥의 4.3% → 1.9%)
             const ob = (0.6 * vnoise(cx / 5 + 13.7, cz / 5 + 41.1) + 0.4 * hash(q * 19 + 7, r * 23 + 1)) > OBS_TH;
             c1[4] = ob ? 255 : Math.min(c1[4], 249);
-            if (ob) c1[3] = VOX_LEVELS * VOX_STEP;
+            if (ob) gObsCols.push([cx, cz]);
           }
         }
         groundH[k] = c1[3];
@@ -11095,7 +11097,8 @@ function buildVoxelRayFloor(dgn) {
     const tx = (i / gSubN) | 0, ty = (j / gSubN) | 0;
     const isF = !!(grid[ty] && grid[ty][tx] > 0);
     const k = j * gSubW + i; let lv = isF ? Math.round(groundH[k] / VOX_STEP) : 255;
-    if (isF && gVoxAux) { const fl = gVoxAux[k * 2 + 1]; if (fl) lv = Math.max(0, lv - 1); data[k * 4 + 1] = gVoxAux[k * 2]; data[k * 4 + 2] = fl; }   // v841: 틈은 한 단 낮게 보인다
+    if (isF && gVoxAux) { const fl = gVoxAux[k * 2 + 1]; if (gVoxAux[k * 2] === 255) lv = VOX_LEVELS; if (fl) lv = Math.max(0, lv - 1);   // v851: 흑요석은 현무암 최고 단 위(발밑 높이와 따로)
+      data[k * 4 + 1] = gVoxAux[k * 2]; data[k * 4 + 2] = fl; }   // v841: 틈은 한 단 낮게 보인다
     data[k * 4] = lv;
   }
   // v847: 용암 틈(표식 2)에서 4칸 안의 바닥 칸에 가까움(1 → 0, 제곱근 감쇠 전)을 알파로 굽는다 — 셰이더가 제곱해 가장자리가 부드럽게 꺼진다
@@ -13084,7 +13087,7 @@ function buildLoreInner(dgn, act, rnd) {
 // 열에 녹아 붙은 현무암. 반드시 applyGroundRelief(지면 올리기 · 높이 텍스처 굽기)보다 먼저 불러야 한다.
 function loreFlatten4(x, z, nx, nz) {
   if (!groundH || !gVoxAux) return;
-  const S = _gSub(), X0 = _gX0(), Z0 = _gZ0(), hc = Math.min(groundHeightAt(x, z), (VOX_LEVELS - 1) * VOX_STEP), R = 2.0, cx = x + nx * 0.4, cz = z + nz * 0.4;   // v850: 흑요석(한 단 위) 위에 놓여도 현무암 단으로 다진다
+  const S = _gSub(), X0 = _gX0(), Z0 = _gZ0(), hc = groundHeightAt(x, z), R = 2.0, cx = x + nx * 0.4, cz = z + nz * 0.4;
   const i0 = Math.max(0, Math.floor((x - R - 0.3 - X0) / S)), i1 = Math.min(gSubW - 1, Math.floor((x + R + 0.3 - X0) / S));
   const j0 = Math.max(0, Math.floor((z - R - 0.3 - Z0) / S)), j1 = Math.min(gSubH - 1, Math.floor((z + R + 0.3 - Z0) / S));
   for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
@@ -13736,6 +13739,47 @@ function helNoise(seed) {   // 값 노이즈(층 시드) — 벽 실금이 몰�
 }
 const hellLavaPts = [];   // v847: 용암 자리(x, y, z 이어 붙임) — 불티·연기가 여기서 솟는다
 const hellSpots = [];   // 화로·기둥 무리 자리(상호작용 물체 배치가 피한다 — decorFootprints. 병합 메시라 바운딩 박스로는 안 잡힌다)
+// v851: 흑요석 기둥을 못 지나가는 장애물로. 남은 흑요석 칸(톤 255)을 가장 가까운 흑요석 중심에 묶어 기둥마다 칸 바운딩 박스를 재고,
+// 그보다 0.1 작은 상자를 장식 충돌체로 건다(isDecor — 길찾기·계단·상자·샘 자리 고르기·투사체가 기존 기둥 장식과 똑같이 본다).
+// 스폰 자리 3.5 안과 트인 곳 한가운데가 아닌 기둥(복도·문간·벽 옆)은 흑요석에서 뺀다(톤을 현무암으로) — 기둥 무리가 길을 끊을 수 있다.
+function addObsColliders(dgn) {
+  if (!OBSID || !gVoxAux || !groundH || !gObsCols.length || !dgn || !dgn.rooms) return;
+  const S = _gSub(), X0 = _gX0(), Z0 = _gZ0(), N = gObsCols.length;
+  const B = 2.0, hk = (x, z) => Math.floor(x / B) * 4096 + Math.floor(z / B), bins = new Map();
+  for (let n = 0; n < N; n++) { const k = hk(gObsCols[n][0], gObsCols[n][1]); if (!bins.has(k)) bins.set(k, []); bins.get(k).push(n); }
+  const box = new Float32Array(N * 4).fill(NaN), cells = new Map();
+  for (let j = 0; j < gSubH; j++) for (let i = 0; i < gSubW; i++) {
+    const k = j * gSubW + i; if (gVoxAux[k * 2] !== 255) continue;
+    const ty = (j / gSubN) | 0, tx = (i / gSubN) | 0; if (!(dgn.grid[ty] && dgn.grid[ty][tx] > 0)) continue;
+    const x = X0 + (i + 0.5) * S, z = Z0 + (j + 0.5) * S, bx = Math.floor(x / B), bz = Math.floor(z / B);
+    let best = -1, bd = 1e9;
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const l = bins.get((bx + a) * 4096 + bz + b); if (l) for (const n of l) { const d = (x - gObsCols[n][0]) ** 2 + (z - gObsCols[n][1]) ** 2; if (d < bd) { bd = d; best = n; } } }
+    if (best < 0) continue;
+    const o = best * 4; if (isNaN(box[o])) { box[o] = box[o + 2] = x; box[o + 1] = box[o + 3] = z; }
+    box[o] = Math.min(box[o], x); box[o + 1] = Math.min(box[o + 1], z); box[o + 2] = Math.max(box[o + 2], x); box[o + 3] = Math.max(box[o + 3], z);
+    if (!cells.has(best)) cells.set(best, []); cells.get(best).push(k);
+  }
+  const r0 = dgn.rooms[0], spx = (r0.cx - MAP_W / 2) * TILE, spz = (r0.cy - MAP_H / 2) * TILE;
+  // 기둥 중심 칸과 이웃 여덟 칸이 전부 바닥일 때만(트인 곳 한가운데) — 그러면 둘레 칸(폭 5)이 늘 걸어서 돌아갈 길로 남는다.
+  // 방 판정만으로는 문간 옆 칸·좁은 방 가장자리에서 기둥 무리가 길을 끊었다(102층 139칸 고립)
+  const inRoom = (x, z) => { const tx = Math.floor(x / TILE + MAP_W / 2 + 0.5), ty = Math.floor(z / TILE + MAP_H / 2 + 0.5); for (let b = -1; b <= 1; b++) for (let a = -1; a <= 1; a++) if (!(dgn.grid[ty + b] && dgn.grid[ty + b][tx + a] > 0)) return false; return true; };
+  const cand = [];
+  for (const [n, ks] of cells) {
+    const o = n * 4, cx = (box[o] + box[o + 2]) / 2, cz = (box[o + 1] + box[o + 3]) / 2;
+    if (Math.hypot(cx - spx, cz - spz) < 3.5 || !inRoom(cx, cz)) { for (const k of ks) gVoxAux[k * 2] = 249; continue; }
+    const hw = Math.max(0.3, (box[o + 2] - box[o]) / 2 + S / 2 - 0.1), hd = Math.max(0.3, (box[o + 3] - box[o + 1]) / 2 + S / 2 - 0.1);
+    cand.push({ w: { x: cx, z: cz, halfW: hw, halfD: hd, isDecor: true, isObs: true }, ks });
+  }
+  // 무리가 촘촘하면 바닥 칸 하나를 통째로 덮어 설 자리가 없어진다(100·104·106층 — 칸 안이 흑요석 열댓 개). 칸마다 흑요석 칸 비율이 35% 를 넘으면
+  // 그 칸에 중심이 있는 흑요석을 뺀다(표본 몇 개로 '빈자리 있음'을 보면 기둥 사이 고립된 틈을 빈자리로 잘못 센다)
+  const PER = gSubN * gSubN, tileOf = (k) => (((k / gSubW) | 0) / gSubN | 0) * 4096 + (((k % gSubW) / gSubN) | 0);
+  for (let pass = 0; pass < 3; pass++) {
+    const cov = new Map(); for (const c of cand) for (const k of c.ks) { const t = tileOf(k); cov.set(t, (cov.get(t) || 0) + 1); }
+    const over = new Set([...cov].filter(([, v]) => v > PER * 0.35).map(([t]) => t)); if (!over.size) break;
+    for (let n = cand.length - 1; n >= 0; n--) { const c = cand[n], t = Math.floor(c.w.z / TILE + MAP_H / 2 + 0.5) * 4096 + Math.floor(c.w.x / TILE + MAP_W / 2 + 0.5); if (!over.has(t)) continue; for (const k of c.ks) gVoxAux[k * 2] = 249; cand.splice(n, 1); }
+  }
+  for (const c of cand) walls.push(c.w);
+}
 function buildHellAct(dgn) {
   // 배경·안개: 푸른 기가 도는 검정. 3막(0x090f10 · 0.024)보다 어둡고 짙게 — 화면 밖은 어둠이 삼킨다
   if (scene.background) scene.background.setHex(0x05070a);
@@ -13751,6 +13795,7 @@ function buildHellAct(dgn) {
   collapseTiles.length = 0;
   buildHellMesh(dgn);
   if (LORE_ON) buildLoreDecor(dgn, 4);   // v848: 불탄 모험가(자리 다지기가 높이 텍스처를 굽기 전이어야 한다)
+  addObsColliders(dgn);   // v851: 흑요석 기둥 = 못 지나가는 장애물(마당·모험가 자리를 다진 뒤 · 계단·상자·적 배치 전)
   collectHellLava();
   casDustMat.color.setHex(HEL.ember);   // 솟는 불티
   updateCastleDust(true);
