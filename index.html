@@ -4421,7 +4421,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v851'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v852'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -5434,6 +5434,21 @@ const SFX = (() => {
     const og = c.createGain(); og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(v * 0.22, t + 0.28); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
     o.connect(og); og.connect(out); o.start(t); o.stop(t + 0.4);
   }
+  // v852 4막 땅울림: 저역 노이즈가 부풀었다 가라앉는 2.6초 + 34Hz 밑울림 + 폰 스피커용 중역(삼각 88Hz) + 돌 부딪는 딸각 여러 번. 음악 버튼과 무관한 효과음(심장 박동과 같다)
+  function quake(v, c0, t0) {
+    const c = c0 || ac(); if (!c) return; const t = t0 !== undefined ? t0 : c.currentTime + 0.01; v = v || 0.4;
+    const out = c.createGain(); out.gain.value = 1; out.connect(c.destination);
+    const n = c.createBufferSource(); n.buffer = ambNoise(c); n.loop = true; const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 130;
+    const g = c.createGain(); env(g, t, 0.5, v, 1.0, 1.1); n.connect(lp); lp.connect(g); g.connect(out); n.start(t, arnd() * 4); n.stop(t + 2.7);
+    const o = osc(c, 'sine', 32 + arnd() * 6), og = c.createGain(); env(og, t, 0.6, v * 0.75, 0.9, 1.1); o.connect(og); og.connect(out); o.start(t); o.stop(t + 2.7);
+    const tr = osc(c, 'triangle', 88), tg = c.createGain(); env(tg, t, 0.5, v * 0.16, 1.0, 1.0); tr.connect(tg); tg.connect(out); tr.start(t); tr.stop(t + 2.6);
+    for (let i = 0; i < 7; i++) {   // 돌 부딪는 딸각(중고역 짧은 노이즈)
+      const tt = t + 0.35 + arnd() * 1.9, d = 0.04 + arnd() * 0.05, b = c.createBufferSource(); b.buffer = ambNoise(c);
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 2.5; bp.frequency.value = 900 + arnd() * 1500;
+      const bg = c.createGain(); bg.gain.setValueAtTime(0.0001, tt); bg.gain.linearRampToValueAtTime(v * (0.25 + arnd() * 0.3), tt + 0.005); bg.gain.exponentialRampToValueAtTime(0.0001, tt + d);
+      b.connect(bp); bp.connect(bg); bg.connect(out); b.start(tt, arnd() * 4); b.stop(tt + d + 0.02);
+    }
+  }
   function heartbeat(v, c0, t0) {
     const c = c0 || ac(); if (!c) return; const t = t0 !== undefined ? t0 : c.currentTime + 0.01;
     const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 650; lp.connect(c.destination);
@@ -5487,7 +5502,7 @@ const SFX = (() => {
     let i = Math.floor(kRnd() * n); if (i === kStepLast && n > 1) i = (i + 1) % n; kStepLast = i;
     ksfx('step_' + terrain + '_' + i, vol, 0.06);
   }
-  return { swing, hit, hurt, block, parry, glint, chargeStart, chargeStop, release, resume: ac, musicStart, musicStop, musicSet, musicCurrent, musicRender, ambSet, ambCurrent, ambDuck, ambCue, ambRender, heartbeat, wraithHiss, suspendForAd, resumeAfterAd, isAdMuted, ksfx, ksfxStep, ksfxPreload, ksfxCount };
+  return { swing, hit, hurt, block, parry, glint, chargeStart, chargeStop, release, resume: ac, musicStart, musicStop, musicSet, musicCurrent, musicRender, ambSet, ambCurrent, ambDuck, ambCue, ambRender, heartbeat, quake, wraithHiss, suspendForAd, resumeAfterAd, isAdMuted, ksfx, ksfxStep, ksfxPreload, ksfxCount };
 })();
 
 // v832: 발걸음 — 걷기 애니메이션(walkPhase)이 발을 딛는 순간(sin 이 ±1 을 지날 때)마다 한 번. 던전·마을·쉼터가 전부 같은 값을 쓴다.
@@ -5850,6 +5865,10 @@ const quadMat = new THREE.ShaderMaterial({
     tGhost: { value: null },                                // v810: 유령 모양 14×24 텍셀 마스크(0 빈칸 · 1 옷 · 2 두건 속 어둠 · 3 눈)
     uGhostCol: { value: new THREE.Color(0xa8d4e0) },
     uGhostEye: { value: new THREE.Color(0xe8fbff) },
+    uHaze: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },   // v852: 화로 아지랑이 — (불 위 화면 uv x, 아랫변 uv y, 반폭 uv, 높이 uv)
+    uHazeD: { value: [0, 0, 0, 0] },                        // v852: 불의 시선 깊이(이보다 앞에 있는 것은 일렁이지 않는다)
+    uHazeN: { value: 0 },                                   // v852: 쓰는 아지랑이 수(0 이면 셰이더가 통째로 건너뛴다)
+    uHazeT: { value: 0 },
     uFocusY: { value: 0.52 },                             // 틸트시프트 초점 중심(화면 Y, 0=아래 1=위)
     uFocusW: { value: 0.18 },                               // 초점 밴드 반폭(이 안은 완전 선명)
     uBlurMax: { value: 1.5 },                               // 최대 블러 반경(저해상도 텍셀 단위)
@@ -5924,6 +5943,10 @@ const quadMat = new THREE.ShaderMaterial({
     uniform sampler2D tGhost;
     uniform vec3 uGhostCol;
     uniform vec3 uGhostEye;
+    uniform vec4 uHaze[4];
+    uniform float uHazeD[4];
+    uniform float uHazeN;
+    uniform float uHazeT;
     uniform float uFocusY;
     uniform float uFocusW;
     uniform float uBlurMax;
@@ -6045,7 +6068,27 @@ const quadMat = new THREE.ShaderMaterial({
       // 카메라를 텍셀 격자에 스냅하면서 버린 소수점을 여기서 되돌린다.
       // 격자는 월드에 고정되고(픽셀이 기어다니지 않음) 움직임은 그대로 매끄럽다.
       vec2 uv = vUv + uSubpixel;
+      float hzLum = 0.0;
+      // v852: 화로 아지랑이 — 불 위 기둥 모양 구역에서 텍셀 줄마다 가로로 0~2 텍셀 밀어 읽는다(위로 흘러가는 물결). 불보다 앞(가까운) 것은 안 일렁인다.
+      // uv 자체를 옮겨 색·깊이 외곽선이 같이 일렁인다
+      if (uHazeN > 0.5) {
+        float hzRow = floor(uv.y / uTexel.y), hzSh = 0.0; hzLum = 0.0;
+        for (int i = 0; i < 4; i++) {
+          if (float(i) >= uHazeN) break;
+          vec4 hz = uHaze[i]; vec2 q = vec2((uv.x - hz.x) / hz.z, (uv.y - hz.y) / hz.w);
+          if (q.y > 0.0 && q.y < 1.0 && abs(q.x) < 1.0) {
+            if (linearizeDepth(texture2D(tDepth, uv).x) > uHazeD[i] - 0.8) {
+              float w = (1.0 - q.x * q.x) * sin(3.14159 * pow(q.y, 0.7)) * (0.75 + 0.25 * sin(uHazeT * 1.7 + float(i) * 2.1));
+              float wv = sin(hzRow * 0.85 - uHazeT * 7.5 + float(i) * 1.7);
+              hzSh += w * (1.6 * wv + 0.6 * sin(hzRow * 0.31 + uHazeT * 3.1 + float(i)));
+              hzLum += w * max(0.0, wv) * (1.0 - q.y);   // 위로 흘러가는 희미한 열기 띠(아래쪽일수록 진하다)
+            }
+          }
+        }
+        uv.x += floor(hzSh + 0.5) * uTexel.x;
+      }
       vec4 col = texture2D(tColor, uv);
+      if (hzLum > 0.0) col.rgb += vec3(0.085, 0.036, 0.01) * hzLum;
       // === 틸트시프트(미니어처 디오라마): 화면 위아래로 갈수록 흐려짐 ===
       float fdy = abs(vUv.y - uFocusY);
       float blur = smoothstep(uFocusW, uFocusW + 0.28, fdy) * uTiltOn;
@@ -6453,6 +6496,7 @@ function renderWithPost(sceneToRender) {
     quadMat.uniforms.uInvVP.value.copy(_invVP);
   }
   if (EYES_ON) updateEyesScreen(sceneToRender);
+  if (HAZE4) updateHazeScreen(sceneToRender);   // v852: 화로 아지랑이(스냅된 카메라로)
   if (GHOST_ON) updateGhostScreen(sceneToRender);   // v810: 2막 유령   // v809: 어둠 속의 눈 — 스냅된 카메라로 투영(컷아웃 원과 같은 이유)
   // SSAO는 뷰 공간에서 계산하므로 투영 행렬과 그 역행렬만 있으면 된다(카메라 스냅과 무관하지만
   // 화면비·FOV가 바뀔 수 있으므로 여기서 같이 갱신한다).
@@ -9729,14 +9773,94 @@ function updateHorror(dt) {
   if (EYES_ON) updateEyes(dt, fight);
   if (GHOST_ON) updateGhost(dt, fight);
   if (TORCHFX_ON) updateTorchFx(dt, fight);
+  if (QUAKE4) updateHellQuake(dt, fight);   // v852: 4막 땅울림
   // ④ 어둠: 중심은 플레이어(횃불이 달린 자리)
   if (DARK_ON) { quadMat.uniforms.uDarkStr.value = DARK_STR; quadMat.uniforms.uDarkP.value.set(player.obj.position.x, player.obj.position.z); }
+}
+// v852: 4막 땅울림. 층에 들어서 15~25초 뒤 첫 번, 그 뒤 35~70초마다 — 싸우는 중·보상 카드 중에는 미룬다. 피해는 없다(분위기 연출).
+//  2.4~3초 동안 화면이 떨리고(사인 합 — camShake 는 Math.random 을 먹어서 따로 둔다) 용암 맥박이 부풀며(hellQuakeK) 우르릉 소리(SFX.quake) ·
+//  플레이어 둘레에 돌 조각 8~12개가 떨어져 한 번 튀고 돌가루가 인다. 돌·먼지는 첫 땅울림 때 만들고 그동안 Math.random 을 hrnd 로 바꿔 끼운다(uuid)
+function hellQuakeMake() {
+  const mr = Math.random; Math.random = hrnd;
+  try {
+    const geo = new THREE.DodecahedronGeometry(0.15, 0), mats = [0x4a5468, 0x3c4558, 0x5a6476].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.95, flatShading: true }));
+    const rocks = []; for (let i = 0; i < 12; i++) { const m = new THREE.Mesh(geo, mats[i % 3]); m.visible = false; m.castShadow = false; m.scale.setScalar(0.7 + (i % 4) * 0.25); scene.add(m); rocks.push({ m, t: -1, vy: 0, gy: 0, sp: 0, b: 0 }); }
+    const n = 48, g = new THREE.BufferGeometry(), pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const pm = new THREE.PointsMaterial({ size: 0.34, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false });
+    const pts = new THREE.Points(g, pm); pts.frustumCulled = false; pts.userData.fx = true; pts.visible = false; scene.add(pts);
+    const dust = []; for (let i = 0; i < n; i++) dust.push({ t: -1, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 1 });
+    return { rocks, pts, pos, col, dust, di: 0 };
+  } finally { Math.random = mr; }
+}
+function hellQuakeEnd(Q) {
+  Q.t = -1; hellQuakeK = 1; hellQuakeShake = 0;
+  if (Q.fx) { for (const r of Q.fx.rocks) { r.t = -1; r.m.visible = false; } for (const d of Q.fx.dust) d.t = -1; Q.fx.pts.visible = false; }
+}
+function updateHellQuake(dt, fight) {
+  const Q = horror.qk || (horror.qk = { cd: 15 + hrnd() * 10, t: -1, dgn: null, fx: null, drops: [] });
+  if (Q.dgn !== dungeon) { Q.dgn = dungeon; Q.cd = 15 + hrnd() * 10; if (Q.t >= 0) hellQuakeEnd(Q); }
+  const ok = currentAct() === 4 && player.alive && !rewardPaused && dungeon && player.obj;
+  if (Q.t >= 0) {
+    if (!ok) { hellQuakeEnd(Q); return; }
+    Q.t += dt; hellQuakeT += dt;
+    const k = Q.t / Q.dur;
+    if (k >= 1) hellQuakeEnd(Q);
+    else {
+      const env = Math.pow(Math.sin(Math.PI * Math.min(1, k * 1.15)), 0.7);   // 조금 일찍 정점 → 길게 가라앉는다
+      hellQuakeShake = 0.035 + 0.13 * env; hellQuakeK = 1 + 0.45 * env;
+      const p = player.obj.position;
+      while (Q.drops.length && Q.drops[0] <= Q.t) {   // 돌 조각 하나 떨어뜨리기(바닥 칸 위만)
+        Q.drops.shift();
+        const r = Q.fx.rocks.find(o => o.t < 0); if (!r) break;
+        for (let tr = 0; tr < 6; tr++) {
+          const a = hrnd() * 6.2832, rr = 1.5 + hrnd() * 6, x = p.x + Math.cos(a) * rr, z = p.z + Math.sin(a) * rr;
+          if (!eyesOnFloor(x, z) || walls.some(w => Math.abs(x - w.x) < w.halfW && Math.abs(z - w.z) < w.halfD)) continue;
+          r.gy = groundHeightAt(x, z) + 0.06; r.m.position.set(x, r.gy + 5 + hrnd() * 2.5, z); r.m.rotation.set(hrnd() * 3, hrnd() * 3, hrnd() * 3);
+          r.vy = -2 - hrnd() * 2; r.sp = (hrnd() - 0.5) * 12; r.b = 0; r.t = 0; r.m.visible = true; break;
+        }
+      }
+    }
+  } else if (ok && !fight) {
+    Q.cd -= dt;
+    if (Q.cd <= 0) {
+      if (!Q.fx) Q.fx = hellQuakeMake();
+      Q.cd = 35 + hrnd() * 35; Q.t = 0; Q.dur = 2.4 + hrnd() * 0.6; hellQuakeT = 0;
+      const nd = 8 + Math.floor(hrnd() * 5); Q.drops.length = 0; for (let i = 0; i < nd; i++) Q.drops.push(0.25 + hrnd() * (Q.dur - 0.7)); Q.drops.sort((a, b) => a - b);
+      if (SFX && SFX.quake) SFX.quake(0.42);
+    }
+  }
+  // 돌·먼지 굴리기(땅울림이 끝나도 떨어지던 것은 마저 떨어진다)
+  const F = Q.fx; if (!F) return;
+  let anyD = false;
+  for (const r of F.rocks) {
+    if (r.t < 0) continue;
+    r.t += dt; r.vy -= 22 * dt; r.m.position.y += r.vy * dt; r.m.rotation.x += r.sp * dt; r.m.rotation.z += r.sp * 0.7 * dt;
+    if (r.m.position.y <= r.gy && r.vy < 0) {
+      r.m.position.y = r.gy;
+      if (r.b === 0) {   // 첫 착지: 한 번 튀고 돌가루
+        r.b = 1; r.vy = -r.vy * 0.28; r.sp *= 0.4;
+        for (let q = 0; q < 4; q++) { const d = F.dust[F.di]; F.di = (F.di + 1) % F.dust.length; const a = hrnd() * 6.2832;
+          d.t = 0; d.life = 0.7 + hrnd() * 0.5; d.x = r.m.position.x; d.y = r.gy + 0.05; d.z = r.m.position.z; d.vx = Math.cos(a) * (0.5 + hrnd() * 0.6); d.vz = Math.sin(a) * (0.5 + hrnd() * 0.6); d.vy = 0.5 + hrnd() * 0.6; }
+      } else { r.vy = 0; r.sp = 0; }
+    }
+    if (r.t > 2.6) { r.t = -1; r.m.visible = false; }
+  }
+  for (let i = 0; i < F.dust.length; i++) {
+    const d = F.dust[i]; let f = 0;
+    if (d.t >= 0) { d.t += dt; if (d.t >= d.life) d.t = -1; else { anyD = true; d.x += d.vx * dt; d.y += d.vy * dt; d.z += d.vz * dt; d.vx *= 0.94; d.vz *= 0.94; d.vy *= 0.96; const k = d.t / d.life; f = Math.sin(Math.PI * Math.sqrt(k)) * 0.16; } }
+    F.pos[i * 3] = d.x; F.pos[i * 3 + 1] = d.t >= 0 ? d.y : -9; F.pos[i * 3 + 2] = d.z;
+    F.col[i * 3] = f; F.col[i * 3 + 1] = f * 0.94; F.col[i * 3 + 2] = f * 0.86;
+  }
+  F.pts.visible = anyD;
+  if (anyD) { F.pts.geometry.attributes.position.needsUpdate = true; F.pts.geometry.attributes.color.needsUpdate = true; }
 }
 function leaveHorror() {   // 마을·쉼터: 환경음을 끄고 저체력 화면·어둠을 거둔다(체력은 그대로라 던전에 돌아가면 다시 켜진다)
   if (AMB_ON && SFX && SFX.ambSet) SFX.ambSet(null);
   if (quadMat.uniforms.uLowHp.value) quadMat.uniforms.uLowHp.value = 0;
   quadMat.uniforms.uDarkStr.value = 0;
   horror.lowHp = 0; horror.beatT = 0;
+  if (QUAKE4 && horror.qk) hellQuakeEnd(horror.qk);   // v852
   if (TORCHFX_ON && horror.tf) { torch.intensity = horror.tf.b0; nearLight.intensity = horror.tf.b1; viewLight.intensity = horror.tf.b2; horror.tf.ev = null; if (horror.tf.lit0 !== undefined && dgnPGrass && dgnPGrass.uniforms) dgnPGrass.uniforms.uLit.value.x = horror.tf.lit0; }
 }
 // v811: 횃불 불안정. 평소엔 아무 일도 없다(세기가 정확히 기본값 — 화면이 v810 과 같다).
@@ -9782,6 +9906,29 @@ function updateGhostScreen(sceneToRender) {   // v810: 유령 발 위치를 화�
   _eyeS.set(G.pos.x, gy, G.pos.z).project(camera);
   const vz = -_eyeV.set(G.pos.x, gy + 1.0, G.pos.z).applyMatrix4(camera.matrixWorldInverse).z;
   U.uGhost.value.set(_eyeS.x * 0.5 + 0.5, _eyeS.y * 0.5 + 0.5, vz, G.a); U.uGhostFlip.value = G.flip;
+}
+// v852: 화로 아지랑이 — 플레이어에게 가까운 화로 넷까지 불꽃부터 그 위(지면 + 0.95 → + 3.8, 화면 가로 반폭 0.6)를 스냅된 카메라로 투영해 포스트 셰이더에 넘긴다
+const _hzA = new THREE.Vector3(), _hzB = new THREE.Vector3(), _hzC = new THREE.Vector3(), _hzList = [];
+function updateHazeScreen(sceneToRender) {
+  const U = quadMat.uniforms;
+  if (sceneToRender !== scene || !hellFires.length || currentAct() !== 4 || !player || !player.obj) { U.uHazeN.value = 0; return; }
+  const p = player.obj.position; _hzList.length = 0;
+  for (const f of hellFires) { const d = (f.x - p.x) ** 2 + (f.z - p.z) ** 2; if (d < 26 * 26) _hzList.push([d, f]); }
+  _hzList.sort((a, b) => a[0] - b[0]);
+  _hzC.setFromMatrixColumn(camera.matrixWorld, 0); _hzC.y = 0; _hzC.normalize();
+  let n = 0;
+  for (let i = 0; i < _hzList.length && n < 4; i++) {
+    const f = _hzList[i][1], gy = groundHeightAt(f.x, f.z);
+    _hzA.set(f.x, gy + 0.95, f.z).project(camera); _hzB.set(f.x, gy + 3.8, f.z).project(camera);
+    if (_hzA.z > 1 || Math.abs(_hzA.x) > 1.3 || _hzB.y < -1.1 || _hzA.y > 1.1) continue;
+    const ax = _hzA.x * 0.5 + 0.5, ay = _hzA.y * 0.5 + 0.5, h = (_hzB.y - _hzA.y) * 0.5;
+    _hzB.set(f.x + _hzC.x * 0.72, gy + 0.95, f.z + _hzC.z * 0.72).project(camera);
+    const hw = Math.abs(_hzB.x - _hzA.x) * 0.5; if (h <= 0 || hw <= 0) continue;
+    U.uHaze.value[n].set(ax, ay, hw, h);
+    U.uHazeD.value[n] = -_hzA.set(f.x, gy + 1.3, f.z).applyMatrix4(camera.matrixWorldInverse).z;
+    n++;
+  }
+  U.uHazeN.value = n; U.uHazeT.value = performance.now() / 1000 % 1000;
 }
 function updateEyesScreen(sceneToRender) {
   const U = quadMat.uniforms, E = horror.eyes;
@@ -10598,6 +10745,12 @@ const VOX4V = !/[?&]vox4v=0/.test(location.search);
 const OBSID = !/[?&]obsid=0/.test(location.search);
 const OBS_TH = (() => { const m = location.search.match(/[?&]obsth=([\d.]+)/); return m ? parseFloat(m[1]) : 0.76; })();   // v850: 흑요석 문턱(높을수록 적다 — v849 0.74 · v850 0.80 · v851 0.76: 트인 곳 한가운데만 남겨 바닥의 4.3% → 1.9%)
 const LGLOW = (() => { const m = location.search.match(/[?&]lglow=([\d.]+)/); return m ? parseFloat(m[1]) : 0.28; })();
+// v852: 4막 디테일 넷 — 재·유황(바닥 무늬 + 떨어지는 재) · 쓰러진 기둥 토막(장애물) · 땅울림(가끔 흔들리고 돌가루가 떨어진다) · 화로 아지랑이(포스트 셰이더)
+const ASH4 = !/[?&]ash=0/.test(location.search);
+const FCOL4 = !/[?&]fcol=0/.test(location.search);
+const QUAKE4 = !/[?&]quake=0/.test(location.search);
+let hellQuakeK = 1, hellQuakeShake = 0, hellQuakeT = 0;   // v852: 땅울림 동안 용암 맥박 배수(평소 정확히 1)
+const HAZE4 = !/[?&]haze=0/.test(location.search);
 const VOX4_N = (() => { const m = location.search.match(/[?&]vox4n=(\d+)/); return m ? Math.max(4, Math.min(32, parseInt(m[1], 10))) : 32; })();
 const VOX_ACTS = (location.search.match(/[?&]voxacts=(\d+)/) || [])[1] || ('1' + (VOX4_ON ? '4' : ''));
 let gObsCols = [];            // v851: 4막 흑요석 기둥 중심 [x, z] — addObsColliders 가 충돌체로 바꾼다
@@ -10874,6 +11027,7 @@ uniform float uVoxMode;
 uniform float uVoxStone;
 uniform float uVoxGlow;
 uniform float uVoxObs;
+uniform float uVoxAsh;
 uniform vec3 uVoxLava;
 uniform mat4 projectionMatrix;
 varying vec3 vVoxWorld;
@@ -10971,6 +11125,12 @@ vec3 vxShade(ivec2 c, float h, vec3 n) {
       if (vxH2(oq + 3.1) > 0.988) t4 += 2.4;   // 드문 반짝임
       vxRough = 0.22;   // 횃불이 유리에 비친 번들거림(0.18 은 흰 얼룩이 너무 컸다)
     }
+    if (uVoxAsh > 0.5 && fl < 0.5 && n.y > 0.5 && !(uVoxObs > 0.5 && sh > 0.99)) {   // v852: 재·유황 — 용암 틈 가장자리(빛 번짐 알파 > 0)엔 누런 유황 딱지, 용암에서 먼 곳엔 회색 재가 얼룩으로 쌓인다(월드 고정 0.104 격자)
+      vec2 aq = floor(vxWorldHit.xz / 0.104) + 0.5, aw = aq * 0.104;
+      float zn = vxVN(aw / 2.4 + 31.7), gn = vxVN(aw / 0.34 + 5.3), ag = vxH2(aq + 9.7);
+      if (tx.a > 0.0 && zn > 0.64 && tx.a * 0.7 + (gn - 0.5) * 0.7 + (zn - 0.64) * 1.2 > 0.5) { b4 = vec3(0.52, 0.43, 0.1); t4 = (0.58 + 0.3 * gn) * (ag > 0.9 ? 1.3 : 1.0); }
+      else if (tx.a < 0.004 && zn < 0.34 && gn > 0.3 + zn * 1.2) { b4 = mix(b4, vec3(0.46, 0.46, 0.47), 0.85); t4 = (0.82 + 0.32 * gn) * (ag > 0.93 ? 1.2 : 1.0); }
+    }
     if (n.y < 0.5) t4 *= uVoxSideDim;
     if (uVoxGlow > 0.0 && tx.a > 0.0 && fl < 1.5) vxGlowK = tx.a * tx.a * uVoxGlow * (n.y > 0.5 ? 1.0 : 1.6) * (uVoxObs > 0.5 && sh > 0.99 && fl < 1.5 ? 1.8 : 1.0);   // v847: 용암 빛 번짐(틈을 향한 옆면이 더 받는다) · v849: 흑요석은 거울처럼 1.8배(용암 칸은 현무암 그대로 — 흑요석 색이 섞이면 용암이 어두워진다)
     if (fl > 0.5) { t4 *= 0.45; if (fl > 1.5 && n.y > 0.5) vxLavaK = 0.6 + 0.8 * hs; }   // 칸마다 G 를 흔들어 붉은 주황 ↔ 노란 주황(원화의 실금)
@@ -11011,6 +11171,7 @@ const voxRayUniforms = {
   uVoxStone: { value: 0 },   // v845: 1 = 4막 돌 결 · 기둥 밝기 폭(?vox4v=0 이면 0)
   uVoxGlow: { value: 0 },    // v847: 4막 용암 빛 번짐 세기(텍셀 알파 = 용암까지 가까움)
   uVoxObs: { value: 0 },     // v849: 1 = 4막 흑요석 기둥(텍셀 G 255)
+  uVoxAsh: { value: 0 },     // v852: 1 = 4막 재·유황 바닥 무늬(?ash=0 이면 0)
   uVoxLava: { value: new THREE.Color(1, 0.13, 0.025) }, // v841: 용암 틈 색(선형 · 맥박은 updateCavernDecor)
 };
 // 재질은 첫 사용 때 만든다 — 모듈 로드 시점에 만들면 generateUUID 가 Math.random 을 먹어
@@ -11130,6 +11291,7 @@ function buildVoxelRayFloor(dgn) {
   u.uVoxStone.value = (act === 4 && gVoxAux && VOX4V) ? 1 : 0;
   u.uVoxGlow.value = glowOn ? LGLOW : 0;
   u.uVoxObs.value = (act === 4 && gVoxAux && OBSID) ? 1 : 0;
+  u.uVoxAsh.value = (act === 4 && gVoxAux && ASH4) ? 1 : 0;
   u.uVoxPal0.value.setHex(pal[0]); u.uVoxPal1.value.setHex(pal[1]); u.uVoxPal2.value.setHex(pal[2]);
   if (voxRayColorMat.map !== map) { voxRayColorMat.map = map; voxRayColorMat.needsUpdate = true; }
   voxRayColorMat.roughness = srcMat ? srcMat.roughness : STONE_ROUGH;
@@ -13738,6 +13900,7 @@ function helNoise(seed) {   // 값 노이즈(층 시드) — 벽 실금이 몰�
   };
 }
 const hellLavaPts = [];   // v847: 용암 자리(x, y, z 이어 붙임) — 불티·연기가 여기서 솟는다
+const hellFires = [];   // v852: 화로 불 자리(x, y, z) — 아지랑이(포스트 셰이더)가 이 위에 일렁인다
 const hellSpots = [];   // 화로·기둥 무리 자리(상호작용 물체 배치가 피한다 — decorFootprints. 병합 메시라 바운딩 박스로는 안 잡힌다)
 // v851: 흑요석 기둥을 못 지나가는 장애물로. 남은 흑요석 칸(톤 255)을 가장 가까운 흑요석 중심에 묶어 기둥마다 칸 바운딩 박스를 재고,
 // 그보다 0.1 작은 상자를 장식 충돌체로 건다(isDecor — 길찾기·계단·상자·샘 자리 고르기·투사체가 기존 기둥 장식과 똑같이 본다).
@@ -13780,6 +13943,95 @@ function addObsColliders(dgn) {
   }
   for (const c of cand) walls.push(c.w);
 }
+// v852: 쓰러진 기둥 토막 — 무너져 바닥에 누운 육각 현무암 기둥(두 동강 + 깨진 끝 + 잔돌, 가끔 윗면에 아직 식지 않은 실금). 못 지나가는 장애물(축을 따라 장식 충돌체).
+// 스폰 방·보스 방은 빼고, 축 위 모든 점이 '트인 곳 한가운데'(그 칸과 이웃 여덟 칸이 바닥)일 때만 — 흑요석(v851)과 같은 이유로 길을 끊지 않게.
+// 화로·기둥 무리·불탄 모험가·다른 토막과는 몸 하나(1.3) 이상 띄운다. 복셀 바닥이면 누운 자리를 가운데 단으로 다지고(한쪽이 뜨거나 묻히지 않게) 둘레 1.6 의 흑요석은 현무암으로 —
+// 흑요석 충돌체가 토막 옆에 붙으면 그 틈이 막힌다. 짓는 동안 Math.random 을 층 시드 난수로 바꿔 끼운다(uuid)
+const fallenPlaced = [];   // 배치 기록(검증용)
+function buildFallenCols(dgn) {
+  fallenPlaced.length = 0;
+  if (!FCOL4 || !dgn || !dgn.rooms) return;
+  let s = (((player.floor | 0) * 2246822519) ^ 0x27d4eb2f) >>> 0;
+  const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  const mr = Math.random; Math.random = rnd;
+  try { buildFallenInner(dgn, rnd); } finally { Math.random = mr; }
+}
+function buildFallenInner(dgn, rnd) {
+  const { grid, rooms } = dgn, T = TILE, boss = pickBossRoom(dgn), wx = gx => (gx - MAP_W / 2) * T, wz = gy => (gy - MAP_H / 2) * T;
+  const isF = (x, y) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && grid[y][x] > 0;
+  const open = (x, z) => { const tx = Math.round(x / T + MAP_W / 2), ty = Math.round(z / T + MAP_H / 2); for (let b = -1; b <= 1; b++) for (let a = -1; a <= 1; a++) if (!isF(tx + a, ty + b)) return false; return true; };
+  const VX = !!(groundH && gVoxAux);
+  let total = 0;
+  rooms.forEach((r, ri) => {
+    if (ri === 0 || r === boss || r.w < 3 || r.h < 3 || total >= 5) return;
+    const want = (rnd() < 0.6 ? 1 : 0) + (r.w * r.h >= 30 && rnd() < 0.4 ? 1 : 0);
+    for (let n = 0, tries = 0; n < want && tries < 14 && total < 5; tries++) {
+      const L = 2.2 + rnd() * 1.2, R = 0.42 + rnd() * 0.12, ang = rnd() * Math.PI * 2, dx = Math.cos(ang), dz = Math.sin(ang);
+      const cx = wx(r.x + 1) - T * 0.4 + rnd() * ((r.w - 3) * T + T * 0.8), cz = wz(r.y + 1) - T * 0.4 + rnd() * ((r.h - 3) * T + T * 0.8);
+      let ok = true;
+      for (let t = -L / 2 - 0.3; t <= L / 2 + 0.3 + 1e-6 && ok; t += 0.5) {
+        const px = cx + dx * t, pz = cz + dz * t;
+        if (!open(px, pz)) ok = false;
+        else if (hellSpots.some(q => Math.hypot(q.x - px, q.z - pz) < q.r + R + 1.4)) ok = false;
+        else if (walls.some(w => Math.abs(px - w.x) < w.halfW + R + 1.3 && Math.abs(pz - w.z) < w.halfD + R + 1.3)) ok = false;
+        else if (lorePlaced.some(q => q.kind === 'body' && Math.hypot(q.x - px, q.z - pz) < 3)) ok = false;
+        else if (fallenPlaced.some(q => Math.hypot(q.x - px, q.z - pz) < q.L / 2 + R + 1.6)) ok = false;
+      }
+      if (!ok) continue;
+      // 자리 다지기(복셀): 누운 직사각형 + 0.25 를 가운데 높이로, 그 밖 0.2 띠에서 단이 바뀌면 틈으로, 1.6 안의 흑요석은 현무암으로
+      const hc = groundHeightAt(cx, cz);
+      if (VX) {
+        const S = _gSub(), X0 = _gX0(), Z0 = _gZ0(), E = L / 2 + 1.8;
+        const i0 = Math.max(0, Math.floor((cx - E - X0) / S)), i1 = Math.min(gSubW - 1, Math.floor((cx + E - X0) / S));
+        const j0 = Math.max(0, Math.floor((cz - E - Z0) / S)), j1 = Math.min(gSubH - 1, Math.floor((cz + E - Z0) / S));
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+          const k = j * gSubW + i, qx = X0 + (i + 0.5) * S - cx, qz = Z0 + (j + 0.5) * S - cz;
+          const al = Math.abs(qx * dx + qz * dz) - L / 2, pe = Math.abs(-qx * dz + qz * dx) - R, d = Math.max(al, pe);
+          if (d <= 0.25) { groundH[k] = hc; gVoxAux[k * 2 + 1] = 0; if (gVoxAux[k * 2] === 255) gVoxAux[k * 2] = 249; }
+          else if (d <= 0.45 && Math.abs(groundH[k] - hc) > 1e-4 && gVoxAux[k * 2 + 1] !== 2) gVoxAux[k * 2 + 1] = 1;
+          if (d <= 1.6 && gVoxAux[k * 2] === 255) gVoxAux[k * 2] = 249;
+        }
+      }
+      // 몸: 두 동강(사이 0.15~0.35 · 둘째는 살짝 틀어짐). 육각 기둥을 눕히면 평평한 면이 바닥에 닿는다(변심 0.866R)
+      const g = new THREE.Group(); floorGroup.add(g);
+      const gap = 0.15 + rnd() * 0.2, l1 = (L - gap) * (0.42 + rnd() * 0.18), l2 = L - gap - l1, by = R * 0.866 - 0.04;
+      const seg = (len, t, yaw, rr, hex) => { const geo = new THREE.CylinderGeometry(rr, rr, len, 6); geo.rotateZ(Math.PI / 2); const m = cas2Part(g, geo, hex, cx + Math.cos(yaw) * t, by - (R - rr) * 0.866, cz + Math.sin(yaw) * t, 'solid', 0.07); m.rotation.y = -yaw; return m; };
+      const pk = a => a[Math.floor(rnd() * a.length)], c1 = pk(HEL.col), c2 = pk(HEL.col), yaw2 = ang + (rnd() < 0.5 ? 1 : -1) * (0.05 + rnd() * 0.1);
+      seg(l1, -L / 2 + l1 / 2, ang, R, c1);
+      seg(l2, L / 2 - l2 / 2, yaw2, R * (0.94 + rnd() * 0.06), c2);
+      // 깨진 끝: 틈 양쪽에 모난 돌 조각
+      for (const [t0, sg] of [[-L / 2 + l1, 1], [L / 2 - l2, -1]]) for (let q = 0; q < 3; q++) {
+        const sz = 0.14 + rnd() * 0.16, oy = by + (rnd() - 0.3) * R * 1.2, op = (rnd() - 0.5) * R * 1.3, t = t0 + sg * (rnd() * 0.12);
+        const m = cas2Part(g, new THREE.BoxGeometry(sz, sz * (0.7 + rnd() * 0.6), sz), pk(HEL.col), cx + dx * t - dz * op, Math.max(sz * 0.4, oy), cz + dz * t + dx * op, 'solid', 0.08);
+        m.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
+      }
+      // 잔돌: 틈 아래와 몸 둘레 바닥에 흩어진 조각
+      const nd = 4 + Math.floor(rnd() * 4);
+      for (let q = 0; q < nd; q++) {
+        const sz = 0.1 + rnd() * 0.18, t = (rnd() < 0.5 ? (-L / 2 + l1 + gap / 2) : (rnd() - 0.5) * L) + (rnd() - 0.5) * 0.6, op = (rnd() < 0.5 ? 1 : -1) * (R + 0.15 + rnd() * 0.55);
+        const m = cas2Part(g, new THREE.DodecahedronGeometry(sz, 0), rnd() < 0.5 ? pk(HEL.col) : pk(HEL.cap), cx + dx * t - dz * op, sz * 0.45, cz + dz * t + dx * op, 'solid', 0.08);
+        m.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3); m.scale.y = 0.6;
+      }
+      // 윗면 실금(셋에 하나 꼴): 아직 식지 않은 용암 줄 — 끊기며 지그재그
+      if (rnd() < 0.4) {
+        const top = by + R * 0.866 + 0.012, tl = Math.min(l1, l2) > 0.9 ? 1 : 0, len0 = tl ? l2 : l1, tc = tl ? L / 2 - l2 / 2 : -L / 2 + l1 / 2, yw = tl ? yaw2 : ang;
+        let t = tc - len0 * 0.35, side = (rnd() - 0.5) * R * 0.4;
+        for (let q = 0; q < 3; q++) {
+          const ll = len0 * (0.16 + rnd() * 0.12), a2 = yw + (rnd() - 0.5) * 0.5, mx = t + ll / 2;
+          const m = cas2Part(g, new THREE.BoxGeometry(ll, 0.025, 0.05), 0xe8501a, cx + Math.cos(yw) * mx - Math.sin(yw) * side, top, cz + Math.sin(yw) * mx + Math.cos(yw) * side, 'glow', 0.12);
+          m.rotation.y = -a2; t += ll + 0.04; side += Math.sin(a2 - yw) * ll;
+        }
+      }
+      for (const m of vcMerge(g, 8700 + total)) { m.castShadow = false; m.receiveShadow = true; }
+      for (const c of g.children) c.geometry.translate(-cx, 0, -cz);   // 자기 자리에 두어야 지면 올리기(applyGroundRelief)가 다진 높이를 쓴다
+      g.position.set(cx, VX ? 0 : 0.09, cz);   // 판석 바닥(?vox4=0)은 석판 높이 위
+      g.userData.fallenCol = true;
+      for (let t = -L / 2 + R * 0.6; t <= L / 2 - R * 0.6 + 1e-6; t += 0.7) addDecorCollider(cx + dx * t, cz + dz * t, R * 0.85);
+      addDecorCollider(cx + dx * (L / 2 - R * 0.6), cz + dz * (L / 2 - R * 0.6), R * 0.85);
+      fallenPlaced.push({ x: cx, z: cz, a: ang, L, R, glow: false }); n++; total++;
+    }
+  });
+}
 function buildHellAct(dgn) {
   // 배경·안개: 푸른 기가 도는 검정. 3막(0x090f10 · 0.024)보다 어둡고 짙게 — 화면 밖은 어둠이 삼킨다
   if (scene.background) scene.background.setHex(0x05070a);
@@ -13795,6 +14047,7 @@ function buildHellAct(dgn) {
   collapseTiles.length = 0;
   buildHellMesh(dgn);
   if (LORE_ON) buildLoreDecor(dgn, 4);   // v848: 불탄 모험가(자리 다지기가 높이 텍스처를 굽기 전이어야 한다)
+  if (FCOL4) buildFallenCols(dgn);   // v852: 쓰러진 기둥 토막(모험가 자리를 피해 · 흑요석 충돌체보다 먼저 — 둘레 흑요석을 현무암으로 돌린다)
   addObsColliders(dgn);   // v851: 흑요석 기둥 = 못 지나가는 장애물(마당·모험가 자리를 다진 뒤 · 계단·상자·적 배치 전)
   collectHellLava();
   casDustMat.color.setHex(HEL.ember);   // 솟는 불티
@@ -13876,9 +14129,42 @@ function updateHellEmbers(dt) {
   };
   step(H.emb, true); step(H.smk, false);
 }
+// v852: 떨어지는 재 — 플레이어 둘레(반지름 12) 위 4~7 유닛에서 회색 재 조각이 흔들리며 천천히 내려앉는다. 용암 자리와 무관하게 4막이면 늘(?ash=0 이면 끈다).
+// 가산 혼합 희미한 회색(어둠 속에서 떠다니는 먼지로 읽힌다) · 자체 난수(_heR) · 첫 생성 때 Math.random 바꿔 끼우기(uuid)
+let hellAsh = null;
+function updateHellAsh(dt) {
+  const on = ASH4 && currentAct() === 4 && !inTown && !inRest && dungeon && player && player.obj;
+  if (!on) { if (hellAsh) hellAsh.pts.visible = false; return; }
+  if (!hellAsh) {
+    const keep = Math.random; let sd = 0x3a51c7; Math.random = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
+    try {
+      const n = 90, g = new THREE.BufferGeometry(), pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      const m = new THREE.PointsMaterial({ size: 0.2, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false });
+      const pts = new THREE.Points(g, m); pts.frustumCulled = false; pts.userData.fx = true; scene.add(pts);
+      const st = []; for (let i = 0; i < n; i++) st.push({ x: 0, y: -9, z: 0, gy: 0, vy: 0, ph: i * 2.3, age: 0, top: 0, life: -i * 0.09 });
+      hellAsh = { pts, pos, col, st };
+    } finally { Math.random = keep; }
+  }
+  const A = hellAsh, px = player.obj.position.x, pz = player.obj.position.z; A.pts.visible = true;
+  for (let i = 0; i < A.st.length; i++) {
+    const e = A.st[i]; e.age += dt;
+    if (e.life < 0) { e.life += dt; A.pos[i * 3 + 1] = -9; A.col[i * 3] = A.col[i * 3 + 1] = A.col[i * 3 + 2] = 0; continue; }
+    if (e.y <= e.gy || e.age > 14 || Math.abs(e.x - px) > 15 || Math.abs(e.z - pz) > 15) {   // 다시 위에서
+      const a = _heR() * 6.2832, r = Math.sqrt(_heR()) * 12;
+      e.x = px + Math.cos(a) * r; e.z = pz + Math.sin(a) * r; e.gy = groundHeightAt(e.x, e.z); e.top = e.gy + 4 + _heR() * 3; e.y = e.top;
+      e.vy = 0.32 + _heR() * 0.3; e.age = 0;
+    }
+    e.y -= e.vy * dt; e.x += (Math.sin(e.age * 1.3 + e.ph) * 0.35 + 0.12) * dt; e.z += Math.cos(e.age * 1.1 + e.ph * 0.7) * 0.25 * dt;
+    const k = (e.top - e.y) / Math.max(0.1, e.top - e.gy), f = Math.min(1, k * 5) * Math.min(1, (1 - k) * 4) * (0.75 + 0.25 * Math.sin(e.age * 5 + e.ph)) * 0.22;
+    A.pos[i * 3] = e.x; A.pos[i * 3 + 1] = e.y; A.pos[i * 3 + 2] = e.z;
+    A.col[i * 3] = f * 1.05; A.col[i * 3 + 1] = f * 0.98; A.col[i * 3 + 2] = f * 0.92;
+  }
+  A.pts.geometry.attributes.position.needsUpdate = true; A.pts.geometry.attributes.color.needsUpdate = true;
+}
 function buildHellMesh(dgn) {
   const { grid, rooms } = dgn, T = TILE, H = CAS_WALL_H;
-  wallGrid = grid; cavernLightBudget = 6; hellSpots.length = 0; hellLavaPts.length = 0; _helSeedU.value = (player.floor * 3.17) % 40;
+  wallGrid = grid; cavernLightBudget = 6; hellSpots.length = 0; hellFires.length = 0; hellLavaPts.length = 0; _helSeedU.value = (player.floor * 3.17) % 40;
   const inB = (x, y) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H;
   const isF = (x, y) => inB(x, y) && grid[y][x] > 0;
   const wxf = (gx) => (gx - MAP_W / 2) * T, wzf = (gy) => (gy - MAP_H / 2) * T;
@@ -14079,6 +14365,7 @@ function buildHellMesh(dgn) {
         castleTorches.push({ flame: flameG, f1, f2, light: null, sprite: sp, ph: rnd() * 10, lit: true, wx: x, wy: 1.9, wz: z, lcol: 0xff7a34, ldist: 15, li: 1.5 });
         addDecorCollider(x, z, 1.3);
         hellSpots.push({ x, z, r: 1.7 });
+        hellFires.push({ x, z });
         if (VA) vaFlat(x, z, 1.9);
         const a0 = rnd() * Math.PI * 2;
         for (const s of [0, Math.PI]) crack(x + Math.cos(a0 + s) * 1.55, z + Math.sin(a0 + s) * 1.55, a0 + s, 5 + Math.floor(rnd() * 6), 0.12, 0);
@@ -23057,11 +23344,13 @@ function updateSpikeTraps(dt) {
 }
 // 이끼 동굴 장식 애니메이션: 발광 버섯 맥동, 물웅덩이 잔물결, 빛줄기 먼지
 function updateCavernDecor(dt) {
+  updateHellAsh(dt);      // v852: 떨어지는 재(4막이 아니면 스스로 숨는다)
   updateHellEmbers(dt);   // v847: 아래 조기 반환보다 먼저 — 4막이 아니면 스스로 숨는다
   if (cavernShrooms.length === 0 && cavernWaters.length === 0 && cavernShafts.length === 0 && castleTorches.length === 0 && corruptPulses.length === 0 && corruptBreath.length === 0 && !castleDust.visible) return;
   const t = performance.now() / 1000;
   // v840: 4막 용암 실금 맥박(기둥·바닥 균열·줄눈) — 2.6초에 한 번 느리게 부풀었다 가라앉는다. 꼭대기에서 블룸 임계를 살짝 넘는다
-  if (_helVeinMat || _helFloorMat) { const pl = 0.86 + 0.24 * Math.pow(0.5 + 0.5 * Math.sin(t * 2.42), 2.2) + 0.04 * Math.sin(t * 7.3); _helPulse.value = pl; if (_helVeinMat) _helVeinMat.color.setScalar(pl); voxRayUniforms.uVoxLava.value.setRGB(pl, 0.24 * pl, 0.045 * pl); }   // 복셀 용암 틈(출력색 — 셰이더가 칸마다 G 를 0.6~1.4 배)
+  if (_helVeinMat || _helFloorMat) { const pl = (0.86 + 0.24 * Math.pow(0.5 + 0.5 * Math.sin(t * 2.42), 2.2) + 0.04 * Math.sin(t * 7.3)) * hellQuakeK;   // v852: 땅울림 동안 용암이 부푼다(평소 1)
+    _helPulse.value = pl; if (_helVeinMat) _helVeinMat.color.setScalar(pl); voxRayUniforms.uVoxLava.value.setRGB(pl, 0.24 * pl, 0.045 * pl); }   // 복셀 용암 틈(출력색 — 셰이더가 칸마다 G 를 0.6~1.4 배)
   // 2막 떠다니는 먼지: 위로 상승 + 좌우 흔들림(천장 닿으면 바닥에서 재생성)
   if (castleDust.visible) {
     const dp = casDustGeo.attributes.position.array;
@@ -25284,6 +25573,8 @@ function update(dt) {
     camera.position.z += (Math.random() - 0.5) * 2 * a;
     if (camShake <= 0) { camShake = 0; camShakeAmp = 0; }
   }
+  if (hellQuakeShake > 0) { const a = hellQuakeShake, q = hellQuakeT;   // v852: 땅울림 흔들림 — 사인 합(Math.random 을 먹지 않는다. 위 셰이크는 난수를 쓴다)
+    camera.position.x += (Math.sin(q * 53.1) + 0.6 * Math.sin(q * 31.7 + 2.1)) * 0.62 * a; camera.position.y += Math.sin(q * 41.3 + 0.7) * 0.4 * a; camera.position.z += (Math.sin(q * 47.9 + 1.3) + 0.6 * Math.sin(q * 29.3)) * 0.62 * a; }
   camera.lookAt(player.obj.position);
 
   // 시야각 빛 방향 및 위치 갱신
@@ -28492,12 +28783,12 @@ function tick(now) {
   if (inTown) {
     // 마을 모드: 마을 씬을 같은 픽셀화 파이프라인으로 렌더
     updateTownMode(dt); tutTick(dt);
-    if (AMB_ON || LOWHP_ON || DARK_ON || TORCHFX_ON) leaveHorror();
+    if (AMB_ON || LOWHP_ON || DARK_ON || TORCHFX_ON || QUAKE4) leaveHorror();
     renderWithPost(townScene);
   } else if (inRest) {
     // 여행자의 쉼터(허브): 동일 파이프라인으로 렌더
     updateRestMode(dt); tutTick(dt);
-    if (AMB_ON || LOWHP_ON || DARK_ON || TORCHFX_ON) leaveHorror();
+    if (AMB_ON || LOWHP_ON || DARK_ON || TORCHFX_ON || QUAKE4) leaveHorror();
     renderWithPost(restScene);
   } else {
     cullSceneLights(camera);   // 동시 점등 광원 수 제한(흰 화면 방지) — 적 가시성이 켜진 광원을 참조하므로 update 전에
@@ -28505,7 +28796,7 @@ function tick(now) {
     if (LVFX_ON) lvfxTick(dt);   // v834: 레벨업 이펙트(보상 카드로 update 가 멈춰도 끝까지 돈다)
     tutTick(dt);   // v823 온보딩 띠
     updateBattleMusic(dt);   // v806: 전투 배경음악(서서히 켜지고 꺼짐)
-    if (AMB_ON || EYES_ON || LOWHP_ON || DARK_ON || TORCHFX_ON) updateHorror(dt);   // v808: 환경음 · 어둠 속의 눈 · 저체력 연출 · v809 어둠
+    if (AMB_ON || EYES_ON || LOWHP_ON || DARK_ON || TORCHFX_ON || QUAKE4) updateHorror(dt);   // v808: 환경음 · 어둠 속의 눈 · 저체력 연출 · v809 어둠
     renderWithPost(scene);
     if (ui2) ui2.tick(dt); else drawMinimap();   // v814: UI v2 HUD(미니맵 포함)
   }
