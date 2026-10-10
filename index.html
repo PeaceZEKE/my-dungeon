@@ -79,6 +79,20 @@
   #dmgNums .dn.crit { color:#ffd86b; font-size:28px; }
   #dmgNums .dn.hurt { color:#ff6a5a; }
   #dmgNums .dn.skill { color:#8fe3ff; } /* v824: 스킬·반사·폭발 피해 */
+  /* v857 콤보: 화면 오른쪽 가운데. 숫자는 픽셀 글꼴, 글씨는 Cinzel. 색은 콤보가 쌓일수록 흰 → 금 → 주황 → 빨강 */
+  #combo { position:fixed; right:28px; top:36%; z-index:7; pointer-events:none; text-align:right; opacity:0; transform-origin:100% 50%; will-change:transform,opacity; }
+  #combo .cn { font-family:'UI2Px','Galmuri9',monospace; font-size:40px; line-height:1; color:#f3ead2; -webkit-font-smoothing:none;
+    text-shadow:2px 0 #000,-2px 0 #000,0 2px #000,0 -2px #000,2px 2px #000,-2px -2px #000,2px -2px #000,-2px 2px #000; }
+  #combo .cn .x { font-size:26px; margin-right:2px; }
+  #combo .cl { font-family:'UI2Cap','Cinzel',serif; font-size:13px; letter-spacing:4px; color:#d9b56c; margin-top:2px; text-shadow:1px 1px #000,-1px -1px #000,1px -1px #000,-1px 1px #000; }
+  #combo .cb { width:92px; height:4px; margin:4px 0 0 auto; background:rgba(0,0,0,0.55); border:1px solid #000; }
+  #combo .cb i { display:block; height:100%; width:100%; background:#d9b56c; }
+  #multiKill { position:fixed; left:50%; top:33%; z-index:7; pointer-events:none; opacity:0; white-space:nowrap; transform:translate(-50%,-50%);
+    font-family:'UI2Cap','Cinzel',serif; font-size:30px; font-weight:700; letter-spacing:3px; color:#ffd86b;
+    text-shadow:2px 0 #000,-2px 0 #000,0 2px #000,0 -2px #000,2px 2px #000,-2px -2px #000,0 0 14px rgba(255,140,40,0.75); }
+  #combo.m { right:14px; top:40%; }
+  #combo.m .cn { font-size:28px; } #combo.m .cn .x { font-size:18px; } #combo.m .cl { font-size:9px; letter-spacing:3px; } #combo.m .cb { width:62px; }
+  #multiKill.m { font-size:20px; top:37%; }
   #hurt { position:fixed; inset:0; pointer-events:none; z-index:5;
     background: radial-gradient(ellipse at center, rgba(229,62,62,0) 50%, rgba(229,62,62,0.6) 100%);
     opacity:0; transition: opacity .15s; }
@@ -408,6 +422,8 @@ html.rotland .overlay p { font-size: clamp(11px, 2vh, 14px); }
 <div id="hurt"></div>
 <div id="critFlash"></div>
 <div id="dmgNums"></div>
+<div id="combo"><div class="cn"><span class="x">×</span><span class="v">0</span></div><div class="cl">COMBO</div><div class="cb"><i></i></div></div>
+<div id="multiKill"></div>
 <div id="snowstorm"></div>
 <div id="shieldEffect"></div>
 <div id="toast"></div>
@@ -4414,6 +4430,8 @@ const WT_DUR = 0.4, WT_SWELL = 0.26;       // 윈드업 전체 · 그중 부푸�
 let _wtrs = 0x2545f491;                    // 안내 호 THREE 객체를 만드는 동안 Math.random 대신 쓰는 자체 난수(uuid 가 게임 난수를 먹지 않게)
 const _wtr = () => { _wtrs = (_wtrs * 1664525 + 1013904223) >>> 0; return _wtrs / 4294967296; };  // 게임 시계(update 가 dt 를 더함) · 마지막으로 공격을 시작한 시각
 const TUT_ON = !/[?&]tut=0/.test(location.search);     // v823: 온보딩 길잡이(처음 겪는 상황마다 한 번 뜨는 안내 띠). 0 = 끔 · ?tutreset=1 이면 본 기록을 지운다
+const LOOT_ON = !/[?&]loot=0/.test(location.search);   // v857: 전리품 빨려오기 — 처치·상자·보상 동전과 경험치 구슬이 튀었다 플레이어에게 빨려와 '줍는' 소리(연달아 주우면 음이 올라간다). 0 = v856(동전이 솟았다 사라짐 · 구슬 없음). 값은 예전처럼 처치 순간에 들어온다(연출만)
+const COMBO_ON = !/[?&]combo=0/.test(location.search); // v857: 연속 처치 콤보(3초 안에 다음 처치) 카운터 + 5마다 효과음 · 0.45초 안 연속 처치 멀티킬 배너. 0 = 끔
 const HITFX_ON = !/[?&]hitfx=0/.test(location.search); // v822: 데미지 숫자(DOM) + 플레이어 피격 화면 흔들림. 0 = 끔
 const UI2_ON = !/[?&]ui2=0/.test(location.search);   // v814: UI v2 던전 HUD(픽셀 장식 · 세리프 · 초상화). 0 = 예전 HUD
 const DARK_STR = (() => { const m = location.search.match(/[?&]darkstr=([0-9.]+)/); const v = m ? parseFloat(m[1]) : 0.8; return isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8; })();
@@ -4436,7 +4454,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v856'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v857'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -5449,6 +5467,32 @@ const SFX = (() => {
     const og = c.createGain(); og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(v * 0.22, t + 0.28); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
     o.connect(og); og.connect(out); o.start(t); o.stop(t + 0.4);
   }
+  // v857 전리품 줍기 '팅' — 연달아 주우면 장음계로 한 칸씩 올라간다(k). 동전은 금속성 두 배음, 경험치 구슬은 부드러운 사인. 음악 버튼과 무관한 효과음
+  const LOOT_STEP = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24];
+  function lootTick(kind, k) {
+    const c = ac(); if (!c) return; const t = c.currentTime + 0.002;
+    const f = (kind === 'coin' ? 1318.5 : 987.8) * Math.pow(2, LOOT_STEP[Math.min(LOOT_STEP.length - 1, k)] / 12);
+    const parts = kind === 'coin' ? [[1, 'triangle', 0.055, 0.11], [2.76, 'sine', 0.02, 0.07]] : [[1, 'sine', 0.06, 0.12], [2, 'sine', 0.012, 0.06]];
+    for (const [m, ty, v, d] of parts) {
+      const o = c.createOscillator(); o.type = ty; o.frequency.setValueAtTime(f * m, t);
+      const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + d + 0.02);
+    }
+  }
+  // v857 콤보 단계(5·10·15…)·멀티킬: 위로 올라가는 세 음 아르페지오 + 밑에 받치는 5도. lv 가 클수록 시작음이 높다
+  function comboSting(lv) {
+    const c = ac(); if (!c) return; const t = c.currentTime + 0.005, base = 523.25 * Math.pow(2, Math.min(12, lv * 2) / 12);
+    [0, 4, 7, 12].forEach((st, i) => {
+      const tt = t + i * 0.055, f = base * Math.pow(2, st / 12);
+      const o = c.createOscillator(); o.type = 'square'; o.frequency.setValueAtTime(f, tt);
+      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600;
+      const g = c.createGain(); g.gain.setValueAtTime(0.0001, tt); g.gain.exponentialRampToValueAtTime(0.045, tt + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.22);
+      o.connect(lp); lp.connect(g); g.connect(c.destination); o.start(tt); o.stop(tt + 0.25);
+    });
+    const o = c.createOscillator(); o.type = 'triangle'; o.frequency.setValueAtTime(base / 2, t);
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.42);
+  }
   // v852 4막 땅울림: 저역 노이즈가 부풀었다 가라앉는 2.6초 + 34Hz 밑울림 + 폰 스피커용 중역(삼각 88Hz) + 돌 부딪는 딸각 여러 번. 음악 버튼과 무관한 효과음(심장 박동과 같다)
   function quake(v, c0, t0) {
     const c = c0 || ac(); if (!c) return; const t = t0 !== undefined ? t0 : c.currentTime + 0.01; v = v || 0.4;
@@ -5517,7 +5561,7 @@ const SFX = (() => {
     let i = Math.floor(kRnd() * n); if (i === kStepLast && n > 1) i = (i + 1) % n; kStepLast = i;
     ksfx('step_' + terrain + '_' + i, vol, 0.06);
   }
-  return { swing, hit, hurt, block, parry, glint, chargeStart, chargeStop, release, resume: ac, musicStart, musicStop, musicSet, musicCurrent, musicRender, ambSet, ambCurrent, ambDuck, ambCue, ambRender, heartbeat, quake, wraithHiss, suspendForAd, resumeAfterAd, isAdMuted, ksfx, ksfxStep, ksfxPreload, ksfxCount };
+  return { swing, hit, hurt, block, parry, glint, chargeStart, chargeStop, release, resume: ac, musicStart, musicStop, musicSet, musicCurrent, musicRender, ambSet, ambCurrent, ambDuck, ambCue, ambRender, heartbeat, quake, wraithHiss, lootTick, comboSting, suspendForAd, resumeAfterAd, isAdMuted, ksfx, ksfxStep, ksfxPreload, ksfxCount };
 })();
 
 // v832: 발걸음 — 걷기 애니메이션(walkPhase)이 발을 딛는 순간(sin 이 ±1 을 지날 때)마다 한 번. 던전·마을·쉼터가 전부 같은 값을 쓴다.
@@ -16071,10 +16115,17 @@ function spawnCoinEffect(x, y, z, count) {
     const vz = (Math.random() - 0.5) * 2.5;
     const spin = 12 + Math.random() * 10;
     scene.add(c);
-    coins.push({ mesh: c, vx, vy, vz, spin, life: 1.2, baseY: y });
+    coins.push({ mesh: c, vx, vy, vz, spin, life: 1.2, baseY: y, t: 0, d: 0.36 + i * 0.03 });   // v857: t·d 는 빨려오기용(난수 안 먹음)
   }
 }
 function updateCoins(dt) {
+  if (LOOT_ON && !inTown && !inRest) {   // v857: 튀었다 플레이어에게 빨려 들어온다
+    for (let i = coins.length - 1; i >= 0; i--) {
+      const c = coins[i]; c.mesh.rotation.y += c.spin * dt;
+      if (lootStep(c, c.mesh.position, dt)) { scene.remove(c.mesh); coins.splice(i, 1); lootPick('coin'); }
+    }
+    return;
+  }
   for (let i = coins.length - 1; i >= 0; i--) {
     const c = coins[i];
     c.life -= dt;
@@ -18010,6 +18061,122 @@ function dmgNumTick() {
   }
 }
 function dmgNumClear() { for (const n of dmgNums) n.el.remove(); dmgNums.length = 0; }
+
+// ===== v857 전리품 빨려오기(LOOT_ON) =====
+// 처치·상자·보상 카드의 동전(spawnCoinEffect — 예전 그대로 솟구친다)과 처치 경험치 구슬이 잠깐 튀어 바닥에 튕긴 뒤 플레이어에게 빨려 들어온다.
+// 닿으면 '팅'(연달아 주우면 음이 한 칸씩 올라간다) + HUD 골드·경험치 막대가 톡 튄다. 값은 예전처럼 처치 순간에 들어온다 — 연출만이라 놓쳐도 손해가 없다.
+// 난수: 동전은 예전 spawnCoinEffect 가 먹던 그대로(바뀐 것은 움직임뿐), 구슬은 자체 LCG + 인스턴스 메시 하나(첫 사용 때 Math.random 을 바꿔 끼워 만든다).
+const LOOT_MAX = 160, lootOrbs = [];
+let lootIM = null, lootChain = 0, lootChainT = 0, lootSndAt = -1, lootPulseAt = { coin: -1, exp: -1 }, lootClock = 0;
+let _lr = 0x2c9e1b; const lootR = () => { _lr = (_lr * 1664525 + 1013904223) >>> 0; return _lr / 4294967296; };
+const _lootM = new THREE.Matrix4(), _lootQ = new THREE.Quaternion(), _lootS = new THREE.Vector3(), _lootP = new THREE.Vector3();
+function lootIMake() {
+  const _r = Math.random; Math.random = lootR;
+  try {
+    const mat = new THREE.MeshBasicMaterial({ color: 0x9dff7a, toneMapped: false });   // 붉은 4막에서도 튀는 연두(블룸이 살짝 번진다)
+    lootIM = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.14, 0), mat, LOOT_MAX);
+    lootIM.count = 0; lootIM.frustumCulled = false; lootIM.castShadow = false; lootIM.receiveShadow = false;
+    scene.add(lootIM);
+  } finally { Math.random = _r; }
+}
+function spawnExpOrbs(x, y, z, n) {
+  if (!LOOT_ON) return;
+  if (!lootIM) lootIMake();
+  for (let i = 0; i < n && lootOrbs.length < LOOT_MAX; i++) {
+    const a = lootR() * Math.PI * 2, sp = 1.8 + lootR() * 2.6;
+    lootOrbs.push({ x, y, z, vx: Math.cos(a) * sp, vy: 5 + lootR() * 3.5, vz: Math.sin(a) * sp, t: 0, d: 0.42 + i * 0.04, ph: lootR() * 6.28 });
+  }
+}
+// 한 알 움직이기 — 튀어 오름(중력·바닥 튕김) → d 초 뒤부터 플레이어 가슴으로 가속(최대 30/s). 닿으면 true
+function lootStep(o, p, dt) {
+  o.t += dt;
+  if (o.t < o.d) {
+    o.vy -= 22 * dt; p.x += o.vx * dt; p.y += o.vy * dt; p.z += o.vz * dt;
+    const g = groundHeightAt(p.x, p.z) + 0.12;
+    if (p.y < g) { p.y = g; o.vy = Math.abs(o.vy) * 0.35; o.vx *= 0.55; o.vz *= 0.55; }
+    return false;
+  }
+  const P = player.obj.position, tx = P.x - p.x, ty = P.y + 0.9 - p.y, tz = P.z - p.z, dist = Math.hypot(tx, ty, tz);
+  const sp = Math.min(30, 7 + (o.t - o.d) * 45);
+  if (dist < 0.45 + sp * dt || o.t > 4) return true;
+  const k = Math.min(1, dt * 10);
+  o.vx += (tx / dist * sp - o.vx) * k; o.vy += (ty / dist * sp - o.vy) * k; o.vz += (tz / dist * sp - o.vz) * k;
+  p.x += o.vx * dt; p.y += o.vy * dt; p.z += o.vz * dt;
+  return false;
+}
+function lootPick(kind) {
+  if (lootChainT <= 0) lootChain = -1;
+  lootChainT = 0.6;
+  if (lootClock - lootSndAt >= 0.045) { lootSndAt = lootClock; lootChain = Math.min(14, lootChain + 1); SFX.lootTick(kind, lootChain); }   // 음은 소리가 날 때만 한 칸 오른다(겹쳐 건너뛴 알은 안 센다)
+  if (lootClock - lootPulseAt[kind] >= 0.09) {   // HUD 가 톡 튄다(골드 칸 · 경험치 막대)
+    lootPulseAt[kind] = lootClock;
+    const el = document.getElementById(kind === 'coin' ? 'u2Gold' : 'u2Exp');
+    const tg = el && (kind === 'coin' ? el.parentNode : el);
+    if (tg && tg.animate) tg.animate(kind === 'coin' ? [{ transform: 'scale(1.3)', filter: 'brightness(1.8)' }, { transform: 'scale(1)', filter: 'brightness(1)' }] : [{ filter: 'brightness(2.2)' }, { filter: 'brightness(1)' }], { duration: 170 });
+  }
+}
+function updateLoot(dt) {
+  lootClock += dt; lootChainT = Math.max(0, lootChainT - dt);
+  if (!lootIM) return;
+  let n = 0;
+  for (let i = 0; i < lootOrbs.length; i++) {
+    const o = lootOrbs[i]; _lootP.set(o.x, o.y, o.z);
+    if (lootStep(o, _lootP, dt)) { lootPick('exp'); continue; }
+    o.x = _lootP.x; o.y = _lootP.y; o.z = _lootP.z;
+    lootOrbs[n++] = o;
+    const sc = 0.85 + 0.3 * Math.sin(lootClock * 14 + o.ph);
+    _lootS.set(sc, sc, sc); _lootM.compose(_lootP, _lootQ, _lootS); lootIM.setMatrixAt(n - 1, _lootM);
+  }
+  lootOrbs.length = n; lootIM.count = n; lootIM.instanceMatrix.needsUpdate = true;
+}
+function lootClear() {
+  lootOrbs.length = 0; if (lootIM) lootIM.count = 0;
+  if (LOOT_ON) { for (const c of coins) scene.remove(c.mesh); coins.length = 0; }
+}
+
+// ===== v857 콤보(COMBO_ON) =====
+// 3초 안에 다음 적을 잡으면 콤보가 이어진다(2부터 화면 오른쪽에 ×N · 남은 시간 막대). 잡을 때마다 숫자가 톡 커지고, 5·10·15… 마다 올라가는 아르페지오.
+// 0.45초 안에 연달아 잡으면 가운데 위에 DOUBLE / TRIPLE / QUAD / MULTI KILL(임프 연쇄 폭발이 여기에 잘 걸린다). DOM 만 쓴다(난수·THREE 없음).
+const COMBO_WIN = 3.0, MK_WIN = 0.45;
+const combo = { n: 0, t: 0, punch: 0, fade: 1, mk: 0, mkT: 0, banner: 0, best: 0, el: null, v: null, cn: null, bar: null, mkEl: null, prev: {} };
+function comboEls() {
+  if (combo.el) return true;
+  combo.el = document.getElementById('combo'); combo.mkEl = document.getElementById('multiKill'); if (!combo.el || !combo.mkEl) { combo.el = null; return false; }
+  combo.v = combo.el.querySelector('.v'); combo.cn = combo.el.querySelector('.cn'); combo.bar = combo.el.querySelector('.cb i');
+  if (isTouchDevice) { combo.el.classList.add('m'); combo.mkEl.classList.add('m'); }
+  return true;
+}
+function comboKill() {
+  if (!COMBO_ON || !comboEls()) return;
+  combo.n = combo.t > 0 ? combo.n + 1 : 1; combo.t = COMBO_WIN; combo.fade = 0;
+  combo.mk = combo.mkT > 0 ? combo.mk + 1 : 1; combo.mkT = MK_WIN;
+  if (combo.n > combo.best) combo.best = combo.n;
+  if (combo.n < 2) return;
+  combo.punch = combo.n % 5 === 0 ? 1.7 : 1;
+  combo.v.textContent = String(combo.n);
+  combo.cn.style.color = combo.n >= 20 ? '#ff5a4a' : combo.n >= 10 ? '#ff9a3a' : combo.n >= 5 ? '#ffd86b' : '#f3ead2';
+  combo.bar.style.background = combo.n >= 20 ? '#ff5a4a' : combo.n >= 10 ? '#ff9a3a' : '#d9b56c';
+  if (combo.mk >= 2) {
+    combo.mkEl.textContent = combo.mk === 2 ? 'DOUBLE KILL' : combo.mk === 3 ? 'TRIPLE KILL' : combo.mk === 4 ? 'QUAD KILL' : 'MULTI KILL x' + combo.mk;
+    combo.banner = 1.2; SFX.comboSting(Math.min(5, combo.mk - 1));
+  } else if (combo.n % 5 === 0) SFX.comboSting(Math.min(6, combo.n / 5));
+}
+function comboTick(dt) {
+  if (!COMBO_ON || !combo.el) return;
+  combo.t = Math.max(0, combo.t - dt); combo.mkT = Math.max(0, combo.mkT - dt); combo.punch = Math.max(0, combo.punch - dt * 6);
+  if (combo.t <= 0 && combo.fade < 1) { combo.fade = Math.min(1, combo.fade + dt / 0.4); if (combo.fade >= 1) combo.n = 0; }
+  const on = combo.n >= 2, P = combo.prev;
+  const op = on ? (combo.t > 0 ? 1 : 1 - combo.fade) : 0, tr = 'scale(' + (1 + combo.punch * 0.45).toFixed(3) + ')', w = (combo.t / COMBO_WIN * 100).toFixed(1) + '%';
+  if (P.op !== op) { P.op = op; combo.el.style.opacity = String(op); }
+  if (P.tr !== tr) { P.tr = tr; combo.el.style.transform = tr; }
+  if (P.w !== w) { P.w = w; combo.bar.style.width = w; }
+  combo.banner = Math.max(0, combo.banner - dt);
+  const b = combo.banner, bop = b <= 0 ? 0 : Math.min(1, b / 0.35), bs = 1 + Math.max(0, b - 1.0) / 0.2 * 0.6;
+  const btr = 'translate(-50%,-50%) scale(' + bs.toFixed(3) + ')';
+  if (P.bop !== bop) { P.bop = bop; combo.mkEl.style.opacity = String(bop); }
+  if (P.btr !== btr) { P.btr = btr; combo.mkEl.style.transform = btr; }
+}
+function comboReset() { combo.n = 0; combo.t = 0; combo.mk = 0; combo.mkT = 0; combo.banner = 0; combo.fade = 1; if (combo.el) comboTick(0); }
 
 
 const bodyGrp = new THREE.Group();
@@ -25559,6 +25726,8 @@ function killEnemy(e) {
   runGold += g;
   spawnCoinEffect(e.obj.position.x, e.obj.position.y + 0.5, e.obj.position.z, Math.min(30, g));
   toast('+' + e.exp + ' EXP · 💰 +' + g);
+  if (LOOT_ON) spawnExpOrbs(e.obj.position.x, e.obj.position.y + 0.6, e.obj.position.z, e.isBoss ? 14 : e.isElite ? 8 : 3);   // v857
+  if (COMBO_ON) comboKill();   // v857
   checkLevelUp();
   updateHUD();
   // 보스/난입 보스 격파 시 능력 강화 아이템 드랍(선택 UI)
@@ -26012,6 +26181,7 @@ function update(dt) {
   swingTimer = Math.max(0, swingTimer - dt);
   updateParticles(dt);
   updateCoins(dt);
+  if (LOOT_ON) updateLoot(dt);
   updatePotions(dt);
   updateParryRings(dt);
   updateEffectLights(dt); // 전투 섬광 풀 감쇠
@@ -28617,6 +28787,7 @@ function descend() {
 function startFloor() {
   floorSwept = false; floorExp = 0; // v820: 층 소탕 보상 판정 초기화
   if (typeof dmgNumClear === 'function') dmgNumClear(); // v822: 지난 층 데미지 숫자 정리
+  lootClear(); comboReset();   // v857: 지난 층 구슬·동전·콤보
   if (typeof hideHowtoHint === 'function') hideHowtoHint(); // 던전 진입 시 조작 힌트 정리
   cgGameplayStart(); // CrazyGames 통계
   // 진행도 보고: 현재 콘텐츠의 끝(LAST_ACT 막의 마지막 층 = 90층) 기준(테스트 회차는 제외)
@@ -29624,6 +29795,7 @@ function tick(now) {
   } else {
     cullSceneLights(camera);   // 동시 점등 광원 수 제한(흰 화면 방지) — 적 가시성이 켜진 광원을 참조하므로 update 전에
     if (player.alive && !rewardPaused) { update(dt); tutUpdate(); }
+    if (COMBO_ON && !rewardPaused) comboTick(dt);   // v857: 콤보 시간은 보상 카드 동안 멈춘다
     if (LVFX_ON) lvfxTick(dt);   // v834: 레벨업 이펙트(보상 카드로 update 가 멈춰도 끝까지 돈다)
     tutTick(dt);   // v823 온보딩 띠
     updateBattleMusic(dt);   // v806: 전투 배경음악(서서히 켜지고 꺼짐)
@@ -29979,6 +30151,7 @@ function showDungeonUI() {
 // ===== 마을 3D 모드 (1단계: 걸어다니기 + 던전 입구 진입) =====
 function enterTownMode(keepGod) {
   const wasGod = godMode;
+  lootClear(); comboReset();   // v857
   if (!keepGod) {
     godMode = false; bossTestMode = false; godInvuln = false;
     if (wasGod) { metaIsTest = false; loadMeta(); } // 테스트 → 일반: 일반 저장 슬롯으로 전환하여 복원(테스트 자원이 일반에 안 섞임)
@@ -31508,6 +31681,7 @@ function enterRest(fromRun) {
   if (!fromRun) { restIsFinal = false; } // 마을 포탈 경유: restNextFloor는 선택 오버레이에서 지정(2막=31 / 3막=61)
   restEnteredFromRun = !!fromRun;
   tutClear(); tutShow('rest'); // v823 온보딩
+  lootClear(); comboReset();   // v857
   buildRestScene();
   inRest = false; if (typeof inTown !== 'undefined') inTown = false;
   // 상태 초기화
