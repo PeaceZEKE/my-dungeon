@@ -39,7 +39,7 @@
   <button class="btn" id="comboBtn">3연타</button>
   <button class="btn" id="whirlBtn">회전 베기</button>
   <button class="btn" id="throwBtn">도끼 던지기</button>
-  <button class="btn" id="fireBtn">불 붙이기</button>
+  <button class="btn" id="fireBtn">2페이즈</button>
   <button class="btn" id="deadBtn">죽음</button>
   <button class="btn" id="actBtn">스튜디오</button>
   <button class="btn" id="shadowBtn">그림자: 켬</button>
@@ -983,11 +983,16 @@ function buildExecutionerBody(grp, bodyGrp, headGrp, limbs) {
   const hood   = getLowPolyMat(0x3c0f0d), hoodDk = getLowPolyMat(0x240808), hoodLt = getLowPolyMat(0x58180f);   // 처형인 두건(검붉은 가죽)
   const leather = getLowPolyMat(0x2b1b13), leatherDk = getLowPolyMat(0x1b110c), wood = getLowPolyMat(0x2c1c12), bone = getLowPolyMat(0x6b5f50);
   const horn = getLowPolyMat(0x231816), hornLt = getLowPolyMat(0x4e3e33), skullC = getLowPolyMat(0x4a3d33), hollow = getLowPolyMat(0x0a0606);   // 뿔 · 그을린 뼈 · 눈구멍
+  const hornB = getLowPolyMat(0x5e5246), hornM = getLowPolyMat(0x3e332b);   // 황소 뿔 밑동(밝은 뼈빛) → 가운데 → 끝(horn)
+  const brass = getLowPolyMat(0x7d6532), brassDk = getLowPolyMat(0x4a3a1c);   // 복면을 묶은 놋쇠 사슬
+  const cloth = getLowPolyMat(0x1c1517), clothLt = getLowPolyMat(0x2b2024); cloth.side = clothLt.side = THREE.DoubleSide;   // 복면 천(열린 자락이라 양면)
   const iron = getLowPolyMat(0x30333b), ironLt = getLowPolyMat(0x4c515c), ironDk = getLowPolyMat(0x1a1c22);   // 무광 — 금속 재질이면 횃불 하이라이트에 견갑이 흰 공이 됐다
   const fleshShared = markOrganic(getLowPolyMat(0xffffff)), hardShared = getLowPolyMat(0xffffff);
   [fleshShared, hardShared].forEach(m => { m.vertexColors = true; m.needsUpdate = true; });
   [skin, skinLt, skinDk].forEach(m => { m.userData.mergeInto = fleshShared; });
-  [hood, iron, ironLt, ironDk, hoodDk, hoodLt, leather, leatherDk, wood, bone, horn, hornLt, skullC, hollow].forEach(m => { m.userData.mergeInto = hardShared; });
+  const clothShared = getLowPolyMat(0xffffff); clothShared.vertexColors = true; clothShared.side = THREE.DoubleSide;
+  [cloth, clothLt].forEach(m => { m.userData.mergeInto = clothShared; });
+  [hood, iron, ironLt, ironDk, hoodDk, hoodLt, leather, leatherDk, wood, bone, horn, hornLt, skullC, hollow, hornB, hornM, brass, brassDk].forEach(m => { m.userData.mergeInto = hardShared; });
   const lavaMat = new THREE.MeshStandardMaterial({ color: 0x4a1606, emissive: 0xff4a12, emissiveIntensity: 0.85, roughness: 0.6, flatShading: true });
   const edgeMat = new THREE.MeshStandardMaterial({ color: 0x5a2208, emissive: 0xff7a22, emissiveIntensity: 1.0, roughness: 0.5, flatShading: true });   // 달군 도끼날
   const eyeMat  = new THREE.MeshStandardMaterial({ color: 0x5a2a08, emissive: 0xffb43a, emissiveIntensity: 1.6, roughness: 0.5, flatShading: true });
@@ -1052,32 +1057,56 @@ function buildExecutionerBody(grp, bodyGrp, headGrp, limbs) {
   const collar = M(new THREE.TorusGeometry(0.3, 0.07, 5, 10), iron); collar.position.set(0, 0.62, -0.04); collar.rotation.x = Math.PI / 2 - 0.2; torso.add(collar);
   for (let i = 0; i < 6; i++) { const a = -Math.PI * 0.85 + i * Math.PI * 0.34, sp = M(new THREE.ConeGeometry(0.035, 0.16, 4), ironLt); sp.position.set(Math.sin(a) * 0.33, 0.66, -0.04 + Math.cos(a) * 0.33); sp.rotation.set(Math.cos(a) * 0.9, 0, -Math.sin(a) * 0.9); torso.add(sp); }
 
-  // ---------- 머리(처형인 두건 · 두건을 뚫고 나온 뿔 · 두건 속 녹아내린 해골) ----------
+  // ---------- 머리 — 맨 머리는 뿔 달린 해골이고, 1페이즈엔 그 위에 얼굴을 다 덮는 긴 복면을 사슬로 묶어 고정한다 ----------
   headGrp.position.set(0, 2.0, -0.3); headGrp.rotation.x = 0.08; bodyGrp.add(headGrp);
-  const cowl = M(new THREE.CylinderGeometry(0.3, 0.62, 0.34, 9), hoodDk); cowl.position.set(0, -0.26, 0.1); headGrp.add(cowl);   // 어깨를 덮는 두건 자락
-  const skullH = ico(0.34, hood, 1); skullH.scale.set(1.0, 0.95, 1.08); headGrp.add(skullH);
-  const peak = M(new THREE.ConeGeometry(0.3, 0.62, 8), hood); peak.position.set(0, 0.32, 0.12); peak.rotation.x = 0.55; headGrp.add(peak);   // 뒤로 꺾인 끝(뿔에 자리를 내주려고 낮췄다)
-  const peakTip = M(new THREE.ConeGeometry(0.1, 0.24, 6), hoodLt); peakTip.position.set(0, 0.6, 0.34); peakTip.rotation.x = 0.95; headGrp.add(peakTip);
-  for (let i = 0; i < 4; i++) box(headGrp, 0.08, 0.018, 0.02, ironLt, 0, 0.3 - i * 0.09, -0.32 + i * 0.012, -0.25);   // 꿰맨 자국
-  // 뿔 — 두건 옆을 찢고 나와 뒤로 휘며 위로(가늘어지는 마디). 찢긴 자리엔 너덜한 두건 조각
+  // 뿔 — 황소 뿔: 머리 옆에서 바깥으로 뻗었다가 앞으로 꺾이고 끝이 위로(밑동은 밝은 뼈빛 → 끝은 검게)
   [-1, 1].forEach(s2 => {
-    const P = [[s2 * 0.24, 0.14, -0.02], [s2 * 0.44, 0.26, 0.04], [s2 * 0.58, 0.46, 0.16], [s2 * 0.6, 0.7, 0.32], [s2 * 0.5, 0.9, 0.46]], R0 = [0.11, 0.095, 0.075, 0.055, 0.035];
-    for (let i = 1; i < P.length; i++) seg(headGrp, P[i - 1], P[i], R0[i - 1], R0[i], i >= 3 ? hornLt : horn, 6);
-    const tip = M(new THREE.ConeGeometry(0.035, 0.18, 5), hornLt); tip.position.set(s2 * 0.46, 1.0, 0.54); tip.rotation.set(0.6, 0, s2 * 0.3); headGrp.add(tip);
-    for (let j = 0; j < 3; j++) { const fl = box(headGrp, 0.12, 0.05, 0.1, hoodLt, s2 * (0.27 + j * 0.03), 0.12 - j * 0.07, -0.04 + j * 0.05, 0.3, 0, s2 * (0.6 + j * 0.3)); void fl; }
+    const P = [[s2 * 0.22, 0.12, 0.0], [s2 * 0.46, 0.14, -0.02], [s2 * 0.66, 0.17, -0.2], [s2 * 0.76, 0.27, -0.42], [s2 * 0.74, 0.47, -0.58], [s2 * 0.65, 0.66, -0.62]];
+    const R0 = [0.12, 0.105, 0.085, 0.065, 0.045, 0.028], HM = [hornB, hornB, hornM, hornM, horn];
+    for (let i = 1; i < P.length; i++) seg(headGrp, P[i - 1], P[i], R0[i - 1], R0[i], HM[i - 1], 6);
+    const tip = M(new THREE.ConeGeometry(0.03, 0.16, 5), horn); tip.position.set(s2 * 0.62, 0.74, -0.6); tip.rotation.set(-0.15, 0, s2 * 0.35); headGrp.add(tip);
   });
-  // 두건 속: 녹아내린 해골 — 깊은 눈구멍 속 불씨 · 흘러내린 뺨 · 이빨 사이로 새는 불빛
-  const hoodIn = ico(0.25, hollow, 1); hoodIn.scale.set(1.1, 0.95, 0.6); hoodIn.position.set(0, -0.02, -0.2); headGrp.add(hoodIn);
-  const sk = ico(0.19, skullC, 1); sk.scale.set(1.0, 1.08, 0.78); sk.position.set(0, 0.02, -0.28); headGrp.add(sk);
+  // 맨 머리(2페이즈): 녹아내린 해골 — 깊은 눈구멍 속 불씨 · 흘러내린 뺨 · 정수리 실금 · 이빨 사이로 새는 불빛
+  const skullGrp = new THREE.Group(); headGrp.add(skullGrp);
+  const cran = ico(0.3, skullC, 1); cran.scale.set(1.0, 0.95, 1.1); cran.position.set(0, 0.06, 0.02); skullGrp.add(cran);
+  const brow = box(skullGrp, 0.36, 0.07, 0.12, skullC, 0, 0.12, -0.27, 0.2); void brow;
+  vein(skullGrp, [[-0.12, 0.33, 0.0], [-0.02, 0.36, 0.08], [0.1, 0.32, 0.14], [0.16, 0.24, 0.24]], 0.016);
+  const sk = ico(0.19, skullC, 1); sk.scale.set(1.0, 1.08, 0.78); sk.position.set(0, 0.02, -0.28); skullGrp.add(sk);
   [-1, 1].forEach(s2 => {
-    const sock = ico(0.06, hollow, 0); sock.scale.set(1.15, 1, 0.6); sock.position.set(s2 * 0.075, 0.05, -0.41); headGrp.add(sock);
-    const eye = ico(0.03, eyeMat, 0); eye.position.set(s2 * 0.075, 0.045, -0.44); headGrp.add(eye);
-    const drip = ico(0.045, skullC, 0); drip.scale.set(0.7, 1.9, 0.6); drip.position.set(s2 * 0.13, -0.1, -0.38); headGrp.add(drip);   // 흘러내린 뺨
+    const sock = ico(0.06, hollow, 0); sock.scale.set(1.15, 1, 0.6); sock.position.set(s2 * 0.075, 0.05, -0.41); skullGrp.add(sock);
+    const eye = ico(0.03, eyeMat, 0); eye.position.set(s2 * 0.075, 0.045, -0.44); skullGrp.add(eye);
+    const drip = ico(0.045, skullC, 0); drip.scale.set(0.7, 1.9, 0.6); drip.position.set(s2 * 0.13, -0.1, -0.38); skullGrp.add(drip);   // 흘러내린 뺨
   });
-  const nose = ico(0.03, hollow, 0); nose.scale.set(1, 1.3, 0.6); nose.position.set(0, -0.03, -0.44); headGrp.add(nose);
-  const jaw = box(headGrp, 0.22, 0.07, 0.14, skullC, 0, -0.17, -0.34, -0.15); void jaw;
-  const maw = box(headGrp, 0.16, 0.03, 0.03, lavaMat, 0, -0.11, -0.43); void maw;                                  // 이빨 사이로 새는 불빛
-  for (let i = 0; i < 5; i++) { const tth = M(new THREE.ConeGeometry(0.014, 0.05, 4), bone); tth.position.set(-0.06 + i * 0.03, -0.13, -0.43); tth.rotation.x = Math.PI; headGrp.add(tth); }
+  const nose = ico(0.03, hollow, 0); nose.scale.set(1, 1.3, 0.6); nose.position.set(0, -0.03, -0.44); skullGrp.add(nose);
+  const jaw = box(skullGrp, 0.22, 0.07, 0.14, skullC, 0, -0.17, -0.34, -0.15); void jaw;
+  const maw = box(skullGrp, 0.16, 0.03, 0.03, lavaMat, 0, -0.11, -0.43); void maw;                                  // 이빨 사이로 새는 불빛
+  for (let i = 0; i < 5; i++) { const tth = M(new THREE.ConeGeometry(0.014, 0.05, 4), bone); tth.position.set(-0.06 + i * 0.03, -0.13, -0.43); tth.rotation.x = Math.PI; skullGrp.add(tth); }
+  skullGrp.visible = false;   // 복면이 벗겨질 때 켠다(안 끄면 눈구멍이 복면을 뚫고 나온다)
+  // 복면(1페이즈): 머리를 통째로 감싼 검은 천 + 앞뒤로 길게 늘어진 자락(밑단 너덜) + 어깨 덮개 · 그 위를 감은 놋쇠 사슬 셋 + 자물쇠
+  const maskGrp = new THREE.Group(), clothGrp = new THREE.Group(), chainGrp = new THREE.Group(); headGrp.add(maskGrp); maskGrp.add(clothGrp, chainGrp);
+  const ball = ico(0.37, cloth, 1); ball.scale.set(1.0, 1.02, 1.1); ball.position.set(0, 0.05, 0.0); clothGrp.add(ball);
+  const veil = (h, rt, rb, th0, y0, z0, tilt) => {   // 열린 반원통 자락 — 밑단에 천 조각(삼각 뿔)을 매단다
+    const g = new THREE.Group(); g.position.set(0, y0, z0); g.rotation.x = tilt; clothGrp.add(g);
+    const v = M(new THREE.CylinderGeometry(rt, rb, h, 10, 1, true, th0, Math.PI), cloth); v.position.y = -h / 2; g.add(v);
+    for (let i = 0; i <= 6; i++) { const th = th0 + Math.PI * i / 6, L = 0.1 + 0.12 * ((i * 7) % 3) / 2;
+      const r = M(new THREE.ConeGeometry(0.06, L, 3), clothLt); r.position.set(rb * Math.sin(th), -h - L / 2 + 0.02, rb * Math.cos(th)); r.rotation.x = Math.PI; g.add(r); }
+  };
+  veil(0.95, 0.34, 0.4, Math.PI / 2, 0.12, -0.02, 0.24);     // 앞자락 — 얼굴을 덮고 가슴까지
+  veil(0.8, 0.35, 0.46, -Math.PI / 2, 0.16, 0.04, -0.3);     // 뒷자락 — 목덜미를 덮고 어깨뼈까지
+  const cowl = M(new THREE.CylinderGeometry(0.34, 0.66, 0.3, 10), clothLt); cowl.position.set(0, -0.3, 0.1); clothGrp.add(cowl);   // 어깨 덮개
+  const ringC = (cx, cy, cz, r, rx, rz, n) => {   // 머리를 감은 사슬 고리 — 고리마다 눕힌 축을 번갈아(사슬 마디)
+    const E = new THREE.Euler(rx, 0, rz), Nn = new THREE.Vector3(0, 1, 0).applyEuler(E), Z = new THREE.Vector3(0, 0, 1);
+    for (let i = 0; i < n; i++) {
+      const a = Math.PI * 2 * i / n, R = new THREE.Vector3(Math.cos(a), 0, Math.sin(a)).applyEuler(E);
+      const l = M(new THREE.TorusGeometry(0.048, 0.017, 3, 6), i % 3 === 0 ? brassDk : brass);
+      l.position.set(cx + R.x * r, cy + R.y * r, cz + R.z * r); l.quaternion.setFromUnitVectors(Z, i % 2 ? Nn : R); chainGrp.add(l);
+    }
+  };
+  ringC(0, 0.06, -0.01, 0.39, 0.12, 0, 24);       // 눈높이를 한 바퀴
+  ringC(0, 0.02, 0.0, 0.45, 0.35, 0.62, 26);      // 얼굴을 비스듬히(앞자락 위로 지나게 조금 크게)
+  ringC(0, -0.06, -0.02, 0.45, 0.4, -0.55, 26);   // 반대로 비스듬히 — 앞에서 X 자로 엇갈린다
+  const lock = box(chainGrp, 0.09, 0.1, 0.05, brass, 0.03, -0.14, -0.49, 0.2); void lock;
+  const shackle = M(new THREE.TorusGeometry(0.035, 0.012, 3, 6, Math.PI), brassDk); shackle.position.set(0.03, -0.08, -0.49); chainGrp.add(shackle);
 
   // ---------- 팔(맨살 · 왼어깨 쇠 견갑 · 쇠 팔목 보호대) ----------
   function makeArm(sign) {
@@ -1166,7 +1195,7 @@ function buildExecutionerBody(grp, bodyGrp, headGrp, limbs) {
   c3MergeStatic(aR.hand, [axe]); c3MergeStatic(aL.hand);
   [aR.g, aL.g].forEach(g => c3MergeStatic(g, [aR.el, aL.el]));
   [legR, legL].forEach(g => c3MergeStatic(g));
-  c3MergeStatic(headGrp); c3MergeStatic(tail);
+  c3MergeStatic(clothGrp); c3MergeStatic(chainGrp); c3MergeStatic(skullGrp); c3MergeStatic(headGrp, [maskGrp, skullGrp]); c3MergeStatic(tail);
   c3MergeStatic(bodyGrp, [headGrp, legR, legL, aR.g, aL.g, tail, backFire]);
 
   limbs.armR = aR.g; limbs.armL = aL.g; limbs.legR = legR; limbs.legL = legL; limbs.head = headGrp; limbs.bodyGrp = bodyGrp;
@@ -1200,8 +1229,18 @@ function buildExecutionerBody(grp, bodyGrp, headGrp, limbs) {
     R.x = rx; R.z = rz; L.x = lx; L.z = lz; aR.el.rotation.x = elR; aL.el.rotation.x = elL; axe.rotation.x = ax; B.x = bx; B.y = by; headGrp.rotation.x = hx;
   };
   limbs._exPose('rest', 0);
+  let unT = -1;   // -1 = 복면 씀 · 0 이상 = 벗겨지는 중 · -2 = 벗음
+  limbs._exUnmask = function () { if (unT === -1) unT = 0; };
   limbs._exUpdate = function (t, dt) {
     dt = dt || 0.016;
+    if (unT >= 0) {   // 0~0.18초 사슬이 부풀며 터지고 · 0.08~0.78초 천이 뒤로 젖혀지며 흘러내린다 · 0.29초부터 해골이 보인다
+      unT += dt; const k = unT;
+      chainGrp.scale.setScalar(1 + k * 2.4); chainGrp.visible = k < 0.18;
+      const f = Math.min(1, Math.max(0, (k - 0.08) / 0.7));
+      if (f > 0.3) skullGrp.visible = true;   // 해골 얼굴은 복면 앞자락보다 앞으로 나와 있어 — 천이 30% 쯤 벗겨진 뒤에 켜야 천을 뚫고 안 보인다
+      clothGrp.position.set(0, -f * f * 1.7, f * 0.55); clothGrp.rotation.x = -f * 1.2; clothGrp.visible = f < 1;
+      if (f >= 1) { unT = -2; maskGrp.visible = false; }
+    }
     const p = 0.5 + 0.5 * Math.sin(t * 2.4), fire = limbs._exFire || 0, heat = limbs._exHeat || 0;
     lavaMat.emissiveIntensity = 0.7 + 0.3 * p + fire * 0.4;
     edgeMat.emissiveIntensity = 0.85 + 0.25 * p + heat * 1.2 + fire * 0.6;
@@ -1400,9 +1439,9 @@ function animate() {
       } else if (T < 1.4) limbs._exPose('throw', 1);
       else if (flyAxe) limbs._exPose('rest', 0);
       else { limbs._exPose('rest', 0); act = null; }
-    } else if (act === 'roar') {   // 2페이즈: 도끼에 불이 붙는다
+    } else if (act === 'roar') {   // 2페이즈: 복면이 벗겨지고 도끼에 불이 붙는다
       const k = T < 1.2 ? Math.sin(Math.min(1, T / 1.2) * Math.PI) : 0;
-      limbs._exPose('roar', k); limbs._exFire = Math.min(1, T / 0.8);
+      limbs._exPose('roar', k); limbs._exFire = Math.min(1, T / 0.8); if (T >= 0.25) limbs._exUnmask();   // 포효 절정에 사슬이 터지고 복면이 벗겨진다(게임과 같은 때)
       if (T > 1.2) { limbs._exPose('rest', 0); act = null; }
     }
   }
