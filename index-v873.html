@@ -4423,7 +4423,7 @@ const IQ_ICE_CHARGE = 0.5, IQ_ICE_MIN = 6.5;
 const KSFX_ON = !/[?&]ksfx=0/.test(location.search) && typeof window.KSFX_DATA === 'object'; // v832: Kenney 효과음(CC0, 음량을 −21 dBFS 로 맞춤) — 물약·보상 카드·층 소탕 동전·스킬 습득·대장간 제작/강화·상자 열기·메뉴 버튼·발걸음. 0 = v831 동작(합성음·무음 그대로)
 const STEPS_ON = KSFX_ON && !/[?&]steps=0/.test(location.search); // v832: 발걸음만 끄기 — 바닥 지형별(1막 흙 · 2·3막 돌 · 서리 장판 눈 · 마을 광장 돌/그 밖 풀 · 쉼터 흙)
 const KSFX_STEP_VOL = 0.38;
-const STEPTERR = STEPS_ON && !/[?&]stepterr=0/.test(location.search);   // v872: 1막 발걸음을 밟는 자리로 — 물웅덩이(첨벙) · 풀(풀 소리) · 그 밖 흙. 0 이면 v871(1막 전체 흙)
+const STEPTERR = STEPS_ON && !/[?&]stepterr=0/.test(location.search);   // v872: 1막 발걸음을 밟는 자리로 — 물웅덩이(첨벙) · 풀(풀 소리) · 그 밖 흙 · v873 3막 피 웅덩이(질척). 0 이면 v871(1막 전체 흙 · 3막 전체 돌)
 const ACT4_ON = !/[?&]act4=0/.test(location.search); // v839: 4막(91~120층, 지옥)을 연다 — 0 이면 90층 쉼터가 끝(v838 동작)
 // v854: 4막 몬스터·수치. M4 = 4막 몹(91층~ 화염 임프 · 아직 안 만든 자리는 3막 몹이 임시로) — 0 이면 91층부터 3막 몹(v853).
 // BAL4 = 4막 수치 — 막 배율을 선형(×2.05·×1.45) 대신 ×1.8·×1.32 로 · 4막 보스 체력 ×0.6(성장 모델: 보스 처치 타수 60~79 → 36~41, 기획서 6-6)
@@ -4505,7 +4505,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v872'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v873'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -5606,12 +5606,13 @@ const SFX = (() => {
     } catch (e) { kState[name] = 'fail'; }
   }
   function ksfxPreload() { const c = ac(); if (!c || !window.KSFX_DATA) return; for (const k in window.KSFX_DATA) kDecode(c, k); }
-  function ksfx(name, vol, pitchVar, pan) {
+  function ksfx(name, vol, pitchVar, pan, rate) {
     if (!KSFX_ON) return;
     const c = ac(); if (!c) return;   // 광고 중이면 null
     const buf = kBufs[name]; if (!buf) { kDecode(c, name); return; }
     const src = c.createBufferSource(); src.buffer = buf;
-    if (pitchVar) src.playbackRate.value = 1 + (kRnd() * 2 - 1) * pitchVar;
+    if (pitchVar) src.playbackRate.value = (rate || 1) * (1 + (kRnd() * 2 - 1) * pitchVar);
+    else if (rate) src.playbackRate.value = rate;
     const g = c.createGain(); g.gain.value = vol == null ? 1 : vol;
     src.connect(g);
     if (pan && c.createStereoPanner) { const p = c.createStereoPanner(); p.pan.value = pan; g.connect(p); p.connect(c.destination); }
@@ -5621,12 +5622,13 @@ const SFX = (() => {
   }
   function ksfxCount() { return kCount; }
   // 발걸음: 지형마다 변형 3~5개를 직전 것만 피해 돌려 쓴다
-  const K_STEP_N = { stone: 5, dirt: 5, snow: 3, grass: 3, water: 4 };
+  const K_STEP_N = { stone: 5, dirt: 5, snow: 3, grass: 3, water: 4, blood: 4 };
   let kStepLast = -1;
   function ksfxStep(terrain, vol) {
     const n = K_STEP_N[terrain] || 5;
     let i = Math.floor(kRnd() * n); if (i === kStepLast && n > 1) i = (i + 1) % n; kStepLast = i;
-    ksfx('step_' + terrain + '_' + i, vol, 0.06);
+    if (terrain === 'blood') ksfx('step_water_' + i, vol * 0.9, 0.05, 0, 0.72);   // v873: 피 웅덩이 — 물 첨벙을 0.72 배속으로 늘어뜨려 질척하게(새 소리 파일 없음)
+    else ksfx('step_' + terrain + '_' + i, vol, 0.06);
   }
   // v869 새 스킬 소리 — cry 함성(톱니 두 겹 + 거친 숨) · quake 땅 갈라짐 · nova 얼음 반짝 · meteor 낙하 바람 · surge 오르는 음 · trap 덫 놓기 · snap 덫 물기. 음악 버튼과 무관한 효과음
   function skill2(kind) {
@@ -5656,7 +5658,19 @@ function ksfxStepTerrain() {
     if (STEPTERR) { if (stepInWater(p.x, p.z)) return 'water'; if (stepOnGrass(p.x, p.z)) return 'grass'; }
     return 'dirt';
   }
+  if (STEPTERR && currentAct() === 3 && stepInBlood(p.x, p.z)) return 'blood';
   return 'stone';
+}
+// v873: 3막 피 웅덩이 — cor3Pool 이 만든 외곽선(28각, 각도마다 반지름 비율)을 그대로 따른다. 가장자리 마른 얼룩(1.12 배)은 돌 소리
+function stepInBlood(x, z) {
+  for (const b of cor3Pools) {
+    if (!b.g || !b.g.visible) continue;
+    const dx = x - b.x, dz = z - b.z, d = Math.hypot(dx, dz); if (d > b.R) continue;
+    const N = b.rr.length; let t = Math.atan2(dz, dx) / (Math.PI * 2) * N; if (t < 0) t += N;
+    const i = Math.floor(t) % N, f = t - Math.floor(t), r = (b.rr[i] * (1 - f) + b.rr[(i + 1) % N] * f) * b.R;
+    if (d < r) return true;
+  }
+  return false;
 }
 // v872: 1막 웅덩이 — 수면 메시의 외곽선을 월드 XZ 다각형으로 한 번 구워(w._poly) 점이 안에 있는지 본다(정점 0 = 중심, 나머지가 외곽선 순서)
 function stepInWater(x, z) {
@@ -13242,22 +13256,25 @@ function cor3Sacs(g, x, z, rnd) {
   addDecorCollider(x, z, 0.8);
 }
 // 방 가운데 핏물 웅덩이(불규칙 외곽선 — 물웅덩이 v 와 같은 정규화) + 빠진 뼈
-function cor3Pool(g, x, z, rnd) {
-  const R = 1.6 + rnd() * 0.6, ph = [rnd() * 6, rnd() * 6, rnd() * 6], N = 28, rr = [];
+function cor3Pool(g, x, z, rnd, sc) {
+  const R = (1.6 + rnd() * 0.6) * (sc || 1), ph = [rnd() * 6, rnd() * 6, rnd() * 6], N = 28, rr = [];
   for (let i = 0; i < N; i++) { const t = i / N * Math.PI * 2; rr.push(1 + 0.18 * Math.cos(2 * t + ph[0]) + 0.12 * Math.cos(3 * t + ph[1]) + 0.07 * Math.cos(5 * t + ph[2])); }
   const mx = Math.max(...rr), sh = new THREE.Shape(), sh2 = new THREE.Shape();
   rr.forEach((r, i) => { const t = i / N * Math.PI * 2, px = Math.cos(t) * r / mx * R, pz = Math.sin(t) * r / mx * R; i ? sh.lineTo(px, pz) : sh.moveTo(px, pz); i ? sh2.lineTo(px * 1.12, pz * 1.12) : sh2.moveTo(px * 1.12, pz * 1.12); });
   const ring = cas2Part(g, new THREE.ShapeGeometry(sh2), 0x3e2420, x, 0.075, z, 'solid', 0.05); ring.rotation.x = -Math.PI / 2;   // 가장자리 마른 얼룩
   const pool = cas2Part(g, new THREE.ShapeGeometry(sh), 0x30090f, x, 0.085, z, 'metal', 0.04); pool.rotation.x = -Math.PI / 2;
+  cor3Pools.push({ x, z, R, rr: rr.map(r => r / mx), g });   // v873: 발걸음 판정(질척) — 각도마다 반지름 비율
   for (let i = 0; i < 3; i++) { const a = rnd() * 6.28, r = R * (0.3 + rnd() * 0.5); cor3Bone(g, x + Math.cos(a) * r, z + Math.sin(a) * r, 0.6 + rnd() * 0.4, rnd() * 6.28, 0.02, rnd); }
   if (rnd() < 0.5) cor3Skull(g, x + (rnd() - 0.5) * R, 0.0, z + (rnd() - 0.5) * R, rnd() * 6.28, rnd);
 }
+const BPOOL = !/[?&]bpool=0/.test(location.search);   // v873: 3막 피 웅덩이를 중간·작은 방에도(작게, 절반 확률). 예전엔 큰 방(5×5↑, 30개 층에 12곳 남짓) 가운데 35% 뿐이라 30개 층에 2~4개였다. 0 = v872 배치
+const cor3Pools = [];    // v873: 이번 층 피 웅덩이 {x, z, R, rr(각도별 반지름 비율), g(숨김 판정)}
 const cor3Placed = [];   // 배치 기록(검증용: 종류·자리)
 function buildCor3Decor(dgn, rnd) {
   const { grid, rooms, corridorTiles } = dgn, isF = (x, y) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && grid[y][x] > 0;
   const cor = new Set(corridorTiles.map(c => c.x + ',' + c.y)), wx = (gx) => (gx - MAP_W / 2) * TILE, wz = (gy) => (gy - MAP_H / 2) * TILE;
   const boss = pickBossRoom(dgn), used = new Set();
-  cas2CutMat(); cor3Placed.length = 0;
+  cas2CutMat(); cor3Placed.length = 0; cor3Pools.length = 0;
   rooms.forEach((r, ri) => {
     const g = new THREE.Group(); wallGroup.add(g);
     const inRoom = (x, y) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
@@ -13297,6 +13314,11 @@ function buildCor3Decor(dgn, rnd) {
       const q = rnd(), cx = wx(r.cx), cz = wz(r.cy);
       if (q < 0.35) { cor3Pool(fg, cx + (rnd() - 0.5) * 2, cz + (rnd() - 0.5) * 2, rnd); cor3Placed.push({ kind: 'pool', x: cx, z: cz, nx: 0, nz: 0 }); }
       else if (q < 0.55) { withCor3P(() => cas2Chandelier(fg, cx + (rnd() - 0.5) * 2, cz + (rnd() - 0.5) * 2, rnd)); cor3Placed.push({ kind: 'chandelier', x: cx, z: cz, nx: 0, nz: 0 }); }
+    }
+    // v873: 중간·작은 방에도 작은 피 웅덩이(반지름 0.6 배 — 0.96~1.32). 방 가운데 둘레 반 칸 안에서 자리를 흔든다
+    if (BPOOL && r !== boss && ri !== 0 && !big && rnd() < 0.5) {
+      const cx = wx(r.cx) + (rnd() - 0.5) * TILE * 0.5, cz = wz(r.cy) + (rnd() - 0.5) * TILE * 0.5;
+      cor3Pool(fg, cx, cz, rnd, 0.6); cor3Placed.push({ kind: 'pool', x: cx, z: cz, nx: 0, nz: 0 });
     }
     vcMerge(g, 8100 + ri); vcMerge(fg, 8200 + ri);
     for (const grp of [g, fg]) grp.traverse(o => { if (o.isMesh && o.material === vcMats().glow) o.castShadow = false; });
@@ -14626,7 +14648,7 @@ function buildDungeonMeshInner(dgn) {
   if (dgnPGrass) dgnPGrass.setCells([]);
   walls.length = 0;
   // 이끼 동굴 장식 애니메이션 대상 초기화(층마다 새로)
-  cavernShrooms.length = 0; cavernWaters.length = 0; cavernShafts.length = 0; dgnGrassTufts = [];
+  cavernShrooms.length = 0; cavernWaters.length = 0; cavernShafts.length = 0; dgnGrassTufts = []; if (typeof cor3Pools !== 'undefined') cor3Pools.length = 0;
   castleTorches.length = 0;
   corruptPulses.length = 0; corruptBreath.length = 0; // 3막 맥동 종양·산호 숨쉬기 정리
   // 막(Act)별 분위기 전환: 1막=이끼 동굴 / 2막=무너진 성 / 3막=부패한 성(잠식)
