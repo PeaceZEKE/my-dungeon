@@ -4505,7 +4505,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v875'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v876'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -12225,13 +12225,14 @@ function buildCas2Floor(dgn, trapSet, rnd, mf, o) {
       for (let j = j0; j <= j1; j++) {
         const c0 = j === j0 ? z0 : GZ0 + j * SS, c1 = j === j1 ? z1 : GZ0 + (j + 1) * SS;
         const hs = (i) => groundH[j * gSubW + i];
-        const zA = c0 + (j > j0 ? 0.015 : 0), zB = c1 - (j < j1 ? 0.015 : 0);
+        const zA = c0, zB = c1;   // v876: 계단 사이를 띄우지 않는다(틈으로 바닥 밑이 비쳤다) — 칸 구분은 턱 옆면이 맡는다
         if (zB <= zA + 0.01) continue;
         let a = x0, i = i0;
         while (i <= i1) {
           const h = hs(i); let e = i; while (e < i1 && Math.abs(hs(e + 1) - h) < 1e-4) e++;
-          const b = e === i1 ? x1 : GX0 + (e + 1) * SS, a2 = a + (i > i0 ? 0.015 : 0), b2 = b - (e < i1 ? 0.015 : 0);
-          if (b2 > a2 + 0.01) A0.slab(a2, b2, zA, zB, [hb(a2, zA) + h, hb(b2, zA) + h, hb(b2, zB) + h, hb(a2, zB) + h], yb + h - RL_STEP, hex, k, noSide);
+          const b = e === i1 ? x1 : GX0 + (e + 1) * SS, a2 = a, b2 = b;
+          // 줄눈 바탕(noSide)도 층위에서는 카메라 쪽 옆면을 낸다 — 높이가 다른 바탕판 사이 세로 틈으로 바닥 밑 허공이 보였다
+          if (b2 > a2 + 0.01) A0.slab(a2, b2, zA, zB, [hb(a2, zA) + h, hb(b2, zA) + h, hb(b2, zB) + h, hb(a2, zB) + h], yb + h - RL_STEP, hex, k, false);
           a = b; i = e + 1;
         }
       }
