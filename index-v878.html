@@ -4505,7 +4505,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v877'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v878'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -10938,7 +10938,8 @@ const HAZE4 = !/[?&]haze=0/.test(location.search);
 const VOX4_N = (() => { const m = location.search.match(/[?&]vox4n=(\d+)/); return m ? Math.max(4, Math.min(32, parseInt(m[1], 10))) : 32; })();
 const VOX_ACTS = (location.search.match(/[?&]voxacts=(\d+)/) || [])[1] || ('1' + (VOX4_ON ? '4' : ''));
 let gObsCols = [];            // v851: 4막 흑요석 기둥 중심 [x, z] — addObsColliders 가 충돌체로 바꾼다
-let gVoxAux = null;           // v841: 4막 서브셀마다 [기둥 톤, 표식(1 = 기둥 사이 틈 · 2 = 용암이 비치는 틈)] — 그 밖의 막은 null
+let gVoxAux = null;
+let gColOf = null, gColXZ = [];   // v878: 4막 서브셀 → 기둥 번호 · 기둥 중심(x, z 이어 붙임)           // v841: 4막 서브셀마다 [기둥 톤, 표식(1 = 기둥 사이 틈 · 2 = 용암이 비치는 틈)] — 그 밖의 막은 null
 
 let groundH = null;           // Float32Array(gSubW*gSubH) — 서브셀의 지면 높이(칸마다 평평)
 let gSubW = 0, gSubH = 0, gSubN = 1;   // 서브셀 격자 크기 / 타일당 분할 수
@@ -10952,6 +10953,7 @@ function _gZ0() { return -(MAP_H / 2 + 0.5) * TILE; }
 // (CLAUDE.md: 난수 소비가 달라지면 이후 층 생성이 통째로 바뀐다).
 function buildGroundHeight(floorNo) {
   rlMode = false; rlWallE = null;   // v874: 2·3막 층위는 격자를 다 만든 뒤 rlBuild 가 깐다
+  vbBase = null; vbTileE = null; vbRoomLv = null; vbRoomsRef = null; vbStairT = null; gColOf = null; gColXZ = [];   // v878: 1·4막 층위도(vbBuild)
   const _act = Math.min(LAST_ACT, Math.max(1, Math.ceil(floorNo / ACT_LEN)));   // v841: 4막(예전 식은 91층부터를 3막으로 셌다)
   gSubN = VOX_ON ? (VOX_RAY && _act === 4 ? VOX4_N : VOX_N) : 1; gVoxAux = null; gObsCols = [];   // v844: 4막만 칸 절반
   if (!VOX_ON && !(RELIEF > 0)) { groundH = null; return; }
@@ -10991,6 +10993,7 @@ function buildGroundHeight(floorNo) {
       const ctr0 = (q, r) => [R4 * S3 * (q + r / 2) + (hash(q * 3 + 1, r * 5 + 2) - 0.5) * 2 * J4, R4 * 1.5 * r + (hash(q * 5 + 7, r * 3 + 11) - 0.5) * 2 * J4, (hash(q * 11 + 5, r * 7 + 3) - 0.5) * 2 * W4];
       const ctrC = new Map(), ctr = (q, r) => { const key = q * 65536 + r; let c = ctrC.get(key); if (!c) { c = ctr0(q, r); c[5] = q; c[6] = r; ctrC.set(key, c); } return c; };   // v844: 서브셀이 4배라 기둥 중심을 캐시
       gVoxAux = new Uint8Array(gSubW * gSubH * 2);
+      gColOf = VLEVEL ? new Int32Array(gSubW * gSubH) : null; gColXZ = [];   // v878: 서브셀이 어느 기둥인지(1·4막 층위가 기둥 하나를 한 단으로 올린다)
       const CK = 16 / gSubN;   // v844: 틈·윗면 금 폭을 칸 크기에 맞춘다(칸 절반이면 폭도 절반 — 여전히 서브셀 한 칸 굵기의 실)
       for (let j = 0; j < gSubH; j++) for (let i = 0; i < gSubW; i++) {
         const wx = X0 + (i + 0.5) * S, wz = Z0 + (j + 0.5) * S, k = j * gSubW + i;
@@ -11023,6 +11026,7 @@ function buildGroundHeight(floorNo) {
           }
         }
         groundH[k] = c1[3];
+        if (gColOf) { if (c1[7] === undefined) { c1[7] = gColXZ.length >> 1; gColXZ.push(cx, cz); } gColOf[k] = c1[7]; }
         gVoxAux[k * 2] = c1[4];   // 기둥 하나는 한 톤
         if (edge < 0.12 * CK * EW) gVoxAux[k * 2 + 1] = (0.65 * vnoise(wx / 7 + 31.7, wz / 7 + 11.3) + 0.35 * vnoise(wx / 2.6 + 5.1, wz / 2.6 + 9.4)) > 0.68 ? 2 : 1;   // 틈(폭 0.24 — 대개 서브셀 한 칸, 가끔 끊긴다) · 구역 안이면 용암
         else {
@@ -11122,8 +11126,11 @@ const RL_SUB = (() => { const m = location.search.match(/[?&]rlsub=(\d+)/); retu
 const RL_SPREAD = /[?&]rlspread=1/.test(location.search);   // v874 식(복도 전체에 계단을 편다)
 let rlMode = false, rlWallE = null, rlRoomLv = null, rlRoomsRef = null;
 // 바닥 이펙트(예고 고리·충격파·조준 고리) 높이 — 2·3막 층위에서만 지면을 따른다(1막 복셀은 예전 그대로 두어 화면이 같게)
-function fxGy(x, z) { return rlMode ? groundHeightAt(x, z) : 0; }
-function rlRoomH(r) { if (!rlMode || !rlRoomsRef) return 0; const i = rlRoomsRef.indexOf(r); return i < 0 ? 0 : rlRoomLv[i] * RL_UNIT * RL_STEP; }
+function fxGy(x, z) { return (rlMode || vbBase) ? groundHeightAt(x, z) : 0; }   // v878: 1·4막 층위에서도
+function rlRoomH(r) {
+  if (vbRoomsRef) { const i = vbRoomsRef.indexOf(r); return i < 0 ? 0 : vbRoomLv[i] * RL_UNIT * VOX_STEP; }   // v878: 1·4막 층위
+  if (!rlMode || !rlRoomsRef) return 0; const i = rlRoomsRef.indexOf(r); return i < 0 ? 0 : rlRoomLv[i] * RL_UNIT * RL_STEP;
+}
 function rlWallH(tx, ty) { return (rlMode && rlWallE && tx >= 0 && ty >= 0 && tx < MAP_W && ty < MAP_H) ? rlWallE[ty * MAP_W + tx] : 0; }
 // 타일 안 서브셀 높이 [최소, 최대]
 function rlTileRange(tx, ty) {
@@ -11147,10 +11154,114 @@ function rlBuild(dgn, flatSet) {
   rlMode = false; rlWallE = null; rlRoomLv = null; rlRoomsRef = null;
   const act = currentAct();
   if (!RLEVEL || (act !== 2 && act !== 3) || !dgn || !dgn.grid) return;
-  const { grid, rooms } = dgn, N = (act === 2 ? 4 : 3) * RL_SUB;   // 서브셀 = 바닥 석판 줄의 1/RL_SUB(v875: 2 — 디딤판 2막 0.63 · 3막 0.83)
+  const { grid } = dgn, N = (act === 2 ? 4 : 3) * RL_SUB;   // 서브셀 = 바닥 석판 줄의 1/RL_SUB(v875: 2 — 디딤판 2막 0.63 · 3막 0.83)
   gSubN = N; gSubW = MAP_W * N; gSubH = MAP_H * N; gVoxAux = null; gObsCols = [];
   const W = gSubW, H = gSubH, NC = W * H;
-  let sd = (((player.floor | 0) * 2246822519) ^ 0x5bd1e995) >>> 0;
+  const { room, fin, lv, rooms } = rlLevelField(dgn, N, flatSet, (((player.floor | 0) * 2246822519) ^ 0x5bd1e995) >>> 0);
+  groundH = new Float32Array(NC);
+  for (let c = 0; c < NC; c++) if (room[c] !== -2) groundH[c] = Math.max(0, fin[c]) * RL_STEP;
+  // 벽 칸: 맞닿은(대각 포함) 바닥 서브셀 최고 높이 — 벽에 붙은 것(횃불·깃발·이끼)이 그만큼 같이 오른다
+  rlWallE = new Float32Array(MAP_W * MAP_H);
+  for (let ty = 0; ty < MAP_H; ty++) for (let tx = 0; tx < MAP_W; tx++) {
+    if (grid[ty][tx] > 0) continue;
+    let e = 0;
+    for (let j = -1; j <= N; j++) for (let i = -1; i <= N; i++) {
+      if (j >= 0 && j < N && i >= 0 && i < N) continue;
+      const sx = tx * N + i, sy = ty * N + j; if (sx < 0 || sy < 0 || sx >= W || sy >= H) continue;
+      const c = sy * W + sx; if (room[c] !== -2 && groundH[c] > e) e = groundH[c];
+    }
+    rlWallE[ty * MAP_W + tx] = e;
+    if (e > 0) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) groundH[(ty * N + j) * W + tx * N + i] = e;
+  }
+  rlRoomLv = lv; rlRoomsRef = rooms; rlMode = true;
+}
+// ===== v878: 1·4막 방 층위 + 계단 복도(VLEVEL · ?vlevel=0) =====
+// 사용자: "1·4막도 복도 계단 만들자". 2·3막(v874)과 같은 방 단 고르기·립시츠 계단(rlLevelField)을 복셀 바닥 아래에 '기본 높이'로 깔고,
+// 그 위에 원래 지형(1막 값 노이즈 0~2단 · 4막 기둥 단 0~2)을 얹는다. 한 계단 = 복셀 한 단(0.3125 — 2·3막 0.3 과 거의 같다) · 방 한 단 = 두 계단.
+// · 계단 칸(기본 높이가 칸 안에서 바뀌는 타일)은 지형을 지운다 — 원래 단차와 섞이면 계단이 안 읽힌다.
+// · 디딤판: 1막 0.625(복셀 두 칸) · 4막 1.67(기둥 하나 안팎 — 4막은 기둥 하나가 한 단이라 기둥이 디딤돌이 된다).
+// · 벽은 v874 처럼 밑동 0 그대로 위로 늘린다(vbTileE — 그 칸과 둘레 여덟 칸 바닥 기본 높이의 최댓값).
+// · 복셀 셰이더의 단 밝기(높을수록 밝게)는 기본 높이를 빼고 잰다(tVoxB) — 안 빼면 높은 방이 통째로 16~24% 밝아진다.
+const VLEVEL = !/[?&]vlevel=0/.test(location.search);
+let vbBase = null, vbTileE = null, vbRoomLv = null, vbRoomsRef = null, vbStairT = null;
+function vbBuild(dgn) {
+  vbBase = null; vbTileE = null; vbRoomLv = null; vbRoomsRef = null; vbStairT = null;
+  if (!VLEVEL || !RLEVEL || !groundH || rlMode || !dgn || !dgn.grid) return;
+  const act = currentAct(); if (act !== 1 && act !== 4) return;
+  const { grid } = dgn, NS = act === 4 ? 3 : 8, CW = MAP_W * NS, CS = TILE / NS;
+  const { room, fin, lv, rooms } = rlLevelField(dgn, NS, null, (((player.floor | 0) * 2246822519) ^ 0x27d4eb2f) >>> 0, act === 1 ? 2 : 0);
+  const S = _gSub(), X0 = _gX0(), Z0 = _gZ0(), NC = gSubW * gSubH;
+  const cAt = (wx, wz) => { const ci = Math.floor((wx - X0) / CS), cj = Math.floor((wz - Z0) / CS); if (ci < 0 || cj < 0 || ci >= CW || cj >= MAP_H * NS) return -1; const c = cj * CW + ci; return room[c] === -2 ? -1 : fin[c]; };
+  // 계단 타일: 기본 높이가 타일 안에서 바뀐다
+  vbStairT = new Uint8Array(MAP_W * MAP_H);
+  for (let ty = 0; ty < MAP_H; ty++) for (let tx = 0; tx < MAP_W; tx++) {
+    if (!(grid[ty][tx] > 0)) continue;
+    let lo = 1e9, hi = -1e9; for (let j = 0; j < NS; j++) for (let i = 0; i < NS; i++) { const f = fin[(ty * NS + j) * CW + tx * NS + i]; if (f < lo) lo = f; if (f > hi) hi = f; }
+    if (hi > lo) vbStairT[ty * MAP_W + tx] = 1;
+  }
+  const tileOf = (wx, wz) => { const tx = Math.round(wx / TILE + MAP_W / 2), ty = Math.round(wz / TILE + MAP_H / 2); return (tx < 0 || ty < 0 || tx >= MAP_W || ty >= MAP_H) ? -1 : ty * MAP_W + tx; };
+  vbBase = new Float32Array(NC);
+  if (act === 4 && gColOf) {
+    // 4막: 기둥 하나가 한 단 — 기둥이 덮는 바닥 칸 중 가장 높은 기본 높이 · 계단 타일에 걸친 기둥은 원래 단(0~2)을 지운다
+    const nCol = gColXZ.length / 2, cb = new Int16Array(nCol).fill(-1), cst = new Uint8Array(nCol);
+    for (let k = 0; k < NC; k++) {
+      const i = k % gSubW, j = (k / gSubW) | 0, wx = X0 + (i + 0.5) * S, wz = Z0 + (j + 0.5) * S, f = cAt(wx, wz); if (f < 0) continue;
+      const ci = gColOf[k]; if (f > cb[ci]) cb[ci] = f; const t = tileOf(wx, wz); if (t >= 0 && vbStairT[t]) cst[ci] = 1;
+    }
+    for (let k = 0; k < NC; k++) {
+      const ci = gColOf[k], b = Math.max(0, cb[ci]) * VOX_STEP; vbBase[k] = b;
+      groundH[k] = b + (cst[ci] ? 0 : groundH[k]);
+      if (cst[ci] && gVoxAux[k * 2] === 255) gVoxAux[k * 2] = 249;   // 계단 기둥은 흑요석이 아니다
+    }
+  } else {
+    for (let k = 0; k < NC; k++) {
+      const i = k % gSubW, j = (k / gSubW) | 0, wx = X0 + (i + 0.5) * S, wz = Z0 + (j + 0.5) * S, f = cAt(wx, wz);
+      const b = Math.max(0, f) * VOX_STEP; vbBase[k] = b;
+      const t = tileOf(wx, wz); groundH[k] = b + ((t >= 0 && vbStairT[t]) ? 0 : groundH[k]);
+    }
+    // 원래 지형처럼 이웃 단차를 한 단으로(내리기만 — 기본 높이는 이웃끼리 한 단 이하라 그 밑으로는 안 내려간다)
+    for (let pass = 0; pass < 3; pass++) for (let j = 0; j < gSubH; j++) for (let i = 0; i < gSubW; i++) {
+      const k = j * gSubW + i; let lo = groundH[k];
+      if (i > 0) lo = Math.min(lo, groundH[k - 1] + VOX_STEP); if (i < gSubW - 1) lo = Math.min(lo, groundH[k + 1] + VOX_STEP);
+      if (j > 0) lo = Math.min(lo, groundH[k - gSubW] + VOX_STEP); if (j < gSubH - 1) lo = Math.min(lo, groundH[k + gSubW] + VOX_STEP);
+      groundH[k] = Math.max(vbBase[k], lo);
+    }
+  }
+  // 벽을 늘릴 높이: 그 칸과 둘레 여덟 칸(바닥)의 기본 높이 최댓값
+  const tMax = new Float32Array(MAP_W * MAP_H);
+  for (let ty = 0; ty < MAP_H; ty++) for (let tx = 0; tx < MAP_W; tx++) {
+    if (!(grid[ty][tx] > 0)) continue;
+    let m = 0; for (let j = 0; j < NS; j++) for (let i = 0; i < NS; i++) m = Math.max(m, fin[(ty * NS + j) * CW + tx * NS + i]);
+    tMax[ty * MAP_W + tx] = m * VOX_STEP;
+  }
+  vbTileE = new Float32Array(MAP_W * MAP_H);
+  for (let ty = 0; ty < MAP_H; ty++) for (let tx = 0; tx < MAP_W; tx++) {
+    let e = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const x = tx + dx, y = ty + dy; if (x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && tMax[y * MAP_W + x] > e) e = tMax[y * MAP_W + x]; }
+    vbTileE[ty * MAP_W + tx] = e;
+  }
+  vbRoomLv = lv; vbRoomsRef = rooms;
+}
+// 자리의 기본 높이(방 단 + 계단) — 지형(1막 노이즈 · 4막 기둥 단)을 뺀 값. 층위가 없으면 0
+function vbBaseAt(wx, wz) {
+  if (!vbBase) return 0;
+  const S = _gSub(); let i = Math.floor((wx - _gX0()) / S), j = Math.floor((wz - _gZ0()) / S);
+  i = Math.max(0, Math.min(gSubW - 1, i)); j = Math.max(0, Math.min(gSubH - 1, j));
+  return vbBase[j * gSubW + i];
+}
+// 칸의 벽 늘림 높이(층위가 없으면 0)
+function vbTileEAt(tx, ty) { return (vbTileE && tx >= 0 && ty >= 0 && tx < MAP_W && ty < MAP_H) ? vbTileE[ty * MAP_W + tx] : 0; }
+function vbEAt(wx, wz) { return vbTileEAt(Math.round(wx / TILE + MAP_W / 2), Math.round(wz / TILE + MAP_H / 2)); }
+// 1막 벽 타일 그룹(코어 상자 + 박힌 바위)을 밑동 y=0 그대로 위로 늘린다 — 그룹 원점이 높이의 가운데(baseY)라 원점도 같이 올린다
+function vbStretchTile(g, tx, ty, Hw) {
+  const e = vbTileEAt(tx, ty); if (!(e > 0)) return;
+  const s = (Hw + e) / Hw; g.scale.y *= s; g.position.y *= s;
+}
+// v874 의 방 단 고르기 + 계단 높이(립시츠)를 v878 에서 함수로 뗐다 — 2·3막(rlBuild)과 1·4막(vbBuild)이 같이 쓴다.
+// N = 타일당 칸 수(한 칸 = 계단 디딤판 하나) · 결과 fin = 칸마다 계단 수(방 단 × RL_UNIT 까지) · room = 칸의 방 번호(-1 복도 · -2 벽)
+function rlLevelField(dgn, N, flatSet, seed, door) {
+  const { grid, rooms } = dgn;
+  const W = MAP_W * N, H = MAP_H * N, NC = W * H;
+  let sd = seed >>> 0;
   const rnd = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
   // 서브셀 → 방 번호(-1 = 복도, -2 = 벽)
   const room = new Int16Array(NC).fill(-2);
@@ -11176,7 +11287,7 @@ function rlBuild(dgn, flatSet) {
       }
     }
   });
-  const DOOR = Math.max(1, N >> 1);   // 문간 앞 평평한 서브셀 수(반 칸)
+  const DOOR = door || Math.max(1, N >> 1);   // 문간 앞 평평한 서브셀 수(반 칸) · v878: 1막은 1/4 칸(짧은 복도가 많아 반 칸이면 높은 방이 거의 다 낮춰졌다)
   // 방 단 고르기 — 시작 방·보스 방 0 고정
   const boss = pickBossRoom(dgn), fixed = rooms.map((r, k) => k === 0 || r === boss || r.isStart || r.isBoss);
   const lv = rooms.map((r, k) => fixed[k] ? 0 : (() => { const u = rnd(); return u < 0.34 ? 0 : u < 0.72 ? 1 : Math.min(RL_MAXLV, 2 + Math.floor(rnd() * (RL_MAXLV - 1))); })());
@@ -11227,22 +11338,7 @@ function rlBuild(dgn, flatSet) {
   };
   const okSpread = lipFix(hq);
   const fin = RL_SPREAD && okSpread ? hq : mid;   // v875: 기본은 가운데 값 — 계단이 한 곳에 모여 한 칸 디딤판짜리 진짜 계단이 된다
-  groundH = new Float32Array(NC);
-  for (let c = 0; c < NC; c++) if (room[c] !== -2) groundH[c] = Math.max(0, fin[c]) * RL_STEP;
-  // 벽 칸: 맞닿은(대각 포함) 바닥 서브셀 최고 높이 — 벽에 붙은 것(횃불·깃발·이끼)이 그만큼 같이 오른다
-  rlWallE = new Float32Array(MAP_W * MAP_H);
-  for (let ty = 0; ty < MAP_H; ty++) for (let tx = 0; tx < MAP_W; tx++) {
-    if (grid[ty][tx] > 0) continue;
-    let e = 0;
-    for (let j = -1; j <= N; j++) for (let i = -1; i <= N; i++) {
-      if (j >= 0 && j < N && i >= 0 && i < N) continue;
-      const sx = tx * N + i, sy = ty * N + j; if (sx < 0 || sy < 0 || sx >= W || sy >= H) continue;
-      const c = sy * W + sx; if (room[c] !== -2 && groundH[c] > e) e = groundH[c];
-    }
-    rlWallE[ty * MAP_W + tx] = e;
-    if (e > 0) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) groundH[(ty * N + j) * W + tx * N + i] = e;
-  }
-  rlRoomLv = lv; rlRoomsRef = rooms; rlMode = true;
+  return { room, fin, lv, rooms };
 }
 
 // 벽 타일(코어 상자)을 맞닿은 바닥 최고 높이만큼 위로 늘린다 — 밑동은 y=0(v784: 올리면 낮은 쪽 밑에 틈). 그룹은 지면 올리기에서 뺀다
@@ -11362,11 +11458,14 @@ function buildVoxelFloor(dgn) {
 const VOX_TAG_LAYER = 4;
 const VOX_GLSL = `
 uniform sampler2D tVoxH;
+uniform sampler2D tVoxB;   // v878: 기본 높이(방 단 + 계단, R = 단) — 단 밝기는 이걸 빼고 잰다
+uniform float uVoxBaseOn;
 uniform vec2 uVoxGrid;
 uniform vec2 uVoxOrigin;
 uniform float uVoxCell;
 uniform float uVoxStep;
 uniform float uVoxMaxH;
+uniform float uVoxTileProxy;   // v878: 1 = 프록시가 타일마다 높이를 맞춘 면 — 광선을 그 면에서 출발시킨다(층위로 높아진 상자 꼭대기부터 훑지 않게)
 uniform float uVoxSideDim;
 uniform vec3 uVoxPal0;
 uniform vec3 uVoxPal1;
@@ -11439,6 +11538,7 @@ float vxVN(vec2 p) { vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f
 vec3 vxShade(ivec2 c, float h, vec3 n) {
   float hs = fract(sin(float(c.x) * 127.1 + float(c.y) * 311.7) * 43758.5453);
   vxLavaK = 0.0; vxGlowK = 0.0; vxRough = -1.0;
+  if (uVoxBaseOn > 0.5) h -= floor(texture2D(tVoxB, (vec2(c) + 0.5) / uVoxGrid).r * 255.0 + 0.5) * uVoxStep;   // v878: 층위의 기본 높이는 밝기에 안 넣는다(높은 방이 통째로 밝아지지 않게)
   if (uVoxMode > 0.5) {   // v841 4막: 텍셀 G = 기둥 톤(기둥 하나가 한 색) · B = 표식(1 틈 · 2 용암 틈)
     vec4 tx = texture2D(tVoxH, (vec2(c) + 0.5) / uVoxGrid);
     float sh = tx.g, fl = floor(tx.b * 255.0 + 0.5);
@@ -11494,7 +11594,7 @@ vec3 vxShade(ivec2 c, float h, vec3 n) {
 const VOX_MAIN = `
   vec3 vxRd = normalize(vVoxWorld - cameraPosition);
   vec3 vxHP, vxHN; ivec2 vxHC; float vxHH;
-  if (!vxTrace(cameraPosition, vxRd, vxHP, vxHN, vxHC, vxHH)) discard;
+  if (!vxTrace(uVoxTileProxy > 0.5 ? vVoxWorld - vxRd * 0.003 : cameraPosition, vxRd, vxHP, vxHN, vxHC, vxHH)) discard;
   vec4 vxClip = projectionMatrix * viewMatrix * vec4(vxHP, 1.0);
   gl_FragDepthEXT = vxClip.z / vxClip.w * 0.5 + 0.5;
   vxWorldHit = vxHP; vxWorldNrm = vxHN;
@@ -11506,11 +11606,14 @@ const VOX_MAIN = `
 function _vxInline(src, name, fn) { return src.replace('#include <' + name + '>', fn(THREE.ShaderChunk[name])); }
 const voxRayUniforms = {
   tVoxH: { value: null },
+  tVoxB: { value: null },
+  uVoxBaseOn: { value: 0 },
   uVoxGrid: { value: new THREE.Vector2(1, 1) },
   uVoxOrigin: { value: new THREE.Vector2(0, 0) },
   uVoxCell: { value: 1 },
   uVoxStep: { value: 1 },
   uVoxMaxH: { value: 1 },
+  uVoxTileProxy: { value: 0 },
   uVoxSideDim: { value: 0.55 },   // v762 지오메트리 복셀의 옆면 배수와 같은 값
   uVoxPal0: { value: new THREE.Color(0x2a2417) },
   uVoxPal1: { value: new THREE.Color(0x322b1a) },
@@ -11579,7 +11682,7 @@ function _voxRayMats() {
     void main() {
       vec3 rd = normalize(vVoxWorld - cameraPosition);
       vec3 hp, hn; ivec2 hc; float hh;
-      if (!vxTrace(cameraPosition, rd, hp, hn, hc, hh)) discard;
+      if (!vxTrace(uVoxTileProxy > 0.5 ? vVoxWorld - rd * 0.003 : cameraPosition, rd, hp, hn, hc, hh)) discard;
       vec4 clip = projectionMatrix * viewMatrix * vec4(hp, 1.0);
       gl_FragDepthEXT = clip.z / clip.w * 0.5 + 0.5;
       vec3 n = normalize(mat3(viewMatrix) * hn);
@@ -11588,7 +11691,7 @@ function _voxRayMats() {
   side: THREE.DoubleSide,
   });
 }
-let voxRayTex = null;
+let voxRayTex = null, voxBaseTex = null;   // v878: voxBaseTex = 층위 기본 높이
 function buildVoxelRayFloor(dgn) {
   if (!VOX_RAY || !groundH || !dgn || !dgn.grid) return;
   _voxRayMats();
@@ -11606,7 +11709,7 @@ function buildVoxelRayFloor(dgn) {
     const tx = (i / gSubN) | 0, ty = (j / gSubN) | 0;
     const isF = !!(grid[ty] && grid[ty][tx] > 0);
     const k = j * gSubW + i; let lv = isF ? Math.round(groundH[k] / VOX_STEP) : 255;
-    if (isF && gVoxAux) { const fl = gVoxAux[k * 2 + 1]; if (gVoxAux[k * 2] === 255) lv = VOX_LEVELS; if (fl) lv = Math.max(0, lv - 1);   // v851: 흑요석은 현무암 최고 단 위(발밑 높이와 따로)
+    if (isF && gVoxAux) { const fl = gVoxAux[k * 2 + 1]; if (gVoxAux[k * 2] === 255) lv = VOX_LEVELS + (vbBase ? Math.round(vbBase[k] / VOX_STEP) : 0); if (fl) lv = Math.max(0, lv - 1);   // v878: 흑요석은 그 자리 기본 높이 위로   // v851: 흑요석은 현무암 최고 단 위(발밑 높이와 따로)
       data[k * 4 + 1] = gVoxAux[k * 2]; data[k * 4 + 2] = fl; }   // v841: 틈은 한 단 낮게 보인다
     data[k * 4] = lv;
   }
@@ -11635,6 +11738,16 @@ function buildVoxelRayFloor(dgn) {
   u.uVoxOrigin.value.set(X0, Z0);
   u.uVoxCell.value = S; u.uVoxStep.value = VOX_STEP;
   u.uVoxMaxH.value = (act === 4 && gVoxAux && OBSID ? VOX_LEVELS : VOX_LEVELS - 1) * VOX_STEP + 0.01;   // v850: 흑요석 기둥은 현무암 최고 단보다 한 단 위
+  u.uVoxBaseOn.value = 0;
+  if (vbBase) {   // v878: 층위 — 상자를 가장 높은 단까지 올리고, 기본 높이를 텍스처로 넘긴다(셰이더가 단 밝기에서 뺀다)
+    let mx = 0; for (let k = 0; k < gSubW * gSubH; k++) { const v = data[k * 4]; if (v !== 255 && v > mx) mx = v; }
+    u.uVoxMaxH.value = Math.max(u.uVoxMaxH.value, mx * VOX_STEP + 0.01);
+    const bd = new Uint8Array(gSubW * gSubH * 4); for (let k = 0; k < gSubW * gSubH; k++) bd[k * 4] = Math.round(vbBase[k] / VOX_STEP);
+    const _r = Math.random; let _s = 0x5f3759df; Math.random = () => { _s = (_s * 1664525 + 1013904223) >>> 0; return _s / 4294967296; };   // uuid 가 게임 난수를 안 먹게
+    try { if (voxBaseTex) voxBaseTex.dispose(); voxBaseTex = new THREE.DataTexture(bd, gSubW, gSubH, THREE.RGBAFormat); } finally { Math.random = _r; }
+    voxBaseTex.magFilter = voxBaseTex.minFilter = THREE.NearestFilter; voxBaseTex.wrapS = voxBaseTex.wrapT = THREE.ClampToEdgeWrapping; voxBaseTex.generateMipmaps = false; voxBaseTex.needsUpdate = true;
+    u.tVoxB.value = voxBaseTex; u.uVoxBaseOn.value = 1;
+  }
   u.uVoxMode.value = (act === 4 && gVoxAux) ? 1 : 0;
   u.uVoxStone.value = (act === 4 && gVoxAux && VOX4V) ? 1 : 0;
   u.uVoxGlow.value = glowOn ? LGLOW : 0;
@@ -11644,9 +11757,39 @@ function buildVoxelRayFloor(dgn) {
   if (voxRayColorMat.map !== map) { voxRayColorMat.map = map; voxRayColorMat.needsUpdate = true; }
   voxRayColorMat.roughness = srcMat ? srcMat.roughness : STONE_ROUGH;
   const w = gSubW * S, d = gSubH * S, hMax = u.uVoxMaxH.value + 0.05;
+  u.uVoxTileProxy.value = 0;
+  if (vbBase) {
+    // v878: 층위면 상자가 가장 높은 방(1.9~2.2)까지 올라가 낮은 바닥도 광선이 그 높이부터 훑었다(SwiftShader +6~18%).
+    // 타일마다 그 칸과 둘레 여덟 칸의 가장 높은 단(+0.02)에 윗면을 깔고, 카메라를 보는 옆면(+x·+z)만 낸 높이장 면을 프록시로 쓴다 —
+    // 광선은 그 면에서 출발한다(uVoxTileProxy). 둘레까지 보는 것은 나중에 다지는 자리(seatOnGround — 이웃 칸 높이까지 올린다)를 덮기 위해서다.
+    const TH = new Float32Array(MAP_W * MAP_H).fill(-1), NN = gSubN;
+    const tl = new Float32Array(MAP_W * MAP_H).fill(-1);
+    for (let ty = 0; ty < MAP_H; ty++) for (let tx = 0; tx < MAP_W; tx++) { let m = -1; for (let j = 0; j < NN; j++) for (let i = 0; i < NN; i++) { const v = data[((ty * NN + j) * gSubW + tx * NN + i) * 4]; if (v !== 255 && v > m) m = v; } tl[ty * MAP_W + tx] = m; }
+    for (let ty = 0; ty < MAP_H; ty++) for (let tx = 0; tx < MAP_W; tx++) {
+      if (!(grid[ty] && grid[ty][tx] > 0)) continue;
+      let m = -1; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const x = tx + dx, y = ty + dy; if (x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && tl[y * MAP_W + x] > m) m = tl[y * MAP_W + x]; }
+      if (m >= 0) TH[ty * MAP_W + tx] = m * VOX_STEP + 0.02;
+    }
+    const P = [], N = [], U = [];
+    const quad = (a, b, c2, d2, n) => { for (const v of [a, b, c2, a, c2, d2]) { P.push(v[0], v[1], v[2]); N.push(n[0], n[1], n[2]); U.push(0, 0); } };
+    for (let ty = 0; ty < MAP_H; ty++) for (let tx = 0; tx < MAP_W; tx++) {
+      const h = TH[ty * MAP_W + tx]; if (h < 0) continue;
+      const x0 = X0 + tx * TILE, x1 = x0 + TILE, z0 = Z0 + ty * TILE, z1 = z0 + TILE;
+      quad([x0, h, z0], [x0, h, z1], [x1, h, z1], [x1, h, z0], [0, 1, 0]);
+      const hx = tx + 1 < MAP_W ? TH[ty * MAP_W + tx + 1] : -1, hz = ty + 1 < MAP_H ? TH[(ty + 1) * MAP_W + tx] : -1;
+      if (hx < h) quad([x1, Math.max(hx, -0.05), z1], [x1, h, z1], [x1, h, z0], [x1, Math.max(hx, -0.05), z0], [1, 0, 0]);
+      if (hz < h) quad([x0, Math.max(hz, -0.05), z1], [x0, h, z1], [x1, h, z1], [x1, Math.max(hz, -0.05), z1], [0, 0, 1]);
+    }
+    // 상자 쪽과 같은 수의 객체(지오메트리 하나 + 메시 하나)라 uuid 가 먹는 난수도 같다 — 층위를 켜도 다음 층 생성 흐름이 안 바뀐다
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+    voxelFloorMesh = new THREE.Mesh(geo, voxRayColorMat);
+    u.uVoxTileProxy.value = 1;
+  } else {
   const geo = new THREE.BoxGeometry(w, hMax, d);
   voxelFloorMesh = new THREE.Mesh(geo, voxRayColorMat);
   voxelFloorMesh.position.set(X0 + w / 2, hMax / 2 - 0.05, Z0 + d / 2);
+  }
   voxelFloorMesh.receiveShadow = true; voxelFloorMesh.castShadow = false;
   voxelFloorMesh.frustumCulled = false;
   voxelFloorMesh.userData.noRelief = true;
@@ -14269,7 +14412,11 @@ function buildCav1Walls(dgn) {
     if (grid[y][x] > 0) continue;
     let adj = false; for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) if (isF(x + dx, y + dy)) { adj = true; break; }
     if (!adj) continue;
-    const A = get(R, x, y, cor3BoxAcc), Mo = get(M, x, y, cor3BoxAcc), cx = wx(x), cz = wz(y);
+    const A0 = get(R, x, y, cor3BoxAcc), Mo0 = get(M, x, y, cor3BoxAcc), cx = wx(x), cz = wz(y);
+    // v878: 층위 — 윗면·처진 이끼·덩굴은 E(맞닿은 바닥 기본 높이 최댓값)만큼 올리고, 면 바위 세 줄은 앞 바닥 기본 높이(fb) → H + E 사이로 다시 편다
+    const E = vbTileEAt(x, y);
+    const lift = (Acc, dy) => !(dy > 0) ? Acc : { box: (px, py, ...r) => Acc.box(px, py + dy, ...r), raw: (P, ...r) => { const Q = P.slice(); for (let q = 1; q < Q.length; q += 3) Q[q] += dy; Acc.raw(Q, ...r); } };
+    const A = lift(A0, E), Mo = lift(Mo0, E);
     // 윗면: 납작한 바위 2×2(윗면 높이·기울기 흔들림) + 이끼 방석. 상자 판으로 깔면 어둠 속에서 종이 조각처럼 보였다
     for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) {
       const u = hash(x * 2 + i, y * 2 + j, 11), px = cx - HT / 2 + i * HT + (hash(x * 2 + i, y * 2 + j, 12) - 0.5) * 0.5, pz = cz - HT / 2 + j * HT + (hash(x * 2 + i, y * 2 + j, 13) - 0.5) * 0.5;
@@ -14283,6 +14430,7 @@ function buildCav1Walls(dgn) {
       if (!isF(x + nx, y + nz)) continue;
       const line = nx ? 1000 + x : 5000 + y;
       const fx = cx + nx * HT, fz = cz + nz * HT;
+      const fb = vbBase ? Math.min(E, vbBaseAt(fx + nx * 0.3, fz + nz * 0.3)) : 0, ks = (H + E - fb) / H;   // v878: 면 앞 바닥 기본 높이 · 세로로 펴는 비율
       const u0 = nx ? cz - HT : cx - HT, u1 = u0 + TILE;
       const at = (u, yy, out) => [nx ? fx + out : u, yy, nx ? u : fz + out];
       const put = (Acc, a, b, y0, h, dep, out, hex, k, roll, yaw, lean) => {   // roll = 면 법선축 · lean = 면을 따라가는 수평축(앞뒤로 기울임)
@@ -14301,7 +14449,7 @@ function buildCav1Walls(dgn) {
           if (uc < u0 - 0.2 || uc > u1 + 0.2) continue;       // 중심이 이 타일에 있는 것만(이웃 타일이 같은 것을 또 짓지 않게)
           const sy = ry0 * (0.8 + hs2 * 0.45), dep = 0.55 + hs3 * 0.3, front = f0 + hs2 * 0.24;
           const [px, , pz] = at(Math.max(u0 + 0.3, Math.min(u1 - 0.3, uc)), 0, front - dep);
-          rock(A, px, Math.min(yc + (hs3 - 0.5) * 0.3, H - sy * 0.75), pz, hw, sy, dep, (nx ? Math.PI / 2 : 0) + (hs - 0.5) * 0.5, (hs3 - 0.5) * 0.25, pal[Math.floor(hs2 * pal.length)], 0.86 + hs3 * 0.24, line * 977 + ri * 131 + bi);
+          rock(A0, px, fb + Math.min(yc + (hs3 - 0.5) * 0.3, H - sy * 0.75) * ks, pz, hw, sy * ks, dep, (nx ? Math.PI / 2 : 0) + (hs - 0.5) * 0.5, (hs3 - 0.5) * 0.25, pal[Math.floor(hs2 * pal.length)], 0.86 + hs3 * 0.24, line * 977 + ri * 131 + bi);
         }
       });
       // 이끼 턱 + 늘어진 가닥: 윗면 이끼가 이 가장자리에 닿는 구간만, 덩어리로 드문드문. 한 줄로 이어 두면 밝은 난간 + 세로 막대라 울타리로 읽혔다
@@ -14316,7 +14464,8 @@ function buildCav1Walls(dgn) {
       }
       // 덩굴(바람에 흔들림): 예전 벽마다 덩굴(vineChance1)을 카메라 쪽 면으로 옮겼다
       if (hash(line, x + y, 80) < GFX.vineChance1 * 0.75) {
-        const Vc = get(V, x, y, vineAcc), n = 1 + Math.floor(hash(line, x + y, 81) * 2.5);
+        const Vc0 = get(V, x, y, vineAcc), n = 1 + Math.floor(hash(line, x + y, 81) * 2.5);
+        const Vc = !(E > 0) ? Vc0 : { P: { push: (...a) => { for (let q = 0; q < a.length; q++) Vc0.P.push(q % 3 === 1 ? a[q] + E : a[q]); } }, C: Vc0.C, W: Vc0.W };   // v878
         for (let v = 0; v < n; v++) {
           const hv = (k) => hash(line * 13 + v, x + y, 82 + k), len = TILE * (0.3 + hv(0) * 0.45), su = u0 + 0.5 + hv(1) * (TILE - 1), sway = (hv(2) - 0.5) * 0.5;
           let pu = su, py = H + 0.1, po = 0.58;
@@ -14333,7 +14482,7 @@ function buildCav1Walls(dgn) {
       // 밑동에 흘러내린 잔돌(충돌체 없음)
       if (hash(line, x + y, 100) < 0.45) for (let k = 0; k < 2 + Math.floor(hash(line, x + y, 101) * 3); k++) {
         const hk = (q) => hash(line * 7 + k, x + y, 102 + q), t = u0 + 0.3 + hk(0) * (TILE - 0.6), d = 0.55 + hk(1) * 0.5, sz = 0.16 + hk(2) * 0.26;
-        A.box(nx ? fx + d : t, sz * 0.35, nx ? t : fz + d, sz * 1.3, sz, sz * 1.1, (hk(3) - 0.5) * 0.9, hk(4) * 3, (hk(5) - 0.5) * 0.9, CAV1P.scree[k % 3], 0.9 + hk(6) * 0.15);
+        A0.box(nx ? fx + d : t, sz * 0.35 + (vbBase ? vbBaseAt(nx ? fx + d : t, nx ? t : fz + d) : 0), nx ? t : fz + d, sz * 1.3, sz, sz * 1.1, (hk(3) - 0.5) * 0.9, hk(4) * 3, (hk(5) - 0.5) * 0.9, CAV1P.scree[k % 3], 0.9 + hk(6) * 0.15);
       }
     }
   }
@@ -14752,7 +14901,7 @@ function buildHellMesh(dgn) {
     const vaFlat = (x, z, r) => {   // 화로·기둥 무리 자리는 0단으로 평평하게(병합 메시라 지면 높이로 못 올린다) — 가라앉은 마당이 된다
       for (let j = Math.floor((z - r - GZ0) / GS); j <= Math.floor((z + r - GZ0) / GS); j++) for (let i = Math.floor((x - r - GX0) / GS); i <= Math.floor((x + r - GX0) / GS); i++) {
         if (i < 0 || j < 0 || i >= gSubW || j >= gSubH || Math.hypot(GX0 + (i + 0.5) * GS - x, GZ0 + (j + 0.5) * GS - z) > r) continue;
-        groundH[j * gSubW + i] = 0; if (VA[(j * gSubW + i) * 2 + 1]) VA[(j * gSubW + i) * 2 + 1] = 1;   // 틈 무늬는 남기고 용암만 끈다
+        groundH[j * gSubW + i] = vbBase ? vbBaseAt(x, z) : 0; if (VA[(j * gSubW + i) * 2 + 1]) VA[(j * gSubW + i) * 2 + 1] = 1;   // 틈 무늬는 남기고 용암만 끈다 · v878: 층위면 그 방의 기본 높이로
         if (VA[(j * gSubW + i) * 2] === 255) VA[(j * gSubW + i) * 2] = 249;   // v850: 0단으로 판 자리의 흑요석은 현무암으로(흑요석 = 높은 기둥)
       }
     };
@@ -14819,8 +14968,9 @@ function buildHellMesh(dgn) {
       // 바닥 쪽 변은 기둥 뒤로 0.9 물린다 — 칸 경계에 두면 코어의 검은 면이 기둥 옆면을 높이 4 까지 통째로 가렸다
       const x0 = wxf(x) - T / 2 + (isF(x - 1, y) ? 0.9 : 0), x1 = wxf(x) + T / 2 - (isF(x + 1, y) ? 0.9 : 0);
       const z0 = wzf(y) - T / 2 + (isF(x, y - 1) ? 0.9 : 0), z1 = wzf(y) + T / 2 - (isF(x, y + 1) ? 0.9 : 0);
-      A.box((x0 + x1) / 2, H * 0.36, (z0 + z1) / 2, x1 - x0, H * 0.72, z1 - z0, 0, 0, 0, HEL.core, 1);
-      A.box(wxf(x), -0.06, wzf(y), T, 0.12, T, 0, 0, 0, 0x2a313d, 1);   // 기둥 밑 땅(윗면만 보인다) — 없으면 바닥과 기둥 사이가 검은 도랑으로 떠 보인다
+      const E = vbTileEAt(x, y);   // v878: 층위 — 맞닿은 바닥 기본 높이만큼 위로(밑동 0)
+      A.box((x0 + x1) / 2, (H * 0.72 + E) / 2, (z0 + z1) / 2, x1 - x0, H * 0.72 + E, z1 - z0, 0, 0, 0, HEL.core, 1);
+      A.box(wxf(x), (E - 0.12) / 2, wzf(y), T, 0.12 + E, T, 0, 0, 0, 0x2a313d, 1);   // 기둥 밑 땅(윗면만 보인다) — 없으면 바닥과 기둥 사이가 검은 도랑으로 떠 보인다
       walls.push({ x: wxf(x), z: wzf(y), halfW: T / 2, halfD: T / 2 });
     }
     for (const A of cores.values()) wallGroup.add(A.mesh(cor3WallMat()));
@@ -14835,6 +14985,7 @@ function buildHellMesh(dgn) {
       const deep = Math.min(Math.max(fd - r, 0), 3);
       let h = H * (0.8 + hash(i, j, 4) * 0.2) + deep * 0.5;
       if (deep > 1.2 && hash(i, j, 5) < 0.14) h *= 0.6;   // 부러진 기둥 — 벽 속에 단이 진다
+      h += vbTileEAt(gx, gy);   // v878: 층위 — 칸의 벽 늘림 높이만큼
       const ci = Math.floor(hash(i, j, 6) * 5), vz = zone(x / 9, z / 9);
       const veinP = deep < 0.6 && hash(i, j, 9) < (vz > 0.55 ? 0.5 : 0.06);
       prism(gx, gy, x, z, r, h, HEL.col[ci], HEL.cap[ci % 4], 1, (hash(i, j, 7) - 0.5) * 0.09, (hash(i, j, 8) - 0.5) * 0.09, veinP);
@@ -14848,11 +14999,11 @@ function buildHellMesh(dgn) {
         let door = false; for (const [ex, ey] of [[1,0],[-1,0],[0,1],[0,-1],[2,0],[-2,0],[0,2],[0,-2]]) { const xx = cx + ex, yy = cy + ey; if (isF(xx, yy) && !(xx >= r.x && xx < r.x + r.w && yy >= r.y && yy < r.y + r.h)) door = true; }
         if (door) continue;
         const bx = wxf(cx) + (cx === r.x + 1 ? -1 : 1) * T * 0.2, bz = wzf(cy) + (cy === r.y + 1 ? -1 : 1) * T * 0.2;
-        const n = 3 + Math.floor(rnd() * 3);
+        const n = 3 + Math.floor(rnd() * 3), bh = vbBaseAt(bx, bz);   // v878: 방 기본 높이만큼 길게(밑동 0 — 다진 마당 밑으로 묻힌다)
         for (let i = 0; i < n; i++) {
           const a = i / n * Math.PI * 2 + rnd(), d = i === 0 ? 0 : 0.95 + rnd() * 0.2, rr = i === 0 ? 0.6 : 0.42 + rnd() * 0.12, hh = (i === 0 ? 2.6 : 0.7) + rnd() * 1.6;
           const ci = Math.floor(rnd() * 5);
-          prism(cx, cy, bx + Math.cos(a) * d, bz + Math.sin(a) * d, rr, hh, HEL.col[ci], HEL.cap[ci % 4], 1.05, (rnd() - 0.5) * 0.1, (rnd() - 0.5) * 0.1, rnd() < 0.4);
+          prism(cx, cy, bx + Math.cos(a) * d, bz + Math.sin(a) * d, rr, hh + bh, HEL.col[ci], HEL.cap[ci % 4], 1.05, (rnd() - 0.5) * 0.1, (rnd() - 0.5) * 0.1, rnd() < 0.4);
         }
         addDecorCollider(bx, bz, 1.15);
         hellSpots.push({ x: bx, z: bz, r: 1.6 });
@@ -14891,18 +15042,19 @@ function buildHellMesh(dgn) {
       if (r.w >= 4 && r.h >= 4 && ri !== 0 && r !== bossR && rnd() < 0.7) {
         const x = wxf(r.cx) + (rnd() - 0.5) * T * 0.3, z = wzf(r.cy) + (rnd() - 0.5) * T * 0.3;
         if (hellSpots.some(s => Math.hypot(s.x - x, s.z - z) < s.r + 1.8)) return;
-        cas2Part(bg, new THREE.CylinderGeometry(1.45, 1.6, 0.26, 6), HEL.cap[1], x, 0.13, z, 'cut', 0.06).rotation.y = Math.PI / 6;
-        cas2Part(bg, new THREE.CylinderGeometry(0.98, 1.1, 0.26, 6), HEL.cap[2], x, 0.39, z, 'cut', 0.06).rotation.y = Math.PI / 6;
-        cas2Part(bg, new THREE.CylinderGeometry(0.5, 0.32, 0.42, 8), HEL.iron, x, 0.73, z, 'metal', 0.05);
-        cas2Part(bg, new THREE.CylinderGeometry(0.56, 0.5, 0.08, 8), HEL.ironD, x, 0.96, z, 'metal', 0.04);
-        cas2Part(bg, new THREE.CylinderGeometry(0.44, 0.44, 0.05, 8), HEL.coal, x, 0.96, z, 'glow', 0.1);
-        for (let k = 0; k < 3; k++) { const a = k / 3 * Math.PI * 2 + 0.4; cas2Part(bg, new THREE.BoxGeometry(0.08, 0.5, 0.08), HEL.ironD, x + Math.cos(a) * 0.36, 0.72, z + Math.sin(a) * 0.36, 'metal', 0.04).rotation.set(Math.cos(a) * 0.35, 0, -Math.sin(a) * 0.35); }
+        const by = vbBaseAt(x, z);   // v878: 층위 — 방 기본 높이(마당은 vaFlat 이 그 높이로 다진다)
+        cas2Part(bg, new THREE.CylinderGeometry(1.45, 1.6, 0.26, 6), HEL.cap[1], x, 0.13 + by, z, 'cut', 0.06).rotation.y = Math.PI / 6;
+        cas2Part(bg, new THREE.CylinderGeometry(0.98, 1.1, 0.26, 6), HEL.cap[2], x, 0.39 + by, z, 'cut', 0.06).rotation.y = Math.PI / 6;
+        cas2Part(bg, new THREE.CylinderGeometry(0.5, 0.32, 0.42, 8), HEL.iron, x, 0.73 + by, z, 'metal', 0.05);
+        cas2Part(bg, new THREE.CylinderGeometry(0.56, 0.5, 0.08, 8), HEL.ironD, x, 0.96 + by, z, 'metal', 0.04);
+        cas2Part(bg, new THREE.CylinderGeometry(0.44, 0.44, 0.05, 8), HEL.coal, x, 0.96 + by, z, 'glow', 0.1);
+        for (let k = 0; k < 3; k++) { const a = k / 3 * Math.PI * 2 + 0.4; cas2Part(bg, new THREE.BoxGeometry(0.08, 0.5, 0.08), HEL.ironD, x + Math.cos(a) * 0.36, 0.72 + by, z + Math.sin(a) * 0.36, 'metal', 0.04).rotation.set(Math.cos(a) * 0.35, 0, -Math.sin(a) * 0.35); }
         const flameG = new THREE.Group();
         const f1 = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.75, 7), getGlowMat(0xff6a1e)); flameG.add(f1);
         const f2 = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.5, 7), getGlowMat(0xffc050)); f2.position.y = 0.1; flameG.add(f2);
         flameG.position.set(x, 1.32, z); floorGroup.add(flameG);
         const sp = makeGlowSprite(0xff8a3a, 3.2, 0.45); sp.position.set(x, 1.55, z); floorGroup.add(sp);
-        castleTorches.push({ flame: flameG, f1, f2, light: null, sprite: sp, ph: rnd() * 10, lit: true, wx: x, wy: 1.9, wz: z, lcol: 0xff7a34, ldist: 15, li: 1.5 });
+        castleTorches.push({ flame: flameG, f1, f2, light: null, sprite: sp, ph: rnd() * 10, lit: true, wx: x, wy: 1.9 + by, wz: z, lcol: 0xff7a34, ldist: 15, li: 1.5 });
         addDecorCollider(x, z, 1.3);
         hellSpots.push({ x, z, r: 1.7 });
         hellFires.push({ x, z });
@@ -14958,6 +15110,7 @@ function buildDungeonMeshInner(dgn) {
   cavernShrooms.length = 0; cavernWaters.length = 0; cavernShafts.length = 0; dgnGrassTufts = []; if (typeof cor3Pools !== 'undefined') cor3Pools.length = 0;
   castleTorches.length = 0;
   corruptPulses.length = 0; corruptBreath.length = 0; // 3막 맥동 종양·산호 숨쉬기 정리
+  vbBuild(dgn);   // v878: 1·4막 방 층위 + 계단 복도(지형 위에 기본 높이를 깐다 — 장식·잔디·웅덩이가 높이를 읽기 전에)
   // 막(Act)별 분위기 전환: 1막=이끼 동굴 / 2막=무너진 성 / 3막=부패한 성(잠식)
   if (currentAct() === 4) { buildHellAct(dgn); return; }   // v839: 4막 지옥
   if (currentAct() === 3) {
@@ -15106,6 +15259,7 @@ function buildDungeonMeshInner(dgn) {
           if (!CAV1W && Math.random() < GFX.vineChance1) { const vn = 2 + Math.floor(Math.random() * 3); for (let vk = 0; vk < vn; vk++) wGrp.add(makeVineMesh()); } // 벽마다 덩굴(2막의 약 3배 무성)
           wallGroup.add(wGrp); walls.push({ x: wx, z: wz, halfW: TILE / 2, halfD: TILE / 2 });
           fitWallRocks(wGrp, wPat, wx, wz, wRot, isFloorCell, x, y); // 벽에 박힌 바위도 막히게
+          if (vbTileE) vbStretchTile(wGrp, x, y, TILE * 0.7 + WALL_EXTRA);   // v878: 층위 — 맞닿은 바닥 기본 높이만큼 위로 늘린다(밑동 0)
           if (CAV1W) cav1Tiles.push({ grp: wGrp, x, y });
         }
       }
@@ -16455,7 +16609,7 @@ function makeStalactite(x, z) {
   const h = 1.2 + Math.random()*1.6;
   const sg = new THREE.ConeGeometry(0.3 + Math.random()*0.18, h, 6);
   const sm = new THREE.Mesh(sg, C_ROCK[1]); sm.rotation.x = Math.PI; // 끝이 아래로
-  sm.position.set(x + (Math.random()-0.5)*TILE*0.5, TILE*0.85 - h/2, z + (Math.random()-0.5)*TILE*0.5);
+  sm.position.set(x + (Math.random()-0.5)*TILE*0.5, TILE*0.85 - h/2 + vbEAt(x, z), z + (Math.random()-0.5)*TILE*0.5);   // v878: 벽이 늘어난 만큼
   sm.castShadow = true; wallGroup.add(sm);
 }
 
@@ -16474,7 +16628,7 @@ function makeHangingVine(x, z) {
       leaf.scale.set(1, 0.4, 1); leaf.position.set(cx + (Math.random()-0.5)*0.5, topY - s*0.46, cz + (Math.random()-0.5)*0.5); g.add(leaf);
     }
   }
-  g.position.set(x, 0, z); wallGroup.add(g);
+  g.position.set(x, vbEAt(x, z), z); wallGroup.add(g);   // v878: 벽이 늘어난 만큼
 }
 
 // 천장 틈 빛줄기(은은한 반투명 콘 + 바닥 빛무리 + 약한 점광)
@@ -25933,9 +26087,11 @@ function activateAmbushBarriers() {
   const h = 3.2, wThick = 0.3;
   const off = TILE * 1.5;        // 매복 중심에서 각 벽까지 거리
   const span = TILE * 3 + wThick; // 벽 길이(±1.5칸 = 3칸 폭을 덮음)
+  // v878: 층위(2·3막 rlMode · 1·4막 vbBase)면 매복 구간 세 칸 중 가장 낮은 지면에 세운다 — 계단에 걸리면 0 에 세운 장벽이 파묻혔다
+  const gb = (rlMode || vbBase) ? Math.min(groundHeightAt(ambush.x, ambush.z), groundHeightAt(ambush.x + ambush.dirX * TILE, ambush.z + ambush.dirZ * TILE), groundHeightAt(ambush.x - ambush.dirX * TILE, ambush.z - ambush.dirZ * TILE)) : 0;
   const mkBar = (px, pz, sx, sz) => {
     const b = new THREE.Mesh(new THREE.BoxGeometry(sx, h, sz), barMat);
-    b.position.set(px, h / 2, pz); scene.add(b); ambushBarriers.push(b);
+    b.position.set(px, h / 2 + gb, pz); scene.add(b); ambushBarriers.push(b);
   };
   // 진행 방향과 무관하게 매복 지점을 사방으로 가둔다(정사각형 네 변).
   // 아치형 복도처럼 옆이 뚫린 곳에서도 새지 않도록 4면 모두 막음.
