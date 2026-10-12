@@ -4505,7 +4505,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v874'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v875'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -11114,9 +11114,12 @@ function groundHeightAt(wx, wz) {
 // · 무너지는 함정 칸은 한 칸이 통째로 평평해야 한다(석판이 같이 꺼진다) — 칸 안 이동을 0 거리로 잰다.
 // · 벽은 올리지 않고(v784 — 밑동에 틈) 위로 늘린다: 벽 칸 높이 = 맞닿은 바닥 서브셀 최고 높이(rlWallE). 벽에 붙은 것은 그만큼 같이 오른다.
 const RLEVEL = !/[?&]rlevel=0/.test(location.search);
-const RL_STEP = (() => { const m = location.search.match(/[?&]rlstep=([\d.]+)/); return m ? parseFloat(m[1]) : 0.2; })();   // 계단 한 칸 높이(0.15 는 석판 높낮이에 묻혀 잘 안 읽혔다)
+const RL_STEP = (() => { const m = location.search.match(/[?&]rlstep=([\d.]+)/); return m ? parseFloat(m[1]) : 0.3; })();   // 계단 한 칸 높이(v874 0.2 도 화면에서 티가 안 났다 — v875 0.3)
 const RL_UNIT = (() => { const m = location.search.match(/[?&]rlunit=(\d+)/); return m ? Math.max(1, parseInt(m[1], 10)) : 2; })();   // 방 한 단 = 계단 몇 칸
 const RL_MAXLV = (() => { const m = location.search.match(/[?&]rlmax=(\d+)/); return m ? Math.max(1, parseInt(m[1], 10)) : 2; })();   // 방 최고 단
+// v875: 사용자 "계단이 낮아 티가 안 나고 디딤판(세로폭)이 너무 넓다" — 계단 0.2 → 0.3 · 서브셀을 석판 줄의 절반으로 · 계단을 복도에 펴지 않고 모은다
+const RL_SUB = (() => { const m = location.search.match(/[?&]rlsub=(\d+)/); return m ? Math.max(1, Math.min(4, parseInt(m[1], 10))) : 2; })();
+const RL_SPREAD = /[?&]rlspread=1/.test(location.search);   // v874 식(복도 전체에 계단을 편다)
 let rlMode = false, rlWallE = null, rlRoomLv = null, rlRoomsRef = null;
 // 바닥 이펙트(예고 고리·충격파·조준 고리) 높이 — 2·3막 층위에서만 지면을 따른다(1막 복셀은 예전 그대로 두어 화면이 같게)
 function fxGy(x, z) { return rlMode ? groundHeightAt(x, z) : 0; }
@@ -11144,7 +11147,7 @@ function rlBuild(dgn, flatSet) {
   rlMode = false; rlWallE = null; rlRoomLv = null; rlRoomsRef = null;
   const act = currentAct();
   if (!RLEVEL || (act !== 2 && act !== 3) || !dgn || !dgn.grid) return;
-  const { grid, rooms } = dgn, N = act === 2 ? 4 : 3;   // 서브셀 = 바닥 석판 줄(2막 4줄 · 3막 3줄)
+  const { grid, rooms } = dgn, N = (act === 2 ? 4 : 3) * RL_SUB;   // 서브셀 = 바닥 석판 줄의 1/RL_SUB(v875: 2 — 디딤판 2막 0.63 · 3막 0.83)
   gSubN = N; gSubW = MAP_W * N; gSubH = MAP_H * N; gVoxAux = null; gObsCols = [];
   const W = gSubW, H = gSubH, NC = W * H;
   let sd = (((player.floor | 0) * 2246822519) ^ 0x5bd1e995) >>> 0;
@@ -11223,7 +11226,7 @@ function rlBuild(dgn, flatSet) {
     return false;
   };
   const okSpread = lipFix(hq);
-  const fin = okSpread ? hq : mid;
+  const fin = RL_SPREAD && okSpread ? hq : mid;   // v875: 기본은 가운데 값 — 계단이 한 곳에 모여 한 칸 디딤판짜리 진짜 계단이 된다
   groundH = new Float32Array(NC);
   for (let c = 0; c < NC; c++) if (room[c] !== -2) groundH[c] = Math.max(0, fin[c]) * RL_STEP;
   // 벽 칸: 맞닿은(대각 포함) 바닥 서브셀 최고 높이 — 벽에 붙은 것(횃불·깃발·이끼)이 그만큼 같이 오른다
@@ -12215,20 +12218,25 @@ function buildCas2Floor(dgn, trapSet, rnd, mf, o) {
     // 옆면 밑을 한 계단 더 내려 카메라를 보는 계단 턱(+x·+z)을 덮는다. 함정 석판(base0 false)은 그룹째 올라가므로 굽지 않는다
     const rlB = base0 && rlMode, SS = rlB ? _gSub() : 0, GX0 = rlB ? _gX0() : 0, GZ0 = rlB ? _gZ0() : 0;
     const A = !rlB ? A0 : { slab(x0, x1, z0, z1, hc, yb, hex, k, noSide) {
-      const j = Math.max(0, Math.min(gSubH - 1, Math.floor(((z0 + z1) / 2 - GZ0) / SS)));
+      // v875: 서브셀이 석판 줄의 절반이라(계단 디딤판을 좁히려고) 줄 안에서 세로로도 자른다 — 귀퉁이 높이는 쌍선형으로
+      const hb = (xx, zz) => { const u = (xx - x0) / (x1 - x0), v = (zz - z0) / (z1 - z0); return (hc[0] + (hc[1] - hc[0]) * u) * (1 - v) + (hc[3] + (hc[2] - hc[3]) * u) * v; };
+      const j0 = Math.max(0, Math.floor((z0 - GZ0) / SS + 1e-6)), j1 = Math.min(gSubH - 1, Math.floor((z1 - GZ0) / SS - 1e-6));
       const i0 = Math.max(0, Math.floor((x0 - GX0) / SS + 1e-6)), i1 = Math.min(gSubW - 1, Math.floor((x1 - GX0) / SS - 1e-6));
-      const hs = (i) => groundH[j * gSubW + i], tt = (xx) => (xx - x0) / (x1 - x0);
-      const hz0 = (xx) => hc[0] + (hc[1] - hc[0]) * tt(xx), hz1 = (xx) => hc[3] + (hc[2] - hc[3]) * tt(xx);
-      let a = x0, i = i0;
-      while (i <= i1) {
-        const h = hs(i); let e = i; while (e < i1 && Math.abs(hs(e + 1) - h) < 1e-4) e++;
-        const b = e === i1 ? x1 : GX0 + (e + 1) * SS, a2 = a + (i > i0 ? 0.015 : 0), b2 = b - (e < i1 ? 0.015 : 0);
-        if (b2 > a2 + 0.01) A0.slab(a2, b2, z0, z1, [hz0(a2) + h, hz0(b2) + h, hz1(b2) + h, hz1(a2) + h], yb + h - RL_STEP, hex, k, noSide);
-        a = b; i = e + 1;
+      for (let j = j0; j <= j1; j++) {
+        const c0 = j === j0 ? z0 : GZ0 + j * SS, c1 = j === j1 ? z1 : GZ0 + (j + 1) * SS;
+        const hs = (i) => groundH[j * gSubW + i];
+        const zA = c0 + (j > j0 ? 0.015 : 0), zB = c1 - (j < j1 ? 0.015 : 0);
+        if (zB <= zA + 0.01) continue;
+        let a = x0, i = i0;
+        while (i <= i1) {
+          const h = hs(i); let e = i; while (e < i1 && Math.abs(hs(e + 1) - h) < 1e-4) e++;
+          const b = e === i1 ? x1 : GX0 + (e + 1) * SS, a2 = a + (i > i0 ? 0.015 : 0), b2 = b - (e < i1 ? 0.015 : 0);
+          if (b2 > a2 + 0.01) A0.slab(a2, b2, zA, zB, [hb(a2, zA) + h, hb(b2, zA) + h, hb(b2, zB) + h, hb(a2, zB) + h], yb + h - RL_STEP, hex, k, noSide);
+          a = b; i = e + 1;
+        }
       }
     } };
-    if (base0) { if (rlB) for (let r = 0; r < gSubN; r++) A.slab(tx0, tx0 + TILE, tz0 + r * SS, tz0 + (r + 1) * SS, [-0.07, -0.07, -0.07, -0.07], -0.3, o.grout, 1, true);
-      else A.slab(tx0, tx0 + TILE, tz0, tz0 + TILE, [-0.07, -0.07, -0.07, -0.07], -0.3, o.grout, 1, true); }   // 줄눈 바탕
+    if (base0) A.slab(tx0, tx0 + TILE, tz0, tz0 + TILE, [-0.07, -0.07, -0.07, -0.07], -0.3, o.grout, 1, true);   // 줄눈 바탕(층위면 서브셀마다 잘린다)
     for (let ri = 0; ri < o.NR; ri++) {
       const z0 = tz0 + ri * ROW, r = Math.round((z0 - W0) / ROW), bs = rowBreaks(r);
       for (let i = 0; i < bs.length - 1; i++) {
