@@ -4505,7 +4505,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v873'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v874'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -10951,6 +10951,7 @@ function _gZ0() { return -(MAP_H / 2 + 0.5) * TILE; }
 // 던전 배치가 같아야 두 빌드를 나란히 비교할 수 있기 때문이다
 // (CLAUDE.md: 난수 소비가 달라지면 이후 층 생성이 통째로 바뀐다).
 function buildGroundHeight(floorNo) {
+  rlMode = false; rlWallE = null;   // v874: 2·3막 층위는 격자를 다 만든 뒤 rlBuild 가 깐다
   const _act = Math.min(LAST_ACT, Math.max(1, Math.ceil(floorNo / ACT_LEN)));   // v841: 4막(예전 식은 91층부터를 3막으로 셌다)
   gSubN = VOX_ON ? (VOX_RAY && _act === 4 ? VOX4_N : VOX_N) : 1; gVoxAux = null; gObsCols = [];   // v844: 4막만 칸 절반
   if (!VOX_ON && !(RELIEF > 0)) { groundH = null; return; }
@@ -11104,6 +11105,166 @@ function groundHeightAt(wx, wz) {
   return groundH[j * gSubW + i];
 }
 
+// ===== v874: 2·3막 방 층위 + 계단 복도(RLEVEL · ?rlevel=0) =====
+// 방마다 높이(0·1·2단, 한 단 = RL_UNIT 계단 = 0.3)를 정하고, 높이가 다른 방을 잇는 복도를 계단(한 칸 0.15)으로 오르내리게 한다.
+// · 격자 생성(generateDungeon)은 안 건드린다 — 다 만든 격자 위에 높이만 얹는다. 높이는 층 번호 시드 난수(Math.random 안 씀).
+// · 계단 높이 = 서브셀(타일 N 등분 — 바닥 석판 줄과 맞춘다) 위의 립시츠 확장. 방 칸은 고정, 그 밖 칸은 '방에서 문간 여유를 뺀 거리'로
+//   잰 아래·위 한계(맥셰인·휘트니)의 가운데를 계단 높이로 반올림한다 → 이웃 칸 차가 늘 한 계단 이하 · 문간 앞 RL_DOOR 칸은 방 높이 그대로.
+//   한 계단에 못 맞추는 짝(짧은 복도)은 높은 방을 한 단씩 낮춘다. 시작 방·보스(계단) 방은 0단 고정.
+// · 무너지는 함정 칸은 한 칸이 통째로 평평해야 한다(석판이 같이 꺼진다) — 칸 안 이동을 0 거리로 잰다.
+// · 벽은 올리지 않고(v784 — 밑동에 틈) 위로 늘린다: 벽 칸 높이 = 맞닿은 바닥 서브셀 최고 높이(rlWallE). 벽에 붙은 것은 그만큼 같이 오른다.
+const RLEVEL = !/[?&]rlevel=0/.test(location.search);
+const RL_STEP = (() => { const m = location.search.match(/[?&]rlstep=([\d.]+)/); return m ? parseFloat(m[1]) : 0.2; })();   // 계단 한 칸 높이(0.15 는 석판 높낮이에 묻혀 잘 안 읽혔다)
+const RL_UNIT = (() => { const m = location.search.match(/[?&]rlunit=(\d+)/); return m ? Math.max(1, parseInt(m[1], 10)) : 2; })();   // 방 한 단 = 계단 몇 칸
+const RL_MAXLV = (() => { const m = location.search.match(/[?&]rlmax=(\d+)/); return m ? Math.max(1, parseInt(m[1], 10)) : 2; })();   // 방 최고 단
+let rlMode = false, rlWallE = null, rlRoomLv = null, rlRoomsRef = null;
+// 바닥 이펙트(예고 고리·충격파·조준 고리) 높이 — 2·3막 층위에서만 지면을 따른다(1막 복셀은 예전 그대로 두어 화면이 같게)
+function fxGy(x, z) { return rlMode ? groundHeightAt(x, z) : 0; }
+function rlRoomH(r) { if (!rlMode || !rlRoomsRef) return 0; const i = rlRoomsRef.indexOf(r); return i < 0 ? 0 : rlRoomLv[i] * RL_UNIT * RL_STEP; }
+function rlWallH(tx, ty) { return (rlMode && rlWallE && tx >= 0 && ty >= 0 && tx < MAP_W && ty < MAP_H) ? rlWallE[ty * MAP_W + tx] : 0; }
+// 타일 안 서브셀 높이 [최소, 최대]
+function rlTileRange(tx, ty) {
+  if (!rlMode || !groundH) return [0, 0];
+  let lo = Infinity, hi = -Infinity;
+  for (let j = 0; j < gSubN; j++) for (let i = 0; i < gSubN; i++) { const h = groundH[(ty * gSubN + j) * gSubW + tx * gSubN + i]; if (h < lo) lo = h; if (h > hi) hi = h; }
+  return [lo, hi];
+}
+function rlTileFlat(tx, ty) { const [lo, hi] = rlTileRange(tx, ty); return hi - lo < 1e-4; }
+// 타일과 그 둘레 여덟 칸이 전부 같은 높이로 평평한가(바닥에 눕는 장식이 계단에 걸치지 않게)
+function rlAreaFlat(tx, ty) {
+  if (!rlMode) return true;
+  const h0 = rlTileRange(tx, ty)[0];
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const x = tx + dx, y = ty + dy; if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H || !(wallGrid && wallGrid[y] && wallGrid[y][x] > 0)) continue;
+    const [lo, hi] = rlTileRange(x, y); if (hi - lo > 1e-4 || Math.abs(lo - h0) > 1e-4) return false;
+  }
+  return true;
+}
+function rlBuild(dgn, flatSet) {
+  rlMode = false; rlWallE = null; rlRoomLv = null; rlRoomsRef = null;
+  const act = currentAct();
+  if (!RLEVEL || (act !== 2 && act !== 3) || !dgn || !dgn.grid) return;
+  const { grid, rooms } = dgn, N = act === 2 ? 4 : 3;   // 서브셀 = 바닥 석판 줄(2막 4줄 · 3막 3줄)
+  gSubN = N; gSubW = MAP_W * N; gSubH = MAP_H * N; gVoxAux = null; gObsCols = [];
+  const W = gSubW, H = gSubH, NC = W * H;
+  let sd = (((player.floor | 0) * 2246822519) ^ 0x5bd1e995) >>> 0;
+  const rnd = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
+  // 서브셀 → 방 번호(-1 = 복도, -2 = 벽)
+  const room = new Int16Array(NC).fill(-2);
+  for (let ty = 0; ty < MAP_H; ty++) for (let tx = 0; tx < MAP_W; tx++) {
+    if (!(grid[ty][tx] > 0)) continue;
+    let ri = -1; for (let k = 0; k < rooms.length; k++) { const r = rooms[k]; if (tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h) { ri = k; break; } }
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) room[(ty * N + j) * W + tx * N + i] = ri;
+  }
+  const flatTile = (c) => flatSet && flatSet.has(((c % W) / N | 0) + ',' + ((c / W | 0) / N | 0));
+  // 방마다 0-1 BFS 거리(방 칸 0 · 함정 칸 안은 0)
+  const INF = 1e9, dist = rooms.map(() => new Int32Array(NC).fill(INF));
+  const NB = [1, -1, W, -W];
+  rooms.forEach((r, k) => {
+    const d = dist[k], dq = new Int32Array(NC * 2); let h = NC, t = NC;
+    for (let c = 0; c < NC; c++) if (room[c] === k) { d[c] = 0; dq[t++] = c; }
+    while (h < t) {
+      const c = dq[h++], cx = c % W;
+      for (const o of NB) {
+        const n = c + o; if (n < 0 || n >= NC || room[n] === -2) continue;
+        if ((o === 1 && cx === W - 1) || (o === -1 && cx === 0)) continue;
+        const w = (flatTile(c) && flatTile(n) && ((c % W) / N | 0) === ((n % W) / N | 0) && ((c / W | 0) / N | 0) === ((n / W | 0) / N | 0)) ? 0 : 1;
+        if (d[c] + w < d[n]) { d[n] = d[c] + w; if (w === 0) dq[--h] = n; else dq[t++] = n; }
+      }
+    }
+  });
+  const DOOR = Math.max(1, N >> 1);   // 문간 앞 평평한 서브셀 수(반 칸)
+  // 방 단 고르기 — 시작 방·보스 방 0 고정
+  const boss = pickBossRoom(dgn), fixed = rooms.map((r, k) => k === 0 || r === boss || r.isStart || r.isBoss);
+  const lv = rooms.map((r, k) => fixed[k] ? 0 : (() => { const u = rnd(); return u < 0.34 ? 0 : u < 0.72 ? 1 : Math.min(RL_MAXLV, 2 + Math.floor(rnd() * (RL_MAXLV - 1))); })());
+  // 짝마다 '단 차 × 계단 수 ≤ 문간 여유를 뺀 거리' — 안 맞으면 높은 쪽(고정이 아니면)을 낮춘다
+  const D = rooms.map(() => new Array(rooms.length).fill(INF));
+  for (let c = 0; c < NC; c++) { const b = room[c]; if (b < 0) continue; for (let a = 0; a < rooms.length; a++) if (dist[a][c] < D[a][b]) D[a][b] = dist[a][c]; }
+  for (let it = 0; it < 64; it++) {
+    let bad = false;
+    for (let a = 0; a < rooms.length; a++) for (let b = 0; b < rooms.length; b++) {
+      if (a === b || lv[a] <= lv[b]) continue;
+      const dab = D[a][b];
+      if (dab >= INF) continue;
+      if ((lv[a] - lv[b]) * RL_UNIT > Math.max(0, dab - 2 * DOOR)) { if (!fixed[a]) lv[a]--; else lv[b]++; bad = true; }
+    }
+    if (!bad) break;
+  }
+  // 높이: 아래 한계 L = max(h_a − s·d'), 위 한계 U = min(h_a + s·d') 의 가운데를 계단 높이로 반올림(d' = 거리 − 문간 여유)
+  // 계단을 복도 전체에 고르게 펴려고 가까운 두 방 사이를 거리 비율로 잇고(가파른 데만 몰리면 짧은 계단 하나가 된다) [L, U] 로 자른 뒤
+  // 이웃 차가 한 계단을 넘는 칸을 이웃 한계로 당긴다. 그래도 남으면(드물다) 가운데 값(늘 맞는다)으로 되돌린다
+  const hq = new Int32Array(NC), mid = new Int32Array(NC);
+  for (let c = 0; c < NC; c++) {
+    if (room[c] === -2) continue;
+    if (room[c] >= 0) { hq[c] = mid[c] = lv[room[c]] * RL_UNIT; continue; }
+    let L = -INF, U = INF, d1 = INF, d2 = INF, h1 = 0, h2 = 0;
+    for (let k = 0; k < rooms.length; k++) {
+      const d = dist[k][c]; if (d >= INF) continue;
+      const dd = Math.max(0, d - DOOR), hk = lv[k] * RL_UNIT;
+      if (hk - dd > L) L = hk - dd; if (hk + dd < U) U = hk + dd;
+      if (dd < d1) { d2 = d1; h2 = h1; d1 = dd; h1 = hk; } else if (dd < d2) { d2 = dd; h2 = hk; }
+    }
+    if (L === -INF) continue;
+    mid[c] = Math.max(0, Math.round((L + U) / 2));
+    const f = d2 >= INF ? h1 : (h1 * d2 + h2 * d1) / Math.max(1e-6, d1 + d2);
+    hq[c] = Math.max(0, Math.round(Math.max(L, Math.min(U, f))));
+  }
+  const lipFix = (h) => {
+    for (let pass = 0; pass < 80; pass++) {
+      let changed = false;
+      for (let c = 0; c < NC; c++) {
+        if (room[c] !== -1) continue;
+        let lo = -INF, hi = INF; const cx = c % W;
+        for (const o of NB) { const n = c + o; if (n < 0 || n >= NC || room[n] === -2 || (o === 1 && cx === W - 1) || (o === -1 && cx === 0)) continue; if (h[n] - 1 > lo) lo = h[n] - 1; if (h[n] + 1 < hi) hi = h[n] + 1; }
+        if (h[c] > hi) { h[c] = hi; changed = true; } else if (h[c] < lo) { h[c] = lo; changed = true; }
+      }
+      if (!changed) return true;
+    }
+    return false;
+  };
+  const okSpread = lipFix(hq);
+  const fin = okSpread ? hq : mid;
+  groundH = new Float32Array(NC);
+  for (let c = 0; c < NC; c++) if (room[c] !== -2) groundH[c] = Math.max(0, fin[c]) * RL_STEP;
+  // 벽 칸: 맞닿은(대각 포함) 바닥 서브셀 최고 높이 — 벽에 붙은 것(횃불·깃발·이끼)이 그만큼 같이 오른다
+  rlWallE = new Float32Array(MAP_W * MAP_H);
+  for (let ty = 0; ty < MAP_H; ty++) for (let tx = 0; tx < MAP_W; tx++) {
+    if (grid[ty][tx] > 0) continue;
+    let e = 0;
+    for (let j = -1; j <= N; j++) for (let i = -1; i <= N; i++) {
+      if (j >= 0 && j < N && i >= 0 && i < N) continue;
+      const sx = tx * N + i, sy = ty * N + j; if (sx < 0 || sy < 0 || sx >= W || sy >= H) continue;
+      const c = sy * W + sx; if (room[c] !== -2 && groundH[c] > e) e = groundH[c];
+    }
+    rlWallE[ty * MAP_W + tx] = e;
+    if (e > 0) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) groundH[(ty * N + j) * W + tx * N + i] = e;
+  }
+  rlRoomLv = lv; rlRoomsRef = rooms; rlMode = true;
+}
+
+// 벽 타일(코어 상자)을 맞닿은 바닥 최고 높이만큼 위로 늘린다 — 밑동은 y=0(v784: 올리면 낮은 쪽 밑에 틈). 그룹은 지면 올리기에서 뺀다
+function rlStretchWall(wt, tx, ty) {
+  wt.userData.noRelief = true;
+  const e = rlWallH(tx, ty); if (!(e > 0)) return;
+  const core = wt.children[0]; core.scale.y = (CAS_WALL_H + e) / CAS_WALL_H; core.position.y = (CAS_WALL_H + e) / 2;
+}
+// 바닥에 눕는 상자(카펫 등)를 서브셀 경계로 잘라 floorGroup 에 넣는다 — 조각 자리 높이로 rlApplyRelief 가 올린다
+// 조각은 한 지오메트리로 합친다(드로우콜 그대로) — 높이를 정점에 넣으므로 noRelief
+function rlFloorBox(mat, cx, cz, w, h, d, y, recv) {
+  const S = _gSub(), X0 = _gX0(), Z0 = _gZ0(), x0 = cx - w / 2, x1 = cx + w / 2, z0 = cz - d / 2, z1 = cz + d / 2, P = [], N = [], U = [];
+  for (let i = Math.floor((x0 - X0) / S); X0 + i * S < x1; i++) for (let j = Math.floor((z0 - Z0) / S); Z0 + j * S < z1; j++) {
+    const a = Math.max(x0, X0 + i * S), b = Math.min(x1, X0 + (i + 1) * S), c = Math.max(z0, Z0 + j * S), e = Math.min(z1, Z0 + (j + 1) * S);
+    if (b - a < 0.02 || e - c < 0.02) continue;
+    const g = new THREE.BoxGeometry(b - a, h, e - c).toNonIndexed(), px = (a + b) / 2, pz = (c + e) / 2, py = y + groundHeightAt(px, pz);
+    const pa = g.attributes.position.array, na = g.attributes.normal.array, ua = g.attributes.uv.array;
+    for (let k = 0; k < pa.length; k += 3) { P.push(pa[k] + px, pa[k + 1] + py, pa[k + 2] + pz); N.push(na[k], na[k + 1], na[k + 2]); }
+    for (let k = 0; k < ua.length; k++) U.push(ua[k]);
+    g.dispose();
+  }
+  if (!P.length) return;
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+  const m = new THREE.Mesh(g, mat); m.receiveShadow = !!recv; m.userData.noRelief = true; floorGroup.add(m);
+}
 // ── 복셀 바닥 메시 ──────────────────────────────────────────────────────
 // 서브셀마다 윗면 한 장 + '이웃이 더 낮은 쪽'에만 옆면을 낸다. 전부 한 지오메트리로 굽고
 // 색은 정점색으로 넣는다(3막 mergeCoral·c3MergeStatic과 같은 방식) → 드로우콜 1개.
@@ -11515,6 +11676,7 @@ function voxNormalPass(sceneToRender) {
 // 같이 올라가야 한다.** 그룹 자식을 훑으면 그게 자동으로 지켜진다.
 function applyGroundRelief(dgn) {
   if (!groundH) return;
+  if (rlMode) { rlApplyRelief(); return; }   // v874: 2·3막 층위 — 바닥은 정점에 구웠고 벽은 위로 늘렸다
   // 복셀 모드에서 벽은 제자리에 둔다. 같이 올려 봤더니 화면 바닥 픽셀이 오히려 더 줄었다
   // (실측: 예전 239,151 / 벽 고정 159,461 / 벽도 올림 143,489). 벽이 앞쪽에서 더 가리기 때문이다.
   // **벽을 자기 칸 높이만큼 올리는 것도 안 된다** — 옆 칸 바닥이 더 낮으면 벽 밑에 틈이 생긴다
@@ -11532,6 +11694,22 @@ function applyGroundRelief(dgn) {
     }
   }
   if (VOX_RAY) buildVoxelRayFloor(dgn); else buildVoxelFloor(dgn);
+}
+// v874: 2·3막 층위의 지면 올리기. 바닥 석판·벽 면 짜기·벽 이끼는 정점에 높이를 구워 noRelief 다.
+// 나머지는 자리(원점에 둔 병합 그룹이면 바운딩 박스 가운데 — 방 소품은 rlH 로 방 높이를 직접 준다) 높이만큼 올린다.
+// 벽 칸 높이는 맞닿은 바닥 최고 높이라(rlWallE) 벽에 붙은 횃불·종양·사슬도 벽과 같이 오른다. 광원 자리(wy)도 같이 옮긴다
+function rlApplyRelief() {
+  const box = new THREE.Box3(), v = new THREE.Vector3();
+  for (const grp of [floorGroup, wallGroup]) for (const c of grp.children) {
+    if (c.userData.noRelief) continue;
+    let h;
+    if (c.userData.rlH !== undefined) h = c.userData.rlH;
+    else if (c.position.x === 0 && c.position.z === 0) { box.setFromObject(c); if (box.isEmpty()) continue; box.getCenter(v); h = groundHeightAt(v.x, v.z); }
+    else h = groundHeightAt(c.position.x, c.position.z);
+    c.position.y += h;
+  }
+  for (const t of castleTorches) if (t.wx !== undefined) t.wy += groundHeightAt(t.wx, t.wz);
+  for (const t of corruptPulses) if (t.wx !== undefined) t.wy += groundHeightAt(t.wx, t.wz);
 }
 // 층에 놓인 소품(계단·상자 등)을 지면에 앉힌다. 메시 빌드 뒤에 배치되므로 따로 불러 준다.
 function snapToGround(o) { if (o && groundH) o.position.y += groundHeightAt(o.position.x, o.position.z); }
@@ -12030,10 +12208,27 @@ function buildCas2Floor(dgn, trapSet, rnd, mf, o) {
   const PAL = o.PAL;
   const CH = 8, chunks = new Map();
   const mossAt = mf ? (wx, wz) => mf(wx, wz) : null;
-  const tile = (A, x, y, base0) => {
+  const tile = (A0, x, y, base0) => {
     const tx0 = (x - MAP_W / 2) * TILE - TILE / 2, tz0 = (y - MAP_H / 2) * TILE - TILE / 2;
     const nearWall = !isF(x - 1, y) || !isF(x + 1, y) || !isF(x, y - 1) || !isF(x, y + 1);
-    if (base0) A.slab(tx0, tx0 + TILE, tz0, tz0 + TILE, [-0.07, -0.07, -0.07, -0.07], -0.3, o.grout, 1, true);   // 줄눈 바탕
+    // v874: 계단 복도 — 석판을 서브셀(= 줄) 높이로 굽는다. 줄은 서브셀 행과 맞고(2막 4줄·3막 3줄), 가로로는 높이가 바뀌는 서브셀 경계에서 자른다.
+    // 옆면 밑을 한 계단 더 내려 카메라를 보는 계단 턱(+x·+z)을 덮는다. 함정 석판(base0 false)은 그룹째 올라가므로 굽지 않는다
+    const rlB = base0 && rlMode, SS = rlB ? _gSub() : 0, GX0 = rlB ? _gX0() : 0, GZ0 = rlB ? _gZ0() : 0;
+    const A = !rlB ? A0 : { slab(x0, x1, z0, z1, hc, yb, hex, k, noSide) {
+      const j = Math.max(0, Math.min(gSubH - 1, Math.floor(((z0 + z1) / 2 - GZ0) / SS)));
+      const i0 = Math.max(0, Math.floor((x0 - GX0) / SS + 1e-6)), i1 = Math.min(gSubW - 1, Math.floor((x1 - GX0) / SS - 1e-6));
+      const hs = (i) => groundH[j * gSubW + i], tt = (xx) => (xx - x0) / (x1 - x0);
+      const hz0 = (xx) => hc[0] + (hc[1] - hc[0]) * tt(xx), hz1 = (xx) => hc[3] + (hc[2] - hc[3]) * tt(xx);
+      let a = x0, i = i0;
+      while (i <= i1) {
+        const h = hs(i); let e = i; while (e < i1 && Math.abs(hs(e + 1) - h) < 1e-4) e++;
+        const b = e === i1 ? x1 : GX0 + (e + 1) * SS, a2 = a + (i > i0 ? 0.015 : 0), b2 = b - (e < i1 ? 0.015 : 0);
+        if (b2 > a2 + 0.01) A0.slab(a2, b2, z0, z1, [hz0(a2) + h, hz0(b2) + h, hz1(b2) + h, hz1(a2) + h], yb + h - RL_STEP, hex, k, noSide);
+        a = b; i = e + 1;
+      }
+    } };
+    if (base0) { if (rlB) for (let r = 0; r < gSubN; r++) A.slab(tx0, tx0 + TILE, tz0 + r * SS, tz0 + (r + 1) * SS, [-0.07, -0.07, -0.07, -0.07], -0.3, o.grout, 1, true);
+      else A.slab(tx0, tx0 + TILE, tz0, tz0 + TILE, [-0.07, -0.07, -0.07, -0.07], -0.3, o.grout, 1, true); }   // 줄눈 바탕
     for (let ri = 0; ri < o.NR; ri++) {
       const z0 = tz0 + ri * ROW, r = Math.round((z0 - W0) / ROW), bs = rowBreaks(r);
       for (let i = 0; i < bs.length - 1; i++) {
@@ -12075,7 +12270,7 @@ function buildCas2Floor(dgn, trapSet, rnd, mf, o) {
     tile(A, x, y, true);
   }
   const mat = o.mat();
-  for (const A of chunks.values()) { const m = A.mesh(mat); m.userData.isFloorTile = true; floorGroup.add(m); }
+  for (const A of chunks.values()) { const m = A.mesh(mat); m.userData.isFloorTile = true; if (rlMode) m.userData.noRelief = true; floorGroup.add(m); }   // v874: 높이를 정점에 구웠다
   // 무너지는 함정(v798): 예전엔 균열 그린 밝은 통판이라 한눈에 티가 났다 — 석판은 주변과 같은 무늬로 깔고(함께 꺼진다),
   // 테두리 상자는 줄눈 바탕 높이로 내려 어두운 줄눈이 된다
   for (const c of collapseTiles) {
@@ -12236,7 +12431,7 @@ function buildCas2Decor(dgn, trapSet, rnd) {
       else if (q < 0.55) cas2Chandelier(fg, cx + (rnd() - 0.5) * 2, cz + (rnd() - 0.5) * 2, rnd);
     }
     if (mid && rnd() < 0.4) { cas2RoomRug(fg, r, rnd); cas2Placed.push({ kind: 'rug', x: wx(r.cx), z: wz(r.cy), nx: 0, nz: 0 }); }
-    vcMerge(g, 7600 + ri); vcMerge(fg, 7700 + ri);
+    vcMerge(g, 7600 + ri); vcMerge(fg, 7700 + ri); g.userData.rlH = fg.userData.rlH = rlRoomH(r);   // v874: 방은 평평 — 방 높이로
     for (const grp of [g, fg]) grp.traverse(o => { if (o.isMesh && o.material === vcMats().glow) o.castShadow = false; });
   });
 }
@@ -12278,7 +12473,8 @@ function buildCas2Overgrowth(dgn, mf, rnd) {
     if (grid[y][x] > 0) continue;
     let adj = false; for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) if (isF(x + dx, y + dy)) { adj = true; break; }
     if (!adj) continue;
-    const cx = wx(x), cz = wz(y), m = mf(cx, cz), g = G(x, y);
+    const cx = wx(x), cz = wz(y), m = mf(cx, cz), g = G(x, y), n0 = g.children.length;
+    try {   // v874: 이 벽 칸이 늘어난 만큼(rlWallH) 아래에서 만든 것을 같이 올린다(finally)
     // 벽 윗면 이끼(위에서 보면 화면에서 가장 넓은 면이다)
     const nb = Math.round(m * 2.5 + (rnd() < 0.2 ? 1 : 0));
     for (let i = 0; i < nb; i++) blob(g, cx + (rnd() - 0.5) * TILE * 0.8, TOP + 0.02, cz + (rnd() - 0.5) * TILE * 0.8, 0.55 + rnd() * 0.6, 0.3, pk(CAS2_MOSSC));
@@ -12295,17 +12491,19 @@ function buildCas2Overgrowth(dgn, mf, rnd) {
       if (mm > 0.25) for (let i = 0; i < 3; i++) blob(g, fx + tx * (rnd() - 0.5) * TILE * 0.9, 0.1, fz + tz * (rnd() - 0.5) * TILE * 0.9, 0.35 + rnd() * 0.45 * mm, 0.55, pk(CAS2_MOSSC));   // 밑동
       if (rnd() < 0.1 + mm * 0.45) { const n = 1 + Math.floor(rnd() * (1 + mm * 2)); for (let i = 0; i < n; i++) ivy(g, fx + tx * (rnd() - 0.5) * TILE * 0.85 + nx * 0.05, TOP + 0.1, fz + tz * (rnd() - 0.5) * TILE * 0.85 + nz * 0.05, nx, nz, 1.2 + rnd() * (1.5 + mm * 3)); }
     }
+    } finally { const E = rlWallH(x, y); if (E > 0) for (let i = n0; i < g.children.length; i++) g.children[i].position.y += E; }
   }
   // 기둥: 밑동 이끼 고리 + 감아 오르는 덩굴
   for (const p of cas2PillarLog) {
-    const m = mf(p.x, p.z), g = G(Math.round(p.x / TILE + MAP_W / 2), Math.round(p.z / TILE + MAP_H / 2));
+    const m = mf(p.x, p.z), g = G(Math.round(p.x / TILE + MAP_W / 2), Math.round(p.z / TILE + MAP_H / 2)), n0 = g.children.length;
     for (let i = 0; i < Math.round(1 + m * 4); i++) { const a = rnd() * 6; blob(g, p.x + Math.cos(a) * 0.85, 0.12, p.z + Math.sin(a) * 0.85, 0.3 + rnd() * 0.3, 0.6, pk(CAS2_MOSSC)); }
     if (rnd() < 0.15 + m * 0.5) { const a0 = rnd() * 6, H = p.h * (0.5 + rnd() * 0.45);
       for (let yy = 0.3; yy < H; yy += 0.18) { const a = a0 + yy * 1.4, r = 0.66; if (rnd() < 0.8) leaf(g, p.x + Math.cos(a) * r, yy, p.z + Math.sin(a) * r, Math.cos(a), Math.sin(a)); if (rnd() < 0.5) leaf(g, p.x + Math.cos(a + 0.5) * r, yy + 0.08, p.z + Math.sin(a + 0.5) * r, Math.cos(a + 0.5), Math.sin(a + 0.5)); }
       blob(g, p.x, p.h + 0.3, p.z, 0.6, 0.35, pk(CAS2_MOSSC)); }
+    if (rlMode) { const E = groundHeightAt(p.x, p.z); for (let i = n0; i < g.children.length; i++) g.children[i].position.y += E; }   // v874: 기둥은 방 높이
   }
   // 그림자는 안 진다 — 횃불이 점광원(큐브 6면)이라 캐스터가 면마다 다시 그려져 프레임 삼각형이 두 배가 됐다(72k → 166k)
-  let k = 0; for (const g of groups.values()) for (const m of vcMerge(g, 7900 + k++)) m.castShadow = false;
+  let k = 0; for (const g of groups.values()) { for (const m of vcMerge(g, 7900 + k++)) m.castShadow = false; g.userData.noRelief = true; }   // v874: 높이는 부품에 넣었다
   icoG.dispose(); leafG.dispose();
 }
 
@@ -12320,6 +12518,7 @@ function buildCastleMesh(dgn) {
   const isF = (x, y) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && grid[y][x] > 0;
   // 함정(무너지는 바닥) 칸 집합 — 이 칸엔 원래 바닥 타일을 깔지 않는다(무너지면 진짜 구멍이 되도록).
   const trapSet = new Set(collapseTiles.map(c => c.gx + ',' + c.gy));
+  rlBuild(dgn, trapSet);   // v874: 방 층위 + 계단 복도(함정 칸은 통째로 평평하게)
   // 바닥 — v796: 석판을 한 장씩(청크 병합). 금 간 발광 틈은 v2 에서도 그대로 둔다
   let c2s = (player.floor * 2654435761) >>> 0; const c2r = () => { c2s = (c2s * 1664525 + 1013904223) >>> 0; return c2s / 4294967296; };
   const c2mf = CAS2_MOSS ? cas2MossField(player.floor * 7 + 3) : null; cas2PillarLog.length = 0;
@@ -12327,7 +12526,7 @@ function buildCastleMesh(dgn) {
   for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
     if (grid[y][x] > 0) {
       if (trapSet.has(x + ',' + y)) continue; // 함정 칸은 바닥 생략(함정 메시가 대신 깔림)
-      if (CAS2) { if (grid[y][x] === 1 && c2r() < 0.05) { const crack = new THREE.Mesh(new THREE.BoxGeometry(TILE * 0.7, 0.1, 0.12), getGlowMat(CAS.void)); crack.position.set(wxf(x), -0.02, wzf(y)); crack.rotation.y = c2r() * Math.PI; floorGroup.add(crack); } continue; }
+      if (CAS2) { if (grid[y][x] === 1 && c2r() < 0.05) { const cr = c2r(); if (rlAreaFlat(x, y)) { const crack = new THREE.Mesh(new THREE.BoxGeometry(TILE * 0.7, 0.1, 0.12), getGlowMat(CAS.void)); crack.position.set(wxf(x), -0.02, wzf(y)); crack.rotation.y = cr * Math.PI; floorGroup.add(crack); } } continue; }   // v874: 계단에 걸치는 균열은 뺀다
       const f = new THREE.Mesh(casFloorGeos[(x + y) % casFloorGeos.length], casFloorMats[(x * 2 + y) % casFloorMats.length]);
       f.position.set(wxf(x), -0.2, wzf(y)); f.receiveShadow = true; f.userData.isFloorTile = true; floorGroup.add(f);
       if (grid[y][x] === 1 && Math.random() < 0.06) {
@@ -12344,6 +12543,7 @@ function buildCastleMesh(dgn) {
     if (!adj) continue;
     const wt = makeCastleWallTile();
     wt.position.set(wxf(x), 0, wzf(y)); wt.rotation.y = (Math.floor(Math.random() * 4)) * Math.PI / 2;
+    if (rlMode) rlStretchWall(wt, x, y);   // v874: 밑동은 0 그대로 · 위로 늘린다
     if (Math.random() < 0.25) wt.children[0].material = casMatWallCoreSh;
     if (!CAS2W && Math.random() < 0.4) addCastleIvy(wt);   // v804: 새 벽에선 뺀다 — 무작위 면에 붙어 절반은 안 보이고, 나머지는 새 돌에 묻힌다(초록은 buildCas2Overgrowth 가 맡는다)
     if (!CAS2W && Math.random() < GFX.vineChance2) { const vn2 = 1 + Math.floor(Math.random() * 2); for (let vk = 0; vk < vn2; vk++) wt.add(makeVineMesh(CAS_WALL_H * 0.9)); } // 2막 늘어진 덩굴
@@ -12358,6 +12558,11 @@ function buildCastleMesh(dgn) {
     const cm = casCarpetMats[(x + y) % 3];
     const horiz = isF(x - 1, y) || isF(x + 1, y);           // 복도가 가로로 이어지면 카펫도 가로로
     const lng = TILE * 0.96, shrt = TILE * 0.6;
+    if (rlMode && !rlTileFlat(x, y)) {   // v874: 계단 칸이면 서브셀마다 잘라 계단을 따라 깐다(조각마다 제 자리 높이로 오른다)
+      rlFloorBox(cm, wxf(x), wzf(y), horiz ? lng : shrt, 0.08, horiz ? shrt : lng, 0.04, true);
+      for (const s of [-1, 1]) rlFloorBox(getLowPolyMat(CAS.carpetD), wxf(x) + (horiz ? 0 : s * TILE * 0.3), wzf(y) + (horiz ? s * TILE * 0.3 : 0), horiz ? lng : TILE * 0.08, 0.06, horiz ? TILE * 0.08 : lng, 0.045, false);
+      continue;
+    }
     const carpet = new THREE.Mesh(new THREE.BoxGeometry(horiz ? lng : shrt, 0.08, horiz ? shrt : lng), cm);
     carpet.position.set(wxf(x), 0.04, wzf(y)); carpet.receiveShadow = true; floorGroup.add(carpet);
     for (const s of [-1, 1]) {
@@ -13090,7 +13295,8 @@ function buildCor3Walls(dgn, rnd, mf, o) {
     if (grid[y][x] > 0) continue;
     let adj = false; for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) if (isF(x + dx, y + dy)) { adj = true; break; }
     if (!adj) continue;
-    const A = acc(x, y), cx = wx(x), cz = wz(y);
+    const A0 = acc(x, y), cx = wx(x), cz = wz(y), E = rlWallH(x, y);   // v874: 이 벽 칸이 늘어난 만큼 돌·갓돌·성가퀴를 같이 올린다
+    const A = E > 0 ? { box: (px, py, ...rest) => A0.box(px, py + E, ...rest) } : A0;
     // 갓돌: 윗면을 2×2 돌로(틈 0.08 — 어두운 코어가 줄눈으로 보인다). 위에서 보면 화면에서 가장 넓은 면이다
     for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) {
       const u = hash(x * 2 + i, y * 2 + j, 11), sx = HT - 0.08, gx0 = cx - HT / 2 + i * HT, gz0 = cz - HT / 2 + j * HT;
@@ -13136,7 +13342,7 @@ function buildCor3Walls(dgn, rnd, mf, o) {
           const out = 0.02 + hs2 * 0.12, hex = PAL[Math.floor(hs * 5)], k = 0.9 + hs2 * 0.18;
           put(a1, b1, yb + 0.03, ch - 0.06, 0.5, out, hex, k, (hs - 0.5) * 0.04);
           // 줄눈에서 새어 나오는 병든 빛(드물게) — 발광 종양과 같은 색
-          if (o.glow && hs2 > 0.965 && mf(fx, fz) > 0.25) cas2Part(gG(x, y), new THREE.BoxGeometry(nx ? 0.06 : Math.min(1.1, b1 - a1), 0.05, nx ? Math.min(1.1, b1 - a1) : 0.06), 0xff8a50, nx ? fx + 0.03 : (a1 + b1) / 2, yb, nx ? (a1 + b1) / 2 : fz + 0.03, 'glow', 0);
+          if (o.glow && hs2 > 0.965 && mf(fx, fz) > 0.25) cas2Part(gG(x, y), new THREE.BoxGeometry(nx ? 0.06 : Math.min(1.1, b1 - a1), 0.05, nx ? Math.min(1.1, b1 - a1) : 0.06), 0xff8a50, nx ? fx + 0.03 : (a1 + b1) / 2, yb + E, nx ? (a1 + b1) / 2 : fz + 0.03, 'glow', 0);
         }
         yb += ch; ci++;
       }
@@ -13146,7 +13352,7 @@ function buildCor3Walls(dgn, rnd, mf, o) {
         const n = 1 + Math.floor(rnd() * (1 + inf * 2.5));
         for (let i = 0; i < n; i++) {
           const ua = u0 + 0.5 + rnd() * (TILE - 1), pts = [], y0 = H - 0.1 - rnd() * 0.8;
-          for (let k = 0; k <= 5; k++) { const t = k / 5, uu = ua + Math.sin(t * 4 + i * 2.1) * 0.35, yy = Math.max(0.1, y0 * (1 - t)), off = 0.14 + (t > 0.85 ? (t - 0.85) * 4 : 0);
+          for (let k = 0; k <= 5; k++) { const t = k / 5, uu = ua + Math.sin(t * 4 + i * 2.1) * 0.35, yy = Math.max(0.1, y0 * (1 - t)) + E, off = 0.14 + (t > 0.85 ? (t - 0.85) * 4 : 0);
             pts.push(new THREE.Vector3(nx ? fx + off + 0.16 : uu, yy, nx ? uu : fz + off + 0.16)); }
           fL(x, y).push({ curve: new THREE.CatmullRomCurve3(pts), r: 0.07 + rnd() * 0.06 });
           cor3Blot(nx ? fx + 0.9 : ua, nx ? ua : fz + 0.9, 1.6);
@@ -13155,8 +13361,8 @@ function buildCor3Walls(dgn, rnd, mf, o) {
     }
   }
   const mat = cor3WallMat();
-  for (const A of chunks.values()) if (A.n) wallGroup.add(A.mesh(mat));
-  for (const [k, g] of glows) vcMerge(g, 8300 + k.length);
+  for (const A of chunks.values()) if (A.n) { const me = A.mesh(mat); me.userData.noRelief = true; wallGroup.add(me); }   // v874: 높이(E)는 정점에 구웠다
+  for (const [k, g] of glows) { vcMerge(g, 8300 + k.length); g.userData.noRelief = true; }
   // 핏줄은 산호와 같은 살 재질로(부드러운 셰이딩·피부 표식·결 텍스처) — 청크마다 튜브를 한 지오메트리로 합친다
   const vcol = [new THREE.Color(COR.coralA), new THREE.Color(COR.coralB)];
   for (const list of flesh.values()) {
@@ -13164,7 +13370,7 @@ function buildCor3Walls(dgn, rnd, mf, o) {
     list.forEach((f, i) => { const g = makeTaperedTube(f.curve, 10, f.r, 5, 0.35).toNonIndexed(), pa = g.attributes.position.array, na = g.attributes.normal.array, c = vcol[i % 2];
       for (let j = 0; j < pa.length; j += 3) { P.push(pa[j], pa[j + 1], pa[j + 2]); N.push(na[j], na[j + 1], na[j + 2]); C.push(c.r * 0.8, c.g * 0.8, c.b * 0.8); } g.dispose(); });
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
-    const me = new THREE.Mesh(g, corMatCoral); me.castShadow = false; me.receiveShadow = true; wallGroup.add(me);
+    const me = new THREE.Mesh(g, corMatCoral); me.castShadow = false; me.receiveShadow = true; me.userData.noRelief = true; wallGroup.add(me);
   }
 }
 // 소품 팔레트: 2막 소품 함수(cas2Banner·cas2Statue·cas2Chandelier)를 그대로 쓰되 CAS2P 를 잠시 3막 색으로 바꿔 부른다
@@ -13320,7 +13526,7 @@ function buildCor3Decor(dgn, rnd) {
       const cx = wx(r.cx) + (rnd() - 0.5) * TILE * 0.5, cz = wz(r.cy) + (rnd() - 0.5) * TILE * 0.5;
       cor3Pool(fg, cx, cz, rnd, 0.6); cor3Placed.push({ kind: 'pool', x: cx, z: cz, nx: 0, nz: 0 });
     }
-    vcMerge(g, 8100 + ri); vcMerge(fg, 8200 + ri);
+    vcMerge(g, 8100 + ri); vcMerge(fg, 8200 + ri); g.userData.rlH = fg.userData.rlH = rlRoomH(r);   // v874
     for (const grp of [g, fg]) grp.traverse(o => { if (o.isMesh && o.material === vcMats().glow) o.castShadow = false; });
   });
 }
@@ -13425,7 +13631,7 @@ function buildLoreInner(dgn, act, rnd) {
       if (n >= 2 + Math.floor(rnd() * 2)) break;
       const fx = wx(s.x) - s.nx * (TILE * 0.5 - face), fz = wz(s.y) - s.nz * (TILE * 0.5 - face);
       if (cas2Placed.some(q => Math.hypot(q.x - wx(s.x), q.z - wz(s.y)) < TILE * 0.9) || lorePlaced.some(q => Math.hypot(q.x - fx, q.z - fz) < 3)) continue;
-      const ux = -s.nz, uz = s.nx, ry = Math.atan2(s.nx, s.nz), tilt = (rnd() < 0.5 ? 1 : -1) * (0.35 + rnd() * 0.25), y0 = 1.5 + rnd() * 1.0, off = (rnd() - 0.5) * 2.4;
+      const ux = -s.nz, uz = s.nx, ry = Math.atan2(s.nx, s.nz), tilt = (rnd() < 0.5 ? 1 : -1) * (0.35 + rnd() * 0.25), y0 = 1.5 + rnd() * 1.0 + fxGy(wx(s.x), wz(s.y)), off = (rnd() - 0.5) * 2.4;   // v874: 방 층위
       for (let i = 0; i < 4; i++) {
         const o = off + (i - 1.5) * 0.2, L = 1.0 + rnd() * 0.5 - Math.abs(i - 1.5) * 0.15, y = y0 - Math.abs(i - 1.5) * 0.1;
         cas2Part(g, new THREE.BoxGeometry(0.065, L, 0.05), 0x100c0b, fx + ux * o, y, fz + uz * o, 'solid', 0.04).rotation.set(0, ry, tilt, 'YXZ');
@@ -13433,7 +13639,7 @@ function buildLoreInner(dgn, act, rnd) {
       }
       lorePlaced.push({ kind: 'scratch', x: fx, z: fz }); n++;
     }
-    finish(g, 8600);
+    finish(g, 8600); if (rlMode) g.userData.noRelief = true;
   }
 }
 // v848: 4막 — 불탄 모험가. 복셀 바닥은 기둥마다 단이 달라 시체가 걸치면 한쪽이 뜨거나 묻힌다 — 자리(반지름 2)를 가운데 단으로 다지고,
@@ -13524,6 +13730,7 @@ function buildCorruptMesh(dgn) {
   corTileY.clear();
   const { grid, rooms, corridorTiles } = dgn;
   wallGrid = grid;
+  rlBuild(dgn, null);   // v874: 방 층위 + 계단 복도
   cavernLightBudget = 6;
   const corridorSet = new Set(corridorTiles.map(c => c.x + ',' + c.y));
   const wxf = (gx) => (gx - MAP_W / 2) * TILE, wzf = (gy) => (gy - MAP_H / 2) * TILE;
@@ -13535,8 +13742,8 @@ function buildCorruptMesh(dgn) {
   for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
     if (grid[y][x] > 0 && COR3) {
       corTileY.set(x + ',' + y, 0);
-      if (grid[y][x] === 1 && Math.random() < 0.13) makeFloorVeins(floorGroup, wxf(x), wzf(y), 0);
-      if (grid[y][x] === 1 && Math.random() < 0.045) {
+      if (grid[y][x] === 1 && Math.random() < 0.13 && rlAreaFlat(x, y)) makeFloorVeins(floorGroup, wxf(x), wzf(y), 0);   // v874: 계단에 걸치는 핏줄·균열은 뺀다
+      if (grid[y][x] === 1 && Math.random() < 0.045 && rlAreaFlat(x, y)) {
         const crack = new THREE.Mesh(new THREE.BoxGeometry(TILE * 0.55, 0.08, 0.22), getGlowMat(COR.glow));
         crack.position.set(wxf(x), 0.05, wzf(y)); crack.rotation.y = Math.random() * Math.PI; floorGroup.add(crack);
       }
@@ -13573,6 +13780,7 @@ function buildCorruptMesh(dgn) {
     if (!adj) continue;
     const wt = makeCorruptWallTile();
     wt.position.set(wxf(x), 0, wzf(y)); wt.rotation.y = (Math.floor(Math.random() * 4)) * Math.PI / 2;
+    if (rlMode) rlStretchWall(wt, x, y);   // v874
     if (Math.random() < 0.25) wt.children[0].material = corMatWallCoreSh;
     if (Math.random() < (COR_V2 ? 0.8 : 0.5)) addWallFlesh(wt);
     wallGroup.add(wt); walls.push({ x: wxf(x), z: wzf(y), halfW: TILE / 2, halfD: TILE / 2 });
@@ -13580,7 +13788,7 @@ function buildCorruptMesh(dgn) {
   // 복도: 살이 기어간 길(카펫 대체 — 멍든 자주 지방질 띠 + 핏줄)
   for (const { x, y } of corridorTiles) {
     if (grid[y][x] !== 1) continue;
-    if (COR3) { if (Math.random() < 0.5) makeFloorVeins(floorGroup, wxf(x), wzf(y), 0); continue; }   // 살길은 바닥 번짐 텍스처가 대신한다
+    if (COR3) { if (Math.random() < 0.5 && rlAreaFlat(x, y)) makeFloorVeins(floorGroup, wxf(x), wzf(y), 0); continue; }   // 살길은 바닥 번짐 텍스처가 대신한다
     const horiz = isF(x - 1, y) || isF(x + 1, y);
     const lng = TILE * 0.96, shrt = TILE * 0.52;
     const fleshPath = new THREE.Mesh(new THREE.BoxGeometry(horiz ? lng : shrt, 0.07, horiz ? shrt : lng), [corMatBruise, corMatFleshB, corMatBruiseB][(x + y) % 3]);
@@ -16444,11 +16652,12 @@ function updateCollapseTraps(dt) {
     const outOfHole = Math.abs(player.obj.position.x - c.x) > TILE * 0.55 || Math.abs(player.obj.position.z - c.z) > TILE * 0.55;
     if (!outOfHole && (c.state === 'falling' || c.state === 'collapsed')) {
       // 구멍 안: 바닥까지 가라앉음(최대 -1.6)
-      player.obj.position.y = Math.max(-1.6, player.obj.position.y - dt * 4.5);
+      player.obj.position.y = Math.max(groundHeightAt(c.x, c.z) - 1.6, player.obj.position.y - dt * 4.5);   // v874: 층위(함정 칸은 평평)
     } else {
       // 구멍 밖으로 나가면 지면 높이로 빠르게 복귀
       player.obj.position.y += dt * 6.0;
-      if (player.obj.position.y >= 0) { player.obj.position.y = 0; player.fallingInTrap = null; }
+      const gy = groundHeightAt(player.obj.position.x, player.obj.position.z);
+      if (player.obj.position.y >= gy) { player.obj.position.y = gy; player.fallingInTrap = null; }
     }
   }
 }
@@ -16641,7 +16850,7 @@ function spawnAttackGuide(kind, x, z, yaw, dur, opts) {
     geo.rotateY(Math.PI / 2);
   }
   const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(x, 0.07, z);    // 보스 발밑(실제 균열과 동일)
+  mesh.position.set(x, 0.07 + fxGy(x, z), z);    // 보스 발밑(실제 균열과 동일)
   mesh.rotation.y = yaw;            // 방향(yaw = atan2(dirX, dirZ))
   scene.add(mesh);
   // 점멸하며 보였다 사라짐(텔레그래프 길이에 맞춤). guideBlink 플래그로 updateParryRings가 깜빡임 처리.
@@ -17412,7 +17621,7 @@ function spawnShockwave(x, z, radius) {
   const ringGeo = new THREE.RingGeometry(0.5, 1.0, 32);
   const ringMat = new THREE.MeshBasicMaterial({ color: 0xff7733, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false, fog: false });
   const ring = new THREE.Mesh(ringGeo, ringMat);
-  ring.position.set(x, 0.15, z);
+  ring.position.set(x, 0.15 + fxGy(x, z), z);
   ring.rotation.x = -Math.PI / 2; // 바닥에 눕힘
   scene.add(ring);
   // 목표 반경까지 커지도록 grow 계산(수명 동안 radius에 도달)
@@ -17426,7 +17635,7 @@ function spawnBlinkFx(x, z) {
   // 세로 청록 빛기둥(가늘고 길게 위로) — 수평으로 퍼지는 폭발과 대비
   const pillarMat = new THREE.MeshBasicMaterial({ color: 0x9ffff0, transparent: true, opacity: 0.55, side: THREE.DoubleSide, fog: false, depthWrite: false });
   const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, 3.2, 10, 1, true), pillarMat);
-  pillar.position.set(x, 1.6, z); scene.add(pillar);
+  pillar.position.set(x, 1.6 + fxGy(x, z), z); scene.add(pillar);
   parryRings.push({ mesh: pillar, mat: pillarMat, life: 0.55, delay: 0, scale: 1, grow: 0, swirl: true });
   // 위로 피어오르는 안개 입자(소용돌이치듯 모임)
   for (let k = 0; k < 12; k++) {
@@ -25402,7 +25611,7 @@ function placeInteractables(dgn) {
       const basin = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, 0.5, 10), getLowPolyMat(0x556677, true)); basin.position.y = 0.25; basin.receiveShadow = true; g.add(basin);
       const water = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.1, 12), new THREE.MeshBasicMaterial({ color: 0x55ccff, transparent: true, opacity: 0.8, fog: false })); water.position.y = 0.5; g.add(g._water = water);
       const glow = new THREE.PointLight(0x55ccff, 1.6, 6); glow.position.y = 1.2; g.add(glow);
-      g.position.set(fx, 0, fz); scene.add(g); fountainMesh = g; fountainMesh._used = false; g._dgn = dungeon;
+      g.position.set(fx, 0, fz); if (rlMode) snapToGround(g); scene.add(g); fountainMesh = g;   // v874: 1막은 예전 그대로(복셀 위 샘은 v873 과 같게) fountainMesh._used = false; g._dgn = dungeon;
     }
   }
 }
@@ -25439,7 +25648,7 @@ function placeTrapRoom(dgn) {
   const lid = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.28, 0.75), getLowPolyMat(0x6b4420)); lid.position.y = 0.8; lid.castShadow = true; g.add(lid);
   const lock = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.25, 0.12), getLowPolyMat(0xf6e05e, true)); lock.position.set(0, 0.5, 0.38); lock.name = 'trapLock'; g.add(lock);
   const glow = new THREE.PointLight(0xffcc55, 1.4, 5); glow.position.y = 1.1; g.add(glow);
-  g.position.set(cx, 0, cz); scene.add(g); trapChestMesh = g; trapChestMesh._opened = false; g._dgn = dungeon;
+  g.position.set(cx, 0, cz); if (rlMode) snapToGround(g); scene.add(g); trapChestMesh = g; trapChestMesh._opened = false; g._dgn = dungeon;
 }
 // 함정 방 입구를 막는 반투명 마법 장벽 생성(방 둘레의 벽 통로를 막음)
 function activateTrapBarriers() {
@@ -25453,7 +25662,7 @@ function activateTrapBarriers() {
   const wx = x1 - x0, wz = z1 - z0;
   const mkBar = (px, pz, sx, sz) => {
     const b = new THREE.Mesh(new THREE.BoxGeometry(sx, h, sz), barMat);
-    b.position.set(px, h / 2, pz); scene.add(b); trapBarriers.push(b);
+    b.position.set(px, h / 2 + rlRoomH(r), pz); scene.add(b); trapBarriers.push(b);   // v874: 방 층위
   };
   mkBar(cx, z0, wx, wThick); // 북
   mkBar(cx, z1, wx, wThick); // 남
@@ -25711,13 +25920,13 @@ function placeSpikeTraps(dgn) {
     // 한 칸에 가시(작은 원뿔) 여러 개를 격자로 배치
     for (let sx = -1; sx <= 1; sx++) for (let sz = -1; sz <= 1; sz++) {
       const cone = new THREE.Mesh(new THREE.ConeGeometry(0.2, 1.2, 4), spikeMat);
-      cone.position.set(sx * 1.3, 0, sz * 1.3); cone.castShadow = true;
+      cone.position.set(sx * 1.3, rlMode ? groundHeightAt(wx + sx * 1.3, wz + sz * 1.3) - groundHeightAt(wx, wz) : 0, sz * 1.3); cone.castShadow = true;   // v874: 계단 칸이면 가시마다 제 자리 높이
       group.add(cone);
     }
     group.position.set(wx, -1.6, wz); // 평소엔 바닥 아래로 완전히 숨김
     scene.add(group);
     // 모든 가시가 같은 타이밍에 솟고 숨음(숨은 텀에 한꺼번에 건너기 — 명확하게 피할 수 있음)
-    spikeTraps.push({ x: wx, z: wz, group, phase: 0, gx: c.x, gy: c.y });
+    spikeTraps.push({ x: wx, z: wz, group, phase: 0, gx: c.x, gy: c.y, gy0: rlMode ? groundHeightAt(wx, wz) : 0 });
   });
 }
 // 가시 갱신: 빠르게 솟았다가 같은 속도로 내려가 완전히 숨고, 잠시 텀을 둔 뒤 다시 솟음.
@@ -25739,7 +25948,7 @@ function updateSpikeTraps(dt) {
     else if (p < RISE + HOLD) { h = 1; }                                     // 정점 유지
     else if (p < RISE + HOLD + FALL) { h = 1 - (p - RISE - HOLD) / FALL; }   // 같은 속도로 하강
     else { h = 0; }                                                          // 숨은 채 대기(텀)
-    s.group.position.y = DOWN_Y + (UP_Y - DOWN_Y) * h;
+    s.group.position.y = DOWN_Y + (UP_Y - DOWN_Y) * h + (s.gy0 || 0);   // v874: 계단 복도 층위(칸 가운데 높이 — 가시마다 차이는 위에서 넣었다)
     s.up = h > 0.5; // 충분히 솟은 동안만 피해 판정
     // 플레이어가 이 칸 위에 있고 가시가 솟아 있으면 피해(환경 피해 — 방어/패링 불가)
     if (s.up && spikeHurtCd <= 0 && player.alive && player.hurtCooldown <= 0) {
@@ -26939,7 +27148,7 @@ function showAimRing(x, z, radius) {
     skillAimRing = { grp: g, r0: radius };
   }
   { const sc = radius / skillAimRing.r0; skillAimRing.grp.scale.set(sc, 1, sc); }   // v869: 스킬마다 반경이 다르다(메테오)
-  skillAimRing.grp.position.set(x, 0, z);
+  skillAimRing.grp.position.set(x, fxGy(x, z), z);
   skillAimRing.grp.visible = true;
 }
 function hideAimRing() { if (skillAimRing) skillAimRing.grp.visible = false; }
@@ -28687,7 +28896,7 @@ function update(dt) {
         // 안쪽 밝은 청백 링(조금 늦게)
         const ring2Mat = new THREE.MeshBasicMaterial({ color: 0xd4fff2, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false, fog: false });
         const ring2 = new THREE.Mesh(new THREE.RingGeometry(0.4, 0.8, 28), ring2Mat);
-        ring2.position.set(ex, 0.18, ez); ring2.rotation.x = -Math.PI / 2; scene.add(ring2);
+        ring2.position.set(ex, 0.18 + fxGy(ex, ez), ez); ring2.rotation.x = -Math.PI / 2; scene.add(ring2);
         parryRings.push({ mesh: ring2, mat: ring2Mat, life: 0.8, delay: 0.08, scale: 1, grow: R * 3.5 });
         // 청록 섬광(빛)
         spawnEffectLight(ex, 1.0, ez, 0x3fd4c4, 5, R * 2.5, 0.7); // 전투 섬광(풀)
@@ -30255,7 +30464,7 @@ function update(dt) {
           spawnShockwave(e.obj.position.x, e.obj.position.z, TILE * 2.6);
           const ring2Mat = new THREE.MeshBasicMaterial({ color: 0xffaa44, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false, fog: false });
           const ring2 = new THREE.Mesh(new THREE.RingGeometry(0.5, 1.0, 32), ring2Mat);
-          ring2.position.set(e.obj.position.x, 0.16, e.obj.position.z); ring2.rotation.x = -Math.PI / 2; scene.add(ring2);
+          ring2.position.set(e.obj.position.x, 0.16 + fxGy(e.obj.position.x, e.obj.position.z), e.obj.position.z); ring2.rotation.x = -Math.PI / 2; scene.add(ring2);
           parryRings.push({ mesh: ring2, mat: ring2Mat, life: 1.0, delay: 0.12, scale: 1, grow: TILE * 1.8 * 5.0 });
           hitStop = 0.18;
         }
