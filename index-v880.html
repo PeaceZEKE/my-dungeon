@@ -26418,7 +26418,7 @@ const MBOSS_ON = MERC_ON && !/[?&]mboss=0/.test(location.search);
 const AGGRO_STICK = 0.8;       // 목표를 바꾸려면 다른 쪽이 이만큼 더 가까워야 한다(둘 사이 거리가 비슷할 때 깜빡이지 않게)
 const AGGRO_THREAT = 1.5;      // 용병에게 맞은 몹은 용병까지 거리를 이만큼 짧게 본다
 const AGGRO_THREAT_T = 3.0;    // 그 효과가 가는 시간
-const AGGRO_CAP = 2;           // 용병을 동시에 노리는 몹은 이만큼까지(나머지는 플레이어) — 3막 포자 벌레 떼가 한꺼번에 몰려 회복할 틈 없이 쓰러뜨렸다
+const AGGRO_CAP = 1;           // 용병을 동시에 노리는 몹은 이만큼까지(나머지는 플레이어) — 상한이 없으면 3막 포자 벌레 떼가 한꺼번에 몰려 회복할 틈 없이 쓰러뜨렸고, 2 여도 4막 사냥개 떼에 10층당 1회 넘게 쓰러졌다
 const MERC_RETREAT_LO = 0.55, MERC_RETREAT_HI = 0.85;   // 체력이 55% 아래면 물러나 플레이어 뒤로(몹은 곧바로 플레이어에게 돌아간다) · 85% 넘으면 다시 싸운다.
                                                         // 30% 로 했더니 4막 몹 한 방이 상한(25%)이라 물러나기 시작할 때 이미 한 대 거리였다
 const MERC_RETREAT_REGEN = 0.03;   // 물러나 있는 동안 1.5초 안 맞으면 초당 최대 체력의 3% — 긴 싸움에도 다시 돌아온다(평소 회복은 싸움이 끝나야 돈다)
@@ -26559,7 +26559,7 @@ function mercNearSeg(sx, sz, ux, uz, len, w) {
 function aggroPos(e) { return (e && e._agM && mercLive()) ? merc.obj.position : player.obj.position; }   // 이 몹이 노리는 자리
 // 0.4초마다 다시 고른다. 휘두르는 중·특수 동작 중엔 안 바꾼다(예고한 공격이 엉뚱한 쪽으로 꺾이지 않게)
 function aggroTick(e, dt) {
-  if (!AGGRO_ON || e.isBoss || AGGRO_EXCL[e.type] || !mercLive() || merc.retreat) { if (e._agM) e._agM = false; return false; }
+  if (!AGGRO_ON || e.isBoss || e.isRanged || AGGRO_EXCL[e.type] || !mercLive() || merc.retreat) { if (e._agM) e._agM = false; return false; }   // 원거리는 계속 플레이어(화염술사 장판이 용병을 따라다녀 4막 장판 피해가 4~8배였다)
   if (e._agThr > 0) e._agThr -= dt;
   e._agT = (e._agT || 0) - dt;
   const busy = e.swingTimer > 0 || e.castPending || e.lgState || e.fgSlam || (e.hhState && e.hhState !== 'none') || (e.orcLeap && e.orcLeap !== 'none') || e.lungeState === 'active';
@@ -26767,9 +26767,13 @@ function mercUpdate(dt) {
       }
     } else {
       // 따라가기: 플레이어 뒤 옆(1.6 뒤 · 0.9 옆). 가까우면 서 있고, 멀어지면 다시 붙는다(되풀이 흔들림 방지 문턱)
-      const bx = Math.sin(player.yaw), bz = Math.cos(player.yaw);
-      let fx = P.x + bx * 1.6 + bz * 0.9 * merc.side, fz = P.z + bz * 1.6 - bx * 0.9 * merc.side;
-      if (!mercFree(fx, fz)) { merc.side = -merc.side; fx = P.x + bx * 1.6 + bz * 0.9 * merc.side; fz = P.z + bz * 1.6 - bx * 0.9 * merc.side; if (!mercFree(fx, fz)) { fx = P.x; fz = P.z; } }
+      let bx = Math.sin(player.yaw), bz = Math.cos(player.yaw), bk = 1.6;
+      if (merc.retreat) {   // v880 물러나기: 플레이어 등 뒤가 아니라 둘레 적 무리의 반대편으로 3.2(등 뒤에도 적이 있으면 휘말렸다)
+        let sx = 0, sz = 0, n = 0; for (const e of enemies) if (!e.isDead && e.awake !== false && Math.hypot(e.obj.position.x - P.x, e.obj.position.z - P.z) < 9) { sx += e.obj.position.x; sz += e.obj.position.z; n++; }
+        if (n) { const ax = P.x - sx / n, az = P.z - sz / n, al = Math.hypot(ax, az); if (al > 0.3) { bx = ax / al; bz = az / al; bk = 3.2; } }
+      }
+      let fx = P.x + bx * bk + bz * 0.9 * merc.side, fz = P.z + bz * bk - bx * 0.9 * merc.side;
+      if (!mercFree(fx, fz)) { merc.side = -merc.side; fx = P.x + bx * bk + bz * 0.9 * merc.side; fz = P.z + bz * bk - bx * 0.9 * merc.side; if (!mercFree(fx, fz)) { fx = P.x; fz = P.z; } }
       const df = Math.hypot(fx - M.x, fz - M.z);
       if (df > (merc.moving ? 0.5 : 1.6) && !(fx === P.x && dP < 2.0) && !(merc.hold > 0 && dP < 4)) { gx = fx; gz = fz; stop = 0.4; }
     }
