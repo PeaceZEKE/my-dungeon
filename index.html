@@ -4519,7 +4519,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v882'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v883'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -26641,6 +26641,10 @@ const MERC_TYPES = {
     hpK: 1.2, armor: 0.65, front: 0.3, frontArc: Math.PI * 70 / 180, reach: 1.0, cap: 3, retreat: [0.5, 0.85], flank: false, spacing: false, dodgeProj: true, bossAggro: false,
     cutK: 0.9, bashK: 0.8, bashStun: 0.5, taunt: { cd: 12, r: TILE * 2, t: 4 } },
 };
+// v883 방패병 다듬기(?shield2=0 이면 v882 값): 막아 세우기(brace) — 나를 노린 몹이 휘두르기 직전(0.6초 안)이거나 사냥개가 나를 보고 웅크리면
+// 공격하던 것보다 먼저 그쪽으로 방패를 돌린다(v882 는 늘 목표만 봐서 도발로 둘러싼 몹의 옆·뒤 타격이 그대로 들어왔다) · 체력 1.2 → 1.35 배 · 한 방 상한 20% → 15%
+const SHIELD2_ON = MSHIELD_ON && !/[?&]shield2=0/.test(location.search);
+if (SHIELD2_ON) Object.assign(MERC_TYPES.shield, { hpK: 1.35, hitCap: 0.15, brace: true });
 const MERC_ORDER = ['spear', 'shield'];
 function mercT() { return MERC_TYPES[merc.type] || MERC_TYPES.spear; }
 function mercUnlocked(id) {
@@ -26783,7 +26787,7 @@ function mercHurt(amount, src, hazard, from) {
       if (dl < 0.05 || (dx * -Math.sin(merc.yaw) + dz * -Math.cos(merc.yaw)) / dl >= Math.cos(T.frontArc)) { arm = T.front; blocked = true; } }
   }
   let a = Math.max(1, Math.floor(amount * arm * (MBOSS_ON && src && src.isBoss ? MERC_BOSS_DMG_K : 1)));
-  if (player.floor > ACT_LEN) a = Math.min(a, Math.ceil(merc.hpMax * (AGGRO_ON ? MERC_HIT_CAP_AGGRO : MERC_HIT_CAP)));
+  if (player.floor > ACT_LEN) a = Math.min(a, Math.ceil(merc.hpMax * (T.hitCap || (AGGRO_ON ? MERC_HIT_CAP_AGGRO : MERC_HIT_CAP))));
   merc.hp -= a; merc.inv = hazard ? 0.15 : 0.3; merc.calm = 0; merc.hurtAt = merc.t;
   const M = merc.obj.position;
   dmgNumAdd(M.x, M.y + 1.75, M.z, '-' + a, 'mhurt');
@@ -26891,6 +26895,19 @@ function mercDanger() {
     }
   }
   return zc;
+}
+// v883 방패병 막아 세우기: 나를 노리는 몹 중 가장 먼저 닿을 공격(휘두르기 0.6초 안 · 사냥개 웅크림·돌진)이 오는 자리
+function mercBraceFrom() {
+  const M = merc.obj.position; let best = null, bt = 9;
+  for (const e of enemies) {
+    if (e.isDead || !e.obj || !e._agM) continue;
+    const ex = e.obj.position.x, ez = e.obj.position.z, d = Math.hypot(ex - M.x, ez - M.z);
+    let t = 9;
+    if (!e.isRanged && e.hitPending && e.swingTimer > 0 && e.swingTimer < 0.6 && d < (e.radius || 0.5) + merc.radius + 2.5) t = e.swingTimer;
+    else if ((e.hhState === 'crouch' || e.hhState === 'dash') && d < 9) t = e.hhState === 'dash' ? 0 : 0.3;
+    if (t < bt) { bt = t; best = { x: ex, z: ez }; }
+  }
+  return best;
 }
 function mercEscapeDir(cx, cz) {
   const M = merc.obj.position, d = Math.hypot(M.x - cx, M.z - cz) || 1, ax = (M.x - cx) / d, az = (M.z - cz) / d;
@@ -27099,10 +27116,12 @@ function mercUpdate(dt) {
   // 바라보기: 목표 · 아니면 가는 쪽
   if (faceX === null && (mvx || mvz) && !dz0) { faceX = mvx; faceZ = mvz; }
   if (dz0 && tgt) { faceX = tgt.obj.position.x - M.x; faceZ = tgt.obj.position.z - M.z; }
+  const br = mercT().brace ? mercBraceFrom() : null;   // v883 방패를 들이댈 쪽
+  if (br) { faceX = br.x - M.x; faceZ = br.z - M.z; }
   if (faceX !== null && (faceX || faceZ)) {
     const want = Math.atan2(faceX, faceZ) + Math.PI;   // 정면 -z
     let da = want - merc.yaw; da = Math.atan2(Math.sin(da), Math.cos(da));
-    merc.yaw += da * Math.min(1, dt * (merc.atkT >= 0 ? 8 : 12));
+    merc.yaw += da * Math.min(1, dt * (br ? 16 : merc.atkT >= 0 ? 8 : 12));
   }
   merc.obj.rotation.y = merc.yaw;
   // 공격
