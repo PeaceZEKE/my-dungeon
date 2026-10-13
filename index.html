@@ -90,6 +90,7 @@
   #dmgNums .dn.skill { color:#8fe3ff; } /* v824: 스킬·반사·폭발 피해 */
   #dmgNums .dn.merc { color:#c8e89a; } /* v879: 용병이 넣은 피해 */
   #dmgNums .dn.mhurt { color:#ff9a6a; font-size:16px; } /* v879: 용병이 받은 피해 */
+  #dmgNums .dn.mheal { color:#ffd86a; font-size:19px; } /* v885: 수도사 치유 */
   #mercBar { position:fixed; left:0; top:0; z-index:6; width:34px; height:6px; background:#070a14; border:1px solid rgba(243,234,210,0.55); pointer-events:none; display:none; image-rendering:pixelated; }
   #mercBar i { display:block; width:100%; height:100%; background:#9ad46a; }
   /* v857 콤보: 화면 오른쪽 가운데. 숫자는 픽셀 글꼴, 글씨는 Cinzel. 색은 콤보가 쌓일수록 흰 → 금 → 주황 → 빨강 */
@@ -4519,7 +4520,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v884'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v885'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -24328,6 +24329,176 @@ function buildXbowBody(grp, bodyGrp, headGrp, limbs) {
 }
 
 // ============================================================
+//  수도사(용병 네 번째 종류 · v885) — 플레이어가 위험하면 지팡이를 높이 들어 체력을 채워 주고, 곁에 있으면 공격력을 올려 주는 지원형.
+//  빡빡 민 머리(위에서 둥근 살색) · 주황 승복(한쪽 어깨를 감싼 붉은 가사) · 목에 금빛 염주 · 짚신 · 끝에 금빛 구슬이 든 고리를 단 긴 지팡이.
+//  아군 표시는 지팡이 구슬의 금빛(위에서 늘 보인다 — 창잡이 붉은 깃털 · 방패병 푸른 갈기 · 석궁수 초록 두건과 갈린다).
+//  리그·자세 손잡이는 다른 용병과 같다(_mcUpdate·_mcAttack('staff'|'heal')·MC_T). 정면 -z. 키 약 1.55.
+// ============================================================
+function buildMonkBody(grp, bodyGrp, headGrp, limbs) {
+  let _s = 0x3c71a9;
+  const rr = () => { _s = (_s * 1664525 + 1013904223) >>> 0; return _s / 4294967296; };
+  const jit = (geo, a) => {   // 같은 좌표 같은 오프셋(v754)
+    const p = geo.attributes.position, seen = new Map();
+    for (let i = 0; i < p.count; i++) {
+      const k = Math.round(p.getX(i) * 1e4) + ',' + Math.round(p.getY(i) * 1e4) + ',' + Math.round(p.getZ(i) * 1e4);
+      let o = seen.get(k); if (!o) { o = [(rr() - 0.5) * 2 * a, (rr() - 0.5) * 2 * a, (rr() - 0.5) * 2 * a]; seen.set(k, o); }
+      p.setXYZ(i, p.getX(i) + o[0], p.getY(i) + o[1], p.getZ(i) + o[2]);
+    }
+    p.needsUpdate = true; geo.computeVertexNormals(); return geo;
+  };
+  const sh = (o) => { o.castShadow = false; o.receiveShadow = true; return o; };
+  const ico = (r, mat, d) => sh(new THREE.Mesh(new THREE.IcosahedronGeometry(r, d === undefined ? 1 : d), mat));
+  const UP = new THREE.Vector3(0, 1, 0);
+  const seg = (parent, p, q, r0, r1, mat, sides) => {
+    const d = new THREE.Vector3(q[0] - p[0], q[1] - p[1], q[2] - p[2]), len = d.length();
+    const g = new THREE.CylinderGeometry(r1, r0, len, sides || 6); g.translate(0, len / 2, 0);
+    const m = sh(new THREE.Mesh(g, mat)); m.position.set(p[0], p[1], p[2]);
+    m.quaternion.setFromUnitVectors(UP, d.normalize()); parent.add(m); return m;
+  };
+  const box = (parent, w, h, d, mat, x, y, z) => { const m = sh(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat)); m.position.set(x, y, z); parent.add(m); return m; };
+
+  // ---------- 팔레트(다른 용병과 같은 조명 거리 — 밝은 색은 클리핑되므로 0x60~0x9a 대에서) ----------
+  const robe = getLowPolyMat(0x9a5a1e), robeDk = getLowPolyMat(0x6a3a12), robeLt = getLowPolyMat(0xb0702a);
+  const kasaya = getLowPolyMat(0x7a2418), kasayaDk = getLowPolyMat(0x4e140e), cream = getLowPolyMat(0x8a8068);
+  const skin = getLowPolyMat(0x8a6a52), skinDk = getLowPolyMat(0x6e523e), shade = getLowPolyMat(0x15120f);
+  const wood = getLowPolyMat(0x5a3f26), woodDk = getLowPolyMat(0x3a2818), straw = getLowPolyMat(0x7a6a40), bead = getLowPolyMat(0x4a2a18);
+  const gold = getLowPolyMat(0xa8842e, true);
+  const hardShared = getLowPolyMat(0xffffff); hardShared.vertexColors = true;
+  const metalShared = getLowPolyMat(0xffffff, true); metalShared.vertexColors = true;
+  [robe, robeDk, robeLt, kasaya, kasayaDk, cream, skin, skinDk, shade, wood, woodDk, straw, bead].forEach(m => { m.userData.mergeInto = hardShared; });
+  [gold].forEach(m => { m.userData.mergeInto = metalShared; });
+  // 지팡이 구슬(발광 — 치유할 때 부풀고 밝아진다). 병합에서 뺀다
+  const orbMat = new THREE.MeshStandardMaterial({ color: 0x6a4a10, emissive: 0xffc860, emissiveIntensity: 1.6, roughness: 0.4, flatShading: true });
+  orbMat._glowMat = true;
+
+  grp.add(bodyGrp);
+  const upper = new THREE.Group(); bodyGrp.add(upper);
+
+  // ---------- 다리: 헐렁한 바지 + 감은 각반 + 짚신 ----------
+  const mkLeg = (sg) => {
+    const g = new THREE.Group(); g.position.set(sg * 0.13, 0.55, 0); bodyGrp.add(g);
+    seg(g, [0, 0.02, 0], [0, -0.3, 0], 0.11, 0.1, cream, 7);
+    seg(g, [0, -0.28, 0], [0, -0.48, 0], 0.085, 0.08, robeDk, 6);   // 각반
+    box(g, 0.15, 0.05, 0.26, straw, 0, -0.52, -0.04);                 // 짚신
+    box(g, 0.1, 0.06, 0.1, skinDk, 0, -0.48, -0.08);                  // 발등
+    return g;
+  };
+  const legR = mkLeg(1), legL = mkLeg(-1);
+
+  // ---------- 몸통: 주황 승복(발목 위까지 내려오는 치마) · 한쪽 어깨를 감싼 붉은 가사 · 새끼줄 허리띠 ----------
+  const skirt = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.29, 0.38, 0.5, 9), robe)); skirt.position.y = 0.42; jit(skirt.geometry, 0.012); upper.add(skirt);
+  [-0.16, 0.0, 0.16].forEach(x => box(upper, 0.035, 0.46, 0.05, robeDk, x, 0.42, -0.31 - Math.abs(x) * 0.15));   // 앞 주름
+  const torso = box(upper, 0.56, 0.48, 0.38, robe, 0, 0.88, 0.0); jit(torso.geometry, 0.008);
+  box(upper, 0.2, 0.3, 0.04, robeLt, -0.04, 0.95, -0.2).rotation.z = 0.35;   // 여민 깃
+  const belt = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.31, 0.07, 9), cream)); belt.position.y = 0.66; upper.add(belt);
+  box(upper, 0.05, 0.22, 0.04, cream, 0.12, 0.54, -0.31); box(upper, 0.05, 0.18, 0.04, cream, 0.18, 0.56, -0.3);   // 늘어진 매듭
+  // 가사: 왼어깨에서 오른 옆구리로 비스듬히(앞·뒤 띠) + 왼어깨 덮개
+  { const kf = box(upper, 0.16, 0.66, 0.05, kasaya, -0.02, 0.88, -0.2); kf.rotation.z = -0.62;
+    const kb = box(upper, 0.16, 0.66, 0.05, kasaya, -0.02, 0.88, 0.2); kb.rotation.z = -0.62;
+    const ks = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 0.14, 8), kasaya)); ks.position.set(-0.26, 1.08, 0); upper.add(ks);
+    box(upper, 0.03, 0.62, 0.055, kasayaDk, 0.03, 0.86, -0.205).rotation.z = -0.62; }
+  // ---------- 금빛 염주(목둘레 — 위에서 보이는 금빛 고리) ----------
+  for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2, b = ico(0.04, k % 4 === 0 ? gold : bead, 0); b.position.set(Math.sin(a) * 0.2, 1.13 - Math.max(0, -Math.cos(a)) * 0.12, Math.cos(a) * 0.17); upper.add(b); }
+  { const pd = ico(0.055, gold, 0); pd.position.set(0, 0.98, -0.22); upper.add(pd); }
+
+  // ---------- 머리: 빡빡 민 머리 · 굵은 눈썹 · 이마의 금빛 점 ----------
+  headGrp.position.set(0, 1.3, -0.02); upper.add(headGrp); limbs.head = headGrp;
+  const face = ico(0.18, skin); face.scale.set(1, 1.05, 1.02); face.position.set(0, 0.04, -0.01); headGrp.add(face);
+  const crown = ico(0.165, skinDk); crown.scale.set(1, 0.6, 1); crown.position.set(0, 0.1, 0.02); headGrp.add(crown);   // 정수리(한 단 어둡게 — 위에서 머리 윤곽)
+  box(headGrp, 0.07, 0.025, 0.03, shade, -0.065, 0.07, -0.17); box(headGrp, 0.07, 0.025, 0.03, shade, 0.065, 0.07, -0.17);   // 눈썹
+  box(headGrp, 0.05, 0.03, 0.03, shade, -0.065, 0.035, -0.175); box(headGrp, 0.05, 0.03, 0.03, shade, 0.065, 0.035, -0.175); // 눈
+  { const dot = ico(0.022, gold, 0); dot.position.set(0, 0.12, -0.17); headGrp.add(dot); }
+  [-1, 1].forEach(sg => { const ear = ico(0.045, skin, 0); ear.position.set(sg * 0.18, 0.04, 0.0); headGrp.add(ear); });
+
+  // ---------- 팔: 넓은 소매 + 맨손 ----------
+  const ARM_L = 0.46;
+  const mkArm = (sg) => {
+    const a = new THREE.Group(); a.position.set(sg * 0.36, 1.0, 0.0); upper.add(a);
+    seg(a, [0, 0.02, 0], [0, -0.3, 0], 0.085, 0.12, sg > 0 ? robe : kasaya, 7);   // 소매(끝이 넓다)
+    seg(a, [0, -0.3, 0], [0, -0.4, 0], 0.06, 0.055, skin, 6);
+    const hand = ico(0.065, skin, 0); hand.position.set(0, -ARM_L, -0.01); a.add(hand);
+    return a;
+  };
+  const armR = mkArm(1), armL = mkArm(-1);
+
+  // ---------- 지팡이(오른손이 쥔 자리를 원점 · 지팡이 축 = 로컬 +y) ----------
+  const stG = new THREE.Group(); upper.add(stG);
+  const orbG = new THREE.Group(); orbG.position.set(0, 1.08, 0); stG.add(orbG);
+  { seg(stG, [0, -0.56, 0], [0, 0.92, 0], 0.03, 0.026, wood, 6);
+    [-0.2, 0.05, 0.6].forEach(y => { const w = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.05, 6), woodDk)); w.position.y = y; stG.add(w); });   // 감은 끈
+    const cap = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.06, 6), gold)); cap.position.y = -0.56; stG.add(cap);
+    // 꼭대기 고리(금) — 구슬을 감싼다
+    const ring = sh(new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.022, 4, 10), gold)); ring.position.y = 1.08; stG.add(ring);
+    [-1, 1].forEach(sg => { const r2 = sh(new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.012, 3, 6), gold)); r2.position.set(sg * 0.13, 1.0, 0); stG.add(r2); });   // 쇠고리 장식
+    seg(stG, [0, 0.9, 0], [0, 0.96, 0], 0.03, 0.04, gold, 6); }
+  const orb = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(0.095, 0), orbMat)); orbG.add(orb);
+
+  // ---------- 드로우콜 병합(움직이는 그룹은 따로) ----------
+  c3MergeStatic(stG, [orbG]);
+  c3MergeStatic(armR); c3MergeStatic(armL);
+  c3MergeStatic(legR); c3MergeStatic(legL);
+  c3MergeStatic(headGrp);
+  c3MergeStatic(upper, [headGrp, armR, armL, stG]);
+
+  limbs.armR = armR; limbs.armL = armL; limbs.legR = legR; limbs.legL = legL; limbs.bodyGrp = bodyGrp; limbs.upper = upper; limbs.staff = stG;
+
+  // ---------- 자세 ----------
+  // 시간표(초): 지팡이 치기 — 머리 위로 들어 0.28 에 내리친다 · 치유 — 0.5초 동안 지팡이를 높이 세워 구슬이 차오르고 0.5 에 터진다. 게임 AI 가 같은 값으로 효과를 낸다
+  const MC_T = { staff: { hit: 0.28, end: 0.62 }, heal: { hit: 0.5, end: 0.95 } };
+  limbs.MC_T = MC_T;
+  // rax/lax 앞으로 듦 · raz/laz 옆으로 · ray/lay 비틂 · 지팡이 srx(앞뒤로 기울임 — 음수가 꼭대기 앞) srz(좌우) · 지팡이 자리 = 오른손 + 오프셋
+  const P_IDLE = { rax: 0.12, raz: 0.16, ray: 0, lax: 0.08, laz: -0.12, lay: 0, srx: 0.05, srz: 0.05, sox: 0.0, soy: 0.0, soz: 0.0 };
+  const P_READY = { rax: 0.85, raz: 0.06, ray: -0.4, lax: 0.95, laz: -0.42, lay: 0.6, srx: -0.55, srz: 0.95, sox: -0.02, soy: 0.0, soz: 0.0 };
+  let cb = 0, cbT = 0, atk = null, atkT = 0, dn = 0, dnT = 0, wph = 0, glow = 0;
+  const lerp = (a, b, k) => a + (b - a) * k;
+  const ease = (k) => k * k * (3 - 2 * k);
+  limbs._mcCombat = function (on) { cbT = on ? 1 : 0; };
+  limbs._mcAttack = function (kind) { atk = kind; atkT = 0; if (kind !== 'heal') cbT = 1; };
+  limbs._mcBusy = function () { return !!atk; };
+  limbs._mcDown = function (on) { dnT = on ? 1 : 0; if (on) atk = null; };
+  limbs._mcReset = function () { cb = cbT; dn = dnT; atk = null; };
+  const _e = new THREE.Euler(), _v = new THREE.Vector3(), _o = new THREE.Vector3(), P = {};
+  const handAt = (arm, ax, ay, az) => { _e.set(ax, ay, az); _v.set(0, -ARM_L, -0.01).applyEuler(_e); return { x: arm.position.x + _v.x, y: arm.position.y + _v.y, z: arm.position.z + _v.z }; };
+  // 구슬 자리(grp 로컬) — 치유 빛이 여기서 나간다
+  limbs._mcOrb = function () { _o.set(0, 0, 0); orbG.updateMatrix(); _o.applyMatrix4(orbG.matrix); stG.updateMatrix(); _o.applyMatrix4(stG.matrix); upper.updateMatrix(); _o.applyMatrix4(upper.matrix); bodyGrp.updateMatrix(); _o.applyMatrix4(bodyGrp.matrix); return _o; };
+  limbs._mcUpdate = function (t, dt, move) {
+    dt = dt || 0.016; move = Math.max(0, Math.min(1.4, move || 0));
+    cb += (cbT - cb) * Math.min(1, dt * 7); dn += (dnT - dn) * Math.min(1, dt * 5);
+    if (atk) { atkT += dt; if (atkT >= MC_T[atk].end) atk = null; }
+    wph += dt * (2.2 + move * 8.0);
+    const sw = Math.sin(wph) * Math.min(1, move);
+    legR.rotation.x = sw * 0.55 * (1 - dn) - 1.15 * dn; legL.rotation.x = -sw * 0.55 * (1 - dn) + 0.35 * dn;
+    bodyGrp.position.y = Math.abs(Math.sin(wph)) * 0.03 * Math.min(1, move) * (1 - dn) - 0.27 * dn + Math.sin(t * 1.5) * 0.007;
+    const k = ease(cb);
+    for (const key in P_IDLE) P[key] = lerp(P_IDLE[key], P_READY[key], k);
+    P.rax += sw * 0.16 * (1 - k); P.lax += -sw * 0.2 * (1 - k); P.srx += sw * 0.1 * (1 - k);
+    let lean = 0, gl = 0;
+    if (atk === 'staff') {
+      const T = MC_T.staff;
+      if (atkT < 0.16) { const w = ease(atkT / 0.16); P.rax = lerp(P.rax, 2.5, w); P.lax = lerp(P.lax, 2.3, w); P.srx = lerp(P.srx, 0.75, w); P.srz = lerp(P.srz, 0.15, w); lean = 0.08 * w; }   // 머리 위로 든다
+      else if (atkT < T.hit) { const w = ease((atkT - 0.16) / (T.hit - 0.16)); P.rax = lerp(2.5, 0.75, w); P.lax = lerp(2.3, 0.9, w); P.srx = lerp(0.75, -1.45, w); P.srz = lerp(0.15, 0.1, w); lean = lerp(0.08, -0.18, w); }   // 내리친다
+      else { const w = ease((atkT - T.hit) / (T.end - T.hit)); P.rax = lerp(0.75, P.rax, w); P.lax = lerp(0.9, P.lax, w); P.srx = lerp(-1.45, P.srx, w); P.srz = lerp(0.1, P.srz, w); lean = lerp(-0.18, 0, w); }
+    } else if (atk === 'heal') {
+      const T = MC_T.heal;
+      if (atkT < T.hit) { const w = ease(atkT / T.hit); P.rax = lerp(P.rax, 2.75, w); P.raz = lerp(P.raz, 0.1, w); P.ray = lerp(P.ray, 0, w); P.srx = lerp(P.srx, -0.1 + 0.25, w); P.srz = lerp(P.srz, 0, w); P.lax = lerp(P.lax, 1.25, w); P.laz = lerp(P.laz, -0.1, w); P.lay = lerp(P.lay, 0, w); gl = w; lean = -0.1 * w; }   // 지팡이를 높이 세우고 왼손 바닥을 앞으로
+      else { const w = (atkT - T.hit) / (T.end - T.hit), r = ease(w); P.rax = lerp(2.75, P.rax, r); P.srx = lerp(0.15, P.srx, r); P.srz = lerp(0, P.srz, r); P.lax = lerp(1.25, P.lax, r); P.raz = lerp(0.1, P.raz, r); gl = 1 - w; lean = -0.1 * (1 - r); }
+    }
+    glow += (gl - glow) * Math.min(1, dt * 14);
+    // 쓰러짐: 무릎 꿇고 지팡이를 떨군다
+    P.rax = lerp(P.rax, 0.1, dn); P.lax = lerp(P.lax, 0.2, dn); P.srx = lerp(P.srx, -1.35, dn); P.srz = lerp(P.srz, 0.5, dn);
+    armR.rotation.set(P.rax, P.ray, P.raz); armL.rotation.set(P.lax, P.lay, P.laz);
+    const hr = handAt(armR, P.rax, P.ray, P.raz);
+    stG.position.set(hr.x + P.sox, hr.y + P.soy, hr.z + P.soz);
+    stG.rotation.set(P.srx, 0, P.srz);
+    if (dn > 0.01) stG.position.y = lerp(stG.position.y, 0.5, dn);
+    orb.scale.setScalar(1 + glow * 0.8 + 0.06 * Math.sin(t * 3.1));
+    orbMat.emissiveIntensity = 1.6 + 0.2 * Math.sin(t * 2.3) + glow * 2.4;   // 어두운 막에서도 금빛 점으로 보이게(어둠 포스트는 밝은 픽셀을 살린다)
+    upper.rotation.x = 0.03 * k + lean + 0.6 * dn; upper.rotation.y = -0.22 * k * (1 - dn) * (atk === 'heal' ? 1 - ease(Math.min(1, atkT / 0.3)) : 1);
+  };
+  limbs._mcUpdate(0, 0.016, 0);
+}
+
+// ============================================================
 //  불의 사냥개(hellhound) — 101층부터 3~4마리 무리로 나오는 4막 돌진 몹.
 //  굶주린 늑대 몸에 굳은 용암 껍질: 갈비뼈 사이·옆구리 실금으로 속불이 비친다 · 목덜미부터 등줄기를 따라 타오르는 불 갈기 ·
 //  길쭉한 주둥이 속(벌어진 아래턱)이 용암처럼 빛나고 눈은 노란 불빛 · 뒤로 젖힌 뿔 같은 귀 · 끝에 불이 붙은 가는 꼬리.
@@ -26847,17 +27018,25 @@ const MXBOW_ON = MERC_ON && !/[?&]mxbow=0/.test(location.search);
 MERC_TYPES.xbow = { icon: '🏹', name: '석궁수', role: '뒤에서 관통 화살을 쏘는 원거리 지원 — 적에게 노려지지 않고 거리를 둔다', base: 100, build: 'xbow',
   hpK: 0.7, armor: 0.8, front: 0, reach: 0, cap: 0, retreat: [0.5, 0.85], flank: false, spacing: false, dodgeProj: true, bossAggro: false,
   ranged: { range: 9, keep: 4.5, k: 0.9, len: 12, speed: 32 } };
-const MERC_ORDER = MXBOW_ON ? ['spear', 'shield', 'xbow'] : ['spear', 'shield'];
+// v885 수도사(?mmonk=0 이면 여관이 안 판다): 3막을 깨면 · 체력 0.85 배 · 지팡이(앞 ±55° · 0.8) · 옆구리로 돈다(창잡이처럼) ·
+// 치유 — 플레이어 체력이 50% 아래면 7 안으로 다가가 지팡이를 높이 들어 최대 체력의 15% 를 채운다(15초에 한 번) ·
+// 축복 — 플레이어 곁(4.5 안)에 있으면 플레이어 공격력 +10%(player.atk 에 얹었다 떼고, 저장에는 뺀 값을 쓴다 — mercBlessTick)
+const MMONK_ON = MERC_ON && !/[?&]mmonk=0/.test(location.search);
+MERC_TYPES.monk = { icon: '✨', name: '수도사', role: '곁에서 공격력을 올려 주고, 위험하면 체력을 채워 주는 지원형 — 15초마다 치유', base: 120, build: 'monk',
+  hpK: 0.85, armor: 0.7, front: 0, reach: 1.15, cap: 1, retreat: [0.55, 0.85], flank: true, spacing: true, dodgeProj: true, bossAggro: false,
+  staffK: 0.8, heal: { below: 0.5, k: 0.15, cd: 15, r: 7 }, bless: { r: 4.5, k: 0.1 } };
+const MERC_ORDER = ['spear'].concat(MSHIELD_ON ? ['shield'] : [], MXBOW_ON ? ['xbow'] : [], MMONK_ON ? ['monk'] : []);
 function mercT() { return MERC_TYPES[merc.type] || MERC_TYPES.spear; }
 function mercUnlocked(id) {
   if (id === 'shield') return MSHIELD_ON && (godMode || ((meta && meta.actCleared) || 0) >= 1 || !!(meta && meta.restUnlocked));   // 1막을 깨면(예전 저장은 restUnlocked)
   if (id === 'xbow') return MXBOW_ON && (godMode || ((meta && meta.actCleared) || 0) >= 2 || !!(meta && meta.act2Cleared));     // v884: 2막을 깨면(예전 저장은 act2Cleared)
+  if (id === 'monk') return MMONK_ON && (godMode || ((meta && meta.actCleared) || 0) >= 3);   // v885: 3막을 깨면
   return id === 'spear';
 }
 function mercHireCost(id) { return (MERC_TYPES[id || 'spear'] || MERC_TYPES.spear).base * (1 + Math.min(LAST_ACT, (meta && meta.actCleared) || 0)); }   // 깬 막이 많을수록 몸값이 오른다(창잡이 80 · 160 · 240 … · 방패병 100 · 200 …)
 const merc = { active: false, obj: null, limbs: null, hp: 0, hpMax: 1, hpFrac: null, down: false, downT: 0, gone: false, radius: 0.42, t: 0,
   tgt: null, retarget: 0, atkCd: 0, atkN: 0, atkT: -1, atkKind: null, hitDone: false, inv: 0, calm: 0, stuckT: 0, chkT: 0, chkX: 0, chkZ: 0,
-  kbX: 0, kbZ: 0, side: 1, moving: false, bar: null, barFill: null, yaw: 0, type: 'spear', bodies: {}, tauntCd: 0 };
+  kbX: 0, kbZ: 0, side: 1, moving: false, bar: null, barFill: null, yaw: 0, type: 'spear', bodies: {}, tauntCd: 0, healCd: 0, blessAdd: 0 };
 const _mcProxy = { obj: null, radius: 0.42 };   // navFineStep·navSteer 가 몬스터 객체 대신 받는 것
 
 // 새 문자열 번역(사전에 없는 것만 — ui2 와 같은 요령)
@@ -26883,6 +27062,10 @@ const _mcProxy = { obj: null, radius: 0.42 };   // navFineStep·navSteer 가 몬
     // v884
     '석궁수': ['Crossbowman', 'クロスボウ兵', '弩手', 'Ballestero', 'Besteiro', 'Арбалетчик'],
     '뒤에서 관통 화살을 쏘는 원거리 지원 — 적에게 노려지지 않고 거리를 둔다': ['Ranged support firing piercing bolts from behind — foes ignore him and he keeps his distance', '後方から貫通する矢を放つ遠距離支援 — 敵に狙われず距離を保つ', '在后方射出穿透弩箭的远程支援 — 不会被敌人盯上，并保持距离', 'Apoyo a distancia con virotes perforantes desde atrás — los enemigos lo ignoran y mantiene la distancia', 'Apoio à distância com virotes perfurantes por trás — os inimigos o ignoram e ele mantém distância', 'Поддержка издали пробивающими болтами — враги его не трогают, он держит дистанцию'],
+    // v885
+    '수도사': ['Monk', '修道士', '武僧', 'Monje', 'Monge', 'Монах'],
+    '곁에서 공격력을 올려 주고, 위험하면 체력을 채워 주는 지원형 — 15초마다 치유': ['Support who raises your attack while nearby and heals you when you are in danger — heals every 15s', 'そばにいると攻撃力を上げ、危ない時は体力を回復する支援役 — 15秒ごとに回復', '在身边时提升你的攻击力，危急时为你回复体力的辅助 — 每15秒治疗一次', 'Apoyo que sube tu ataque a su lado y te cura cuando corres peligro — cura cada 15 s', 'Suporte que aumenta seu ataque por perto e cura você quando está em perigo — cura a cada 15 s', 'Поддержка: рядом повышает вашу атаку, а в опасности лечит — лечение каждые 15 с'],
+    '🔒 3막을 깨면 고용할 수 있다': ['🔒 Clear Act 3 to hire', '🔒 第3幕クリアで雇用可能', '🔒 通关第3幕后可雇佣', '🔒 Supera el Acto 3 para contratar', '🔒 Conclua o Ato 3 para contratar', '🔒 Пройдите акт 3, чтобы нанять'],
     '🔒 2막을 깨면 고용할 수 있다': ['🔒 Clear Act 2 to hire', '🔒 第2幕クリアで雇用可能', '🔒 通关第2幕后可雇佣', '🔒 Supera el Acto 2 para contratar', '🔒 Conclua o Ato 2 para contratar', '🔒 Пройдите акт 2, чтобы нанять'],
   };
   ['en', 'ja', 'zh', 'es', 'pt', 'ru'].forEach((l, i) => { const d = I18N_DICT[l]; if (d) for (const k in T) if (d[k] === undefined) d[k] = T[k][i]; });
@@ -26899,7 +27082,7 @@ function mercBuild() {
   const _r = Math.random; let s = 0x51ed27; Math.random = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
   try {
     const grp = new THREE.Group(), bodyGrp = new THREE.Group(), headGrp = new THREE.Group(), limbs = {};
-    if (bt === 'shield') buildShieldBody(grp, bodyGrp, headGrp, limbs); else if (bt === 'xbow') buildXbowBody(grp, bodyGrp, headGrp, limbs); else buildMercBody(grp, bodyGrp, headGrp, limbs);
+    if (bt === 'shield') buildShieldBody(grp, bodyGrp, headGrp, limbs); else if (bt === 'xbow') buildXbowBody(grp, bodyGrp, headGrp, limbs); else if (bt === 'monk') buildMonkBody(grp, bodyGrp, headGrp, limbs); else buildMercBody(grp, bodyGrp, headGrp, limbs);
     if (bt === 'xbow' && !merc.boltPool) merc.boltPool = mercBoltPoolMake();   // v884 날아가는 화살(같은 LCG 안에서 — uuid)
     grp.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; } });   // 캐릭터는 진짜 그림자를 안 진다(블롭이 대신)
     if (BLOB_ON) { const bl = makeBlobShadow(1.4); grp.add(bl); grp.userData.blob = bl; }
@@ -26910,16 +27093,29 @@ function mercBuild() {
 }
 // 회차 시작(던전 입구·포탈 단축·테스트 모드) — 여관에서 고용해 뒀으면 이번 회차에 같이 간다(고용은 한 회차로 소모)
 function mercRunStart() {
-  merc.active = false; merc.down = false; merc.gone = false; merc.hp = -1; merc.hpFrac = null;
+  merc.active = false; merc.down = false; merc.gone = false; merc.hp = -1; merc.hpFrac = null; merc.blessAdd = 0; merc.healCd = 0;
   if (!MERC_ON || !meta || !meta.merc || !meta.merc.hired) { mercHide(); return; }
   merc.type = MERC_TYPES[meta.merc.type] ? meta.merc.type : 'spear';   // v882 종류(예전 저장은 창잡이)
   meta.merc.hired = false; saveMeta();
   merc.active = true;
 }
-function mercRunEnd() { merc.active = false; mercHide(); }
+function mercRunEnd() { merc.active = false; mercHide(); mercBlessClear(); }
+// v885 수도사 축복: 곁(4.5 안 · 이미 받고 있으면 5.1 까지)에 있으면 player.atk 에 +10% 를 얹는다. 얹은 양(blessAdd)을 들고 있다가 멀어지거나 쓰러지면 뗀다.
+// 레벨업·보상 카드는 player.atk 에 더하기만 해서 다음 프레임에 다시 잰다. 저장(saveRun)은 뗀 값 · applyMetaUpgrades 는 절댓값을 다시 써서 0 으로
+function mercBlessClear() { if (merc.blessAdd) { player.atk -= merc.blessAdd; merc.blessAdd = 0; } }
+function mercBlessTick(dt) {
+  const B = MMONK_ON && merc.type === 'monk' ? MERC_TYPES.monk.bless : null;
+  let want = 0;
+  if (B && mercLive() && player.alive && !inTown && !inRest) {
+    const M = merc.obj.position, P = player.obj.position;
+    if (Math.hypot(M.x - P.x, M.z - P.z) <= B.r + (merc.blessAdd ? 0.6 : 0)) want = Math.max(1, Math.round((player.atk - merc.blessAdd) * B.k));
+  }
+  if (want !== merc.blessAdd) { player.atk += want - merc.blessAdd; merc.blessAdd = want; }
+  if (want && dt) merc.blessT = (merc.blessT || 0) + dt;   // 측정용(축복을 받은 시간)
+}
 // 이어하기: 저장된 상태(체력 비율 · 쓰러짐)로 되돌린다
 function mercRestore(d) {
-  merc.active = !!(MERC_ON && d); merc.down = !!(d && d.down); merc.gone = merc.down; merc.hp = -1;
+  merc.active = !!(MERC_ON && d); merc.down = !!(d && d.down); merc.gone = merc.down; merc.hp = -1; merc.blessAdd = 0; merc.healCd = 0;
   merc.type = (d && MERC_TYPES[d.type]) ? d.type : 'spear';
   merc.hpFrac = (d && typeof d.hp === 'number' && d.hp >= 0) ? d.hp : null;
   if (!merc.active) mercHide();
@@ -26957,7 +27153,7 @@ function mercFloorStart() {
   merc.hpMax = Math.max(1, Math.round(player.hpMax * mercT().hpK));
   if (merc.hpFrac !== null) { merc.hp = Math.max(1, Math.round(merc.hpMax * merc.hpFrac)); merc.hpFrac = null; }
   else if (merc.hp < 0) merc.hp = merc.hpMax; else merc.hp = Math.min(merc.hp, merc.hpMax);
-  merc.tgt = null; merc.atkT = -1; merc.atkCd = 0.6; merc.inv = 1.0; merc.kbX = merc.kbZ = 0; merc.calm = 0; merc.tauntCd = 3;
+  merc.tgt = null; merc.atkT = -1; merc.atkCd = 0.6; merc.inv = 1.0; merc.kbX = merc.kbZ = 0; merc.calm = 0; merc.tauntCd = 3; merc.healCd = Math.min(merc.healCd || 0, 3);
   if (merc.down) { merc.gone = true; mercHide(); return; }   // 쓰러져 물러난 채로 — 샘·쉼터에서 다시 합류
   const s = mercSpotNear(); mercPlace(s.x, s.z);
   merc.limbs._mcCombat(false); merc.limbs._mcDown(false); merc.limbs._mcReset();
@@ -26982,7 +27178,7 @@ function mercRevive(frac) {
   return false;
 }
 function mercFountain() { if (MERC_ON && merc.active && mercRevive(0.5)) toast(_i18n('⚔️ 용병이 다시 합류했다'), 2200); }
-function mercRestHeal() { if (MERC_ON && merc.active) { merc.down = false; merc.gone = false; merc.hp = -1; merc.hpFrac = null; } }   // 쉼터: 다음 층에서 최대 체력으로
+function mercRestHeal() { mercBlessClear(); if (MERC_ON && merc.active) { merc.down = false; merc.gone = false; merc.hp = -1; merc.hpFrac = null; } }   // 쉼터: 다음 층에서 최대 체력으로
 function mercDescendHeal() { if (mercLive() && merc.hp >= 0) merc.hp = Math.min(merc.hpMax, merc.hp + Math.ceil(merc.hpMax * 0.25)); }
 
 // ----- 피격 -----
@@ -27239,11 +27435,25 @@ function mercBoltsTick(dt) {
     b.obj.position.set(b.x, b.y, b.z);
   }
 }
+// v885 수도사 치유: 지팡이를 들어 올린 끝(MC_T.heal.hit)에 플레이어 최대 체력의 15% · 둘 사이 거리가 치유 사거리를 넘으면 빗나간다(다시 다가가 쓴다)
+function mercHealCast() {
+  const H = MERC_TYPES.monk.heal, M = merc.obj.position, P = player.obj.position;
+  if (!player.alive || Math.hypot(M.x - P.x, M.z - P.z) > H.r + 1.0) return 0;
+  const amt = Math.max(1, Math.ceil(player.hpMax * H.k)), got = Math.min(amt, player.hpMax - player.hp);
+  player.hp = Math.min(player.hpMax, player.hp + amt);
+  merc.healCd = H.cd; merc.heals = (merc.heals || 0) + 1; merc.healAmt = (merc.healAmt || 0) + got;
+  dmgNumAdd(P.x, P.y + 2.0, P.z, '+' + amt, 'mheal');
+  if (SK2_ON) { sk2RingFx(P.x, P.z, 0.4, 1.6, 0xffd27a, 0.5, 0.7); sk2RingFx(M.x, M.z, 0.3, 1.0, 0xffd27a, 0.4, 0.5); }
+  spawnHitEffect(P.x, P.y + 1.2, P.z, 0.6);
+  if (KSFX_ON && SFX.ksfx) SFX.ksfx('skill', 0.7); else if (SFX && SFX.swing) SFX.swing();
+  return 1;
+}
 function mercStrike() {
   const M = merc.obj.position, fx = -Math.sin(merc.yaw), fz = -Math.cos(merc.yaw), kind = merc.atkKind;
   if (kind === 'taunt') { mercTaunt(); return 0; }
   if (kind === 'shoot') return mercShoot();
-  const T = mercT(), sg = merc.type === 'shield';
+  if (kind === 'heal') return mercHealCast();
+  const T = mercT(), sg = merc.type === 'shield' || merc.type === 'monk';
   let hit = 0;
   for (const e of enemies.slice()) {
     if (e.isDead || !e.obj || a3Blocked(e)) continue;
@@ -27252,8 +27462,8 @@ function mercStrike() {
     const along = dx * fx + dz * fz, side = Math.abs(dx * fz - dz * fx);
     let ok;
     if (sg) {   // v882 방패병: 철퇴(앞 ±50°) · 밀치기(앞 ±70° — 넉백 + 기절)
-      ok = d <= reach && (d < 0.4 || along / d > Math.cos(kind === 'bash' ? 1.22 : 0.87));
-      if (ok && skillHit(e, kind === 'bash' ? T.bashK : T.cutK, M.x, M.z, kind === 'bash' ? 11 : 4, 'merc')) {
+      ok = d <= reach && (d < 0.4 || along / d > Math.cos(kind === 'bash' ? 1.22 : 0.96));   // v885 수도사 지팡이는 앞 ±55°
+      if (ok && skillHit(e, kind === 'bash' ? T.bashK : kind === 'staff' ? T.staffK : T.cutK, M.x, M.z, kind === 'bash' ? 11 : 4, 'merc')) {
         hit++; if (AGGRO_ON) e._agThr = AGGRO_THREAT_T;
         if (kind === 'bash' && SK2_ON && !e.isDead) sk2Stun(e, T.bashStun, false);
       }
@@ -27270,6 +27480,7 @@ function mercStrike() {
 // ----- 매 프레임(update 안, 적 루프 뒤) -----
 function mercUpdate(dt) {
   if (MERC_ON && merc.boltPool) mercBoltsTick(dt);   // v884 날아가는 화살(용병이 쓰러져도 마저 간다)
+  if (MMONK_ON) mercBlessTick(dt);                    // v885 축복(쓰러지거나 물러가면 뗀다)
   if (!MERC_ON || !merc.active || !merc.obj || merc.gone) return;
   const L = merc.limbs, P = player.obj.position, M = merc.obj.position;
   merc.t += dt;
@@ -27325,9 +27536,13 @@ function mercUpdate(dt) {
     }
   }
   L._mcCombat(!!tgt);
+  // v885 수도사 치유: 플레이어 체력이 문턱 아래 · 쿨이 돌았으면 치유 사거리 안으로 가서 쓴다(싸우던 것보다 먼저)
+  const HL = mercT().heal; merc.healCd = Math.max(0, (merc.healCd || 0) - dt);
+  const healWant = !!(HL && merc.healCd <= 0 && player.alive && player.hp < player.hpMax * HL.below);
   if (!dz0 && merc.atkT < 0) {
     let gx = null, gz = null, stop = 0;
-    if (tgt) {
+    if (healWant && dP > HL.r - 0.5) { gx = P.x; gz = P.z; stop = HL.r - 2; }
+    else if (tgt) {
       const RG = mercT().ranged;
       if (RG) {   // v884 석궁수: 사거리 안 + 화살 길이 트였으면 선 채로 쏜다 · 너무 가까우면 물러선다 · 아니면 다가간다
         const tx = tgt.obj.position.x, tz = tgt.obj.position.z, los = mercLos(M.x, M.z, tx, tz);
@@ -27407,6 +27622,7 @@ function mercUpdate(dt) {
   // 바라보기: 목표 · 아니면 가는 쪽
   if (faceX === null && (mvx || mvz) && !dz0) { faceX = mvx; faceZ = mvz; }
   if (dz0 && tgt) { faceX = tgt.obj.position.x - M.x; faceZ = tgt.obj.position.z - M.z; }
+  if (merc.atkT >= 0 && merc.atkKind === 'heal') { faceX = P.x - M.x; faceZ = P.z - M.z; }   // v885 치유는 플레이어를 보고
   const br = mercT().brace ? mercBraceFrom() : null;   // v883 방패를 들이댈 쪽
   if (br) { faceX = br.x - M.x; faceZ = br.z - M.z; }
   if (faceX !== null && (faceX || faceZ)) {
@@ -27422,6 +27638,8 @@ function mercUpdate(dt) {
     const T = L.MC_T[merc.atkKind];
     if (!merc.hitDone && merc.atkT >= T.hit) { merc.hitDone = true; mercStrike(); }
     if (merc.atkT >= T.end) { merc.atkT = -1; merc.atkCd = MERC_CD; }
+  } else if (healWant && !dz0 && dP <= HL.r) {   // v885 치유(공격 쿨과 상관없이 — 위험이 없을 때)
+    merc.atkKind = 'heal'; merc.atkT = 0; merc.hitDone = false; L._mcAttack('heal');
   } else if (AGGRO_ON && mercT().taunt && !(AGGRO_BOSSFLOOR_OFF && !mercT().bossAggro && player.floor % 10 === 0) && !dz0 && !merc.retreat && merc.atkCd <= 0 && merc.tauntCd <= 0 && mercTauntCount() > 0) {   // v882 도발
     merc.tauntCd = mercT().taunt.cd; merc.atkKind = 'taunt'; merc.atkT = 0; merc.hitDone = false; L._mcAttack('taunt');
   } else if (tgt && !dz0 && merc.atkCd <= 0 && dT <= reach + 0.1 && !(flank && !flank.back) && (!mercT().ranged || mercLos(M.x, M.z, tgt.obj.position.x, tgt.obj.position.z))) {
@@ -27430,6 +27648,7 @@ function mercUpdate(dt) {
       merc.atkN++;
       let near = 0; for (const e of enemies) if (!e.isDead && e.awake !== false && Math.hypot(e.obj.position.x - M.x, e.obj.position.z - M.z) < reach + 0.4) near++;
       if (merc.type === 'xbow') merc.atkKind = 'shoot';   // v884
+      else if (merc.type === 'monk') merc.atkKind = 'staff';   // v885
       else if (merc.type === 'shield') merc.atkKind = (merc.atkN % 3 === 0) ? 'bash' : 'cut';   // v882: 셋째마다 방패 밀치기
       else merc.atkKind = (merc.atkN % 3 === 0 && near >= 2) ? 'sweep' : 'thrust';
       merc.atkT = 0; merc.hitDone = false; L._mcAttack(merc.atkKind);
@@ -27477,11 +27696,12 @@ function innRefresh() {
   for (const id of MERC_ORDER) {
     if (id === 'shield' && !MSHIELD_ON) continue;
     if (id === 'xbow' && !MXBOW_ON) continue;
+    if (id === 'monk' && !MMONK_ON) continue;
     const T = MERC_TYPES[id], open = mercUnlocked(id), cost = mercHireCost(id), ok = open && !hired && meta.gold >= cost;
     const b = document.createElement('button');
     b.style.cssText = 'display:block; width:100%; margin-bottom:8px; padding:10px 12px; text-align:left; border-radius:11px; border:1px solid #9fb0c8; background:rgba(120,140,180,0.22); color:#dde8ff; line-height:1.35;';
     const h = document.createElement('div'); h.style.cssText = 'font-size:14px; font-weight:700;';
-    const right = hType === id ? _i18n('✅ 고용함 — 다음 던전에 함께 간다') : !open ? _i18n(id === 'xbow' ? '🔒 2막을 깨면 고용할 수 있다' : '🔒 1막을 깨면 고용할 수 있다') : cost.toLocaleString() + 'G';
+    const right = hType === id ? _i18n('✅ 고용함 — 다음 던전에 함께 간다') : !open ? _i18n(id === 'monk' ? '🔒 3막을 깨면 고용할 수 있다' : id === 'xbow' ? '🔒 2막을 깨면 고용할 수 있다' : '🔒 1막을 깨면 고용할 수 있다') : cost.toLocaleString() + 'G';
     h.textContent = T.icon + ' ' + _i18n(T.name) + '  ·  ' + right;
     const d = document.createElement('div'); d.style.cssText = 'font-size:12px; font-weight:400; opacity:0.8; margin-top:2px;'; d.textContent = _i18n(T.role);
     b.appendChild(h); b.appendChild(d);
@@ -33326,7 +33546,7 @@ function applyMetaUpgrades() {
   const smPow = (typeof smithBonus === 'function') ? smithBonus('power') : 0;
   const smHp  = (typeof smithBonus === 'function') ? smithBonus('hpmax') : 0;
   player.hpMax = Math.round((baseHp + hpLv * 15) * (1 + smHp)); player.hp = player.hpMax;
-  player.atk = Math.round((baseAtk + atkLv * 2) * (1 + smPow));
+  player.atk = Math.round((baseAtk + atkLv * 2) * (1 + smPow)); merc.blessAdd = 0;   // v885: 절댓값을 다시 쓰므로 얹은 축복도 없어진 셈
   player.staMax = 100 + staLv * 10; player.sta = player.staMax;
   player.speed = 6.5 + spdLv * 0.25;
 }
@@ -33343,7 +33563,7 @@ function saveRun() {
       floor: player.floor, hp: player.hp, hpMax: player.hpMax,
       potions: player.potions,
       lv: player.lv, exp: player.exp, expMax: player.expMax,
-      atk: player.atk, atkSpeed: player.atkSpeed, speed: player.speed,
+      atk: player.atk - (merc.blessAdd || 0), atkSpeed: player.atkSpeed, speed: player.speed,   // v885: 수도사 축복은 빼고
       sta: player.sta, staMax: player.staMax,
       kills: player.kills, runGold: runGold, noHitFloors: player.noHitFloors,
       elapsed: Date.now() - runStartTime,
@@ -34040,6 +34260,7 @@ var ui2 = (() => {   // var: 이 줄보다 먼저 정의된 toast()·refreshSkil
     timed('root', player.rooted || 0, 'chain', 'dn');
     timed('slow', player.iceSlow || 0, 'crystal', 'dn');
     timed('poison', player.poisonT || 0, 'skull', 'dn'); // v822: 농침벌 중독
+    if (merc.blessAdd > 0) list.push(['bless', 'orb', 'up', '+' + merc.blessAdd, 0]);   // v885 수도사 축복
     timed('cry', player.cryT || 0, 'roar', 'up'); timed('wall', player.wallT || 0, 'wall', 'up'); timed('surge', player.surgeT || 0, 'surge', 'up'); // v869 스킬 버프
     const key = list.map(b => b[0] + b[3]).join(',');
     if (prev.buffKey !== key) {
