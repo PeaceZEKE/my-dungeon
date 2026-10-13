@@ -26635,10 +26635,10 @@ const MERC_TYPES = {
   spear: { icon: '🗡️', name: '창잡이', role: '옆구리를 찌르는 공격수 — 창이 길어 적의 공격을 비켜 서서 찌른다', base: 80, build: 'spear',
     hpK: 0.9, armor: 0.65, front: 0, reach: 1.35, cap: 1, retreat: [0.55, 0.85], flank: true, spacing: true, dodgeProj: true, bossAggro: false },
   // 방패병: 적 앞에 마주 서서 받아 낸다. 최대 체력 1.2 배 · 정면(±70°)에서 오는 공격은 0.3 배(방패 — 투사체·보스 패턴도) · 철퇴 0.9 · 셋째마다 방패 밀치기 0.8(넉백 + 0.5초 기절) ·
-  // 노리는 몹 3마리까지 · 12초마다 도발(2칸 안 근접 몹을 4초 동안 자기에게 — 가까운 것부터 3마리를 채울 만큼만) · 보스 층에서도 잡몹을 끈다.
+  // 노리는 몹 3마리까지 · 12초마다 도발(2칸 안 근접 몹을 4초 동안 자기에게 — 가까운 것부터 3마리를 채울 만큼만) · 보스 층에서는 창잡이처럼 어그로·도발 없음(2차 측정: 보스 층에서 잡몹을 끌다 쓰러져 보스전 활동 20~44%).
   // 봇 측정 1차(정면 0.6 · 도발 상한 없음 · 투사체 안 비킴 · 40% 물러남)는 3·4막에서 포자 벌레·임프 떼를 통째로 끌어와 둘러싸이고 농침벌 독침을 받아 쓰러짐 1~2회/10층 · 활동 39~63% 였다
   shield: { icon: '🛡️', name: '방패병', role: '적을 끌어모아 방패로 받아 내는 탱커 — 정면 피해를 크게 줄이고 12초마다 도발한다', base: 100, build: 'shield',
-    hpK: 1.2, armor: 0.65, front: 0.3, frontArc: Math.PI * 70 / 180, reach: 1.0, cap: 3, retreat: [0.5, 0.85], flank: false, spacing: false, dodgeProj: true, bossAggro: true,
+    hpK: 1.2, armor: 0.65, front: 0.3, frontArc: Math.PI * 70 / 180, reach: 1.0, cap: 3, retreat: [0.5, 0.85], flank: false, spacing: false, dodgeProj: true, bossAggro: false,
     cutK: 0.9, bashK: 0.8, bashStun: 0.5, taunt: { cd: 12, r: TILE * 2, t: 4 } },
 };
 const MERC_ORDER = ['spear', 'shield'];
@@ -27112,7 +27112,7 @@ function mercUpdate(dt) {
     const T = L.MC_T[merc.atkKind];
     if (!merc.hitDone && merc.atkT >= T.hit) { merc.hitDone = true; mercStrike(); }
     if (merc.atkT >= T.end) { merc.atkT = -1; merc.atkCd = MERC_CD; }
-  } else if (AGGRO_ON && mercT().taunt && !dz0 && !merc.retreat && merc.atkCd <= 0 && merc.tauntCd <= 0 && mercTauntCount() > 0) {   // v882 도발
+  } else if (AGGRO_ON && mercT().taunt && !(AGGRO_BOSSFLOOR_OFF && !mercT().bossAggro && player.floor % 10 === 0) && !dz0 && !merc.retreat && merc.atkCd <= 0 && merc.tauntCd <= 0 && mercTauntCount() > 0) {   // v882 도발
     merc.tauntCd = mercT().taunt.cd; merc.atkKind = 'taunt'; merc.atkT = 0; merc.hitDone = false; L._mcAttack('taunt');
   } else if (tgt && !dz0 && merc.atkCd <= 0 && dT <= reach + 0.1 && !(flank && !flank.back)) {
     const fx = -Math.sin(merc.yaw), fz = -Math.cos(merc.yaw), al = ((tgt.obj.position.x - M.x) * fx + (tgt.obj.position.z - M.z) * fz) / (dT || 1);
