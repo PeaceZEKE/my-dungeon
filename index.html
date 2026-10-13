@@ -26634,11 +26634,12 @@ const MERC_TYPES = {
   // 창잡이: 옆구리로 돌아 창으로 찌른다(찌르기 1.3 · 셋째마다 휘두르기 0.9) · 노려지면 거리를 둔다 · 투사체를 비킨다
   spear: { icon: '🗡️', name: '창잡이', role: '옆구리를 찌르는 공격수 — 창이 길어 적의 공격을 비켜 서서 찌른다', base: 80, build: 'spear',
     hpK: 0.9, armor: 0.65, front: 0, reach: 1.35, cap: 1, retreat: [0.55, 0.85], flank: true, spacing: true, dodgeProj: true, bossAggro: false },
-  // 방패병: 적 앞에 마주 서서 받아 낸다. 최대 체력 1.2 배 · 정면(±70°)에서 오는 공격은 0.3 배(방패 — 투사체·보스 패턴도) · 철퇴 0.6 · 셋째마다 방패 밀치기 0.6(넉백 + 0.5초 기절) ·
-  // 노리는 몹 3마리까지 · 12초마다 도발(2칸 안 근접 몹을 4초 동안 자기에게 — 상한 무시) · 투사체를 안 비킨다(방패로 받는다) · 보스 층에서도 잡몹을 끈다
+  // 방패병: 적 앞에 마주 서서 받아 낸다. 최대 체력 1.2 배 · 정면(±70°)에서 오는 공격은 0.3 배(방패 — 투사체·보스 패턴도) · 철퇴 0.9 · 셋째마다 방패 밀치기 0.8(넉백 + 0.5초 기절) ·
+  // 노리는 몹 3마리까지 · 12초마다 도발(2칸 안 근접 몹을 4초 동안 자기에게 — 가까운 것부터 3마리를 채울 만큼만) · 보스 층에서도 잡몹을 끈다.
+  // 봇 측정 1차(정면 0.6 · 도발 상한 없음 · 투사체 안 비킴 · 40% 물러남)는 3·4막에서 포자 벌레·임프 떼를 통째로 끌어와 둘러싸이고 농침벌 독침을 받아 쓰러짐 1~2회/10층 · 활동 39~63% 였다
   shield: { icon: '🛡️', name: '방패병', role: '적을 끌어모아 방패로 받아 내는 탱커 — 정면 피해를 크게 줄이고 12초마다 도발한다', base: 100, build: 'shield',
-    hpK: 1.2, armor: 0.65, front: 0.3, frontArc: Math.PI * 70 / 180, reach: 1.0, cap: 3, retreat: [0.4, 0.8], flank: false, spacing: false, dodgeProj: false, bossAggro: true,
-    cutK: 0.6, bashK: 0.6, bashStun: 0.5, taunt: { cd: 12, r: TILE * 2, t: 4 } },
+    hpK: 1.2, armor: 0.65, front: 0.3, frontArc: Math.PI * 70 / 180, reach: 1.0, cap: 3, retreat: [0.5, 0.85], flank: false, spacing: false, dodgeProj: true, bossAggro: true,
+    cutK: 0.9, bashK: 0.8, bashStun: 0.5, taunt: { cd: 12, r: TILE * 2, t: 4 } },
 };
 const MERC_ORDER = ['spear', 'shield'];
 function mercT() { return MERC_TYPES[merc.type] || MERC_TYPES.spear; }
@@ -26922,15 +26923,22 @@ function mercPickTgt() {
 }
 // ----- 공격 -----
 // v882 도발: 둘레(2칸) 근접 몹이 4초 동안 방패병을 노린다(상한 무시)
-function mercTauntOk(e) { return !e.isDead && e.awake !== false && e.obj && !e.isBoss && !e.isRanged && !AGGRO_EXCL[e.type]; }
-function mercTauntCount() {
-  const T = mercT(), M = merc.obj.position; let n = 0;
-  for (const e of enemies) if (mercTauntOk(e) && !e._agM && Math.hypot(e.obj.position.x - M.x, e.obj.position.z - M.z) < T.taunt.r) n++;
-  return n;
+function mercTauntOk(e) { return !e.isDead && e.awake !== false && e.obj && !e.isBoss && !e.isRanged && !AGGRO_EXCL[e.type]; }   // 도발은 상한(cap)까지만 채운다
+// 끌어올 몹: 아직 나를 안 노리는 것 중 가까운 것부터 '상한 − 지금 나를 노리는 수' 만큼(떼를 통째로 끌어와 둘러싸이지 않게)
+function mercTauntPick() {
+  const T = mercT(), M = merc.obj.position, cand = []; let on = 0;
+  for (const e of enemies) {
+    if (!mercTauntOk(e)) continue;
+    const d = Math.hypot(e.obj.position.x - M.x, e.obj.position.z - M.z);
+    if (e._agM) { if (d < 8) on++; } else if (d < T.taunt.r) cand.push([d, e]);
+  }
+  cand.sort((a, b) => a[0] - b[0]);
+  return cand.slice(0, Math.max(0, T.cap - on)).map(c => c[1]);
 }
+function mercTauntCount() { return mercTauntPick().length; }
 function mercTaunt() {
   const T = mercT(), M = merc.obj.position; let n = 0;
-  for (const e of enemies) if (mercTauntOk(e) && Math.hypot(e.obj.position.x - M.x, e.obj.position.z - M.z) < T.taunt.r) { e._agTaunt = T.taunt.t; e._agThr = AGGRO_THREAT_T; n++; }
+  for (const e of mercTauntPick()) { e._agTaunt = T.taunt.t; e._agThr = AGGRO_THREAT_T; n++; }
   if (SK2_ON) sk2RingFx(M.x, M.z, 0.6, T.taunt.r, 0x6fa8ff, 0.55, 0.85);
   dmgNumAdd(M.x, M.y + 2.1, M.z, _i18n('도발!'), 'merc');
   if (SFX && SFX.block) SFX.block();
