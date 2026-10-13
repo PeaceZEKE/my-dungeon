@@ -26631,6 +26631,16 @@ function mercDanger() {
     if (e.isDead) continue;
     if (e.type === 'golem' && e.hitPending && e.swingTimer > 0.1) near(e.obj.position.x, e.obj.position.z, e.radius + 2.6);
     else if (e.fgSlam === 'tele') near(e.obj.position.x, e.obj.position.z, TILE * 1.4 + 0.6);
+    else if (AGGRO_ON && e._agM) {
+      // v880 거리 두기: 나를 노린 몹이 휘두르기 시작하면(임팩트 0.4초 전부터) 그 사거리(반지름 합 + 1.0) 밖으로 한 발 — 창(반지름 합 + 1.35)이 더 길어 물러선 자리에서 다시 찌른다.
+      // 노려지면 다 맞던 것이 3·4막에서 10층당 1~1.75회 쓰러뜨렸다(플레이어는 막기·패링·회피를 한다)
+      if (!e.isRanged && e.hitPending && e.swingTimer > 0 && e.swingTimer < 0.4) near(e.obj.position.x, e.obj.position.z, (e.radius || 0.5) + merc.radius + 1.0 + 0.45);
+      // 사냥개가 나를 보고 웅크리면(돌진 방향이 정해지면) 그 줄 옆으로
+      else if ((e.hhState === 'crouch' || e.hhState === 'dash') && e.hhDx !== undefined) {
+        const px = M.x - e.obj.position.x, pz = M.z - e.obj.position.z, al = Math.max(0, Math.min(HH_LEN, px * e.hhDx + pz * e.hhDz));
+        near(e.obj.position.x + e.hhDx * al, e.obj.position.z + e.hhDz * al, (e.radius || 0.5) + merc.radius + HH_HITPAD + 0.6);
+      }
+    }
   }
   return zc;
 }
