@@ -26423,7 +26423,6 @@ const MERC_RETREAT_LO = 0.55, MERC_RETREAT_HI = 0.85;   // 체력이 55% 아래�
                                                         // 30% 로 했더니 4막 몹 한 방이 상한(25%)이라 물러나기 시작할 때 이미 한 대 거리였다
 const MERC_RETREAT_REGEN = 0.03;   // 물러나 있는 동안 1.5초 안 맞으면 초당 최대 체력의 3% — 긴 싸움에도 다시 돌아온다(평소 회복은 싸움이 끝나야 돈다)
 const MERC_BOSS_DMG_K = 0.5;      // v881: 보스에게 받는 피해 배수 — 보스 패턴이 용병도 맞히면서(v880) 용병이 물러나거나 쓰러져 보스전이 1단계보다 길고 어려워졌다
-const MERC_RETREAT_LO_BOSS = 0.30; // v881: 보스 층에서는 30% 까지 버티며 싸운다
 const MERC_HIT_CAP_AGGRO = 0.20;   // 어그로를 켜면 용병이 직접 노려지므로 한 방 상한을 25% → 20%
 const AGGRO_BOSSFLOOR_OFF = !/[?&]aggroboss=1/.test(location.search);   // v881: 보스 층에서는 어그로를 끈다(소환 몹·잡몹이 용병에게 붙어 보스전 시간의 40~64% 를 물러나 있었다 — 1단계는 100% 싸웠다)
 const AGGRO_EXCL = { wraith: 1, rotheart: 1 };   // 혼령은 치고 빠지는 상태기계(예고 호·쉿 소리·돌진 고정)가 플레이어 기준이라 그대로
@@ -26704,7 +26703,8 @@ function mercUpdate(dt) {
   if (nm !== merc.hpMax) { if (nm > merc.hpMax && !merc.down && merc.hp >= 0) merc.hp += nm - merc.hpMax; merc.hpMax = nm; merc.hp = Math.min(merc.hp, nm); }
   merc.inv = Math.max(0, merc.inv - dt);
   if (AGGRO_ON && merc.hp >= 0) {   // v880 물러나기
-    if (merc.hp < merc.hpMax * (player.floor % 10 === 0 ? MERC_RETREAT_LO_BOSS : MERC_RETREAT_LO)) merc.retreat = true; else if (merc.hp > merc.hpMax * MERC_RETREAT_HI) merc.retreat = false;
+    if (player.floor % 10 === 0) merc.retreat = false;   // v881: 보스 층에서는 물러나지 않는다(1단계처럼 끝까지 찌른다 — 30% 에서 물러나도 보스전 시간의 38~55% 를 빠져 있었다)
+    else if (merc.hp < merc.hpMax * MERC_RETREAT_LO) merc.retreat = true; else if (merc.hp > merc.hpMax * MERC_RETREAT_HI) merc.retreat = false;
     if (merc.retreat && !merc.down && merc.t - (merc.hurtAt === undefined ? -9 : merc.hurtAt) > 1.5) merc.hp = Math.min(merc.hpMax, merc.hp + merc.hpMax * MERC_RETREAT_REGEN * dt);
   }
   if (merc.down) {
