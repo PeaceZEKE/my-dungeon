@@ -4519,7 +4519,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v879'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v880'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -9879,8 +9879,8 @@ function navFineStep(e) {   // 이 몸집이 지나갈 수 있는 칸만 밟아 
   }
   return best < 0 ? null : { x: x0 + (best % FW + 0.5) * h, z: z0 + (((best / FW) | 0) + 0.5) * h };
 }
-function navLineClear(e) {   // 플레이어까지 곧은 길에 충돌체가 없나(길찾기를 끝내도 되나)
-  const x = e.obj.position.x, z = e.obj.position.z, tx = player.obj.position.x, tz = player.obj.position.z, L = Math.hypot(tx - x, tz - z), n = Math.ceil(L / 0.5);
+function navLineClear(e) {   // 플레이어(v880: 용병을 노리면 용병)까지 곧은 길에 충돌체가 없나(길찾기를 끝내도 되나)
+  const _tp = aggroPos(e), x = e.obj.position.x, z = e.obj.position.z, tx = _tp.x, tz = _tp.z, L = Math.hypot(tx - x, tz - z), n = Math.ceil(L / 0.5);
   for (let k = 1; k < n; k++) if (wallOverlapAt(x + (tx - x) * k / n, z + (tz - z) * k / n, e.radius * 0.9)) return false;
   return true;
 }
@@ -17347,6 +17347,7 @@ function updateExAxes(dt) {
       const key = a.back ? 'hitBack' : 'hitOut';
       if (!a[key]) { a[key] = true; damagePlayer(Math.floor((e ? e.damage : 0) * 0.9), e); }
     }
+    if (MBOSS_ON && e && mercD(a.x, a.z) <= EX_AXE_R + merc.radius) { const k2 = a.back ? 'mBack' : 'mOut'; if (!a[k2]) { a[k2] = true; mercHurt(Math.floor(e.damage * 0.9), e, false); } }   // v880
   }
 }
 
@@ -17392,6 +17393,11 @@ function updateHsChains(dt) {
           if (player.hp < hpB && player.alive) { c.st = 'hooked'; c.t = 0; e.hsState = 'pull'; e.hsT = 0; e.hsPX = player.obj.position.x; e.hsPZ = player.obj.position.z; spawnHitEffect(player.obj.position.x, player.obj.position.y + 1, player.obj.position.z, 0.6); SFX.hit(1.0); }
           else { c.st = 'back'; c.t = 0; }
         }
+      }
+      if (MBOSS_ON && c.st === 'out' && !c.mHit && mercLive()) {   // v880: 지나간 구간에 용병이 닿으면 맞는다(끌려가지는 않는다)
+        const M = merc.obj.position, ax = c.ox + c.ux * L0, az = c.oz + c.uz * L0;
+        const px = M.x - ax, pz = M.z - az, sl = c.len - L0, al = Math.max(0, Math.min(sl, px * c.ux + pz * c.uz));
+        if (Math.hypot(px - c.ux * al, pz - c.uz * al) <= HS_CHAIN_W + merc.radius) { c.mHit = true; mercHurt(Math.floor(e.damage * 0.45), e, false); }
       }
       // 벽에 닿으면 되감는다
       if (c.st === 'out') { const gx = Math.round(hx / TILE + MAP_W / 2), gy = Math.round(hz / TILE + MAP_H / 2); if (!(dungeon && dungeon.grid[gy] && dungeon.grid[gy][gx] > 0)) { c.st = 'back'; c.t = 0; } }
@@ -17474,6 +17480,7 @@ function hsCollapseApply(A) {
   const clampIn = (o, m) => { const p = o.position; const x = Math.max(nx0 + m, Math.min(nx1 - m, p.x)), z = Math.max(nz0 + m, Math.min(nz1 - m, p.z)); const moved = x !== p.x || z !== p.z; p.x = x; p.z = z; return moved; };
   if (player.alive && clampIn(player.obj, 0.9)) { hazardHit(Math.max(1, Math.floor(player.hpMax * 0.12)), { obj: { position: player.obj.position }, isBoss: true, type: 'hellsovereign' }); spawnShockwave(player.obj.position.x, player.obj.position.z, 1.4); }
   for (const en of enemies) if (!en.isDead && en.obj) clampIn(en.obj, (en.radius || 0.5) + 0.3);
+  if (MBOSS_ON && mercLive() && clampIn(merc.obj, merc.radius + 0.5)) mercHurt(Math.max(1, Math.floor(merc.hpMax * 0.12)), null, true);   // v880: 띠 위의 용병도 안으로 · 12%
   A.x0 = nx0; A.x1 = nx1; A.z0 = nz0; A.z1 = nz1; A.step++; A.next = null;
   addScreenShake(0.3, 0.45); hitStop = Math.max(hitStop, 0.06); if (SFX.erupt) SFX.erupt(0.5);
 }
@@ -17813,6 +17820,15 @@ function updateFlameNova(boss, dt) {
         if (typeof damagePlayer === 'function') damagePlayer(boss.damage * 1.6, boss);
         hitStop = Math.max(hitStop, 0.12);
       }
+    }
+  }
+  if (MBOSS_ON && !fn.mHit && mercLive()) {   // v880: 고리가 용병 거리를 지나는 순간 — 바위 그늘이면 안전(플레이어와 같은 판정)
+    const M = merc.obj.position, mdx = M.x - fn.cx, mdz = M.z - fn.cz, mD = Math.hypot(mdx, mdz);
+    if (Math.abs(mD - r) < TILE * 0.7) {
+      fn.mHit = true;
+      const ux = mdx / (mD || 1), uz = mdz / (mD || 1); let sh = false;
+      for (const w of walls) { if (!w.isRock) continue; const a = (w.x - fn.cx) * ux + (w.z - fn.cz) * uz, l = Math.abs((w.x - fn.cx) * -uz + (w.z - fn.cz) * ux); if (a > 0 && a < mD + 0.5 && l < w.halfW + merc.radius) { sh = true; break; } }
+      if (!sh) mercHurt(boss.damage * 1.6, boss, false);
     }
   }
 
@@ -18673,6 +18689,11 @@ function updateCurseBeam(e, dt) {
       if (b.hitCd <= 0) { damagePlayer(Math.floor(e.damage * 0.7), e); b.hitCd = 0.5; }
     }
   }
+  if (MBOSS_ON && mercLive()) {   // v880: 같은 광선 축
+    b.mCd = Math.max(0, (b.mCd || 0) - dt);
+    const M = merc.obj.position, mx = M.x - origin.x, mz = M.z - origin.z, mp = mx * dirX + mz * dirZ;
+    if (b.mCd <= 0 && mp > 0 && mp < b.len && Math.abs(mx * dirZ - mz * dirX) < BEAM_RADIUS + merc.radius) { mercHurt(Math.floor(e.damage * 0.7), e, false); b.mCd = 0.5; }
+  }
 }
 function endCurseBeam(e) {
   const b = e.curseBeam; if (!b) return;
@@ -18708,7 +18729,7 @@ const lobBolts = [];
 const LOB_T = 0.8, LOB_R = 1.4;
 function spawnLobBolt(e) {
   const ox = e.obj.position.x, oz = e.obj.position.z, oy = (PROJ_ORIGIN_Y[e.type] || 1.0) * e.scale + groundHeightAt(ox, oz);
-  const tx = player.obj.position.x, tz = player.obj.position.z, ty = groundHeightAt(tx, tz) + 0.2;
+  const _tp = aggroPos(e), tx = _tp.x, tz = _tp.z, ty = groundHeightAt(tx, tz) + 0.2;   // v880: 용병을 노리면 용병 자리에
   spawnFirePool(tx, tz, LOB_R, Math.max(1, Math.floor(e.damage * PYRO_POOL_K)), e, [0xff7a2a, 0xd8400c, 0xff9a40, 0xffd060], LOB_T, 2.5);
   const g = new THREE.Group();
   const mat = new THREE.MeshBasicMaterial({ color: 0xff8a30, toneMapped: false, fog: false });
@@ -18733,7 +18754,7 @@ function clearLobBolt(b) { scene.remove(b.g); b.mat.dispose(); if (b.sp && b.sp.
 const PROJ_ORIGIN_Y = { broodtick: 1.9, gluttonghoul: 1.4, stingwasp: 0.95, pyromancer: 2.1 };
 function spawnFireball(e, angleOffset) {
   const ox = e.obj.position.x, oz = e.obj.position.z, oy = (PROJ_ORIGIN_Y[e.type] || 1.0) * e.scale + groundHeightAt(ox, oz);
-  const dx = player.obj.position.x - ox, dz = player.obj.position.z - oz;
+  const _tp = aggroPos(e), dx = _tp.x - ox, dz = _tp.z - oz;   // v880: 용병을 노리면 용병 쪽으로
   const d = Math.hypot(dx, dz) || 1;
   let dirX = dx / d, dirZ = dz / d;
   // 각도 오프셋이 주어지면 플레이어 방향을 그만큼 회전(부채꼴 다발 사격용)
@@ -26390,6 +26411,14 @@ const MERC_LEASH = 9;          // 플레이어에서 이만큼 넘게 떨어진 
 const MERC_TP = 16;            // 플레이어에서 이만큼 떨어지거나 2.5초 끼이면 곁으로 순간이동
 const MERC_REGEN = 0.05;       // 2초 동안 싸움이 없으면 초당 최대 체력의 5%
 const MERC_DOWN_T = 1.6;       // 쓰러져 있다가 물러나기까지
+// v880 용병 2단계 — 어그로(AGGRO): 일반 몹(보스 아님)은 플레이어·용병 중 가까운 쪽을 노린다. 용병에게 맞은 몹은 3초 동안 용병 쪽으로 기운다.
+// 보스는 계속 플레이어만 노리지만 고유 패턴(3연타·박치기·사슬·내려찍기·균열…)이 닿으면 용병도 맞는다(MBOSS).
+const AGGRO_ON = MERC_ON && !/[?&]aggro=0/.test(location.search);
+const MBOSS_ON = MERC_ON && !/[?&]mboss=0/.test(location.search);
+const AGGRO_STICK = 0.8;       // 목표를 바꾸려면 다른 쪽이 이만큼 더 가까워야 한다(둘 사이 거리가 비슷할 때 깜빡이지 않게)
+const AGGRO_THREAT = 1.5;      // 용병에게 맞은 몹은 용병까지 거리를 이만큼 짧게 본다
+const AGGRO_THREAT_T = 3.0;    // 그 효과가 가는 시간
+const AGGRO_EXCL = { wraith: 1, rotheart: 1 };   // 혼령은 치고 빠지는 상태기계(예고 호·쉿 소리·돌진 고정)가 플레이어 기준이라 그대로
 function mercHireCost() { return 80 * (1 + Math.min(LAST_ACT, (meta && meta.actCleared) || 0)); }   // 깬 막이 많을수록 몸값이 오른다(80 · 160 · 240 · 320 · 400G)
 const merc = { active: false, obj: null, limbs: null, hp: 0, hpMax: 1, hpFrac: null, down: false, downT: 0, gone: false, radius: 0.42, t: 0,
   tgt: null, retarget: 0, atkCd: 0, atkN: 0, atkT: -1, atkKind: null, hitDone: false, inv: 0, calm: 0, stuckT: 0, chkT: 0, chkX: 0, chkZ: 0,
@@ -26408,6 +26437,7 @@ const _mcProxy = { obj: null, radius: 0.42 };   // navFineStep·navSteer 가 몬
     '⚔️ 용병이 쓰러졌다 — 회복의 샘이나 쉼터에서 다시 합류한다': ['⚔️ Your mercenary is down — rejoins at a healing spring or rest stop', '⚔️ 傭兵が倒れた — 回復の泉か休憩所で再合流する', '⚔️ 佣兵倒下了 — 在治疗泉或休息站归队', '⚔️ Tu mercenario cayó — vuelve en una fuente curativa o un refugio', '⚔️ Seu mercenário caiu — volta numa fonte de cura ou num abrigo', '⚔️ Наёмник пал — вернётся у целебного источника или в привале'],
     '⚔️ 용병이 다시 합류했다': ['⚔️ Your mercenary rejoined', '⚔️ 傭兵が再合流した', '⚔️ 佣兵归队了', '⚔️ Tu mercenario volvió', '⚔️ Seu mercenário voltou', '⚔️ Наёмник вернулся'],
     '⚔️ 용병은 알아서 따라오며 싸운다. 적은 너를 노리지만 공격·장판에 닿으면 용병도 맞는다 — 쓰러지면 회복의 샘이나 쉼터에서 다시 합류한다.': ['⚔️ Your mercenary follows and fights on its own. Foes target you, but attacks and hazards that reach it hurt it too — if downed, it rejoins at a healing spring or rest stop.', '⚔️ 傭兵は自分でついて来て戦う。敵は君を狙うが、攻撃や床の炎に触れれば傭兵も傷つく — 倒れたら回復の泉か休憩所で再合流する。', '⚔️ 佣兵会自动跟随作战。敌人只盯着你，但攻击和地面伤害碰到佣兵也会受伤 — 倒下后在治疗泉或休息站归队。', '⚔️ Tu mercenario te sigue y lucha solo. Los enemigos van a por ti, pero los ataques y zonas que lo alcanzan también lo hieren — si cae, vuelve en una fuente curativa o un refugio.', '⚔️ Seu mercenário segue e luta sozinho. Os inimigos miram você, mas ataques e áreas que o alcançam também o ferem — se cair, volta numa fonte de cura ou num abrigo.', '⚔️ Наёмник сам следует за вами и сражается. Враги целятся в вас, но атаки и опасные зоны ранят и его — если падёт, вернётся у целебного источника или в привале.'],
+    '⚔️ 용병은 알아서 따라오며 싸운다. 적은 너와 용병 중 가까운 쪽을 노린다(보스는 너만) — 쓰러지면 회복의 샘이나 쉼터에서 다시 합류한다.': ['⚔️ Your mercenary follows and fights on its own. Foes go for whichever of you is closer (bosses only target you) — if downed, it rejoins at a healing spring or rest stop.', '⚔️ 傭兵は自分でついて来て戦う。敵は君と傭兵の近い方を狙う(ボスは君だけ) — 倒れたら回復の泉か休憩所で再合流する。', '⚔️ 佣兵会自动跟随作战。敌人会攻击你和佣兵中离得更近的一方（首领只盯着你）— 倒下后在治疗泉或休息站归队。', '⚔️ Tu mercenario te sigue y lucha solo. Los enemigos atacan a quien esté más cerca de los dos (los jefes, solo a ti) — si cae, vuelve en una fuente curativa o un refugio.', '⚔️ Seu mercenário segue e luta sozinho. Os inimigos atacam quem estiver mais perto (os chefes, só você) — se cair, volta numa fonte de cura ou num abrigo.', '⚔️ Наёмник сам следует за вами и сражается. Враги нападают на того, кто ближе (боссы — только на вас) — если падёт, вернётся у целебного источника или в привале.'],   // v880 어그로
   };
   ['en', 'ja', 'zh', 'es', 'pt', 'ru'].forEach((l, i) => { const d = I18N_DICT[l]; if (d) for (const k in T) if (d[k] === undefined) d[k] = T[k][i]; });
 }
@@ -26520,6 +26550,27 @@ function mercNearSeg(sx, sz, ux, uz, len, w) {
   const px = M.x - sx, pz = M.z - sz, al = Math.max(0, Math.min(len, px * ux + pz * uz));
   return Math.hypot(px - ux * al, pz - uz * al) <= w + merc.radius * 0.5;
 }
+// ----- v880 어그로 · 보스 패턴 판정 -----
+function aggroPos(e) { return (e && e._agM && mercLive()) ? merc.obj.position : player.obj.position; }   // 이 몹이 노리는 자리
+// 0.4초마다 다시 고른다. 휘두르는 중·특수 동작 중엔 안 바꾼다(예고한 공격이 엉뚱한 쪽으로 꺾이지 않게)
+function aggroTick(e, dt) {
+  if (!AGGRO_ON || e.isBoss || AGGRO_EXCL[e.type] || !mercLive()) { if (e._agM) e._agM = false; return false; }
+  if (e._agThr > 0) e._agThr -= dt;
+  e._agT = (e._agT || 0) - dt;
+  const busy = e.swingTimer > 0 || e.castPending || e.lgState || e.fgSlam || (e.hhState && e.hhState !== 'none') || (e.orcLeap && e.orcLeap !== 'none') || e.lungeState === 'active';
+  if (busy || e._agT > 0) return !!e._agM;
+  e._agT = 0.4;
+  const ex = e.obj.position.x, ez = e.obj.position.z, P = player.obj.position, M = merc.obj.position;
+  const dP = Math.hypot(P.x - ex, P.z - ez), dM = Math.hypot(M.x - ex, M.z - ez) - (e._agThr > 0 ? AGGRO_THREAT : 0);
+  e._agM = e._agM ? !(dP < dM - AGGRO_STICK) : (dM < dP - AGGRO_STICK);
+  return e._agM;
+}
+function mercD(x, z) { if (!mercLive()) return 1e9; const M = merc.obj.position; return Math.hypot(M.x - x, M.z - z); }
+// 앞쪽 부채꼴: (cx,cz) 에서 yaw(atan2(x,z) 기준 정면 각) ±arc · 용병 몸 중심까지 reach 안
+function mercArcHit(cx, cz, yaw, reach, arc) {
+  const sd = mercD(cx, cz); if (sd > reach) return false; if (sd < 0.3) return true;
+  const M = merc.obj.position; let df = Math.atan2(M.x - cx, M.z - cz) - yaw; df = Math.atan2(Math.sin(df), Math.cos(df)); return Math.abs(df) <= arc;
+}
 // 일반 근접 몹의 내려찍기 임팩트: 적이 보는 쪽 부채꼴(±60°) · 사거리 안이면 용병도 맞는다(적은 플레이어를 보고 휘두른다 — 곁에 선 용병이 휘말린다)
 function mercMeleeSplash(e, reach) {
   if (!mercLive()) return;
@@ -26597,7 +26648,7 @@ function mercPickTgt() {
     const dp = Math.hypot(e.obj.position.x - P.x, e.obj.position.z - P.z); if (dp > MERC_LEASH) continue;
     const dm0 = Math.hypot(e.obj.position.x - M.x, e.obj.position.z - M.z);
     if (e.type === 'wraith' && dm0 > 4) continue;   // 혼령은 치고 빠지며 날아다닌다 — 멀리서 쫓아다니면 시간만 버린다(곁에 왔을 때만)
-    const dm = dm0 + dp * 0.35;   // 플레이어 곁 적을 조금 더 먼저
+    const dm = dm0 + dp * 0.35 - (e._agM ? 1.5 : 0);   // 플레이어 곁 적을 조금 더 먼저 · v880: 나를 노리는 적도 먼저(맞서 싸운다)
     if (dm < bd) { bd = dm; best = e; }
   }
   return best;
@@ -26615,7 +26666,7 @@ function mercStrike() {
     if (kind === 'sweep') ok = d <= reach + 0.2 && (d < 0.4 || along / d > Math.cos(1.3));   // 앞 ±75°
     else ok = along > -0.2 && along <= reach && side <= (e.radius || 0.5) + 0.55;            // 창 앞 일직선(꿰뚫는다)
     if (!ok) continue;
-    if (skillHit(e, kind === 'sweep' ? MERC_SWEEP_K : MERC_THRUST_K, M.x, M.z, kind === 'sweep' ? 7 : 3, 'merc')) hit++;
+    if (skillHit(e, kind === 'sweep' ? MERC_SWEEP_K : MERC_THRUST_K, M.x, M.z, kind === 'sweep' ? 7 : 3, 'merc')) { hit++; if (AGGRO_ON) e._agThr = AGGRO_THREAT_T; }   // v880: 맞은 몹은 용병 쪽으로 기운다
   }
   if (SFX && SFX.swing) SFX.swing();
   return hit;
@@ -26675,6 +26726,7 @@ function mercUpdate(dt) {
     let gx = null, gz = null, stop = 0;
     if (tgt) {
       if (flank && !flank.back) { gx = flank.x; gz = flank.z; stop = 0.25; }
+      else if (tgt._agM) { if (dT > reach - 0.1) { gx = tgt.obj.position.x; gz = tgt.obj.position.z; stop = reach - 0.35; } }   // v880: 나를 노리는 적은 마주 서서 받는다(옆으로 돌아도 따라 돈다)
       else {
         // 옆구리로: 적은 플레이어를 보고 휘두르므로, 적→플레이어 방향에 직각인 자리(용병 쪽 옆)에 서면 그 공격에 안 휘말린다.
         // 창이 길어(사거리 = 반지름 합 + 1.35) 옆에서도 닿는다. 옆자리가 벽이면 반대쪽, 둘 다 막혔으면 곧장 다가간다
@@ -29857,14 +29909,15 @@ function update(dt) {
         }
         const pd = Math.hypot(player.obj.position.x - ex, player.obj.position.z - ez);
         if (pd < R + player.radius) { damagePlayer(Math.floor(e.damage * 0.9), e); }
+        if (MBOSS_ON && mercD(ex, ez) < R + merc.radius) mercHurt(Math.floor(e.damage * 0.9), e, false);   // v880
         killEnemy(e);
         continue;
       }
     }
     e.attackCd = Math.max(0, e.attackCd - dt * slowMul); e.swingTimer = Math.max(0, e.swingTimer - dt * slowMul);
     if (e.mixer) e.mixer.update(dt);
-    const dx = player.obj.position.x - e.obj.position.x, dz = player.obj.position.z - e.obj.position.z;
-    const d = Math.hypot(dx, dz);
+    let dx = player.obj.position.x - e.obj.position.x, dz = player.obj.position.z - e.obj.position.z;
+    let d = Math.hypot(dx, dz);
 
     // 발견 로직: 소속 방이 있는 일반 몬스터는 플레이어가 그 방에 들어와야 깨어남(한 번 깨면 계속 추격).
     if (e.awake === false) {
@@ -29902,6 +29955,10 @@ function update(dt) {
         e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
       }
     }
+    // v880(AGGRO): 깨어난 일반 몹은 플레이어·용병 중 가까운 쪽을 노린다 — 여기부터 dx·dz·d 는 '목표'까지(보스·혼령은 늘 플레이어).
+    // 깨우는 것은 위처럼 플레이어만 한다(용병이 혼자 방을 깨우지 않게)
+    const agM = AGGRO_ON && aggroTick(e, dt), tgtP = agM ? merc.obj.position : player.obj.position, tgtR = agM ? merc.radius : player.radius;
+    if (agM) { dx = tgtP.x - e.obj.position.x; dz = tgtP.z - e.obj.position.z; d = Math.hypot(dx, dz); }
 
     // ===== 일반 오크: 점프 도약(갭클로저) — 발견 시 1회, 웅크림→포물선 도약→착지 =====
     if (e.type === 'orc' && !e.isBoss && e.orcLeap !== 'none' && e.frozen <= 0) {
@@ -29915,7 +29972,7 @@ function update(dt) {
         if (e.orcLeapTimer <= 0) {
           // 도약 시작: 플레이어 약간 못 미치는 지점까지(바짝 붙되 겹치지 않게)
           const dd = d || 1;
-          const land = Math.max(0, d - (e.radius + player.radius + 0.3)); // 착지 목표 거리
+          const land = Math.max(0, d - (e.radius + tgtR + 0.3)); // 착지 목표 거리
           const reach = Math.min(land, TILE * 6); // 도약 사거리 상한
           e.orcLeapVx = (dx / dd) * reach; e.orcLeapVz = (dz / dd) * reach; // 0.5초에 걸쳐 이동할 총 변위
           e.orcLeap = 'air'; e.orcLeapTimer = 0.5; e.orcLeapHit = false;
@@ -29938,9 +29995,9 @@ function update(dt) {
         e.obj.position.y = e.baseY + Math.sin(prog * Math.PI) * 1.8 * e.scale;
         e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI;
         // 착지 직전 플레이어와 닿으면 1회 덮침 피해
-        if (!e.orcLeapHit && d < e.radius + player.radius + 0.5) {
+        if (!e.orcLeapHit && d < e.radius + tgtR + 0.5) {
           e.orcLeapHit = true;
-          damagePlayer(e.damage, e);
+          if (agM) mercHurt(e.damage, e, false); else damagePlayer(e.damage, e);
         }
         if (e.orcLeapTimer <= 0 || bx || bz) {
           e.obj.position.y = e.baseY; e.orcLeap = 'none'; e.orcLeapDone = true;
@@ -30053,7 +30110,7 @@ function update(dt) {
         if (e.dashTimer <= 0) {
           // 돌진 시작: 현재 플레이어 방향으로 속도 고정(돌진 중엔 방향 안 바뀜)
           const dd = d || 1;
-          e.dashState = 'dashing'; e.dashTimer = 0.45; e.dashHit = false;
+          e.dashState = 'dashing'; e.dashTimer = 0.45; e.dashHit = false; e.dashHitM = false;
           e.dashVx = (dx / dd) * e.speed * 6.0; // 평소 속도의 6배로 돌진
           e.dashVz = (dz / dd) * e.speed * 6.0;
           e.obj.position.y = e.baseY;
@@ -30081,6 +30138,7 @@ function update(dt) {
           damagePlayer(e.damage, e);
           e.damage = orig;
         }
+        if (MBOSS_ON && !e.dashHitM && mercD(e.obj.position.x, e.obj.position.z) < e.radius + merc.radius + 0.4) { e.dashHitM = true; mercHurt(Math.floor(e.damage * 1.3), e, false); }   // v880
         if (e.dashTimer <= 0) {
           e.dashState = 'none'; e.specialCd = 1.3 + Math.random() * 1.2; // 다음 돌진까지 1.3~2.5초(더 자주)
           e.dashVx = 0; e.dashVz = 0;
@@ -30210,6 +30268,7 @@ function update(dt) {
             damagePlayer(e.damage, e); e.damage = orig;
             player.kbX = (ddx / u) * 18; player.kbZ = (ddz / u) * 18; // 강한 넉백
           }
+          if (MBOSS_ON && mercD(e.obj.position.x, e.obj.position.z) < SHOCK_R) mercHurt(Math.floor(e.damage * 1.2), e, false);   // v880
           e.limbs.armR.rotation.x = 0;
           e.slamState = 'none'; e.specialCd = (e.enraged ? 2.0 : 4.0) + Math.random() * 2.0;
         }
@@ -30219,7 +30278,7 @@ function update(dt) {
         e.obj.position.y = Math.sin((0.5 - e.rushTimer) / 0.5 * Math.PI) * -0.18;
         if (e.rushTimer <= 0) {
           const dd = d || 1;
-          e.rushState = 'rushing'; e.rushTimer = 0.55; e.rushHit = false; // 더 길게 → 멀리 파고듦
+          e.rushState = 'rushing'; e.rushTimer = 0.55; e.rushHit = false; e.rushHitM = false; // 더 길게 → 멀리 파고듦
           e.rushVx = (dx / dd) * e.speed * 7.0; e.rushVz = (dz / dd) * e.speed * 7.0;
           e.obj.position.y = 0;
         }
@@ -30239,6 +30298,7 @@ function update(dt) {
           const orig = e.damage; e.damage = Math.floor(orig * 1.2);
           damagePlayer(e.damage, e); e.damage = orig;
         }
+        if (MBOSS_ON && !e.rushHitM && mercD(e.obj.position.x, e.obj.position.z) < e.radius + merc.radius + 0.4) { e.rushHitM = true; mercHurt(Math.floor(e.damage * 1.2), e, false); }   // v880
         e.phase += dt * 18; const rs = Math.sin(e.phase);
         e.limbs.legR.rotation.x = rs * 1.0; e.limbs.legL.rotation.x = -rs * 1.0;
         if (e.rushTimer <= 0) {
@@ -30279,6 +30339,7 @@ function update(dt) {
       const endState = (cd) => { e.hsState = 'none'; e.hsSweep = false; e.hitPending = false; e.swingTimer = 0; e.hsInvuln = false; L._hsHeat = 0; L._hsPose('rest', 0); e.specialCd = cd * cdK; gnd(0); };
       const strike = (reach, arc, k, kb) => {
         e.hitPending = false; e.swingTimer = 0;
+        if (MBOSS_ON && mercArcHit(e.obj.position.x, e.obj.position.z, e.obj.rotation.y - Math.PI, e.radius + merc.radius + reach, arc)) mercHurt(Math.floor(e.damage * k), e, false);   // v880: 같은 부채꼴에 든 용병도
         const rx = player.obj.position.x - e.obj.position.x, rz = player.obj.position.z - e.obj.position.z, sd = Math.hypot(rx, rz) || 1;
         if (sd > e.radius + player.radius + reach) return false;
         let diff = Math.atan2(rx, rz) - (e.obj.rotation.y - Math.PI); diff = Math.atan2(Math.sin(diff), Math.cos(diff));
@@ -30385,6 +30446,7 @@ function update(dt) {
             spawnShockwave(e.hsLX, e.hsLZ, HS_LAND_R * 1.1); addScreenShake(0.38, 0.35); hitStop = Math.max(hitStop, 0.08); SFX.hit(1.8); if (SFX.erupt) SFX.erupt(0.4);
             const rx = player.obj.position.x - e.hsLX, rz = player.obj.position.z - e.hsLZ, sd = Math.hypot(rx, rz) || 1;
             if (player.alive && sd <= HS_LAND_R + player.radius) { damagePlayer(Math.floor(e.damage * 1.1), e); player.kbX = rx / sd * 20; player.kbZ = rz / sd * 20; }
+            if (MBOSS_ON && mercD(e.hsLX, e.hsLZ) <= HS_LAND_R + merc.radius) mercHurt(Math.floor(e.damage * 1.1), e, false);   // v880
           }
         } else if (T < T3 + 1.4) { L._hsPose('slam', 1); L._hsHeat = Math.max(0, 1 - (T - T3) * 2); gnd(0); }   // 대검이 바닥에 박힌 채 경직 — 딜 찬스
         else { e.hsLanded = false; e.hsFlyCd = e.hsPhase >= 3 ? 17 : 21; endState(0.8); }
@@ -30425,6 +30487,7 @@ function update(dt) {
       // 앞쪽 부채꼴 판정 — reach 는 몸 반지름 + 플레이어 반지름 밖으로 더 닿는 거리, arc 는 정면에서 좌우 각
       const strike = (reach, arc, k, kb) => {
         e.hitPending = false; e.swingTimer = 0;
+        if (MBOSS_ON && mercArcHit(e.obj.position.x, e.obj.position.z, e.obj.rotation.y - Math.PI, e.radius + merc.radius + reach, arc)) mercHurt(Math.floor(e.damage * k), e, false);   // v880: 같은 부채꼴에 든 용병도
         const rx = player.obj.position.x - e.obj.position.x, rz = player.obj.position.z - e.obj.position.z, sd = Math.hypot(rx, rz) || 1;
         if (sd > e.radius + player.radius + reach) return false;
         let diff = Math.atan2(rx, rz) - (e.obj.rotation.y - Math.PI); diff = Math.atan2(Math.sin(diff), Math.cos(diff));
@@ -30477,6 +30540,7 @@ function update(dt) {
             e.exHit1 = true; e.hitPending = false; e.swingTimer = 0;
             const rx = player.obj.position.x - e.obj.position.x, rz = player.obj.position.z - e.obj.position.z, sd = Math.hypot(rx, rz) || 1;
             if (sd <= EX_WHIRL_R) { damagePlayer(Math.floor(e.damage * 1.0), e); player.kbX = rx / sd * 18; player.kbZ = rz / sd * 18; }
+            if (MBOSS_ON && mercD(e.obj.position.x, e.obj.position.z) <= EX_WHIRL_R) mercHurt(Math.floor(e.damage * 1.0), e, false);   // v880
             spawnShockwave(e.obj.position.x, e.obj.position.z, EX_WHIRL_R); SFX.hit(1.2);
           }
         } else if (T < EX_WHIRL_T + 1.25) { L._exPose('spin', 1 - (T - EX_WHIRL_T - 0.8) / 0.45); faceP(3); }
@@ -30547,6 +30611,7 @@ function update(dt) {
           spawnShockwave(e.obj.position.x, e.obj.position.z, LB_STOMP_R); hitStop = Math.max(hitStop, 0.08); addScreenShake(0.3, 0.25); SFX.hit(1.6);
           const sd = Math.hypot(player.obj.position.x - e.obj.position.x, player.obj.position.z - e.obj.position.z);
           if (sd < LB_STOMP_R) { const u = sd || 1; damagePlayer(Math.floor(e.damage * 1.25), e); player.kbX = (player.obj.position.x - e.obj.position.x) / u * 18; player.kbZ = (player.obj.position.z - e.obj.position.z) / u * 18; }
+          if (MBOSS_ON && mercD(e.obj.position.x, e.obj.position.z) < LB_STOMP_R) mercHurt(Math.floor(e.damage * 1.25), e, false);   // v880
           e.lbState = 'stompRec'; e.lbT = 0; L._rear = 0;
         }
         continue;
@@ -30586,7 +30651,7 @@ function update(dt) {
         if (e.lbT < LB_CHARGE_TRACK) { faceP(8); const ry = Math.atan2(dx, dz); e.lbDx = Math.sin(ry); e.lbDz = Math.cos(ry); }   // 화살표는 플레이어를 정확히 따라간다(몸은 늦게 돌아도 — 돌진 시작에 맞춘다)
         else if (e._lbGuide) e._lbGuide.guideMax = 0.6;
         houndGuideSet(e._lbGuide, e.obj.position.x, e.obj.position.z, e.lbDx, e.lbDz, LB_CHARGE_LEN + 4, 4.5);
-        if (e.lbT >= LB_CHARGE_WIND) { e.obj.rotation.y = Math.atan2(e.lbDx, e.lbDz) + Math.PI; e.lbState = 'charge'; e.lbT = 0; e.lbGone = 0; e.lbHit = false; L._roar = 0; L._charge = true; }
+        if (e.lbT >= LB_CHARGE_WIND) { e.obj.rotation.y = Math.atan2(e.lbDx, e.lbDz) + Math.PI; e.lbState = 'charge'; e.lbT = 0; e.lbGone = 0; e.lbHit = false; e.lbHitM = false; L._roar = 0; L._charge = true; }
         continue;
       }
       if (e.lbState === 'charge') {
@@ -30598,6 +30663,10 @@ function update(dt) {
         if (!e.lbHit && side <= LB_CHARGE_HALF + player.radius && along <= 4.0 && along >= -2.0) {
           e.lbHit = true; damagePlayer(Math.floor(e.damage * 1.3), e); hitStop = Math.max(hitStop, 0.08); SFX.hit(1.5);
           const u = nd || 1; player.kbX = (player.obj.position.x - e.obj.position.x) / u * 22; player.kbZ = (player.obj.position.z - e.obj.position.z) / u * 22;
+        }
+        if (MBOSS_ON && !e.lbHitM && mercLive()) {   // v880: 같은 몸 띠
+          const M = merc.obj.position, mx = M.x - e.obj.position.x, mz = M.z - e.obj.position.z, ma = mx * e.lbDx + mz * e.lbDz;
+          if (Math.abs(mx * e.lbDz - mz * e.lbDx) <= LB_CHARGE_HALF + merc.radius && ma <= 4.0 && ma >= -2.0) { e.lbHitM = true; mercHurt(Math.floor(e.damage * 1.3), e, false); }
         }
         if (blocked || e.lbGone >= LB_CHARGE_LEN - 1e-4) {
           L._charge = false;
@@ -30717,6 +30786,7 @@ function update(dt) {
             player.kbX = ((player.obj.position.x - e.obj.position.x) / u) * 16;
             player.kbZ = ((player.obj.position.z - e.obj.position.z) / u) * 16;
           }
+          if (MBOSS_ON && mercD(e.obj.position.x, e.obj.position.z) < R) mercHurt(Math.floor(e.damage * 1.2), e, false);   // v880
         }
         if (e.btTimer <= 0) { e.btState = 'none'; e.obj.position.y = e.baseY; e.specialCd = (B3_PAT ? 2.6 : 3.2) + Math.random() * (B3_PAT ? 1.2 : 1.5); }
         continue;
@@ -30792,6 +30862,7 @@ function update(dt) {
             player.kbX = ((player.obj.position.x - e.obj.position.x) / u) * 18;
             player.kbZ = ((player.obj.position.z - e.obj.position.z) / u) * 18;
           }
+          if (MBOSS_ON && mercD(e.obj.position.x, e.obj.position.z) < R) mercHurt(Math.floor(e.damage * 1.25), e, false);   // v880
         }
         if (e.ggTimer <= 0) { e.ggState = 'none'; e.limbs.armR.rotation.x = 0.04; e.limbs.armL.rotation.x = 0.04; e.specialCd = (B3_PAT ? (e.ggPhase2 ? 2.0 : 2.9) : (e.ggPhase2 ? 2.4 : 3.6)) + Math.random() * (B3_PAT ? 1.2 : 1.5); }
         continue;
@@ -30818,6 +30889,7 @@ function update(dt) {
           if (!bx) e.obj.position.x += ndx;
           if (!bz) e.obj.position.z += ndz;
           if (GG_FLEX && e.limbs._ggFlex) e.limbs._ggFlex({ head: 1.34, push: 0.30 });   // 돌진 내내 최대
+          if (MBOSS_ON && !e.ggHitM && mercD(e.obj.position.x, e.obj.position.z) < e.radius + merc.radius + 0.6) { e.ggHitM = true; mercHurt(Math.floor(e.damage * 1.5), e, false); }   // v880
           if (!e.ggHit && d < e.radius + player.radius + 0.6) {
             e.ggHit = true;
             damagePlayer(Math.floor(e.damage * 1.5), e);
@@ -30861,14 +30933,14 @@ function update(dt) {
             near ? [['slam', 4]] : [],
             d < TILE * 5 ? [['devour', near ? 1.2 : 6]] : [],   // 돌진이 덮는 거리(약 4.3칸) 안에서만
             e.ggPhase2 && d < TILE * 11 ? [['bile', near ? 1.6 : 3]] : []));
-          if (pick === 'slam') { e.ggState = 'slam'; e.ggTimer = 1.0; e.ggHit = false; continue; }
+          if (pick === 'slam') { e.ggState = 'slam'; e.ggTimer = 1.0; e.ggHit = false; e.ggHitM = false; continue; }
           if (pick === 'bile') { e.ggState = 'bile'; e.ggTimer = 0.8; e.ggShot = false; continue; }
-          if (pick === 'devour') { e.ggState = 'devour'; e.ggTimer = 1.9; e.ggHit = false; e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI; continue; }
+          if (pick === 'devour') { e.ggState = 'devour'; e.ggTimer = 1.9; e.ggHit = false; e.ggHitM = false; e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI; continue; }
         } else {
-          if (d < TILE * 2.6) { e.ggState = 'slam'; e.ggTimer = 1.0; e.ggHit = false; continue; }
+          if (d < TILE * 2.6) { e.ggState = 'slam'; e.ggTimer = 1.0; e.ggHit = false; e.ggHitM = false; continue; }
           if (d < TILE * 9) {
             if (e.ggPhase2 && Math.random() < 0.45) { e.ggState = 'bile'; e.ggTimer = 0.8; e.ggShot = false; continue; }
-            e.ggState = 'devour'; e.ggTimer = 1.9; e.ggHit = false; e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI; continue;
+            e.ggState = 'devour'; e.ggTimer = 1.9; e.ggHit = false; e.ggHitM = false; e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI; continue;
           }
         }
       }
@@ -30916,6 +30988,7 @@ function update(dt) {
           const R = e.radius + player.radius + 1.2;
           const sd = Math.hypot(player.obj.position.x - e.obj.position.x, player.obj.position.z - e.obj.position.z);
           if (sd < R) damagePlayer(Math.floor(e.damage * (seg === 2 ? 1.4 : 0.9)), e);
+          if (MBOSS_ON && mercD(e.obj.position.x, e.obj.position.z) < R - player.radius + merc.radius) mercHurt(Math.floor(e.damage * (seg === 2 ? 1.4 : 0.9)), e, false);   // v880
           if (seg === 2) { spawnShockwave(e.obj.position.x, e.obj.position.z, TILE * 1.6); hitStop = 0.08; }
           SFX.hit(seg === 2 ? 1.3 : 0.9);
         }
@@ -30946,6 +31019,7 @@ function update(dt) {
             player.kbX = ((player.obj.position.x - e.obj.position.x) / u) * 22;
             player.kbZ = ((player.obj.position.z - e.obj.position.z) / u) * 22;
           }
+          if (MBOSS_ON && mercD(e.obj.position.x, e.obj.position.z) < R) mercHurt(Math.floor(e.damage * 1.3), e, false);   // v880
           // 분노 강화는 '2페이즈 진입' 1회만. 예전에는 폭발이 터질 때마다 걸려서 긴 싸움이면
           // 무한히 세졌다(실측 120초에 14회 → 공격력 675→5502, 속도 3.2→15.64로 플레이어(6.5)보다 빨라졌다).
           if (!e.ckRaged) { e.ckRaged = true; e.damage = Math.floor(e.damage * 1.15); e.speed *= 1.12; }
@@ -31046,6 +31120,7 @@ function update(dt) {
             } else {
               toast(_i18n('✨ 따뜻한 틈에서 살아남았다!'), 1400);
             }
+            if (MBOSS_ON && mercLive() && mercD(e.obj.position.x, e.obj.position.z) > SAFE) mercHurt(Math.floor(e.damage * 2.2), e, false);   // v880: 따뜻한 틈 밖이면 용병도
             // 폭발 직후: 강설 폭풍을 잠시 멎게(광선 끝나고 3초 뒤 재개) + 2초 텀을 두고 빔 시작
             if (typeof setSnowstorm === 'function') setSnowstorm(false);
             e.iqStormResumeTimer = -1; // 재개 대기 아님(빔 끝나야 카운트 시작)
@@ -31483,7 +31558,7 @@ function update(dt) {
         if (e.limbs._dkSword) e.limbs._dkSword.rotation.x = e.limbs._dkSwordBaseRX - Math.PI / 2; // 검을 앞으로 90° 더 눕혀 바닥과 평행
         e.obj.rotation.y = Math.atan2(dx, dz) + Math.PI - s * w * 0.4; // 몸통을 반대로 비틀어 태세
         if (e.sweepTimer <= 0) {
-          e.sweepState = 'slashing'; e.sweepTimer = 0.22; e.sweepHit = false; // 빠르게 확
+          e.sweepState = 'slashing'; e.sweepTimer = 0.22; e.sweepHit = false; e.sweepHitM = false; // 빠르게 확
           e.sweepBaseYaw = Math.atan2(dx, dz) + Math.PI;
         }
         continue;
@@ -31504,6 +31579,7 @@ function update(dt) {
           spawnEnemySlash(e.obj.position.x, e.obj.position.z, e.sweepBaseYaw, e.enraged ? null : 0xff7744, e.enraged);
         }
         // 검이 정면을 지나는 구간에 광역 판정 1회(전방 반원, 앞으로 뻗어 사거리도 약간 김)
+        if (MBOSS_ON && !e.sweepHitM && p > 0.3 && mercArcHit(e.obj.position.x, e.obj.position.z, e.sweepBaseYaw + Math.PI, e.radius + merc.radius + TILE * (e.enraged ? 2.4 : 1.15), Math.PI * 0.6)) { e.sweepHitM = true; mercHurt(e.damage, e, false); }   // v880
         if (!e.sweepHit && p > 0.3) {
           const sd = Math.hypot(player.obj.position.x - e.obj.position.x, player.obj.position.z - e.obj.position.z);
           const REACH = e.radius + player.radius + TILE * (e.enraged ? 2.4 : 1.15); // 분노: 불꽃 검기 몸체에 맞춘 사거리
@@ -31572,7 +31648,7 @@ function update(dt) {
           hitStop = 0.08;
           e.limbs.armR.rotation.x = 0;
           e.riftState = 'active'; e.riftTimer = 2.0;      // 균열이 끝까지 뻗으며 판정 지속
-          e.riftHit = false;
+          e.riftHit = false; e.riftHitM = false;
         }
         continue;
       }
@@ -31581,6 +31657,14 @@ function update(dt) {
         const elapsed = RIFT_DUR - e.riftTimer;          // active 시작 후 경과
         e.riftTimer -= dt;
         // 직선 균열 피해: 균열 끝이 플레이어 위치까지 '뻗어 도달'한 순간에만 1회 명중(발동 즉시 전체판정 X)
+        if (MBOSS_ON && !e.riftHitM && mercLive()) {   // v880: 같은 균열 판정을 용병 자리로
+          const M = merc.obj.position, mrx = M.x - e.obj.position.x, mrz = M.z - e.obj.position.z, RL = TILE * 9, reachedM = (elapsed / 0.67) * RL;
+          const ma = mrx * e.riftDirX + mrz * e.riftDirZ, mp = Math.abs(mrx * (-e.riftDirZ) + mrz * e.riftDirX);
+          let hm;
+          if (e.enraged) { const md = Math.hypot(mrx, mrz); let ad = Math.atan2(mrx, mrz) - Math.atan2(e.riftDirX, e.riftDirZ); ad = Math.atan2(Math.sin(ad), Math.cos(ad)); hm = ma > -0.5 && md < RL && Math.abs(ad) < 0.42 && md <= reachedM + merc.radius; }
+          else hm = ma > -0.5 && ma < RL && mp < TILE * 0.55 + merc.radius && ma <= reachedM;
+          if (hm) { e.riftHitM = true; mercHurt(Math.floor(e.damage * 1.3), e, false); }
+        }
         if (!e.riftHit) {
           const relx = player.obj.position.x - e.obj.position.x, relz = player.obj.position.z - e.obj.position.z;
           const along = relx * e.riftDirX + relz * e.riftDirZ;            // 균열 진행축 투영(전방 거리)
@@ -31630,7 +31714,7 @@ function update(dt) {
         }
         if (e.rushTimer <= 0) {
           // 돌진 방향 = 보스 조준 방향(가이드와 동일)
-          e.rushState = 'rushing'; e.rushTimer = 0.9; e.rushHit = false;  // 길게 → 한 번에 먼 거리 이동
+          e.rushState = 'rushing'; e.rushTimer = 0.9; e.rushHit = false; e.rushHitM = false;  // 길게 → 한 번에 먼 거리 이동
           e.rushVx = Math.sin(aimYaw) * e.speed * 12; e.rushVz = Math.cos(aimYaw) * e.speed * 12; // 빠르게(거리 좁힘)
           e.obj.position.y = 0;
           // 가이드 정리(돌진 시작과 함께)
@@ -31661,6 +31745,7 @@ function update(dt) {
         const blocked = moveEntityXZ(e, ndx, ndz);
         if (blocked) e.rushTimer = 0;
         const nd = Math.hypot(player.obj.position.x - e.obj.position.x, player.obj.position.z - e.obj.position.z);
+        if (MBOSS_ON && !e.rushHitM && mercD(e.obj.position.x, e.obj.position.z) < e.radius + merc.radius + 0.4) { e.rushHitM = true; mercHurt(Math.floor(e.damage * 1.15), e, false); }   // v880
         if (!e.rushHit && nd < e.radius + player.radius + 0.4) {
           e.rushHit = true;
           const orig = e.damage; e.damage = Math.floor(orig * 1.15); damagePlayer(e.damage, e); e.damage = orig;
@@ -31688,7 +31773,7 @@ function update(dt) {
     // ===== v856 불의 사냥개: 웅크림 0.5초(바닥 화살표가 플레이어를 따라 돈다) → 직선 돌진(웅크림이 끝나는 순간 방향 고정) → 숨 고르기 =====
     // 'none' 이면 아래 공용 근접 AI 로 흘러간다(쫓아와 붙으면 문다 — 물기는 공용 휘두름을 빈 팔(armR)로 받아 _hhUpdate 가 턱으로 바꾼다).
     if (M4_ON && e.type === 'hellhound' && !e.isBoss) {
-      const sm = slowMul, HIT = player.radius + e.radius + HH_HITPAD;
+      const sm = slowMul, HIT = tgtR + e.radius + HH_HITPAD;
       const ground = () => { if (groundH) { const gy = groundHeightAt(e.obj.position.x, e.obj.position.z); e.baseY = gy; } e.obj.position.y = e.baseY || 0; };
       if (e.hhState === undefined) { e.hhState = 'none'; e.hhCd = HH_CD0 + Math.random() * 0.8; }
       const ready = () => e.swingTimer <= 0 && e.frozen <= 0 && (wraithClock - houndLastStrike) >= HH_GROUP_GAP;
@@ -31739,8 +31824,8 @@ function update(dt) {
         const blocked = moveEntityXZ(e, e.hhDx * st, e.hhDz * st); e.hhGone += st;
         e.obj.rotation.y = Math.atan2(e.hhDx, e.hhDz) + Math.PI;
         ground();
-        const nd = Math.hypot(player.obj.position.x - e.obj.position.x, player.obj.position.z - e.obj.position.z);
-        if (!e.hhHit && nd <= HIT) { e.hhHit = true; e.hitPending = false; e.swingTimer = 0; damagePlayer(Math.max(1, Math.floor(e.damage * HOUND_CHARGE_K)), e); }   // v870 돌진 ×0.8
+        const nd = Math.hypot(tgtP.x - e.obj.position.x, tgtP.z - e.obj.position.z);
+        if (!e.hhHit && nd <= HIT) { e.hhHit = true; e.hitPending = false; e.swingTimer = 0; const _hd = Math.max(1, Math.floor(e.damage * HOUND_CHARGE_K)); if (agM) mercHurt(_hd, e, false); else damagePlayer(_hd, e); }   // v870 돌진 ×0.8
         else if (!e.hhHit) e.swingTimer = Math.max(0.001, (nd - HIT) / HH_SPD);
         if (blocked || e.hhGone >= HH_LEN - 1e-4) {
           e.hitPending = false; e.swingTimer = 0; e.limbs._dash = false;
@@ -31921,7 +32006,7 @@ function update(dt) {
     // 이동 방향 결정: 근접은 추격, 원거리는 플레이어 주위 각도 위치를 잡고 둘러싸며 카이팅
     let moveDir = 0; // (근접용) +1 접근, -1 후퇴, 0 정지
     // 공격 사거리: 충돌 반경 합(플레이어+몬스터)보다 넉넉히 커야 작은 몬스터(고블린)도 명중한다.
-    const meleeStop = (player.radius + e.radius) + 0.6;
+    const meleeStop = (tgtR + e.radius) + 0.6;
     let nx = 0, nz = 0; // 이동 변위(이번 프레임)
     if (e.isRanged) {
       const KEEP = TILE * MAGE_KEEP;     // 유지 거리(캐스터가 붙지 않게 — 발사 사거리 안쪽으로)
@@ -31938,8 +32023,8 @@ function update(dt) {
         nz = (-dz / u + perpZ * drift) * sp;
       } else {
         // 목표 지점: 플레이어 위치 + (surroundAngle 방향 × KEEP)
-        const targetX = player.obj.position.x + Math.cos(ang) * KEEP;
-        const targetZ = player.obj.position.z + Math.sin(ang) * KEEP;
+        const targetX = tgtP.x + Math.cos(ang) * KEEP;
+        const targetZ = tgtP.z + Math.sin(ang) * KEEP;
         const tdx = targetX - e.obj.position.x, tdz = targetZ - e.obj.position.z;
         const tdist = Math.hypot(tdx, tdz);
         if (tdist > KEEP_BAND) {
@@ -31989,8 +32074,8 @@ function update(dt) {
         nz = (dz / d) * e.speed * slowMul * dt;
       } else {
         // 중간 거리: 플레이어 주위 자기 위치(각도)로 파고들며 둘러쌈
-        const tx = player.obj.position.x + Math.cos(e.surroundAngle) * SURROUND_R;
-        const tz = player.obj.position.z + Math.sin(e.surroundAngle) * SURROUND_R;
+        const tx = tgtP.x + Math.cos(e.surroundAngle) * SURROUND_R;
+        const tz = tgtP.z + Math.sin(e.surroundAngle) * SURROUND_R;
         const tdx = tx - e.obj.position.x, tdz = tz - e.obj.position.z;
         const td = Math.hypot(tdx, tdz) || 1;
         const sp = e.speed * slowMul * dt;
@@ -32007,7 +32092,7 @@ function update(dt) {
           let tx = -dz / u * s2 * 0.9 + dx / u * 0.35, tz = dx / u * s2 * 0.9 + dz / u * 0.35; const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
           if (wallOverlapAt(e.obj.position.x + tx * (e.radius + 0.3), e.obj.position.z + tz * (e.radius + 0.3), e.radius)) e._cwSide.s = -s2;   // 벽이면 반대쪽으로
           nx = tx * sp; nz = tz * sp;
-          if (e._cwSide.t <= 0) e.surroundAngle = Math.atan2(e.obj.position.z - player.obj.position.z, e.obj.position.x - player.obj.position.x);   // 옮긴 자리에서 곧장 파고들게
+          if (e._cwSide.t <= 0) e.surroundAngle = Math.atan2(e.obj.position.z - tgtP.z, e.obj.position.x - tgtP.x);   // 옮긴 자리에서 곧장 파고들게
         }
       }
       // ── v812 끼임 감지: 0.4초마다 '가려던 거리' 대비 '실제로 간 거리'를 본다. 25% 미만이면 막힌 것
@@ -32125,7 +32210,7 @@ function update(dt) {
         let share = 0.5;
         if (CROWD_ON) {
           const rk = (q, qd) => q.isBoss ? 4 : (q.swingTimer > 0 || (!q.isRanged && qd <= (player.radius + q.radius) + 0.6 + 0.15)) ? 3 : (!q.isRanged && q.awake !== false) ? 2 : 1;
-          const ra = rk(e, d), rb = rk(o, Math.hypot(player.obj.position.x - o.obj.position.x, player.obj.position.z - o.obj.position.z));
+          const _op = aggroPos(o), ra = rk(e, d), rb = rk(o, Math.hypot(_op.x - o.obj.position.x, _op.z - o.obj.position.z));   // v880: 저마다 자기 목표까지
           share = ra < rb ? 0.8 : ra > rb ? 0.2 : 0.5;
         }
         const push = (minOD - odist) * share; // 내 몫만 밀어냄(상대도 자기 차례에 밀려남)
@@ -32208,7 +32293,7 @@ function update(dt) {
               if (e.hitPending && el >= G_WINDUP + 0.18) {
                 e.hitPending = false;
                 if (typeof spawnShockwave === 'function') spawnShockwave(e.obj.position.x, e.obj.position.z, TILE * 1.2);
-                if (d <= gMeleeStop + 0.6) damagePlayer(e.damage, e);
+                if ((agM ? Math.hypot(player.obj.position.x - e.obj.position.x, player.obj.position.z - e.obj.position.z) : d) <= gMeleeStop + 0.6) damagePlayer(e.damage, e);   // v880: 용병을 노려도 곁의 플레이어는 맞는다(둥근 충격파)
                 if (MERC_ON && mercInCircle(e.obj.position.x, e.obj.position.z, gMeleeStop + 0.6 - player.radius)) mercHurt(e.damage, e, false);   // v879
               }
             }
@@ -32269,8 +32354,9 @@ function update(dt) {
           // 내려찍는 임팩트 순간에 1회 데미지(이때가 패링 타이밍)
           if (e.hitPending && elapsed >= E_IMPACT) {
             e.hitPending = false;
-            if (MERC_ON) mercMeleeSplash(e, meleeStop + 0.4);   // v879: 플레이어를 보고 휘두른 공격에 곁의 용병이 휘말린다
-            if (d <= meleeStop + 0.4) {
+            if (MERC_ON && !agM) mercMeleeSplash(e, meleeStop + 0.4);   // v879: 플레이어를 보고 휘두른 공격에 곁의 용병이 휘말린다
+            if (agM) { if (d <= meleeStop + 0.4) mercHurt(e.damage, e, false); }   // v880: 용병을 노린 공격은 용병을 맞힌다
+            else if (d <= meleeStop + 0.4) {
               const hpB = player.hp; damagePlayer(e.damage, e); // 아직 근처일 때만 명중
               // v822: 부패한 구울은 맞히면 0.8초 붙잡는다(포박) — 혼자서는 별것 아니지만 무리 속에서 잡히면 다음 공격이 이어진다. 구울마다 4초에 한 번.
               if (A3B_ON && e.type === 'rotghoul' && !e.isBoss && player.alive && player.hp < hpB && !(e._grabCd > 0)) {
@@ -32894,7 +32980,7 @@ function drawMinimap() {
 // DOM 만 쓴다(THREE 객체·Math.random 없음 → 층 생성 난수 스트림에 영향 없음). 알림(toast)은 위쪽, 이 띠는 아래쪽이라 겹치지 않는다.
 // 트리거: 층 시작(tutFloor) · 매 프레임 상태 검사(tutUpdate) · 레벨업·마을·쉼터 진입(직접 tutShow).
 const TUT_TEXT = {
-  merc: () => _i18n('⚔️ 용병은 알아서 따라오며 싸운다. 적은 너를 노리지만 공격·장판에 닿으면 용병도 맞는다 — 쓰러지면 회복의 샘이나 쉼터에서 다시 합류한다.'),   // v879
+  merc: () => _i18n(AGGRO_ON ? '⚔️ 용병은 알아서 따라오며 싸운다. 적은 너와 용병 중 가까운 쪽을 노린다(보스는 너만) — 쓰러지면 회복의 샘이나 쉼터에서 다시 합류한다.' : '⚔️ 용병은 알아서 따라오며 싸운다. 적은 너를 노리지만 공격·장판에 닿으면 용병도 맞는다 — 쓰러지면 회복의 샘이나 쉼터에서 다시 합류한다.'),   // v879
   start: () => _i18n('🧭 던전의 목표는 내려가는 계단을 찾는 것. 미니맵의 밝은 점이 계단이고, 적을 다 잡지 않아도 내려갈 수 있다.'),
   ctrl: () => {
     const m = isTouchDevice;

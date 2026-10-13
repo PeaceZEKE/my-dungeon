@@ -51,7 +51,7 @@ window.__botStep = function (dt) {
   const cls = selectedChar;
   // 위협 감지: 임팩트 직전 근접 공격
   let threat = null;
-  for (const e of alive) { if (!e.awake || !e.hitPending) continue; const d = d2(e); if (d > 3.2 + (e.radius || 0.5)) continue; const lim = e.type === 'golem' ? 0.38 : 0.3; if (e.swingTimer > 0 && e.swingTimer < lim) { threat = e; break; } }
+  for (const e of alive) { if (!e.awake || !e.hitPending || e._agM) continue; const d = d2(e); if (d > 3.2 + (e.radius || 0.5)) continue; const lim = e.type === 'golem' ? 0.38 : 0.3; if (e.swingTimer > 0 && e.swingTimer < lim) { threat = e; break; } }
   if (B.blockT > 0) { B.blockT -= dt; if (B.blockT <= 0 && player.isBlocking) endBlock(); }
   if (threat && cls !== 'archer' && !player.isBlocking && player.sta >= 20 && !isCharging) { aimAt(threat.obj.position.x, threat.obj.position.z); startBlock(); B.blockT = 0.35; B.fl.blocks = (B.fl.blocks || 0) + 1; }
   if (threat && cls === 'archer' && player.dodgeCd <= 0 && player.dodgeT <= 0 && player.sta >= 30) { const ex = threat.obj.position.x - P.x, ez = threat.obj.position.z - P.z; startDodge(-ez, ex); B.fl.dodges = (B.fl.dodges || 0) + 1; }
