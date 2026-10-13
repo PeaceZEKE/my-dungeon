@@ -88,6 +88,10 @@
   #dmgNums .dn.crit { color:#ffd86b; font-size:28px; }
   #dmgNums .dn.hurt { color:#ff6a5a; }
   #dmgNums .dn.skill { color:#8fe3ff; } /* v824: 스킬·반사·폭발 피해 */
+  #dmgNums .dn.merc { color:#c8e89a; } /* v879: 용병이 넣은 피해 */
+  #dmgNums .dn.mhurt { color:#ff9a6a; font-size:16px; } /* v879: 용병이 받은 피해 */
+  #mercBar { position:fixed; left:0; top:0; z-index:6; width:34px; height:6px; background:#070a14; border:1px solid rgba(243,234,210,0.55); pointer-events:none; display:none; image-rendering:pixelated; }
+  #mercBar i { display:block; width:100%; height:100%; background:#9ad46a; }
   /* v857 콤보: 화면 오른쪽 가운데. 숫자는 픽셀 글꼴, 글씨는 Cinzel. 색은 콤보가 쌓일수록 흰 → 금 → 주황 → 빨강 */
   #combo { position:fixed; right:28px; top:36%; z-index:7; pointer-events:none; text-align:right; opacity:0; transform-origin:100% 50%; will-change:transform,opacity; }
   #combo .cn { font-family:'UI2Px','Galmuri9',monospace; font-size:40px; line-height:1; color:#f3ead2; -webkit-font-smoothing:none;
@@ -258,12 +262,12 @@ body.ui2m .act-btn:not(.empty):active, body.ui2m .skill-btn.aiming { opacity: 1;
 #hud2.m .mmw { opacity: .72; }
 /* ── UI v2 2단계(v816): 창·버튼·카드·제목 — 9칸 테두리 그림(--u2*)은 JS 가 찍는다. 창 마크업·로직은 그대로 두고 겉모습만 덮는다 ── */
 @font-face { font-family: 'UI2Cap'; font-weight: 400 900; src: url(data:font/woff2;base64,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) format('woff2'); }
-body.ui2 :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #startResumeChoice, #townDialog, #howtoHint, #tipBar, #townPrompt, #townInteract, #townLoadWrap) {
+body.ui2 :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #innOverlay, #startResumeChoice, #townDialog, #howtoHint, #tipBar, #townPrompt, #townInteract, #townLoadWrap) {
   font-family: 'UI2La', 'UI2Ko', serif; }
-body.ui2 :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #startResumeChoice) {
+body.ui2 :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #innOverlay, #startResumeChoice) {
   background: radial-gradient(ellipse at 50% 45%, rgba(8,10,20,.62), rgba(4,5,11,.94)) !important; }
 /* 창 틀 */
-body.ui2 :is(#townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #startResumeChoice, #townDialog) > div,
+body.ui2 :is(#townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #innOverlay, #startResumeChoice, #townDialog) > div,
 body.ui2 #howtoHint, body.ui2 #tipBar {
   background: none !important; border: 14px solid transparent !important; border-radius: 0 !important; box-shadow: none !important;
   border-image: var(--u2win) 14 fill / 14px stretch !important; image-rendering: pixelated; padding: 8px 12px !important; color: #f3ead2; }
@@ -276,17 +280,17 @@ body.ui2 :is(#smithMaterials, #overMaterialsList) > * {
   background: none !important; border: 6px solid transparent !important; border-radius: 0 !important;
   border-image: var(--u2chip) 6 fill / 6px stretch !important; image-rendering: pixelated; padding: 0 4px !important; color: #f3ead2 !important; }
 /* 버튼 */
-body.ui2 :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #startResumeChoice, #townDialog) button,
+body.ui2 :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #innOverlay, #startResumeChoice, #townDialog) button,
 body.ui2 #townTalkBtn {
   font-family: 'UI2La', 'UI2Ko', serif !important; font-weight: 700 !important; color: #f3ead2 !important; letter-spacing: .5px !important;
   background: none !important; border: 12px solid transparent !important; border-radius: 0 !important; box-shadow: none !important;
   border-image: var(--u2btn) 12 fill / 12px stretch !important; image-rendering: pixelated; padding: 1px 14px !important;
   text-shadow: 0 1px 0 rgba(0,0,0,.9) !important; transform: none !important; }
-body.ui2 :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #startResumeChoice, #townDialog) button:active,
+body.ui2 :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #innOverlay, #startResumeChoice, #townDialog) button:active,
 body.ui2 #townTalkBtn:active { filter: brightness(1.3); }
 body.ui2 :is(#skillOverlay, #smithOverlay) button[style*="5fc896"], body.ui2 #langRow button[style*="ffd86b"] {
   border-image: var(--u2btnOn) 12 fill / 12px stretch !important; color: #1a1f33 !important; text-shadow: none !important; }
-body.ui2 :is(#skillClose, #smithClose, #townShopClose, #townDialogClose, #restChoiceCancel, #charCancelBtn, #reviveGiveUpBtn, #resetDataBtn, #townTimeBtn, #townMusicBtn),
+body.ui2 :is(#skillClose, #smithClose, #townShopClose, #townDialogClose, #restChoiceCancel, #innCancel, #charCancelBtn, #reviveGiveUpBtn, #resetDataBtn, #townTimeBtn, #townMusicBtn),
 body.ui2 #langRow button:not([style*="ffd86b"]) {
   border-image: var(--u2btnS) 12 fill / 12px stretch !important; color: #d6cbab !important; }
 body.ui2 :is(#townTimeBtn, #townMusicBtn) { font-family: 'UI2La', 'UI2Ko', serif !important; background: none !important; border: 12px solid transparent !important;
@@ -304,13 +308,13 @@ body.ui2 .overlay p { color: #d6cbab; font-size: 15px; }
 body.ui2 .overlay b { color: #f5dda4; }
 body.ui2 #overScore { font-family: 'UI2Px', monospace; font-weight: 400; -webkit-font-smoothing: none; color: #f5dda4; }
 /* 글자색: 창마다 제각각이던 보라·갈색·하늘색을 아이보리 3단 + 금색으로 */
-body.ui2 :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #startResumeChoice, #townDialog, #howtoHint)
+body.ui2 :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #innOverlay, #startResumeChoice, #townDialog, #howtoHint)
   :is([style*="color:#e2e8f0"], [style*="color:#e6d8ff"], [style*="color:#e0d0ff"], [style*="color:#ffe6c0"], [style*="color:#f0dcb8"], [style*="color:#fff;"], [style*="color:#cfeeff"], [style*="color:#ffd0b0"], [style*="color:#dde8ff"], [style*="color:#ecc0e4"], [style*="color:#aee3f5"], [style*="color:#ffe9d0"], [style*="color:#d0b8ff"], [style*="color:#ffd9a0"], [style*="color:#c0a8ff"], [style*="color:#dbe4f0"]) { color: #f3ead2 !important; }
-body.ui2 :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #startResumeChoice, #townDialog, #howtoHint)
+body.ui2 :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #innOverlay, #startResumeChoice, #townDialog, #howtoHint)
   :is([style*="color:#c8b8e8"], [style*="color:#d8c0a0"], [style*="color:#c0b0e0"], [style*="color:#cdb89a"], [style*="color:#a0aec0"], [style*="color:#9fb4c4"], [style*="color:#c8b0a0"]) { color: #d6cbab !important; }
-body.ui2 :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #startResumeChoice, #townDialog, #howtoHint)
+body.ui2 :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #innOverlay, #startResumeChoice, #townDialog, #howtoHint)
   :is([style*="color:#a89cc0"], [style*="color:#9080b0"], [style*="color:#b0a08a"], [style*="color:#8b96a8"], [style*="color:#8a7ca0"], [style*="color:#8a7a64"], [style*="color:#9a8878"]) { color: #a89e84 !important; }
-body.ui2 :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #startResumeChoice, #townDialog) [style*="color:#ffd86b"] { color: #f5dda4 !important; }
+body.ui2 :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #innOverlay, #startResumeChoice, #townDialog) [style*="color:#ffd86b"] { color: #f5dda4 !important; }
 body.ui2 :is(#townPrompt, #townInteract, #townLoadText) { color: #f3ead2 !important; }
 /* 보상 카드·캐릭터 카드 */
 body.ui2 :is(.reward-card, .char-card) { background: none !important; border: 10px solid transparent !important; border-radius: 0 !important;
@@ -326,7 +330,7 @@ body.ui2 .u2por > img { position: absolute; left: 0; top: 0; image-rendering: pi
 body.ui2 .u2por .pic { position: absolute; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); background: #16203a; overflow: hidden; }
 body.ui2 .u2por .pic img { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -45%); image-rendering: pixelated; }
 /* 모바일: 창 안 작은 글씨를 14px 로(시안 v3 기준) · 캐릭터 카드는 설명을 줄여 한 화면에 */
-body.ui2m :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #startResumeChoice, #townDialog, #howtoHint)
+body.ui2m :is(.overlay, #townShop, #smithOverlay, #skillOverlay, #reviveOverlay, #restChoiceOverlay, #innOverlay, #startResumeChoice, #townDialog, #howtoHint)
   :is([style*="font-size:10px"], [style*="font-size:11px"], [style*="font-size:12px"], [style*="font-size:13px"]) { font-size: 14px !important; }
 body.ui2m .char-card { width: 150px; }
 body.ui2m .char-card .char-desc { display: none; }
@@ -541,6 +545,16 @@ html.rotland .overlay p { font-size: clamp(11px, 2vh, 14px); }
     <button id="restChoiceAct3" style="display:block; width:100%; margin-bottom:10px; padding:13px; font-size:14px; font-weight:700; border-radius:11px; border:1px solid #b070a8; background:rgba(170,100,160,0.22); color:#ecc0e4;">🩸 3막 쉼터 — 61층부터 (부패한 성)</button>
     <button id="restChoiceAct4" style="display:none; width:100%; margin-bottom:10px; padding:13px; font-size:14px; font-weight:700; border-radius:11px; border:1px solid #d0703a; background:rgba(200,90,40,0.22); color:#ffd0a8;">🌋 4막 쉼터 — 91층부터 (지옥)</button>
     <button id="restChoiceCancel" style="display:block; width:100%; padding:10px; font-size:13px; border-radius:10px; border:1px solid #707688; background:rgba(80,80,90,0.18); color:#aab0c0;">취소</button>
+  </div>
+</div>
+<div id="innOverlay" class="hidden" style="position:fixed; inset:0; z-index:27; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.82); backdrop-filter:blur(4px); padding:20px;">
+  <div style="background:rgba(14,18,26,0.96); border:1px solid #6fd0ff; border-radius:16px; padding:22px 20px; max-width:360px; width:100%; text-align:center;">
+    <div id="innTitle" style="font-size:18px; font-weight:900; color:#cfeeff; margin-bottom:6px;">🛏️ 여관</div>
+    <div id="innDesc" style="font-size:13px; color:#9fb4c4; margin-bottom:16px;">떠돌이 용병이 일거리를 찾고 있다.</div>
+    <button id="innHireBtn" style="display:block; width:100%; margin-bottom:6px; padding:13px; font-size:14px; font-weight:700; border-radius:11px; border:1px solid #9fb0c8; background:rgba(120,140,180,0.22); color:#dde8ff;">⚔️ 용병 고용</button>
+    <div id="innNote" style="font-size:12px; color:#9fb4c4; margin-bottom:14px; line-height:1.45;"></div>
+    <button id="innCharBtn" style="display:block; width:100%; margin-bottom:10px; padding:13px; font-size:14px; font-weight:700; border-radius:11px; border:1px solid #9fb0c8; background:rgba(120,140,180,0.22); color:#dde8ff;">🔄 캐릭터 변경</button>
+    <button id="innCancel" style="display:block; width:100%; padding:10px; font-size:13px; border-radius:10px; border:1px solid #707688; background:rgba(80,80,90,0.18); color:#aab0c0;">닫기</button>
   </div>
 </div>
 <div id="townPrompt" style="display:none; position:fixed; left:0; right:0; bottom:120px; z-index:15; text-align:center; pointer-events:none; color:#ffe9b0; font-weight:bold; font-size:18px; text-shadow:0 2px 8px rgba(0,0,0,0.9);">⬇️ 던전 입구 — 계단 아래 문 앞에 서면 입장</div>
@@ -4505,7 +4519,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v878'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v879'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -6662,6 +6676,7 @@ function renderWithPost(sceneToRender) {
   applyPixelSnap();
   if (CUT_SYNC && player && player.obj) { camera.updateMatrixWorld(true); updateCutoutScreen(); }   // 스냅된(또는 px=0 이면 이번 프레임) 카메라 기준
   if (HITFX_ON && sceneToRender === scene) dmgNumTick();   // v822: 데미지 숫자는 실제로 그리는 카메라로 투영
+  if (MERC_ON) mercBarTick(sceneToRender);                // v879 용병 머리 위 체력 막대(같은 카메라)
   moonFollow(sceneToRender);                              // ③ 색 패스가 굽기 전에 절두체를 옮긴다
   torchShadowTick(sceneToRender);                         // ④ 횃불 그림자는 N 프레임에 한 번
   if (SHADOW_ONCE) renderer.shadowMap.autoUpdate = true;  // ① 색 패스에서만 굽는다
@@ -17222,6 +17237,7 @@ function updateLavaLines(dt) {
       const px = player.obj.position.x - L.sx, pz = player.obj.position.z - L.sz, al = Math.max(0, Math.min(L.len, px * L.ux + pz * L.uz));
       if (Math.hypot(px - L.ux * al, pz - L.uz * al) <= L.w / 2 + LG_HITPAD * 0.5) { if (L.tickT <= 0) { L.tickT = 0.5; hazardHit(Math.max(1, Math.floor(L.src.damage * 0.35)), L.src); } } else L.tickT = Math.min(L.tickT, 0);
     }
+    if (MERC_ON && lingerOn) { L.mTick = (L.mTick || 0) - dt; if (L.mTick <= 0 && mercNearSeg(L.sx, L.sz, L.ux, L.uz, L.len, L.w / 2 + LG_HITPAD * 0.5)) { L.mTick = 0.5; mercHurt(Math.max(1, Math.floor(L.src.damage * 0.35)), L.src, true); } }   // v879
     if (!L.erupted && L.t >= L.delay) {
       L.erupted = true;
       const _r = Math.random; Math.random = _wtr;
@@ -17242,6 +17258,7 @@ function updateLavaLines(dt) {
         const px = player.obj.position.x - L.sx, pz = player.obj.position.z - L.sz, al = Math.max(0, Math.min(L.len, px * L.ux + pz * L.uz));
         if (Math.hypot(px - L.ux * al, pz - L.uz * al) <= L.w / 2 + LG_HITPAD) { L.hit = true; L.tickT = 0.5; hazardHit(Math.floor(L.src.damage * L.dmgK), L.src); }
       }
+      if (MERC_ON && !L.mHit && q0 <= 0.3 && mercNearSeg(L.sx, L.sz, L.ux, L.uz, L.len, L.w / 2 + LG_HITPAD)) { L.mHit = true; L.mTick = 0.5; mercHurt(Math.floor(L.src.damage * L.dmgK), L.src, true); }   // v879
     }
     if (L.t > L.delay + Math.max(1.0, L.linger + 0.4)) { lavaLineFree(L); lavaLines.splice(i, 1); }
   }
@@ -17279,6 +17296,7 @@ function updateLbMeteors(dt) {
       spawnShockwave(m.x, m.z, LB_METEOR_R * 1.1); addScreenShake(0.12, 0.15);
       const pd = Math.hypot(player.obj.position.x - m.x, player.obj.position.z - m.z);
       if (player.alive && pd <= LB_METEOR_R + 0.2) hazardHit(Math.floor(m.src.damage * 0.8), m.src);
+      if (MERC_ON && mercInCircle(m.x, m.z, LB_METEOR_R + 0.2)) mercHurt(Math.floor(m.src.damage * 0.8), m.src, true);   // v879
     } else if (m.t > LB_METEOR_T + 0.3) { lbMeteorFree(m); lbMeteors.splice(i, 1); }
   }
 }
@@ -18208,6 +18226,7 @@ function updateFirePools(dt) {
         if (pd < p.radius + player.radius * 0.5) { hazardHit(Math.floor(p.dmg), p.owner); p.hitCd = 0.5; }
         else p.hitCd = 0.1;
       }
+      if (MERC_ON) { p.mCd = (p.mCd || 0) - dt; if (p.mCd <= 0 && mercInCircle(p.x, p.z, p.radius)) { mercHurt(Math.floor(p.dmg), p.owner, true); p.mCd = 0.5; } }   // v879
       if (p.aTimer <= 0) { p.state = 'fade'; }
     } else { // fade
       p.fillMat.opacity = Math.max(0, p.fillMat.opacity - dt * 2);
@@ -18796,6 +18815,7 @@ function embedBoneClub(c) {
   if (Math.hypot(pdx, pdz) < SR && player.obj.position.y < 1.2) {
     damagePlayer(Math.floor(c.damage * 0.8), c.owner); // 충격파 피해(방어/패링 적용 — 오크 슬램과 동일 방식)
   }
+  if (MERC_ON && mercInCircle(ex, ez, SR)) mercHurt(Math.floor(c.damage * 0.8), c.owner, true);   // v879
 }
 
 function updateFireballs(dt) {
@@ -18807,6 +18827,7 @@ function updateFireballs(dt) {
     followGround(f, f.mesh);
     if (!f._iqIcicle) { f.mesh.rotation.x += dt * 6; f.mesh.rotation.y += dt * 6; } // 고드름 미사일은 방향 정렬 유지(회전 안 함)
 
+    if (MERC_ON && !f.reflected && mercFireballHit(f)) { scene.remove(f.mesh); fireballs.splice(i, 1); continue; }   // v879: 용병 몸에 맞으면 거기서 끝(몸으로 막아 준다)
     if (!f.reflected) {
       // 플레이어 피격 판정
       const pdx = player.obj.position.x - f.mesh.position.x, pdz = player.obj.position.z - f.mesh.position.z;
@@ -23687,6 +23708,207 @@ function buildPyromancerBody(grp, bodyGrp, headGrp, limbs) {
 }
 
 // ============================================================
+//  용병(mercenary) — v879 동료 1단계. 마을 여관에서 고용하면 한 회차 동안 플레이어를 따라다니며 알아서 싸운다.
+//  떠돌이 창잡이: 챙 넓은 철모(위에서 내려다보면 둥근 원판 — 이 카메라에서 가장 먼저 읽히는 실루엣) · 붉은 목도리(등 뒤로 늘어진 두 자락) ·
+//  사슬 셔츠 위 가죽 조끼 + 붉은 줄 아마 겉옷 · 등에 말아 묶은 담요 · 수염 · 긴 창(날 밑 붉은 술).
+//  비율은 플레이어 기사와 같은 SD(골반 0.55 · 어깨 1.0 · 머리 1.3). 몬스터 리그처럼 legR/legL/armR/armL 을 갖는다.
+//  자세는 빌더 안의 limbs._mcUpdate 하나로 낸다 — 게임 AI 와 뷰어가 같은 함수·같은 시간표(limbs.MC_T)를 써서 같은 동작이 된다(처형자 _exPose 요령).
+//  뷰어(viewers/mercenary_viewer_v1.html)와 게임이 이 함수를 글자 그대로 같이 쓴다. 난수는 자체 LCG.
+//  정면 -z(게임 규약). 키 약 1.65(철모 꼭대기) · 서 있을 때 창끝 2.4.
+// ============================================================
+function buildMercBody(grp, bodyGrp, headGrp, limbs) {
+  let _s = 0x3c9e17;
+  const rr = () => { _s = (_s * 1664525 + 1013904223) >>> 0; return _s / 4294967296; };
+  const jit = (geo, a) => {   // 같은 좌표 같은 오프셋(비인덱스 20면체가 깨진 조각이 되지 않게 — v754)
+    const p = geo.attributes.position, seen = new Map();
+    for (let i = 0; i < p.count; i++) {
+      const k = Math.round(p.getX(i) * 1e4) + ',' + Math.round(p.getY(i) * 1e4) + ',' + Math.round(p.getZ(i) * 1e4);
+      let o = seen.get(k); if (!o) { o = [(rr() - 0.5) * 2 * a, (rr() - 0.5) * 2 * a, (rr() - 0.5) * 2 * a]; seen.set(k, o); }
+      p.setXYZ(i, p.getX(i) + o[0], p.getY(i) + o[1], p.getZ(i) + o[2]);
+    }
+    p.needsUpdate = true; geo.computeVertexNormals(); return geo;
+  };
+  const sh = (o) => { o.castShadow = false; o.receiveShadow = true; return o; };
+  const ico = (r, mat, d) => sh(new THREE.Mesh(new THREE.IcosahedronGeometry(r, d === undefined ? 1 : d), mat));
+  const UP = new THREE.Vector3(0, 1, 0);
+  const seg = (parent, p, q, r0, r1, mat, sides) => {
+    const d = new THREE.Vector3(q[0] - p[0], q[1] - p[1], q[2] - p[2]), len = d.length();
+    const g = new THREE.CylinderGeometry(r1, r0, len, sides || 6); g.translate(0, len / 2, 0);
+    const m = sh(new THREE.Mesh(g, mat)); m.position.set(p[0], p[1], p[2]);
+    m.quaternion.setFromUnitVectors(UP, d.normalize()); parent.add(m); return m;
+  };
+  const box = (parent, w, h, d, mat, x, y, z) => { const m = sh(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat)); m.position.set(x, y, z); parent.add(m); return m; };
+
+  // ---------- 팔레트(플레이어 곁 — 근접 교전 몬스터와 같은 조명 거리. 뷰어 막 모드에서 고른다) ----------
+  const steel = getLowPolyMat(0x6f7680, true), steelDk = getLowPolyMat(0x3e434a, true), chain = getLowPolyMat(0x4c5158, true), brass = getLowPolyMat(0x9a7a3a, true);
+  const leather = getLowPolyMat(0x5e3c24), leatherDk = getLowPolyMat(0x2e1e14), linen = getLowPolyMat(0x8e866f);
+  const red = getLowPolyMat(0x962a20), redDk = getLowPolyMat(0x5c1913), hair = getLowPolyMat(0x3a2818), wood = getLowPolyMat(0x5a3f26), roll = getLowPolyMat(0x4c5a38);
+  const skin = markOrganic(getLowPolyMat(0xc48c68));
+  const hardShared = getLowPolyMat(0xffffff); hardShared.vertexColors = true;
+  const metalShared = getLowPolyMat(0xffffff, true); metalShared.vertexColors = true;
+  [leather, leatherDk, linen, red, redDk, hair, wood, roll].forEach(m => { m.userData.mergeInto = hardShared; });
+  [steel, steelDk, chain, brass].forEach(m => { m.userData.mergeInto = metalShared; });
+
+  grp.add(bodyGrp);
+  // 윗몸(허리 위 전부 + 창). 휘두르기는 윗몸을 비틀어 낸다 — 다리는 땅을 딛고 있다
+  const upper = new THREE.Group(); bodyGrp.add(upper);
+
+  // ---------- 다리: 바지 + 무릎 보호대 + 장화 ----------
+  const mkLeg = (sg) => {
+    const g = new THREE.Group(); g.position.set(sg * 0.15, 0.55, 0); bodyGrp.add(g);
+    seg(g, [0, 0.02, 0], [0, -0.27, -0.01], 0.11, 0.095, leather, 7);
+    const kn = ico(0.075, steel, 0); kn.scale.set(1, 0.9, 0.7); kn.position.set(0, -0.27, -0.08); g.add(kn);
+    seg(g, [0, -0.27, -0.01], [0, -0.52, 0.0], 0.11, 0.12, leatherDk, 7);
+    box(g, 0.19, 0.09, 0.28, leatherDk, 0, -0.505, -0.06);
+    const cuff = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.125, 0.125, 0.05, 7), leather)); cuff.position.y = -0.29; g.add(cuff);
+    return g;
+  };
+  const legR = mkLeg(1), legL = mkLeg(-1);
+
+  // ---------- 몸통: 사슬 셔츠 · 가죽 조끼 · 아마 겉옷(붉은 줄) · 허리띠 ----------
+  const mailSkirt = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.35, 0.24, 9), chain)); mailSkirt.position.y = 0.52; upper.add(mailSkirt);
+  const shirt = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.5, 9), chain)); shirt.position.y = 0.84; upper.add(shirt);
+  const vest = box(upper, 0.62, 0.42, 0.5, leather, 0, 0.88, 0.0); jit(vest.geometry, 0.012);
+  // 겉옷: 앞·뒤로 늘어진 아마 천 + 가운데 붉은 줄(위에서 보면 등판이 밝은 띠로 읽힌다)
+  const tabF = box(upper, 0.34, 0.66, 0.035, linen, 0, 0.66, -0.265); tabF.rotation.x = 0.06;
+  box(upper, 0.11, 0.66, 0.04, red, 0, 0.66, -0.28).rotation.x = 0.06;
+  const tabB = box(upper, 0.36, 0.7, 0.035, linen, 0, 0.66, 0.265); tabB.rotation.x = -0.06;
+  box(upper, 0.11, 0.7, 0.04, red, 0, 0.66, 0.28).rotation.x = -0.06;
+  [-1, 1].forEach(sg => { box(upper, 0.06, 0.06, 0.035, red, sg * 0.15, 0.33, -0.28); box(upper, 0.06, 0.06, 0.035, red, sg * 0.15, 0.31, 0.28); });   // 겉옷 아랫단 술 장식
+  const belt = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.335, 0.335, 0.07, 9), leatherDk)); belt.position.y = 0.66; upper.add(belt);
+  box(upper, 0.1, 0.08, 0.04, brass, 0, 0.66, -0.34);
+  // 허리 뒤 칼집(단검) · 옆 주머니
+  seg(upper, [0.2, 0.66, 0.3], [0.3, 0.36, 0.38], 0.04, 0.03, leatherDk, 5);
+  box(upper, 0.13, 0.14, 0.09, leather, -0.31, 0.6, -0.1);
+  // 어깨띠(겉옷 위로 비스듬히) — 등의 담요를 묶는다
+  { const st = box(upper, 0.06, 0.62, 0.47, leatherDk, 0, 0.9, 0); st.rotation.z = 0.62; }
+  // ---------- 어깨: 겹친 가죽 견갑(납작한 판 둘) ----------
+  [-1, 1].forEach(sg => {
+    const p1 = ico(0.16, leather); p1.scale.set(1.25, 0.55, 1.15); p1.position.set(sg * 0.36, 1.08, 0.0); jit(p1.geometry, 0.01); upper.add(p1);
+    const p2 = ico(0.13, leatherDk, 0); p2.scale.set(1.2, 0.45, 1.1); p2.position.set(sg * 0.4, 1.01, 0.0); upper.add(p2);
+  });
+  // ---------- 등에 말아 묶은 담요 ----------
+  const bed = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.56, 8), roll)); bed.rotation.z = Math.PI / 2; bed.position.set(0, 1.08, 0.3); upper.add(bed);
+  [-0.17, 0.17].forEach(x => { const b = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.118, 0.118, 0.04, 8), leatherDk)); b.rotation.z = Math.PI / 2; b.position.set(x, 1.08, 0.3); upper.add(b); });
+  // ---------- 붉은 목도리 + 등 뒤로 늘어진 두 자락(흔들린다) ----------
+  const scarf = sh(new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.085, 6, 10), red)); scarf.rotation.x = Math.PI / 2; scarf.position.set(0, 1.13, 0.0); upper.add(scarf);
+  const scarfG = new THREE.Group(); scarfG.position.set(0.05, 1.12, 0.17); upper.add(scarfG);
+  { const a = box(scarfG, 0.12, 0.42, 0.03, red, 0.02, -0.2, 0.0); a.rotation.z = -0.12; const b = box(scarfG, 0.1, 0.32, 0.03, redDk, -0.09, -0.15, 0.01); b.rotation.z = 0.2; }
+
+  // ---------- 머리: 수염 난 얼굴 + 챙 넓은 철모 ----------
+  headGrp.position.set(0, 1.32, -0.02); upper.add(headGrp); limbs.head = headGrp;
+  const face = ico(0.2, skin); face.scale.set(0.95, 1.05, 0.95); face.position.set(0, -0.02, -0.02); headGrp.add(face);
+  const beard = ico(0.15, hair, 0); beard.scale.set(1.1, 0.75, 0.75); beard.position.set(0, -0.12, -0.1); jit(beard.geometry, 0.01); headGrp.add(beard);
+  box(headGrp, 0.05, 0.07, 0.06, skin, 0, -0.01, -0.21);   // 코
+  [-1, 1].forEach(sg => box(headGrp, 0.05, 0.022, 0.02, hair, sg * 0.075, 0.04, -0.19));   // 눈썹(챙 그늘 밑 눈 자리)
+  // 철모: 둥근 정수리 + 넓은 챙(살짝 앞으로 숙임) + 챙 테 + 정수리 능선
+  const helmG = new THREE.Group(); helmG.position.set(0, 0.07, 0); helmG.rotation.x = -0.1; headGrp.add(helmG);
+  const crown = sh(new THREE.Mesh(new THREE.SphereGeometry(0.215, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.5), steel)); crown.position.y = 0.02; crown.scale.set(1, 1.0, 1.04); helmG.add(crown);
+  const brim = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.33, 0.035, 14), steel)); brim.position.y = 0.025; helmG.add(brim);
+  const brimRim = sh(new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.018, 4, 16), steelDk)); brimRim.rotation.x = Math.PI / 2; brimRim.position.y = 0.012; helmG.add(brimRim);
+  box(helmG, 0.035, 0.03, 0.38, steelDk, 0, 0.225, 0.0);   // 정수리 능선
+  const band = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.05, 10), steelDk)); band.position.y = 0.06; helmG.add(band);
+  // 붉은 깃털 장식(철모 왼쪽 뒤) — 위에서 내려다보는 카메라에 어느 방향에서든 붉은 점으로 읽힌다(아군 표시)
+  [[-0.13, 0.18, 0.05, 0.055, 0.5, 1.05, 0.35, red], [-0.09, 0.2, 0.09, 0.045, 0.42, 1.2, 0.1, redDk], [-0.16, 0.16, 0.02, 0.04, 0.36, 0.9, 0.6, red]].forEach(([x, y, z, r, h, rx, rz, m]) => {
+    const g = new THREE.ConeGeometry(r, h, 5); g.translate(0, h / 2, 0); g.scale(1, 1, 0.45);
+    const f = sh(new THREE.Mesh(g, m)); f.position.set(x, y, z); f.rotation.set(rx, 0, rz); helmG.add(f);
+  });
+
+  // ---------- 팔: 가죽 소매 + 팔 보호대 + 장갑 ----------
+  const mkArm = (sg) => {
+    const a = new THREE.Group(); a.position.set(sg * 0.4, 1.0, 0.0); upper.add(a);
+    seg(a, [0, 0.02, 0], [0, -0.24, 0], 0.085, 0.08, chain, 6);
+    seg(a, [0, -0.22, 0], [0, -0.42, 0], 0.088, 0.078, leatherDk, 6);   // 팔 보호대
+    box(a, 0.03, 0.14, 0.17, brass, sg * 0.085, -0.32, 0).rotation.x = 0;
+    const hand = ico(0.068, leatherDk, 0); hand.position.set(0, -0.48, -0.01); a.add(hand);
+    return a;
+  };
+  const armR = mkArm(1), armL = mkArm(-1);
+
+  // ---------- 창: 손(오른손) 자리를 원점으로 — 자루 아래 0.6 · 위 1.8 ----------
+  // 창은 팔이 아니라 윗몸에 붙인다. 쥔 손 자리를 원점으로 두고 자세마다 자리·각도만 바꾼다(손이 정확히 닿을 필요는 없다 — 화면에서 45px)
+  const spearG = new THREE.Group(); upper.add(spearG);
+  seg(spearG, [0, -0.6, 0], [0, 1.62, 0], 0.03, 0.026, wood, 6);
+  [-0.58, 0.95, 1.6].forEach((y, i) => { const b = sh(new THREE.Mesh(new THREE.CylinderGeometry(i ? 0.04 : 0.036, i ? 0.04 : 0.036, i === 2 ? 0.07 : 0.05, 6), i === 2 ? brass : steelDk)); b.position.y = y; spearG.add(b); });
+  // 날: 길쭉한 잎 모양(납작한 팔면체) + 옆으로 튀어나온 작은 갈고리
+  { const g = new THREE.OctahedronGeometry(0.1, 0); g.scale(0.85, 2.6, 0.3); const b = sh(new THREE.Mesh(g, steel)); b.position.y = 1.88; spearG.add(b);
+    const hk = sh(new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.14, 4), steelDk)); hk.position.set(0.07, 1.7, 0); hk.rotation.z = -1.0; spearG.add(hk); }
+  // 붉은 술(날 밑)
+  const tassel = new THREE.Group(); tassel.position.y = 1.56; spearG.add(tassel);
+  [[0.03, 0], [-0.03, 0.02], [0, -0.03]].forEach(([x, z], i) => box(tassel, 0.035, 0.16, 0.035, i === 1 ? redDk : red, x, -0.08, z));
+
+  // ---------- 드로우콜 병합(움직이는 그룹은 따로) ----------
+  c3MergeStatic(tassel); c3MergeStatic(spearG, [tassel]);
+  c3MergeStatic(scarfG);
+  c3MergeStatic(armR); c3MergeStatic(armL);
+  c3MergeStatic(legR); c3MergeStatic(legL);
+  c3MergeStatic(helmG); c3MergeStatic(headGrp, [helmG]);
+  c3MergeStatic(upper, [headGrp, armR, armL, spearG, scarfG]);
+
+  limbs.armR = armR; limbs.armL = armL; limbs.legR = legR; limbs.legL = legL; limbs.bodyGrp = bodyGrp; limbs.upper = upper; limbs.spear = spearG;
+
+  // ---------- 자세 ----------
+  // 시간표(초): 찌르기는 0.3초 당겼다 0.32초에 맞힌다 · 휘두르기는 0.36초 돌려 감았다 0.44초에 쓸고 지나간다. 게임 AI 가 같은 값으로 피해를 넣는다.
+  const MC_T = { thrust: { hit: 0.32, end: 0.72 }, sweep: { hit: 0.44, end: 0.86 } };
+  limbs.MC_T = MC_T;
+  const S_IDLE = { x: 0.36, y: 0.64, z: -0.2, rx: -0.1, ry: 0, rz: -0.07 };   // 오른손에 세워 든다(창끝이 머리 위로)
+  const S_READY = { x: 0.2, y: 0.84, z: 0.08, rx: -1.36, ry: 0.12, rz: 0 };     // 허리 높이로 눕혀 앞을 겨눈다
+  let cb = 0, cbT = 0, atk = null, atkT = 0, dn = 0, dnT = 0, wph = 0;
+  const lerp = (a, b, k) => a + (b - a) * k;
+  const ease = (k) => k * k * (3 - 2 * k);
+  limbs._mcCombat = function (on) { cbT = on ? 1 : 0; };
+  limbs._mcAttack = function (kind) { atk = kind; atkT = 0; cbT = 1; };
+  limbs._mcBusy = function () { return !!atk; };
+  limbs._mcDown = function (on) { dnT = on ? 1 : 0; if (on) atk = null; };
+  limbs._mcReset = function () { cb = cbT; dn = dnT; atk = null; };
+  const _e = new THREE.Euler(), _v = new THREE.Vector3();
+  // move: 0(서 있음) ~ 1(걷기). 이동 속도에 맞춰 걸음 위상이 돈다
+  limbs._mcUpdate = function (t, dt, move) {
+    dt = dt || 0.016; move = Math.max(0, Math.min(1.4, move || 0));
+    cb += (cbT - cb) * Math.min(1, dt * 7); dn += (dnT - dn) * Math.min(1, dt * 5);
+    if (atk) { atkT += dt; if (atkT >= MC_T[atk].end) atk = null; }
+    wph += dt * (2.2 + move * 8.5);
+    const sw = Math.sin(wph) * Math.min(1, move);
+    // 다리: 걷기 · 쓰러짐(한쪽 무릎을 꿇는다)
+    legR.rotation.x = sw * 0.7 * (1 - dn) - 1.15 * dn; legL.rotation.x = -sw * 0.7 * (1 - dn) + 0.35 * dn;
+    bodyGrp.position.y = Math.abs(Math.sin(wph)) * 0.04 * Math.min(1, move) * (1 - dn) - 0.27 * dn + Math.sin(t * 1.7) * 0.008;
+    // 창 자리: 세워 든 자세 ↔ 겨눈 자세
+    const k = ease(cb);
+    let sx = lerp(S_IDLE.x, S_READY.x, k), sy = lerp(S_IDLE.y, S_READY.y, k), sz = lerp(S_IDLE.z, S_READY.z, k);
+    let rx = lerp(S_IDLE.rx, S_READY.rx, k), ry = lerp(S_IDLE.ry, S_READY.ry, k), rz = lerp(S_IDLE.rz, S_READY.rz, k);
+    let push = 0, twist = 0, armExt = 0;
+    if (atk === 'thrust') {
+      const T = MC_T.thrust;
+      if (atkT < T.hit - 0.05) { const w = ease(atkT / (T.hit - 0.05)); push = -0.32 * w; armExt = -0.35 * w; }              // 당긴다
+      else if (atkT < T.hit + 0.06) { const w = (atkT - (T.hit - 0.05)) / 0.11; push = -0.32 + 1.1 * w; armExt = -0.35 + 1.15 * w; }   // 내지른다
+      else { const w = ease(Math.min(1, (atkT - T.hit - 0.06) / (T.end - T.hit - 0.06))); push = 0.78 * (1 - w); armExt = 0.8 * (1 - w); }
+    } else if (atk === 'sweep') {
+      const T = MC_T.sweep;
+      if (atkT < T.hit - 0.08) { const w = ease(atkT / (T.hit - 0.08)); twist = 1.0 * w; }                                    // 오른쪽으로 감는다
+      else if (atkT < T.hit + 0.1) { const w = (atkT - (T.hit - 0.08)) / 0.18; twist = 1.0 - 2.7 * ease(w); }                 // 앞을 쓸고 왼쪽으로
+      else { const w = ease(Math.min(1, (atkT - T.hit - 0.1) / (T.end - T.hit - 0.1))); twist = -1.7 * (1 - w); }
+      ry += twist * 0.35;
+    }
+    _e.set(rx, ry, rz); _v.set(0, 1, 0).applyEuler(_e);
+    sx += _v.x * push; sy += _v.y * push; sz += _v.z * push;
+    // 쓰러짐: 창을 떨군다
+    spearG.position.set(lerp(sx, 0.55, dn), lerp(sy, 0.08, dn), lerp(sz, -0.1, dn));
+    spearG.rotation.set(lerp(rx, -1.5, dn), lerp(ry, 0.5, dn), lerp(rz, 0, dn));
+    upper.rotation.y = twist * 0.85 * (1 - dn);
+    upper.rotation.x = 0.06 * k + 0.62 * dn + Math.max(0, push) * 0.12;
+    // 팔: 오른손은 창 뒤쪽 · 왼손은 창 앞쪽을 받친다(겨눈 자세). 서 있을 땐 오른손이 창을 세워 들고 왼팔은 걸음에 맞춰 흔든다
+    armR.rotation.x = lerp(0.55, 0.62 + armExt * 0.75, k) * (1 - dn) + 0.2 * dn; armR.rotation.z = lerp(0.04, 0.12, k);
+    armL.rotation.x = lerp(-sw * 0.5, 1.12 + armExt * 0.35, k) * (1 - dn) + 0.5 * dn; armL.rotation.z = lerp(-0.06, -0.62, k);
+    armL.rotation.y = lerp(0, 0.35, k);
+    // 목도리 자락: 걸을수록 뒤로 날린다
+    scarfG.rotation.x = 0.22 + 0.08 * Math.sin(t * 3.1) + Math.min(1, move) * 0.35 + Math.max(0, push) * 0.2;
+    scarfG.rotation.z = 0.06 * Math.sin(t * 2.3 + 1);
+    tassel.rotation.z = 0.15 * Math.sin(t * 5 + push * 3) + twist * 0.2;
+  };
+  limbs._mcUpdate(0, 0.016, 0);
+}
+
+// ============================================================
 //  불의 사냥개(hellhound) — 101층부터 3~4마리 무리로 나오는 4막 돌진 몹.
 //  굶주린 늑대 몸에 굳은 용암 껍질: 갈비뼈 사이·옆구리 실금으로 속불이 비친다 · 목덜미부터 등줄기를 따라 타오르는 불 갈기 ·
 //  길쭉한 주둥이 속(벌어진 아래턱)이 용암처럼 빛나고 눈은 노란 불빛 · 뒤로 젖힌 뿔 같은 귀 · 끝에 불이 붙은 가는 꼬리.
@@ -26150,6 +26372,443 @@ function confineToAmbush() {
   player.obj.position.z = Math.max(minZ, Math.min(maxZ, player.obj.position.z));
 }
 
+// ===== v879 용병(동료 1단계 · MERC_ON · ?merc=0) =====
+// 마을 여관에서 골드로 고용하면 다음 회차 한 번 동안 플레이어를 따라다니며 알아서 싸운다(몸은 buildMercBody — 떠돌이 창잡이).
+// 1단계 규칙: 적은 여전히 플레이어만 노린다(적 AI·보스 패턴은 안 건드린다). 대신 적의 일반 근접 공격·투사체·장판·용암 분출·폭발·내려찍기가
+// 용병 자리에 닿으면 용병도 맞는다 — 용병은 플레이어 곁에서 같은 적과 싸우므로 자연스럽게 맞는다. 보스 고유 패턴(3연타·박치기 등)은 아직 용병을 안 맞힌다(2단계 — 어그로).
+// 쓰러지면 1.6초 무릎 꿇었다 물러나고(사라짐), 회복의 샘에 닿거나 쉼터에 들어가면 다시 합류한다. 회차가 끝나면(죽음·귀환) 계약도 끝난다.
+// 용병 몸·AI 는 게임 난수를 안 먹는다(몸은 지을 때 Math.random 을 자체 LCG 로 바꿔 끼운다 — uuid). 고용하지 않으면 아무것도 안 만든다 → 화면·난수가 v878 과 같다.
+const MERC_ON = !/[?&]merc=0/.test(location.search);
+const MERC_HP_K = 0.9;         // 최대 체력 = 플레이어 최대 체력 × 이 값(레벨업·강화를 따라간다)
+const MERC_ARMOR = 0.65;       // 받는 피해 배수(사슬 갑옷)
+const MERC_HIT_CAP = 0.25;     // 2막부터 한 방 상한(용병 최대 체력 대비) — 플레이어 한 방 상한(v826)과 같은 이유. 용병은 막기·물약이 없어 플레이어(40%)보다 낮게
+const MERC_THRUST_K = 1.3;     // 찌르기 피해 = (공격력 + 4) × 이 값(skillHit 식). 창 앞 0.55 안의 다른 적도 꿰뚫는다
+const MERC_SWEEP_K = 0.9;      // 휘두르기(셋째 공격마다 · 앞 부채꼴에 적이 둘 이상일 때) — 부채꼴 안 전부
+const MERC_CD = 0.5;           // 공격 동작이 끝나고 다음 공격까지(찌르기 한 바퀴 ≈ 1.2초)
+const MERC_REACH = 1.35;       // 창 사거리(몸 둘의 반지름 합에 더한다)
+const MERC_LEASH = 9;          // 플레이어에서 이만큼 넘게 떨어진 적은 안 쫓는다(혼자 방을 깨우지 않게)
+const MERC_TP = 16;            // 플레이어에서 이만큼 떨어지거나 2.5초 끼이면 곁으로 순간이동
+const MERC_REGEN = 0.05;       // 2초 동안 싸움이 없으면 초당 최대 체력의 5%
+const MERC_DOWN_T = 1.6;       // 쓰러져 있다가 물러나기까지
+function mercHireCost() { return 80 * (1 + Math.min(LAST_ACT, (meta && meta.actCleared) || 0)); }   // 깬 막이 많을수록 몸값이 오른다(80 · 160 · 240 · 320 · 400G)
+const merc = { active: false, obj: null, limbs: null, hp: 0, hpMax: 1, hpFrac: null, down: false, downT: 0, gone: false, radius: 0.42, t: 0,
+  tgt: null, retarget: 0, atkCd: 0, atkN: 0, atkT: -1, atkKind: null, hitDone: false, inv: 0, calm: 0, stuckT: 0, chkT: 0, chkX: 0, chkZ: 0,
+  kbX: 0, kbZ: 0, side: 1, moving: false, bar: null, barFill: null, yaw: 0 };
+const _mcProxy = { obj: null, radius: 0.42 };   // navFineStep·navSteer 가 몬스터 객체 대신 받는 것
+
+// 새 문자열 번역(사전에 없는 것만 — ui2 와 같은 요령)
+{ const T = {
+    '🛏️ 여관': ['🛏️ Inn', '🛏️ 宿屋', '🛏️ 旅店', '🛏️ Posada', '🛏️ Estalagem', '🛏️ Таверна'],
+    '떠돌이 용병이 일거리를 찾고 있다.': ['A wandering sellsword is looking for work.', '流れの傭兵が仕事を探している。', '一名流浪佣兵正在找活干。', 'Un mercenario errante busca trabajo.', 'Um mercenário errante procura trabalho.', 'Странствующий наёмник ищет работу.'],
+    '⚔️ 용병 고용': ['⚔️ Hire Mercenary', '⚔️ 傭兵を雇う', '⚔️ 雇佣佣兵', '⚔️ Contratar mercenario', '⚔️ Contratar mercenário', '⚔️ Нанять наёмника'],
+    '✅ 고용함 — 다음 던전에 함께 간다': ['✅ Hired — joins your next run', '✅ 雇用済み — 次の探索に同行', '✅ 已雇佣 — 下次探险同行', '✅ Contratado — te acompaña en la próxima incursión', '✅ Contratado — acompanha a próxima incursão', '✅ Нанят — пойдёт с вами в следующий поход'],
+    '다음 던전 한 번 함께 간다 · 알아서 따라오며 싸운다 · 쓰러지면 회복의 샘·쉼터에서 다시 합류': ['Joins your next run · follows and fights on its own · if downed, rejoins at a healing spring or rest stop', '次の探索に一度同行 · 自分でついて来て戦う · 倒れたら回復の泉か休憩所で再合流', '下次探险同行一次 · 自动跟随作战 · 倒下后在治疗泉或休息站归队', 'Te acompaña en la próxima incursión · te sigue y lucha solo · si cae, vuelve en una fuente curativa o un refugio', 'Acompanha a próxima incursão · segue e luta sozinho · se cair, volta numa fonte de cura ou num abrigo', 'Идёт с вами в следующий поход · сам следует и сражается · если падёт — вернётся у целебного источника или в привале'],
+    '🔄 캐릭터 변경': ['🔄 Change Character', '🔄 キャラクター変更', '🔄 更换角色', '🔄 Cambiar personaje', '🔄 Trocar personagem', '🔄 Сменить персонажа'],
+    '⚔️ 용병을 고용했다 — 다음 던전에 함께 간다': ['⚔️ Mercenary hired — joins your next run', '⚔️ 傭兵を雇った — 次の探索に同行する', '⚔️ 已雇佣佣兵 — 下次探险同行', '⚔️ Mercenario contratado — te acompaña en la próxima incursión', '⚔️ Mercenário contratado — acompanha a próxima incursão', '⚔️ Наёмник нанят — пойдёт с вами в следующий поход'],
+    '⚔️ 용병이 쓰러졌다 — 회복의 샘이나 쉼터에서 다시 합류한다': ['⚔️ Your mercenary is down — rejoins at a healing spring or rest stop', '⚔️ 傭兵が倒れた — 回復の泉か休憩所で再合流する', '⚔️ 佣兵倒下了 — 在治疗泉或休息站归队', '⚔️ Tu mercenario cayó — vuelve en una fuente curativa o un refugio', '⚔️ Seu mercenário caiu — volta numa fonte de cura ou num abrigo', '⚔️ Наёмник пал — вернётся у целебного источника или в привале'],
+    '⚔️ 용병이 다시 합류했다': ['⚔️ Your mercenary rejoined', '⚔️ 傭兵が再合流した', '⚔️ 佣兵归队了', '⚔️ Tu mercenario volvió', '⚔️ Seu mercenário voltou', '⚔️ Наёмник вернулся'],
+    '⚔️ 용병은 알아서 따라오며 싸운다. 적은 너를 노리지만 공격·장판에 닿으면 용병도 맞는다 — 쓰러지면 회복의 샘이나 쉼터에서 다시 합류한다.': ['⚔️ Your mercenary follows and fights on its own. Foes target you, but attacks and hazards that reach it hurt it too — if downed, it rejoins at a healing spring or rest stop.', '⚔️ 傭兵は自分でついて来て戦う。敵は君を狙うが、攻撃や床の炎に触れれば傭兵も傷つく — 倒れたら回復の泉か休憩所で再合流する。', '⚔️ 佣兵会自动跟随作战。敌人只盯着你，但攻击和地面伤害碰到佣兵也会受伤 — 倒下后在治疗泉或休息站归队。', '⚔️ Tu mercenario te sigue y lucha solo. Los enemigos van a por ti, pero los ataques y zonas que lo alcanzan también lo hieren — si cae, vuelve en una fuente curativa o un refugio.', '⚔️ Seu mercenário segue e luta sozinho. Os inimigos miram você, mas ataques e áreas que o alcançam também o ferem — se cair, volta numa fonte de cura ou num abrigo.', '⚔️ Наёмник сам следует за вами и сражается. Враги целятся в вас, но атаки и опасные зоны ранят и его — если падёт, вернётся у целебного источника или в привале.'],
+  };
+  ['en', 'ja', 'zh', 'es', 'pt', 'ru'].forEach((l, i) => { const d = I18N_DICT[l]; if (d) for (const k in T) if (d[k] === undefined) d[k] = T[k][i]; });
+}
+
+function mercLive() { return MERC_ON && merc.active && merc.obj && !merc.down && !merc.gone; }
+function mercHide() { if (merc.obj) merc.obj.visible = false; if (merc.bar) merc.bar.style.display = 'none'; }
+// 몸은 처음 쓸 때 한 번 짓는다. 그동안 Math.random 을 자체 LCG 로 — THREE 생성자가 uuid 로 난수를 먹어 층 생성이 어긋나지 않게
+function mercBuild() {
+  if (merc.obj) return;
+  const _r = Math.random; let s = 0x51ed27; Math.random = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  try {
+    const grp = new THREE.Group(), bodyGrp = new THREE.Group(), headGrp = new THREE.Group(), limbs = {};
+    buildMercBody(grp, bodyGrp, headGrp, limbs);
+    grp.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; } });   // 캐릭터는 진짜 그림자를 안 진다(블롭이 대신)
+    if (BLOB_ON) { const bl = makeBlobShadow(1.4); grp.add(bl); grp.userData.blob = bl; }
+    applyToon(grp);
+    grp.visible = false;
+    merc.obj = grp; merc.limbs = limbs; _mcProxy.obj = grp;
+  } finally { Math.random = _r; }
+}
+// 회차 시작(던전 입구·포탈 단축·테스트 모드) — 여관에서 고용해 뒀으면 이번 회차에 같이 간다(고용은 한 회차로 소모)
+function mercRunStart() {
+  merc.active = false; merc.down = false; merc.gone = false; merc.hp = -1; merc.hpFrac = null;
+  if (!MERC_ON || !meta || !meta.merc || !meta.merc.hired) { mercHide(); return; }
+  meta.merc.hired = false; saveMeta();
+  merc.active = true;
+}
+function mercRunEnd() { merc.active = false; mercHide(); }
+// 이어하기: 저장된 상태(체력 비율 · 쓰러짐)로 되돌린다
+function mercRestore(d) {
+  merc.active = !!(MERC_ON && d); merc.down = !!(d && d.down); merc.gone = merc.down; merc.hp = -1;
+  merc.hpFrac = (d && typeof d.hp === 'number' && d.hp >= 0) ? d.hp : null;
+  if (!merc.active) mercHide();
+}
+function mercSaveData() { return (MERC_ON && merc.active) ? { hp: merc.hp < 0 ? -1 : Math.max(0, merc.hp / Math.max(1, merc.hpMax)), down: !!merc.down } : null; }
+function mercFree(x, z) {
+  const g = wallGrid; if (!g) return false;
+  const cx = Math.round(x / TILE + MAP_W / 2), cy = Math.round(z / TILE + MAP_H / 2);
+  if (!(g[cy] && g[cy][cx] > 0)) return false;
+  if (wallOverlapAt(x, z, merc.radius + 0.05)) return false;
+  if (stairsMesh && stairsMesh.position.y > -10 && Math.hypot(x - stairsMesh.position.x, z - stairsMesh.position.z) < 2.6 * STAIR_W + merc.radius) return false;
+  return true;
+}
+// 플레이어 곁 빈자리(뒤쪽부터 둘레 12 방향 · 반지름 1.5 → 2.3 → 1.0). 없으면 플레이어 자리
+function mercSpotNear() {
+  const P = player.obj.position, base = player.yaw;   // 플레이어 정면 = (−sin yaw, −cos yaw) → 뒤 = 각도 0
+  for (const r of [1.5, 2.3, 1.0, 3.0]) for (let k = 0; k < 12; k++) {
+    const a = base + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 6) + merc.side * 0.5, x = P.x + Math.sin(a) * r, z = P.z + Math.cos(a) * r;
+    if (mercFree(x, z)) return { x, z };
+  }
+  return { x: P.x, z: P.z };
+}
+function mercPlace(x, z) {
+  const M = merc.obj.position; M.set(x, groundHeightAt(x, z), z);
+  merc.chkX = x; merc.chkZ = z; merc.chkT = 0; merc.stuckT = 0;
+  merc.obj.rotation.y = player.yaw;
+}
+// 층 시작(startFloor 끝 — 플레이어 자리가 정해진 뒤)
+function mercFloorStart() {
+  if (!MERC_ON || !merc.active) { mercHide(); return; }
+  mercBuild();
+  if (!merc.obj.parent) scene.add(merc.obj);
+  merc.hpMax = Math.max(1, Math.round(player.hpMax * MERC_HP_K));
+  if (merc.hpFrac !== null) { merc.hp = Math.max(1, Math.round(merc.hpMax * merc.hpFrac)); merc.hpFrac = null; }
+  else if (merc.hp < 0) merc.hp = merc.hpMax; else merc.hp = Math.min(merc.hp, merc.hpMax);
+  merc.tgt = null; merc.atkT = -1; merc.atkCd = 0.6; merc.inv = 1.0; merc.kbX = merc.kbZ = 0; merc.calm = 0;
+  if (merc.down) { merc.gone = true; mercHide(); return; }   // 쓰러져 물러난 채로 — 샘·쉼터에서 다시 합류
+  const s = mercSpotNear(); mercPlace(s.x, s.z);
+  merc.limbs._mcCombat(false); merc.limbs._mcDown(false); merc.limbs._mcReset();
+  merc.obj.visible = true;
+}
+// 쓰러진 용병을 다시 합류시키거나(체력 frac) 살아 있으면 frac 만큼 채운다. 다시 합류했으면 true
+function mercRevive(frac) {
+  if (!MERC_ON || !merc.active) return false;
+  merc.hpMax = Math.max(1, Math.round(player.hpMax * MERC_HP_K));
+  if (merc.down) {
+    merc.down = false; merc.gone = false; merc.hp = Math.max(1, Math.ceil(merc.hpMax * frac));
+    if (merc.obj && dungeon && !inTown && !inRest) {
+      if (!merc.obj.parent) scene.add(merc.obj);
+      const s = mercSpotNear(); mercPlace(s.x, s.z);
+      merc.limbs._mcDown(false); merc.limbs._mcCombat(false); merc.limbs._mcReset();
+      merc.obj.visible = true; merc.inv = 1.0;
+      spawnHitEffect(s.x, groundHeightAt(s.x, s.z) + 1.0, s.z, 1.2);
+    }
+    return true;
+  }
+  if (merc.hp >= 0) merc.hp = Math.min(merc.hpMax, merc.hp + Math.ceil(merc.hpMax * frac));
+  return false;
+}
+function mercFountain() { if (MERC_ON && merc.active && mercRevive(0.5)) toast(_i18n('⚔️ 용병이 다시 합류했다'), 2200); }
+function mercRestHeal() { if (MERC_ON && merc.active) { merc.down = false; merc.gone = false; merc.hp = -1; merc.hpFrac = null; } }   // 쉼터: 다음 층에서 최대 체력으로
+function mercDescendHeal() { if (mercLive() && merc.hp >= 0) merc.hp = Math.min(merc.hpMax, merc.hp + Math.ceil(merc.hpMax * 0.25)); }
+
+// ----- 피격 -----
+function mercHurt(amount, src, hazard) {
+  if (!mercLive() || merc.inv > 0 || !(amount > 0)) return false;
+  let a = Math.max(1, Math.floor(amount * MERC_ARMOR));
+  if (player.floor > ACT_LEN) a = Math.min(a, Math.ceil(merc.hpMax * MERC_HIT_CAP));
+  merc.hp -= a; merc.inv = hazard ? 0.15 : 0.3; merc.calm = 0;
+  const M = merc.obj.position;
+  dmgNumAdd(M.x, M.y + 1.75, M.z, '-' + a, 'mhurt');
+  flashObj(merc.obj, null);
+  if (src && src.obj && !hazard) { const dx = M.x - src.obj.position.x, dz = M.z - src.obj.position.z, d = Math.hypot(dx, dz) || 1; merc.kbX = dx / d * 6; merc.kbZ = dz / d * 6; }
+  if (merc.hp <= 0) mercGoDown();
+  return true;
+}
+function mercInCircle(x, z, r) { if (!mercLive()) return false; const M = merc.obj.position; return Math.hypot(M.x - x, M.z - z) < r + merc.radius * 0.5; }
+function mercNearSeg(sx, sz, ux, uz, len, w) {
+  if (!mercLive()) return false; const M = merc.obj.position;
+  const px = M.x - sx, pz = M.z - sz, al = Math.max(0, Math.min(len, px * ux + pz * uz));
+  return Math.hypot(px - ux * al, pz - uz * al) <= w + merc.radius * 0.5;
+}
+// 일반 근접 몹의 내려찍기 임팩트: 적이 보는 쪽 부채꼴(±60°) · 사거리 안이면 용병도 맞는다(적은 플레이어를 보고 휘두른다 — 곁에 선 용병이 휘말린다)
+function mercMeleeSplash(e, reach) {
+  if (!mercLive()) return;
+  const M = merc.obj.position, dx = M.x - e.obj.position.x, dz = M.z - e.obj.position.z, d = Math.hypot(dx, dz);
+  if (d > reach + merc.radius - player.radius) return;
+  const P = player.obj.position, fx = P.x - e.obj.position.x, fz = P.z - e.obj.position.z, fl = Math.hypot(fx, fz) || 1;   // 적은 플레이어를 보고 휘두른다
+  if (d > 0.3 && (dx * fx + dz * fz) / (d * fl) < 0.5) return;   // 앞 ±60°
+  mercHurt(e.damage, e, false);
+}
+function mercFireballHit(f) {
+  if (!mercLive()) return false;
+  const M = merc.obj.position;
+  if (Math.hypot(M.x - f.mesh.position.x, M.z - f.mesh.position.z) > 0.7) return false;
+  mercHurt(f.damage, f.owner || null, false);
+  spawnHitEffect(f.mesh.position.x, f.mesh.position.y, f.mesh.position.z, 0.7);
+  return true;
+}
+function mercGoDown() {
+  merc.down = true; merc.downT = 0; merc.hp = 0; merc.atkT = -1; merc.tgt = null; merc.kbX = merc.kbZ = 0;
+  merc.limbs._mcDown(true);
+  if (SFX && SFX.hit) SFX.hit(0.8);
+  toast(_i18n('⚔️ 용병이 쓰러졌다 — 회복의 샘이나 쉼터에서 다시 합류한다'), 3200);
+}
+
+// ----- 위험 회피(봇과 같은 목록: 장판 · 용암 분출 줄 · 화산탄 · 바닥 고리 · 투사체 · 터지기 직전 임프 · 골렘·거인 내려찍기) -----
+function mercDanger() {
+  const M = merc.obj.position; let zc = null, zd = 1e9;
+  const near = (x, z, lim) => { const d = Math.hypot(M.x - x, M.z - z); if (d < lim && d < zd) { zd = d; zc = { x, z }; } };
+  for (const pl of firePools) if (pl.state === 'active' || pl.state === 'telegraph') near(pl.x, pl.z, pl.radius + 0.6);
+  for (const L of lavaLines) {
+    const live = L.t < L.delay + 0.3 || (L.linger > 0 && L.t < L.delay + L.linger); if (!live) continue;
+    const px = M.x - L.sx, pz = M.z - L.sz, al = Math.max(0, Math.min(L.len, px * L.ux + pz * L.uz)); near(L.sx + L.ux * al, L.sz + L.uz * al, L.w / 2 + 0.9);
+  }
+  const MR = typeof LB_METEOR_R !== 'undefined' ? LB_METEOR_R : 1.8;
+  for (const m of lbMeteors) if (!m.hit) near(m.x, m.z, MR + 0.7);
+  for (const r of lbRings) near(r.position.x, r.position.z, r.geometry.parameters.outerRadius + 0.7);
+  // 투사체: 0.6초 안에 몸 1.0 안으로 지나갈 것은 진행 방향에 직각으로 비킨다(봇과 같은 요령 — 3막 농침벌 독침이 용병을 쓰러뜨리던 1위였다)
+  const proj = (x, z, vx, vz) => {
+    const v2 = vx * vx + vz * vz; if (v2 < 1) return;
+    const rx = M.x - x, rz = M.z - z, t = (rx * vx + rz * vz) / v2; if (t < 0 || t > 0.6) return;
+    const cx = x + vx * t, cz = z + vz * t, pd = Math.hypot(M.x - cx, M.z - cz); if (pd > 1.0) return;
+    if (pd < 0.05) { const sv = Math.sqrt(v2); near(M.x + vz / sv * 0.3, M.z - vx / sv * 0.3, 1.1); } else near(cx, cz, 1.1);
+  };
+  for (const f of fireballs) if (f.mesh && !f.reflected) proj(f.mesh.position.x, f.mesh.position.z, f.vx, f.vz);
+  for (const c of thrownClubs) if (c.mesh && !c.embedded) proj(c.mesh.position.x, c.mesh.position.z, c.vx, c.vz);
+  for (const e of enemies) {
+    if (e.type === 'fireimp' && e._impT >= 0) { near(e.obj.position.x, e.obj.position.z, IMP_BLAST_R + 0.8); continue; }   // 죽어서 부푸는 임프(isDead 인 채로 터진다 — isDead 로 거르면 빠진다)
+    if (e.isDead) continue;
+    if (e.type === 'golem' && e.hitPending && e.swingTimer > 0.1) near(e.obj.position.x, e.obj.position.z, e.radius + 2.6);
+    else if (e.fgSlam === 'tele') near(e.obj.position.x, e.obj.position.z, TILE * 1.4 + 0.6);
+  }
+  return zc;
+}
+function mercEscapeDir(cx, cz) {
+  const M = merc.obj.position, d = Math.hypot(M.x - cx, M.z - cz) || 1, ax = (M.x - cx) / d, az = (M.z - cz) / d;
+  let bx = ax, bz = az, best = -9;
+  for (let k = 0; k < 16; k++) {
+    const a = k / 16 * Math.PI * 2, x = Math.cos(a), z = Math.sin(a);
+    if (wallOverlapAt(M.x + x * 1.2, M.z + z * 1.2, merc.radius) || wallOverlapAt(M.x + x * 2.4, M.z + z * 2.4, merc.radius)) continue;
+    const sc = x * ax + z * az; if (sc > best) { best = sc; bx = x; bz = z; }
+  }
+  return { x: bx, z: bz };
+}
+// ----- 목표 -----
+function mercTgtOk(e) {
+  if (!e || e.isDead || e.awake === false || !e.obj || !e.obj.parent) return false;
+  if (a3Blocked(e)) return false;   // 닫힌 심장 · 날고 있는 군주 등 지금 무적인 것
+  const P = player.obj.position;
+  return Math.hypot(e.obj.position.x - P.x, e.obj.position.z - P.z) < MERC_LEASH + 2;
+}
+function mercPickTgt() {
+  const M = merc.obj.position, P = player.obj.position; let best = null, bd = 1e9;
+  for (const e of enemies) {
+    if (e.isDead || e.awake === false || !e.obj || !e.obj.parent || a3Blocked(e)) continue;
+    const dp = Math.hypot(e.obj.position.x - P.x, e.obj.position.z - P.z); if (dp > MERC_LEASH) continue;
+    const dm0 = Math.hypot(e.obj.position.x - M.x, e.obj.position.z - M.z);
+    if (e.type === 'wraith' && dm0 > 4) continue;   // 혼령은 치고 빠지며 날아다닌다 — 멀리서 쫓아다니면 시간만 버린다(곁에 왔을 때만)
+    const dm = dm0 + dp * 0.35;   // 플레이어 곁 적을 조금 더 먼저
+    if (dm < bd) { bd = dm; best = e; }
+  }
+  return best;
+}
+// ----- 공격 -----
+function mercStrike() {
+  const M = merc.obj.position, fx = -Math.sin(merc.yaw), fz = -Math.cos(merc.yaw), kind = merc.atkKind;
+  let hit = 0;
+  for (const e of enemies.slice()) {
+    if (e.isDead || !e.obj || a3Blocked(e)) continue;
+    const dx = e.obj.position.x - M.x, dz = e.obj.position.z - M.z, d = Math.hypot(dx, dz), reach = (e.radius || 0.5) + merc.radius + MERC_REACH + 0.35;
+    if (d > reach + 0.8) continue;
+    const along = dx * fx + dz * fz, side = Math.abs(dx * fz - dz * fx);
+    let ok;
+    if (kind === 'sweep') ok = d <= reach + 0.2 && (d < 0.4 || along / d > Math.cos(1.3));   // 앞 ±75°
+    else ok = along > -0.2 && along <= reach && side <= (e.radius || 0.5) + 0.55;            // 창 앞 일직선(꿰뚫는다)
+    if (!ok) continue;
+    if (skillHit(e, kind === 'sweep' ? MERC_SWEEP_K : MERC_THRUST_K, M.x, M.z, kind === 'sweep' ? 7 : 3, 'merc')) hit++;
+  }
+  if (SFX && SFX.swing) SFX.swing();
+  return hit;
+}
+// ----- 매 프레임(update 안, 적 루프 뒤) -----
+function mercUpdate(dt) {
+  if (!MERC_ON || !merc.active || !merc.obj || merc.gone) return;
+  const L = merc.limbs, P = player.obj.position, M = merc.obj.position;
+  merc.t += dt;
+  const nm = Math.max(1, Math.round(player.hpMax * MERC_HP_K));
+  if (nm !== merc.hpMax) { if (nm > merc.hpMax && !merc.down && merc.hp >= 0) merc.hp += nm - merc.hpMax; merc.hpMax = nm; merc.hp = Math.min(merc.hp, nm); }
+  merc.inv = Math.max(0, merc.inv - dt);
+  if (merc.down) {
+    merc.downT += dt; L._mcUpdate(merc.t, dt, 0);
+    M.y = groundHeightAt(M.x, M.z);
+    if (merc.downT > MERC_DOWN_T) { merc.gone = true; spawnHitEffect(M.x, M.y + 0.8, M.z, 1.0); mercHide(); }
+    return;
+  }
+  if (!player.alive) { L._mcCombat(false); L._mcUpdate(merc.t, dt, 0); return; }
+  // 함정 방·매복 장벽 안에 플레이어가 갇히면 용병도 그 안으로(밖에 남으면 못 들어온다)
+  let cage = null;
+  if (trapState === 'active' && trapRoom) cage = trapRoomBox(trapRoom, merc.radius + 0.15);
+  else if (ambushState === 'active' && ambush) { const o = TILE * 1.5 - 0.6; cage = [ambush.x - o, ambush.x + o, ambush.z - o, ambush.z + o]; }
+  if (cage && (M.x < cage[0] || M.x > cage[1] || M.z < cage[2] || M.z > cage[3])) {
+    if (Math.hypot(M.x - P.x, M.z - P.z) > 2.5) { const s = mercSpotNear(); mercPlace(Math.max(cage[0], Math.min(cage[1], s.x)), Math.max(cage[2], Math.min(cage[3], s.z))); }
+  }
+  const dP = Math.hypot(M.x - P.x, M.z - P.z);
+  // 너무 멀거나(계단 넘어 · 길이 끊김) 멀리서 오래 끼이면 곁으로. 곁(6 안)에서 끼인 것은 순간이동하지 않고 1.5초 멈췄다 반대쪽 자리로 —
+  // 따라갈 자리가 장식 충돌체 너머라 못 가는 경우였는데, 순간이동하면 같은 자리에서 또 끼어 2.6초마다 되풀이했다(마법사 봇 39층)
+  if (merc.stuckT > 2.5 && dP <= 6) { merc.stuckT = 0; merc.hold = 1.5; merc.side = -merc.side; }
+  merc.hold = Math.max(0, (merc.hold || 0) - dt);
+  if (dP > MERC_TP || merc.stuckT > 2.5) { const s = mercSpotNear(); spawnHitEffect(M.x, M.y + 0.8, M.z, 0.8); mercPlace(s.x, s.z); merc.tgt = null; merc.atkT = -1; L._mcReset(); }
+  // 목표
+  merc.retarget -= dt;
+  if (merc.retarget <= 0 || !mercTgtOk(merc.tgt)) { merc.tgt = mercPickTgt(); merc.retarget = 0.35; }
+  const tgt = merc.tgt;
+  // 위험
+  const dz0 = mercDanger();
+  let mvx = 0, mvz = 0, speed = player.speed, faceX = null, faceZ = null;
+  if (dz0) {
+    if (merc.atkT >= 0 && !merc.hitDone) { merc.atkT = -1; merc.atkCd = 0.2; L._mcReset(); }   // 내지르기 전이면 거두고 비킨다
+    const e = mercEscapeDir(dz0.x, dz0.z); mvx = e.x; mvz = e.z; speed *= 1.15;
+  }
+  let reach = 0, dT = 0, flank = null;
+  if (tgt) {
+    const tx = tgt.obj.position.x, tz = tgt.obj.position.z; dT = Math.hypot(tx - M.x, tz - M.z);
+    reach = (tgt.radius || 0.5) + merc.radius + MERC_REACH;
+    faceX = tx - M.x; faceZ = tz - M.z;
+    // 골렘은 정면 무적(등 뒤만) — 봇과 같은 공식으로 몸 뒤 지점을 노린다
+    if (tgt.type === 'golem' && tgt.golemAwake) {
+      const gx = Math.sin(tgt.obj.rotation.y), gz = Math.cos(tgt.obj.rotation.y), rx = M.x - tx, rz = M.z - tz, rl = Math.hypot(rx, rz) || 1;
+      flank = { back: (gx * rx + gz * rz) / rl < -0.6, x: tx - gx * (reach - 0.3), z: tz - gz * (reach - 0.3) };
+    }
+  }
+  L._mcCombat(!!tgt);
+  if (!dz0 && merc.atkT < 0) {
+    let gx = null, gz = null, stop = 0;
+    if (tgt) {
+      if (flank && !flank.back) { gx = flank.x; gz = flank.z; stop = 0.25; }
+      else {
+        // 옆구리로: 적은 플레이어를 보고 휘두르므로, 적→플레이어 방향에 직각인 자리(용병 쪽 옆)에 서면 그 공격에 안 휘말린다.
+        // 창이 길어(사거리 = 반지름 합 + 1.35) 옆에서도 닿는다. 옆자리가 벽이면 반대쪽, 둘 다 막혔으면 곧장 다가간다
+        const tx = tgt.obj.position.x, tz = tgt.obj.position.z, ux = P.x - tx, uz = P.z - tz, ul = Math.hypot(ux, uz);
+        let side = null;
+        if (ul > 0.3) {
+          let nx = -uz / ul, nz = ux / ul; if ((M.x - tx) * nx + (M.z - tz) * nz < 0) { nx = -nx; nz = -nz; }
+          const R = reach - 0.35;
+          for (const sg of [1, -1]) { const fx = tx + (nx * sg - ux / ul * 0.2) * R, fz = tz + (nz * sg - uz / ul * 0.2) * R; if (mercFree(fx, fz)) { side = { x: fx, z: fz }; break; } }
+        }
+        if (side) { if (Math.hypot(side.x - M.x, side.z - M.z) > (merc.moving ? 0.25 : 0.6)) { gx = side.x; gz = side.z; stop = 0.2; } }
+        else if (dT > reach - 0.1) { gx = tx; gz = tz; stop = reach - 0.35; }
+      }
+    } else {
+      // 따라가기: 플레이어 뒤 옆(1.6 뒤 · 0.9 옆). 가까우면 서 있고, 멀어지면 다시 붙는다(되풀이 흔들림 방지 문턱)
+      const bx = Math.sin(player.yaw), bz = Math.cos(player.yaw);
+      let fx = P.x + bx * 1.6 + bz * 0.9 * merc.side, fz = P.z + bz * 1.6 - bx * 0.9 * merc.side;
+      if (!mercFree(fx, fz)) { merc.side = -merc.side; fx = P.x + bx * 1.6 + bz * 0.9 * merc.side; fz = P.z + bz * 1.6 - bx * 0.9 * merc.side; if (!mercFree(fx, fz)) { fx = P.x; fz = P.z; } }
+      const df = Math.hypot(fx - M.x, fz - M.z);
+      if (df > (merc.moving ? 0.5 : 1.6) && !(fx === P.x && dP < 2.0) && !(merc.hold > 0 && dP < 4)) { gx = fx; gz = fz; stop = 0.4; }
+    }
+    if (gx !== null) {
+      let ux = gx - M.x, uz = gz - M.z; const dl = Math.hypot(ux, uz);
+      if (dl > stop) {
+        ux /= dl; uz /= dl;
+        // 곧은 길이 막혔으면 촘촘한 길찾기(플레이어 쪽으로 — 목표가 늘 플레이어 곁이라 충분하다)
+        let blocked = false; const n = Math.min(12, Math.ceil(dl / 0.5));
+        for (let k = 1; k <= n; k++) if (wallOverlapAt(M.x + ux * dl * k / n, M.z + uz * dl * k / n, merc.radius * 0.9)) { blocked = true; break; }
+        if (blocked) { const st = navFineStep(_mcProxy); if (st) { ux = st.x - M.x; uz = st.z - M.z; const l = Math.hypot(ux, uz) || 1; ux /= l; uz /= l; } }
+        [ux, uz] = navSteer(_mcProxy, ux, uz, 0.6);
+        mvx = ux; mvz = uz;
+        if (dP > 5) speed *= 1.35;   // 뒤처지면 달려서 따라붙는다
+      }
+    }
+  }
+  // 이동(X → Z 순서로 충돌 검사 — v812 대각선 모서리 뚫기 방지) + 넉백
+  merc.kbX *= Math.max(0, 1 - dt * 8); merc.kbZ *= Math.max(0, 1 - dt * 8);
+  const stepX = mvx * speed * dt + merc.kbX * dt, stepZ = mvz * speed * dt + merc.kbZ * dt;
+  if (stepX && !wallOverlapAt(M.x + stepX, M.z, merc.radius)) M.x += stepX;
+  if (stepZ && !wallOverlapAt(M.x, M.z + stepZ, merc.radius)) M.z += stepZ;
+  // 몸 겹침: 적·플레이어와 겹치면 용병이 비킨다(적은 용병을 모른다 — 밀지 않는다)
+  for (const e of enemies) {
+    if (e.isDead || !e.obj) continue;
+    const dx = M.x - e.obj.position.x, dz = M.z - e.obj.position.z, d = Math.hypot(dx, dz), mn = (e.radius || 0.5) + merc.radius;
+    if (d < mn && d > 1e-4) { const k = (mn - d) / d; if (!wallOverlapAt(M.x + dx * k, M.z + dz * k, merc.radius)) { M.x += dx * k; M.z += dz * k; } }
+  }
+  { const dx = M.x - P.x, dz = M.z - P.z, d = Math.hypot(dx, dz), mn = player.radius + merc.radius + 0.05;
+    if (d < mn && d > 1e-4) { const k = (mn - d) / d; if (!wallOverlapAt(M.x + dx * k, M.z + dz * k, merc.radius)) { M.x += dx * k; M.z += dz * k; } } }
+  if (cage) { M.x = Math.max(cage[0], Math.min(cage[1], M.x)); M.z = Math.max(cage[2], Math.min(cage[3], M.z)); }
+  M.y = groundHeightAt(M.x, M.z);
+  const moved = Math.hypot(stepX, stepZ); merc.moving = moved > speed * dt * 0.3;
+  // 끼임 감지: 0.5초마다 가려던 거리의 25% 도 못 갔으면 누적
+  merc.chkT += dt;
+  if (merc.chkT >= 0.5) {
+    const real = Math.hypot(M.x - merc.chkX, M.z - merc.chkZ);
+    if ((mvx || mvz) && real < speed * merc.chkT * 0.25) merc.stuckT += merc.chkT; else merc.stuckT = 0;
+    merc.chkT = 0; merc.chkX = M.x; merc.chkZ = M.z;
+  }
+  // 바라보기: 목표 · 아니면 가는 쪽
+  if (faceX === null && (mvx || mvz) && !dz0) { faceX = mvx; faceZ = mvz; }
+  if (dz0 && tgt) { faceX = tgt.obj.position.x - M.x; faceZ = tgt.obj.position.z - M.z; }
+  if (faceX !== null && (faceX || faceZ)) {
+    const want = Math.atan2(faceX, faceZ) + Math.PI;   // 정면 -z
+    let da = want - merc.yaw; da = Math.atan2(Math.sin(da), Math.cos(da));
+    merc.yaw += da * Math.min(1, dt * (merc.atkT >= 0 ? 8 : 12));
+  }
+  merc.obj.rotation.y = merc.yaw;
+  // 공격
+  merc.atkCd -= dt;
+  if (merc.atkT >= 0) {
+    merc.atkT += dt;
+    const T = L.MC_T[merc.atkKind];
+    if (!merc.hitDone && merc.atkT >= T.hit) { merc.hitDone = true; mercStrike(); }
+    if (merc.atkT >= T.end) { merc.atkT = -1; merc.atkCd = MERC_CD; }
+  } else if (tgt && !dz0 && merc.atkCd <= 0 && dT <= reach + 0.1 && !(flank && !flank.back)) {
+    const fx = -Math.sin(merc.yaw), fz = -Math.cos(merc.yaw), al = ((tgt.obj.position.x - M.x) * fx + (tgt.obj.position.z - M.z) * fz) / (dT || 1);
+    if (al > 0.8 || dT < 0.5) {
+      merc.atkN++;
+      let near = 0; for (const e of enemies) if (!e.isDead && e.awake !== false && Math.hypot(e.obj.position.x - M.x, e.obj.position.z - M.z) < reach + 0.4) near++;
+      merc.atkKind = (merc.atkN % 3 === 0 && near >= 2) ? 'sweep' : 'thrust';
+      merc.atkT = 0; merc.hitDone = false; L._mcAttack(merc.atkKind);
+    }
+  }
+  // 회복: 2초 동안 싸움(깨어난 적 7 안 · 피격)이 없으면
+  let fight = false; for (const e of enemies) if (!e.isDead && e.awake !== false && Math.hypot(e.obj.position.x - M.x, e.obj.position.z - M.z) < 7) { fight = true; break; }
+  if (fight) merc.calm = 0; else { merc.calm += dt; if (merc.calm > 2 && merc.hp < merc.hpMax) merc.hp = Math.min(merc.hpMax, merc.hp + merc.hpMax * MERC_REGEN * dt); }
+  L._mcUpdate(merc.t, dt, merc.moving ? Math.min(1.4, moved / Math.max(1e-4, dt) / 6) : 0);
+}
+// 머리 위 체력 막대 — 데미지 숫자처럼 렌더 직전(픽셀 스냅된) 카메라로 투영한다(renderWithPost 안)
+const _mcV = new THREE.Vector3();
+function mercBarTick(sceneToRender) {
+  const show = MERC_ON && sceneToRender === scene && merc.active && merc.obj && merc.obj.visible && !merc.down;
+  if (!show) { if (merc.bar && merc.bar.style.display !== 'none') merc.bar.style.display = 'none'; return; }
+  if (!merc.bar) {
+    const b = document.createElement('div'); b.id = 'mercBar'; const f = document.createElement('i'); b.appendChild(f);
+    document.body.appendChild(b); merc.bar = b; merc.barFill = f;
+  }
+  const M = merc.obj.position; _mcV.set(M.x, M.y + 2.05, M.z).project(camera);
+  if (_mcV.z > 1) { merc.bar.style.display = 'none'; return; }
+  const sx = (_mcV.x * 0.5 + 0.5) * scrW(), sy = (1 - (_mcV.y * 0.5 + 0.5)) * scrH();
+  merc.bar.style.display = 'block';
+  merc.bar.style.transform = 'translate(' + Math.round(sx) + 'px,' + Math.round(sy) + 'px) translate(-50%,-100%)';
+  const k = Math.max(0, Math.min(1, merc.hp / merc.hpMax)), w = Math.round(k * 100) + '%';
+  if (merc.barFill.style.width !== w) merc.barFill.style.width = w;
+  const c = k < 0.35 ? '#e8604a' : '#9ad46a'; if (merc.barFill._c !== c) { merc.barFill._c = c; merc.barFill.style.background = c; }
+}
+// ----- 여관(마을 여관 주인) -----
+function openInn() {
+  const ov = $('innOverlay'); if (!ov) { openCharChange(); return; }
+  $('innTitle').textContent = _i18n('🛏️ 여관');
+  $('innDesc').textContent = _i18n('떠돌이 용병이 일거리를 찾고 있다.');
+  $('innNote').textContent = _i18n('다음 던전 한 번 함께 간다 · 알아서 따라오며 싸운다 · 쓰러지면 회복의 샘·쉼터에서 다시 합류');
+  $('innCharBtn').textContent = _i18n('🔄 캐릭터 변경');
+  $('innCancel').textContent = _i18n('닫기');
+  innRefresh();
+  ov.classList.remove('hidden');
+}
+function innRefresh() {
+  const b = $('innHireBtn'); if (!b) return;
+  const hired = !!(meta.merc && meta.merc.hired), cost = mercHireCost(), ok = !hired && meta.gold >= cost;
+  b.textContent = hired ? _i18n('✅ 고용함 — 다음 던전에 함께 간다') : _i18n('⚔️ 용병 고용') + ' (' + cost.toLocaleString() + 'G)';
+  b.disabled = !ok; b.style.opacity = (ok || hired) ? '1' : '0.45';
+}
+function innHire() {
+  if (meta.merc && meta.merc.hired) return;
+  const cost = mercHireCost();
+  if (meta.gold < cost) { toast(_i18n('골드 부족')); return; }
+  meta.gold -= cost; meta.merc = { hired: true }; saveMeta();
+  if (KSFX_ON && SFX.ksfx) SFX.ksfx('skill');
+  toast(_i18n('⚔️ 용병을 고용했다 — 다음 던전에 함께 간다'), 2600);
+  innRefresh(); if (typeof updateHUD === 'function') updateHUD();
+}
+function closeInn() { const ov = $('innOverlay'); if (ov) ov.classList.add('hidden'); }
+
 // ===== 가시 함정 복도 =====
 function clearSpikeTraps() {
   for (const s of spikeTraps) { if (s.group) scene.remove(s.group); }
@@ -26355,6 +27014,7 @@ function updateInteractables(dt) {
       player.hp = Math.min(player.hpMax, player.hp + Math.floor(player.hpMax * 0.5));
       updateHUD();
       toast(_i18n('⛲ 샘에서 체력을 회복했다! (+') + Math.floor(player.hpMax * 0.5) + ')');
+      mercFountain();   // v879: 쓰러진 용병이 다시 합류(살아 있으면 체력 절반)
     }
   }
 }
@@ -26516,7 +27176,7 @@ const joyBase = $('joyBase'), joyStick = $('joyStick');
 const turnBase = $('turnBase'), turnStick = $('turnStick');
 // 마을·게임오버·캐릭터선택 등 오버레이가 떠 있으면 게임 터치 조작을 막는다(스크롤·버튼 충돌 방지)
 function anyOverlayOpen() {
-  const ids = ['overOverlay', 'charOverlay', 'startOverlay', 'howtoOverlay', 'rewardOverlay', 'townShop', 'smithOverlay', 'skillOverlay', 'townDialog', 'startResumeChoice', 'restChoiceOverlay', 'reviveOverlay'];
+  const ids = ['overOverlay', 'charOverlay', 'startOverlay', 'howtoOverlay', 'rewardOverlay', 'townShop', 'smithOverlay', 'skillOverlay', 'townDialog', 'startResumeChoice', 'restChoiceOverlay', 'reviveOverlay', 'innOverlay'];
   return ids.some(id => { const el = document.getElementById(id); return el && !el.classList.contains('hidden'); });
 }
 
@@ -27174,7 +27834,7 @@ function skillAreaDamage(R, dmgMul, coneDir, coneCos, kbForce, at, onHit) {
   return hitCount;
 }
 // 스킬 피해 한 마리 몫(v869 에 skillAreaDamage 에서 떼어 냈다 — 대지 가르기·덫이 같이 쓴다). (px, pz) = 피해가 온 곳
-function skillHit(e, dmgMul, px, pz, kbForce) {
+function skillHit(e, dmgMul, px, pz, kbForce, numCls) {   // numCls: 숫자 색(생략하면 스킬 하늘색 — v879 용병은 'merc')
   const dx = e.obj.position.x - px, dz = e.obj.position.z - pz;
   const d = Math.hypot(dx, dz) || 1;
   // 골렘: 정면 무적(등 뒤만). 휴면 중엔 무효.
@@ -27192,7 +27852,7 @@ function skillHit(e, dmgMul, px, pz, kbForce) {
   const critCh = (typeof smithBonus === 'function') ? smithBonus('crit') : 0;
   let skCrit = false; if (critCh > 0 && Math.random() < critCh) { dmg = Math.floor(dmg * 1.6); skCrit = true; }
   if (a3Blocked(e)) return false;
-  e.hp -= dmg; alertRoom(e); dmgNumAdd(e.obj.position.x, e.obj.position.y + (e.scale || 1) * 1.3, e.obj.position.z, String(dmg), skCrit ? 'crit' : 'skill'); // v824 숫자
+  e.hp -= dmg; alertRoom(e); dmgNumAdd(e.obj.position.x, e.obj.position.y + (e.scale || 1) * 1.3, e.obj.position.z, String(dmg), skCrit ? 'crit' : (numCls || 'skill')); // v824 숫자
   if (kbForce) { e.kbX = (dx / d) * kbForce; e.kbZ = (dz / d) * kbForce; }
   spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale, e.obj.position.z, dmgMul); flashObj(e.obj, e);
   if (e.hp <= 0) killEnemy(e);
@@ -28029,6 +28689,7 @@ function fireImpBlastTick(e, dt) {
   if (SFX && SFX.hit) SFX.hit(1.3);
   const p = player.obj.position, dp = Math.hypot(p.x - x, p.z - z);
   if (player.alive && dp < IMP_BLAST_R + player.radius * 0.5) damagePlayer(Math.max(1, Math.floor(e.damage * IMP_BLAST_K)), e);   // v870 0.6 → 0.45
+  if (MERC_ON && mercInCircle(x, z, IMP_BLAST_R)) mercHurt(Math.max(1, Math.floor(e.damage * IMP_BLAST_K)), e, true);   // v879
   if (dp < 8) addScreenShake(0.1, 0.15);
   for (const o of enemies) {
     if (o === e || o.isDead || o.isBoss || !o.obj) continue;
@@ -29352,6 +30013,7 @@ function update(dt) {
             const orig = e.damage; e.damage = Math.floor(orig * 1.3); damagePlayer(e.damage, e); e.damage = orig;
             player.kbX = (ddx / u) * 22; player.kbZ = (ddz / u) * 22;
           }
+          if (MERC_ON && mercInCircle(e.obj.position.x, e.obj.position.z, FG_R)) mercHurt(Math.floor(e.damage * 1.3), e, false);   // v879
           if (e.fgRing) { scene.remove(e.fgRing); e.fgRing.geometry.dispose(); e.fgRing.material.dispose(); e.fgRing = null; }
           e.limbs.armR.rotation.x = 0; if (e.limbs.armL) e.limbs.armL.rotation.x = 0;
           e.fgSlam = null; e.fgSlamCd = 5.0 + ((e.phase || 0) % 1) * 2.0; e.attackCd = Math.max(e.attackCd, 0.8);
@@ -31547,6 +32209,7 @@ function update(dt) {
                 e.hitPending = false;
                 if (typeof spawnShockwave === 'function') spawnShockwave(e.obj.position.x, e.obj.position.z, TILE * 1.2);
                 if (d <= gMeleeStop + 0.6) damagePlayer(e.damage, e);
+                if (MERC_ON && mercInCircle(e.obj.position.x, e.obj.position.z, gMeleeStop + 0.6 - player.radius)) mercHurt(e.damage, e, false);   // v879
               }
             }
           } else {
@@ -31606,6 +32269,7 @@ function update(dt) {
           // 내려찍는 임팩트 순간에 1회 데미지(이때가 패링 타이밍)
           if (e.hitPending && elapsed >= E_IMPACT) {
             e.hitPending = false;
+            if (MERC_ON) mercMeleeSplash(e, meleeStop + 0.4);   // v879: 플레이어를 보고 휘두른 공격에 곁의 용병이 휘말린다
             if (d <= meleeStop + 0.4) {
               const hpB = player.hp; damagePlayer(e.damage, e); // 아직 근처일 때만 명중
               // v822: 부패한 구울은 맞히면 0.8초 붙잡는다(포박) — 혼자서는 별것 아니지만 무리 속에서 잡히면 다음 공격이 이어진다. 구울마다 4초에 한 번.
@@ -31626,6 +32290,7 @@ function update(dt) {
     }
   }
   confineTrapEnemies();   // v877: 매복·함정 방 몬스터는 장벽 밖으로 못 나간다
+  if (MERC_ON) mercUpdate(dt);   // v879 용병(적 루프 뒤 — 넉백·밀어내기가 끝난 자리를 본다)
 
   // v820: 일반 층 소탕 보상(보스 층은 계단 개방이 보상이다)
   if (!floorSwept && aliveEnemyCount === 0 && enemies.length > 0 && player.floor % 10 !== 0 && !bossTestMode) floorSweepBonus();
@@ -31670,7 +32335,7 @@ function descend() {
     toast(_i18n('🧪 회복 물약 +1 (' + act + '막 클리어!)'), 2500);
     enterRest(true); saveRun(); cgShowMidgame(); return;   // 막 전환 = 안전한 쉼터 도착 직후라 광고 지점으로 적합
   }
-  player.floor += 1; toast('▼ Floor ' + player.floor); player.hp = Math.min(player.hpMax, player.hp + 25); startFloor(); updateFloorJumpPanel();
+  player.floor += 1; toast('▼ Floor ' + player.floor); player.hp = Math.min(player.hpMax, player.hp + 25); mercDescendHeal(); startFloor(); updateFloorJumpPanel();
 }
 // v877: 층 시작 자리(시작 방 가운데)가 장식 충돌체·보이는 장식 위면 끼어서 못 움직였다(SPAWNFIX · ?spawnfix=0).
 //       자리가 비어 있으면 그대로(null), 아니면 방 안 0.25 간격으로 가장 가까운 빈자리 — 충돌체·장식 발자국·계단 받침을 피한다.
@@ -31711,6 +32376,7 @@ function startFloor() {
   if (SPAWNFIX) { const sp = playerSpawnSpot(r, px, pz); if (sp) { px = sp.x; pz = sp.z; } }   // v877: 시작 자리가 장식(바위·잔해·기둥 무리) 위면 가장 가까운 빈자리로
   player.obj.position.set(px, groundHeightAt(px, pz), pz); player.jumpVy = 0; player.onGround = true; player.yaw = Math.atan2(-px, -pz); player.pitch = 0.2; player.isBlocking = false; isCharging = false; SFX.chargeStop(false);
   camera.position.set(px + isoOffsetX, isoOffsetY + groundHeightAt(px, pz), pz + isoOffsetZ); camera.lookAt(player.obj.position);
+  if (MERC_ON) mercFloorStart();   // v879 용병: 플레이어 곁에(쓰러져 물러났으면 그대로)
   updateHUD();
   saveRun(); // 새 층 진입 시 진행 저장(이어하기용)
   tutFloor(); // v823 온보딩
@@ -31962,6 +32628,7 @@ function saveRun() {
       // v819: 재료도 골드처럼 층 진입 시점으로 되돌린다 — 안 그러면 보스 재료를 받고 이어하기로 같은 보스를 또 잡아 무한 파밍이 됐다
       materials: Object.assign({}, meta.materials),
       // v819: 쉼터에서 저장되면 이어하기가 쉼터로 돌아간다(보스를 다시 잡지 않고, '마을로' 정산에 보스 골드가 들어간다)
+      merc: mercSaveData(),   // v879 용병(체력 비율 · 쓰러짐) — 고용 안 했으면 null
       rest: inRest ? { next: restNextFloor, final: !!restIsFinal } : null
     };
     localStorage.setItem('dungeon_run', JSON.stringify(data));
@@ -32106,7 +32773,7 @@ function showRunResult(data) {
     $('overOverlay').classList.remove('hidden');
   }, data.died ? 800 : 0);
 }
-function resetGame() { godMode = false; defeatedBosses.clear(); lastChestFloor = 0; player.alive = true; player.lv = 1; player.exp = 0; player.expMax = 10; player.atkSpeed = 1.0; player.kills = 0; player.floor = 1; staRegenCooldown = 0; player.gold = 0; runGold = 0; runMaterials = {}; runReviveUsed = false; bossRewardQueue.length = 0; player.noHitFloors = 0; player.hitThisFloor = false; player.potions = 1; applyMetaUpgrades(); runStartTime = Date.now(); $('rewardOverlay').classList.add('hidden'); rewardPaused = false; startFloor(); refreshPotionBtn(); }
+function resetGame() { godMode = false; defeatedBosses.clear(); lastChestFloor = 0; player.alive = true; player.lv = 1; player.exp = 0; player.expMax = 10; player.atkSpeed = 1.0; player.kills = 0; player.floor = 1; staRegenCooldown = 0; player.gold = 0; runGold = 0; runMaterials = {}; runReviveUsed = false; bossRewardQueue.length = 0; player.noHitFloors = 0; player.hitThisFloor = false; player.potions = 1; applyMetaUpgrades(); runStartTime = Date.now(); $('rewardOverlay').classList.add('hidden'); rewardPaused = false; mercRunStart(); startFloor(); refreshPotionBtn(); }
 // ===== 만렙 테스트 캐릭터 ===== 일반 던전을 그대로 탐험하되, 스탯을 만렙으로 올리고 무적/스태미나 무한.
 // 만렙 전용: 원하는 층으로 즉시 이동
 function jumpToFloor(n) {
@@ -32174,6 +32841,7 @@ function resumeGame() {
   if (r.materials && typeof r.materials === 'object') { for (const k of Object.keys(r.materials)) if (typeof r.materials[k] === 'number') meta.materials[k] = r.materials[k]; saveMeta(); }
   runStartTime = Date.now() - (r.elapsed || 0); // 경과 시간 이어가기
   $('rewardOverlay').classList.add('hidden'); rewardPaused = false;
+  mercRestore(r.merc);   // v879 용병(체력 비율 · 쓰러짐)
   // v819: 쉼터에서 저장된 회차는 쉼터로 돌아간다(30·60·90층 보스를 다시 잡지 않는다)
   if (r.rest && typeof r.rest.next === 'number') { restNextFloor = r.rest.next; restIsFinal = !!r.rest.final; enterRest(true); return; }
   startFloor();
@@ -32226,6 +32894,7 @@ function drawMinimap() {
 // DOM 만 쓴다(THREE 객체·Math.random 없음 → 층 생성 난수 스트림에 영향 없음). 알림(toast)은 위쪽, 이 띠는 아래쪽이라 겹치지 않는다.
 // 트리거: 층 시작(tutFloor) · 매 프레임 상태 검사(tutUpdate) · 레벨업·마을·쉼터 진입(직접 tutShow).
 const TUT_TEXT = {
+  merc: () => _i18n('⚔️ 용병은 알아서 따라오며 싸운다. 적은 너를 노리지만 공격·장판에 닿으면 용병도 맞는다 — 쓰러지면 회복의 샘이나 쉼터에서 다시 합류한다.'),   // v879
   start: () => _i18n('🧭 던전의 목표는 내려가는 계단을 찾는 것. 미니맵의 밝은 점이 계단이고, 적을 다 잡지 않아도 내려갈 수 있다.'),
   ctrl: () => {
     const m = isTouchDevice;
@@ -32284,6 +32953,7 @@ function tutFloor() {
   tut.q.length = 0;
   if (player.floor === 1) { tutShow('start'); tutShow('ctrl'); }
   if (player.floor % 10 === 0) tutShow('boss');
+  if (MERC_ON && merc.active && !merc.gone) tutShow('merc');   // v879
 }
 // 던전 상태 검사(update 직후): 첫 각성 적 · 발견한 계단/상자/샘 · 귀환 계단 근처 · 함정 발동 · 체력 70% 아래
 function tutUpdate() {
@@ -33113,6 +33783,7 @@ function showDungeonUI() {
 // ===== 마을 3D 모드 (1단계: 걸어다니기 + 던전 입구 진입) =====
 function enterTownMode(keepGod) {
   const wasGod = godMode;
+  mercRunEnd();   // v879: 마을로 오면 회차가 끝났다 — 용병 계약도 끝
   lootClear(); comboReset(); bossSlowStop(); lavaLinesClear(); hsFallReset(); if (SK2_ON) sk2Clear();   // v857 · v858
   if (!keepGod) {
     godMode = false; bossTestMode = false; godInvuln = false;
@@ -33193,6 +33864,7 @@ function enterDungeonFromTown(resume) {
     runGold = 0; runMaterials = {};
     player.hp = player.hpMax; player.sta = player.staMax;
     showDungeonUI();
+    mercRunStart();   // v879
     startFloor();
     updateFloorJumpPanel(); // 테스트용 층 이동/무적 패널 표시
   }
@@ -34642,6 +35314,7 @@ function buildRestScene() {
 function enterRest(fromRun) {
   if (!fromRun) { restIsFinal = false; } // 마을 포탈 경유: restNextFloor는 선택 오버레이에서 지정(2막=31 / 3막=61)
   restEnteredFromRun = !!fromRun;
+  if (fromRun) mercRestHeal();   // v879: 쉼터에 들어오면 용병이 다시 합류(다음 층에서 최대 체력)
   tutClear(); tutShow('rest'); // v823 온보딩
   lootClear(); comboReset(); bossSlowStop(); lavaLinesClear(); hsFallReset(); if (SK2_ON) sk2Clear();   // v857 · v858
   buildRestScene();
@@ -34742,6 +35415,7 @@ function startRunAtFloorReset(n) {
   runStartTime = Date.now();
   if ($('rewardOverlay')) $('rewardOverlay').classList.add('hidden'); rewardPaused = false;
   toast('▼ Floor ' + n + _i18n(' — 다음 막'));
+  mercRunStart();   // v879 용병(여관에서 고용해 뒀으면)
   startFloor();
   updateFloorJumpPanel(); // 테스트 모드면 층 이동/무적 패널 다시 표시
 }
@@ -35043,6 +35717,10 @@ onTap($('restChoiceAct2'), (e) => { if (e) e.stopPropagation(); chooseRest(31); 
 onTap($('restChoiceAct3'), (e) => { if (e) e.stopPropagation(); chooseRest(61); });
 onTap($('restChoiceAct4'), (e) => { if (e) e.stopPropagation(); chooseRest(91); });   // v853
 onTap($('restChoiceCancel'), (e) => { if (e) e.stopPropagation(); $('restChoiceOverlay').classList.add('hidden'); });
+// v879 여관: 용병 고용 · 캐릭터 변경
+onTap($('innHireBtn'), (e) => { if (e) e.stopPropagation(); innHire(); });
+onTap($('innCharBtn'), (e) => { if (e) e.stopPropagation(); closeInn(); openCharChange(); });
+onTap($('innCancel'), (e) => { if (e) e.stopPropagation(); closeInn(); });
 
 function updateTownMerchant(dt) {
   const btn = $('townTalkBtn'), hint = $('townInteract');
@@ -35084,7 +35762,7 @@ function updateTownMerchant(dt) {
   if (btn) {
     btn.style.display = near ? 'block' : 'none';
     btn.textContent = (best && best.kind === 'cleric') ? _i18n('🙏 축복 받기')
-      : (best && best.kind === 'innkeeper') ? _i18n('🛏️ 캐릭터 변경')
+      : (best && best.kind === 'innkeeper') ? (MERC_ON ? _i18n('🛏️ 여관') : _i18n('🛏️ 캐릭터 변경'))   // v879: 여관 = 용병 고용 + 캐릭터 변경
       : _i18n('💬 말 걸기');
   }
   if (hint) { hint.style.display = near ? 'block' : 'none'; hint.textContent = near ? ('💬 ' + best.name) : ''; }
@@ -35107,7 +35785,7 @@ function townInteract() {
   }
   if (!townInteractTarget) return;
   if (townInteractTarget.kind === 'cleric') { openTownShop(); return; }
-  if (townInteractTarget.kind === 'innkeeper') { openCharChange(); return; }
+  if (townInteractTarget.kind === 'innkeeper') { if (MERC_ON) openInn(); else openCharChange(); return; }
   if (townInteractTarget.kind === 'merchant') { openSmith(); return; }
   if (townInteractTarget.kind === 'trainer') { openSkillShop(); return; }
   const npc = townInteractTarget.npc;
