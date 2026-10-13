@@ -17347,7 +17347,7 @@ function updateExAxes(dt) {
       const key = a.back ? 'hitBack' : 'hitOut';
       if (!a[key]) { a[key] = true; damagePlayer(Math.floor((e ? e.damage : 0) * 0.9), e); }
     }
-    if (MBOSS_ON && e && mercD(a.x, a.z) <= EX_AXE_R + merc.radius) { const k2 = a.back ? 'mBack' : 'mOut'; if (!a[k2]) { a[k2] = true; mercHurt(Math.floor(e.damage * 0.9), e, false); } }   // v880
+    if (MBOSS_ON && e && mercD(a.x, a.z) <= EX_AXE_R + merc.radius) { const k2 = a.back ? 'mBack' : 'mOut'; if (!a[k2]) { a[k2] = true; mercHurt(Math.floor(e.damage * 0.9), e, false, { x: a.x, z: a.z }); } }   // v880 · v883 막기 판정은 도끼가 온 쪽으로
   }
 }
 
@@ -26907,6 +26907,13 @@ function mercBraceFrom() {
     else if ((e.hhState === 'crouch' || e.hhState === 'dash') && d < 9) t = e.hhState === 'dash' ? 0 : 0.3;
     if (t < bt) { bt = t; best = { x: ex, z: ez }; }
   }
+  // 보스: 휘두르기 직전이면 보스 쪽으로(어그로는 없지만 부채꼴·회전 베기가 용병도 맞힌다 — v882 4막 보스전 쓰러짐의 대부분) · 날아오는 처형자 도끼는 도끼 쪽으로
+  if (MBOSS_ON) for (const e of enemies) {
+    if (!e.isBoss || e.isDead || !e.obj || !e.hitPending || !(e.swingTimer > 0) || e.swingTimer >= 0.6) continue;
+    const ex = e.obj.position.x, ez = e.obj.position.z;
+    if (Math.hypot(ex - M.x, ez - M.z) < (e.radius || 0.5) + merc.radius + 5 && e.swingTimer < bt) { bt = e.swingTimer; best = { x: ex, z: ez }; }
+  }
+  for (const a of exAxes) if (Math.hypot(a.x - M.x, a.z - M.z) < 5 && bt > 0.05) { bt = 0.05; best = { x: a.x, z: a.z }; }
   return best;
 }
 function mercEscapeDir(cx, cz) {
