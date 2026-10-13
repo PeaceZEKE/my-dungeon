@@ -26631,6 +26631,7 @@ function mercDanger() {
     if (e.isDead) continue;
     if (e.type === 'golem' && e.hitPending && e.swingTimer > 0.1) near(e.obj.position.x, e.obj.position.z, e.radius + 2.6);
     else if (e.fgSlam === 'tele') near(e.obj.position.x, e.obj.position.z, TILE * 1.4 + 0.6);
+    else if (MBOSS_ON && e.isBoss && e.hitPending && e.swingTimer > 0 && e.swingTimer < 0.45) near(e.obj.position.x, e.obj.position.z, (e.radius || 0.5) + merc.radius + 2.6);   // v880: 보스가 휘두르기 직전이면(플레이어를 노려도 부채꼴·원에 휘말린다) 한 발 물러난다
     else if (AGGRO_ON && e._agM) {
       // v880 거리 두기: 나를 노린 몹이 휘두르기 시작하면(임팩트 0.4초 전부터) 그 사거리(반지름 합 + 1.0) 밖으로 한 발 — 창(반지름 합 + 1.35)이 더 길어 물러선 자리에서 다시 찌른다.
       // 노려지면 다 맞던 것이 3·4막에서 10층당 1~1.75회 쓰러뜨렸다(플레이어는 막기·패링·회피를 한다)
