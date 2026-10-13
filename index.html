@@ -26418,6 +26418,8 @@ const MBOSS_ON = MERC_ON && !/[?&]mboss=0/.test(location.search);
 const AGGRO_STICK = 0.8;       // 목표를 바꾸려면 다른 쪽이 이만큼 더 가까워야 한다(둘 사이 거리가 비슷할 때 깜빡이지 않게)
 const AGGRO_THREAT = 1.5;      // 용병에게 맞은 몹은 용병까지 거리를 이만큼 짧게 본다
 const AGGRO_THREAT_T = 3.0;    // 그 효과가 가는 시간
+const AGGRO_CAP = 2;           // 용병을 동시에 노리는 몹은 이만큼까지(나머지는 플레이어) — 3막 포자 벌레 떼가 한꺼번에 몰려 회복할 틈 없이 쓰러뜨렸다
+const MERC_RETREAT_LO = 0.30, MERC_RETREAT_HI = 0.60;   // 체력이 30% 아래면 물러나 플레이어 뒤로(몹은 플레이어에게 돌아간다) · 60% 넘으면 다시 싸운다
 const AGGRO_EXCL = { wraith: 1, rotheart: 1 };   // 혼령은 치고 빠지는 상태기계(예고 호·쉿 소리·돌진 고정)가 플레이어 기준이라 그대로
 function mercHireCost() { return 80 * (1 + Math.min(LAST_ACT, (meta && meta.actCleared) || 0)); }   // 깬 막이 많을수록 몸값이 오른다(80 · 160 · 240 · 320 · 400G)
 const merc = { active: false, obj: null, limbs: null, hp: 0, hpMax: 1, hpFrac: null, down: false, downT: 0, gone: false, radius: 0.42, t: 0,
@@ -26554,7 +26556,7 @@ function mercNearSeg(sx, sz, ux, uz, len, w) {
 function aggroPos(e) { return (e && e._agM && mercLive()) ? merc.obj.position : player.obj.position; }   // 이 몹이 노리는 자리
 // 0.4초마다 다시 고른다. 휘두르는 중·특수 동작 중엔 안 바꾼다(예고한 공격이 엉뚱한 쪽으로 꺾이지 않게)
 function aggroTick(e, dt) {
-  if (!AGGRO_ON || e.isBoss || AGGRO_EXCL[e.type] || !mercLive()) { if (e._agM) e._agM = false; return false; }
+  if (!AGGRO_ON || e.isBoss || AGGRO_EXCL[e.type] || !mercLive() || merc.retreat) { if (e._agM) e._agM = false; return false; }
   if (e._agThr > 0) e._agThr -= dt;
   e._agT = (e._agT || 0) - dt;
   const busy = e.swingTimer > 0 || e.castPending || e.lgState || e.fgSlam || (e.hhState && e.hhState !== 'none') || (e.orcLeap && e.orcLeap !== 'none') || e.lungeState === 'active';
@@ -26562,8 +26564,13 @@ function aggroTick(e, dt) {
   e._agT = 0.4;
   const ex = e.obj.position.x, ez = e.obj.position.z, P = player.obj.position, M = merc.obj.position;
   const dP = Math.hypot(P.x - ex, P.z - ez), dM = Math.hypot(M.x - ex, M.z - ez) - (e._agThr > 0 ? AGGRO_THREAT : 0);
-  e._agM = e._agM ? !(dP < dM - AGGRO_STICK) : (dM < dP - AGGRO_STICK);
-  return e._agM;
+  let want = e._agM ? !(dP < dM - AGGRO_STICK) : (dM < dP - AGGRO_STICK);
+  if (want && !e._agM) {   // 자리가 찼으면 플레이어
+    let n = 0; for (const o of enemies) if (o !== e && o._agM && !o.isDead && o.obj && Math.hypot(o.obj.position.x - M.x, o.obj.position.z - M.z) < 8) n++;
+    if (n >= AGGRO_CAP) want = false;
+  }
+  e._agM = want;
+  return want;
 }
 function mercD(x, z) { if (!mercLive()) return 1e9; const M = merc.obj.position; return Math.hypot(M.x - x, M.z - z); }
 // 앞쪽 부채꼴: (cx,cz) 에서 yaw(atan2(x,z) 기준 정면 각) ±arc · 용병 몸 중심까지 reach 안
@@ -26679,6 +26686,7 @@ function mercUpdate(dt) {
   const nm = Math.max(1, Math.round(player.hpMax * MERC_HP_K));
   if (nm !== merc.hpMax) { if (nm > merc.hpMax && !merc.down && merc.hp >= 0) merc.hp += nm - merc.hpMax; merc.hpMax = nm; merc.hp = Math.min(merc.hp, nm); }
   merc.inv = Math.max(0, merc.inv - dt);
+  if (AGGRO_ON && merc.hp >= 0) { if (merc.hp < merc.hpMax * MERC_RETREAT_LO) merc.retreat = true; else if (merc.hp > merc.hpMax * MERC_RETREAT_HI) merc.retreat = false; }   // v880
   if (merc.down) {
     merc.downT += dt; L._mcUpdate(merc.t, dt, 0);
     M.y = groundHeightAt(M.x, M.z);
@@ -26702,6 +26710,7 @@ function mercUpdate(dt) {
   // 목표
   merc.retarget -= dt;
   if (merc.retarget <= 0 || !mercTgtOk(merc.tgt)) { merc.tgt = mercPickTgt(); merc.retarget = 0.35; }
+  if (merc.retreat) merc.tgt = null;   // v880: 물러나는 동안은 안 싸우고 플레이어 뒤로(따라가기 자리)
   const tgt = merc.tgt;
   // 위험
   const dz0 = mercDanger();
