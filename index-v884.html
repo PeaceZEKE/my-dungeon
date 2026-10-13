@@ -26841,12 +26841,12 @@ const MERC_TYPES = {
 // 공격하던 것보다 먼저 그쪽으로 방패를 돌린다(v882 는 늘 목표만 봐서 도발로 둘러싼 몹의 옆·뒤 타격이 그대로 들어왔다) · 체력 1.2 → 1.35 배 · 한 방 상한 20% → 15%
 const SHIELD2_ON = MSHIELD_ON && !/[?&]shield2=0/.test(location.search);
 if (SHIELD2_ON) Object.assign(MERC_TYPES.shield, { hpK: 1.35, hitCap: 0.15, brace: true });
-// v884 석궁수(?mxbow=0 이면 여관이 안 판다): 2막을 깨면 · 체력 0.7 배 · 노려지지 않음(어그로 상한 0) · 관통 화살(앞 12 를 꿰뚫는다 — 맞은 적마다 1.25) ·
+// v884 석궁수(?mxbow=0 이면 여관이 안 판다): 2막을 깨면 · 체력 0.7 배 · 노려지지 않음(어그로 상한 0) · 관통 화살(앞 12 를 꿰뚫는다 — 맞은 적마다 0.9. 1.25 는 몫이 17~25% 로 창잡이의 두 배였다) ·
 // 사거리 9 · 적이 4.5 안으로 오면 물러선다(플레이어에서 7 넘게는 안 간다) · 화살 길이 막히면(벽) 다가가 쏠 자리를 찾는다
 const MXBOW_ON = MERC_ON && !/[?&]mxbow=0/.test(location.search);
 MERC_TYPES.xbow = { icon: '🏹', name: '석궁수', role: '뒤에서 관통 화살을 쏘는 원거리 지원 — 적에게 노려지지 않고 거리를 둔다', base: 100, build: 'xbow',
   hpK: 0.7, armor: 0.8, front: 0, reach: 0, cap: 0, retreat: [0.5, 0.85], flank: false, spacing: false, dodgeProj: true, bossAggro: false,
-  ranged: { range: 9, keep: 4.5, k: 1.25, len: 12, speed: 32 } };
+  ranged: { range: 9, keep: 4.5, k: 0.9, len: 12, speed: 32 } };
 const MERC_ORDER = MXBOW_ON ? ['spear', 'shield', 'xbow'] : ['spear', 'shield'];
 function mercT() { return MERC_TYPES[merc.type] || MERC_TYPES.spear; }
 function mercUnlocked(id) {
