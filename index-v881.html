@@ -26425,6 +26425,7 @@ const MERC_RETREAT_REGEN = 0.03;   // 물러나 있는 동안 1.5초 안 맞으�
 const MERC_BOSS_DMG_K = 0.5;      // v881: 보스에게 받는 피해 배수 — 보스 패턴이 용병도 맞히면서(v880) 용병이 물러나거나 쓰러져 보스전이 1단계보다 길고 어려워졌다
 const MERC_RETREAT_LO_BOSS = 0.30; // v881: 보스 층에서는 30% 까지 버티며 싸운다
 const MERC_HIT_CAP_AGGRO = 0.20;   // 어그로를 켜면 용병이 직접 노려지므로 한 방 상한을 25% → 20%
+const AGGRO_BOSSFLOOR_OFF = !/[?&]aggroboss=1/.test(location.search);   // v881: 보스 층에서는 어그로를 끈다(소환 몹·잡몹이 용병에게 붙어 보스전 시간의 40~64% 를 물러나 있었다 — 1단계는 100% 싸웠다)
 const AGGRO_EXCL = { wraith: 1, rotheart: 1 };   // 혼령은 치고 빠지는 상태기계(예고 호·쉿 소리·돌진 고정)가 플레이어 기준이라 그대로
 function mercHireCost() { return 80 * (1 + Math.min(LAST_ACT, (meta && meta.actCleared) || 0)); }   // 깬 막이 많을수록 몸값이 오른다(80 · 160 · 240 · 320 · 400G)
 const merc = { active: false, obj: null, limbs: null, hp: 0, hpMax: 1, hpFrac: null, down: false, downT: 0, gone: false, radius: 0.42, t: 0,
@@ -26561,7 +26562,7 @@ function mercNearSeg(sx, sz, ux, uz, len, w) {
 function aggroPos(e) { return (e && e._agM && mercLive()) ? merc.obj.position : player.obj.position; }   // 이 몹이 노리는 자리
 // 0.4초마다 다시 고른다. 휘두르는 중·특수 동작 중엔 안 바꾼다(예고한 공격이 엉뚱한 쪽으로 꺾이지 않게)
 function aggroTick(e, dt) {
-  if (!AGGRO_ON || e.isBoss || e.isRanged || AGGRO_EXCL[e.type] || !mercLive() || merc.retreat) { if (e._agM) e._agM = false; return false; }   // 원거리는 계속 플레이어(화염술사 장판이 용병을 따라다녀 4막 장판 피해가 4~8배였다)
+  if (!AGGRO_ON || e.isBoss || e.isRanged || AGGRO_EXCL[e.type] || !mercLive() || merc.retreat || (AGGRO_BOSSFLOOR_OFF && player.floor % 10 === 0)) { if (e._agM) e._agM = false; return false; }   // 원거리는 계속 플레이어(화염술사 장판이 용병을 따라다녀 4막 장판 피해가 4~8배였다)
   if (e._agThr > 0) e._agThr -= dt;
   e._agT = (e._agT || 0) - dt;
   const busy = e.swingTimer > 0 || e.castPending || e.lgState || e.fgSlam || (e.hhState && e.hhState !== 'none') || (e.orcLeap && e.orcLeap !== 'none') || e.lungeState === 'active';
