@@ -4519,7 +4519,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v883'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v884'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -24132,6 +24132,202 @@ function buildShieldBody(grp, bodyGrp, headGrp, limbs) {
 }
 
 // ============================================================
+//  석궁수(용병 세 번째 종류, v884) — 뒤에서 관통 화살을 쏘는 원거리 지원.
+//  초록 두건(위에서 내려다보면 초록 원뿔 — 아군 표시: 창잡이 붉은 깃털 · 방패병 푸른 갈기와 갈린다) · 가죽 조끼 · 어깨 망토 ·
+//  등 뒤 화살통 · 두 손으로 드는 무거운 석궁(쥔 자리를 원점, 정면 -z). 리그·자세 손잡이는 창잡이·방패병과 같은 꼴
+//  (_mcUpdate · _mcCombat · _mcAttack('shoot') · _mcBusy · _mcDown · _mcReset · MC_T) — AI 가 종류를 몰라도 된다.
+//  limbs._mcMuzzle() = 화살이 나가는 자리(그룹 로컬 · 석궁 앞 끝). 뷰어(viewers/crossbow_viewer_v1.html)와 게임이 글자 그대로 같이 쓴다.
+// ============================================================
+function buildXbowBody(grp, bodyGrp, headGrp, limbs) {
+  let _s = 0x2b8e51;
+  const rr = () => { _s = (_s * 1664525 + 1013904223) >>> 0; return _s / 4294967296; };
+  const jit = (geo, a) => {   // 같은 좌표 같은 오프셋(v754)
+    const p = geo.attributes.position, seen = new Map();
+    for (let i = 0; i < p.count; i++) {
+      const k = Math.round(p.getX(i) * 1e4) + ',' + Math.round(p.getY(i) * 1e4) + ',' + Math.round(p.getZ(i) * 1e4);
+      let o = seen.get(k); if (!o) { o = [(rr() - 0.5) * 2 * a, (rr() - 0.5) * 2 * a, (rr() - 0.5) * 2 * a]; seen.set(k, o); }
+      p.setXYZ(i, p.getX(i) + o[0], p.getY(i) + o[1], p.getZ(i) + o[2]);
+    }
+    p.needsUpdate = true; geo.computeVertexNormals(); return geo;
+  };
+  const sh = (o) => { o.castShadow = false; o.receiveShadow = true; return o; };
+  const ico = (r, mat, d) => sh(new THREE.Mesh(new THREE.IcosahedronGeometry(r, d === undefined ? 1 : d), mat));
+  const UP = new THREE.Vector3(0, 1, 0);
+  const seg = (parent, p, q, r0, r1, mat, sides) => {
+    const d = new THREE.Vector3(q[0] - p[0], q[1] - p[1], q[2] - p[2]), len = d.length();
+    const g = new THREE.CylinderGeometry(r1, r0, len, sides || 6); g.translate(0, len / 2, 0);
+    const m = sh(new THREE.Mesh(g, mat)); m.position.set(p[0], p[1], p[2]);
+    m.quaternion.setFromUnitVectors(UP, d.normalize()); parent.add(m); return m;
+  };
+  const box = (parent, w, h, d, mat, x, y, z) => { const m = sh(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat)); m.position.set(x, y, z); parent.add(m); return m; };
+
+  // ---------- 팔레트(창잡이·방패병과 같은 조명 거리에서 고른 값 — 쇠·가죽은 같다) ----------
+  const steel = getLowPolyMat(0x6f7680, true), steelDk = getLowPolyMat(0x3e434a, true), brass = getLowPolyMat(0x9a7a3a, true);
+  const green = getLowPolyMat(0x3a8240), greenDk = getLowPolyMat(0x24502a), greenLt = getLowPolyMat(0x5aa048);
+  const leather = getLowPolyMat(0x5e3c24), leatherDk = getLowPolyMat(0x2e1e14), cloth = getLowPolyMat(0x6a6250), wood = getLowPolyMat(0x5a3f26), woodDk = getLowPolyMat(0x3a2818);
+  const skin = getLowPolyMat(0x8a6a52), shade = getLowPolyMat(0x15120f), string = getLowPolyMat(0xa89c80), fletch = getLowPolyMat(0x7aa04a);
+  const hardShared = getLowPolyMat(0xffffff); hardShared.vertexColors = true;
+  const metalShared = getLowPolyMat(0xffffff, true); metalShared.vertexColors = true;
+  [green, greenDk, greenLt, leather, leatherDk, cloth, wood, woodDk, skin, shade, string, fletch].forEach(m => { m.userData.mergeInto = hardShared; });
+  [steel, steelDk, brass].forEach(m => { m.userData.mergeInto = metalShared; });
+
+  grp.add(bodyGrp);
+  const upper = new THREE.Group(); bodyGrp.add(upper);
+
+  // ---------- 다리: 천 바지 + 무릎까지 오는 가죽 장화 ----------
+  const mkLeg = (sg) => {
+    const g = new THREE.Group(); g.position.set(sg * 0.14, 0.55, 0); bodyGrp.add(g);
+    seg(g, [0, 0.02, 0], [0, -0.26, -0.01], 0.105, 0.095, cloth, 7);
+    seg(g, [0, -0.24, -0.01], [0, -0.5, 0.0], 0.105, 0.11, leather, 7);
+    box(g, 0.18, 0.04, 0.12, leatherDk, 0, -0.25, -0.06);   // 장화 접힌 목
+    box(g, 0.19, 0.08, 0.28, leatherDk, 0, -0.51, -0.06);
+    return g;
+  };
+  const legR = mkLeg(1), legL = mkLeg(-1);
+
+  // ---------- 몸통: 천 셔츠 · 가죽 조끼(누빈 줄) · 허리띠와 화살 주머니 ----------
+  const skirt = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.29, 0.33, 0.24, 8), leather)); skirt.position.y = 0.52; upper.add(skirt);
+  const torso = box(upper, 0.54, 0.46, 0.38, cloth, 0, 0.86, 0.0); jit(torso.geometry, 0.008);
+  const vest = box(upper, 0.58, 0.44, 0.42, leather, 0, 0.86, 0.0); jit(vest.geometry, 0.01);
+  [-0.12, 0.0, 0.12].forEach(x => box(upper, 0.03, 0.4, 0.44, leatherDk, x, 0.86, 0.0));   // 누빈 줄
+  const belt = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.31, 0.07, 8), leatherDk)); belt.position.y = 0.64; upper.add(belt);
+  box(upper, 0.09, 0.08, 0.04, brass, 0, 0.64, -0.32);
+  box(upper, 0.14, 0.16, 0.1, leather, 0.28, 0.56, -0.08).rotation.y = 0.3;   // 허리 주머니
+  // ---------- 어깨 망토(짧은 초록 케이프 — 위에서 보이는 초록 면) ----------
+  const mantle = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.37, 0.16, 9), green)); mantle.position.y = 1.1; jit(mantle.geometry, 0.012); upper.add(mantle);
+  const capeG = new THREE.Group(); capeG.position.set(0, 1.08, 0.24); upper.add(capeG);
+  { box(capeG, 0.5, 0.56, 0.03, green, 0, -0.3, 0.0);
+    [-0.17, 0.0, 0.17].forEach((x, i) => box(capeG, 0.15, 0.1, 0.032, i === 1 ? green : greenDk, x, -0.6, 0.0));
+    box(capeG, 0.03, 0.5, 0.036, greenDk, 0.1, -0.3, 0.006); }
+  // ---------- 화살통(등 뒤 비스듬히 — 위에서 보이는 초록 깃) ----------
+  const quiv = new THREE.Group(); quiv.position.set(-0.16, 0.92, 0.3); quiv.rotation.set(-0.2, 0, 0.35); upper.add(quiv);
+  { const q = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.07, 0.56, 7), leatherDk)); quiv.add(q);
+    { const rg = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 0.035, 7), leather)); rg.position.y = 0.27; quiv.add(rg); }
+    for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2;
+      seg(quiv, [Math.sin(a) * 0.04, 0.26, Math.cos(a) * 0.04], [Math.sin(a) * 0.05, 0.42, Math.cos(a) * 0.05], 0.012, 0.012, wood, 4);
+      box(quiv, 0.07, 0.08, 0.012, fletch, Math.sin(a) * 0.05, 0.43, Math.cos(a) * 0.05).rotation.y = a; } }
+  box(upper, 0.06, 0.55, 0.03, leatherDk, 0.02, 0.9, -0.2).rotation.z = -0.62;   // 화살통 멜빵(앞)
+
+  // ---------- 머리: 얼굴 + 뾰족한 초록 두건(뒤로 처진 끝) ----------
+  headGrp.position.set(0, 1.3, -0.02); upper.add(headGrp); limbs.head = headGrp;
+  const face = ico(0.17, skin); face.scale.set(1, 1.08, 1); face.position.set(0, 0.03, -0.03); headGrp.add(face);
+  box(headGrp, 0.2, 0.045, 0.03, shade, 0, 0.06, -0.19);   // 두건 그늘 속 눈
+  const hood = sh(new THREE.Mesh(new THREE.ConeGeometry(0.215, 0.36, 9), green)); hood.position.set(0, 0.2, 0.07); hood.rotation.x = 0.3; jit(hood.geometry, 0.012); headGrp.add(hood);
+  const hoodRim = sh(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.215, 0.13, 9, 1, true), greenDk)); hoodRim.position.set(0, 0.06, 0.05); headGrp.add(hoodRim);
+  box(headGrp, 0.22, 0.05, 0.06, greenLt, 0, 0.14, -0.13);   // 두건 앞 접힌 단(밝게 — 얼굴 위 테)
+  { const tip = sh(new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.3, 6), greenDk)); tip.position.set(0, 0.26, 0.26); tip.rotation.x = 1.5; headGrp.add(tip); }
+
+  // ---------- 팔: 천 소매 + 가죽 팔목 보호대 ----------
+  const ARM_L = 0.46;
+  const mkArm = (sg) => {
+    const a = new THREE.Group(); a.position.set(sg * 0.36, 1.0, 0.0); upper.add(a);
+    seg(a, [0, 0.02, 0], [0, -0.22, 0], 0.08, 0.075, cloth, 6);
+    seg(a, [0, -0.22, 0], [0, -0.4, 0], 0.08, 0.075, leather, 6);
+    const hand = ico(0.065, skin, 0); hand.position.set(0, -ARM_L, -0.01); a.add(hand);
+    return a;
+  };
+  const armR = mkArm(1), armL = mkArm(-1);
+
+  // ---------- 석궁(오른손이 개머리 손잡이 · 왼손이 앞 받침): 쥔 자리를 원점 · 정면 -z ----------
+  const xbG = new THREE.Group(); upper.add(xbG);
+  const bowG = new THREE.Group(); bowG.position.set(0, 0.05, -0.58); xbG.add(bowG);   // 활 몸(쏠 때 휜다)
+  const bolt = new THREE.Group(); xbG.add(bolt);                                         // 걸린 화살(쏘면 사라졌다 장전하면 다시)
+  { box(xbG, 0.07, 0.08, 0.86, wood, 0, 0.04, -0.2);       // 개머리·몸통
+    box(xbG, 0.09, 0.13, 0.24, woodDk, 0, -0.01, 0.18);     // 개머리 끝(어깨에 댄다)
+    box(xbG, 0.04, 0.12, 0.06, woodDk, 0, -0.06, 0.02);     // 손잡이
+    box(xbG, 0.085, 0.025, 0.5, steelDk, 0, 0.09, -0.32);   // 화살 홈 쇠판
+    box(xbG, 0.05, 0.05, 0.05, brass, 0, 0.1, -0.06);       // 걸쇠
+    seg(xbG, [0, -0.02, 0.0], [0, -0.1, 0.09], 0.012, 0.012, steel, 4);   // 방아쇠
+    // 앞 등자(발로 밟고 당기는 고리)
+    seg(xbG, [-0.06, 0.04, -0.62], [-0.07, -0.06, -0.72], 0.014, 0.014, steel, 4); seg(xbG, [0.06, 0.04, -0.62], [0.07, -0.06, -0.72], 0.014, 0.014, steel, 4);
+    seg(xbG, [-0.07, -0.06, -0.72], [0.07, -0.06, -0.72], 0.014, 0.014, steel, 4);
+    // 활 몸: 가운데에서 양옆으로 뒤로 휜 쇠 활(두 마디) + 시위
+    for (const sg of [-1, 1]) {
+      seg(bowG, [0, 0, 0], [sg * 0.24, 0, 0.05], 0.03, 0.024, steel, 5);
+      seg(bowG, [sg * 0.24, 0, 0.05], [sg * 0.4, 0, 0.14], 0.024, 0.016, steel, 5);
+      box(bowG, 0.04, 0.04, 0.04, brass, sg * 0.4, 0, 0.14);
+    }
+    box(bowG, 0.06, 0.06, 0.06, brass, 0, 0, 0);
+    // 걸린 화살
+    seg(bolt, [0, 0.12, 0.0], [0, 0.12, -0.62], 0.016, 0.016, wood, 4);
+    { const hd = sh(new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.09, 4), steel)); hd.position.set(0, 0.12, -0.66); hd.rotation.x = -Math.PI / 2; bolt.add(hd); }
+    box(bolt, 0.006, 0.05, 0.1, fletch, 0, 0.145, -0.02); box(bolt, 0.05, 0.006, 0.1, fletch, 0, 0.12, -0.02); }
+  // 시위: 활 끝 → 걸쇠. 당겨진 동안(장전)은 걸쇠 자리, 쏘면 앞으로 튄다 — 두 줄을 자세 함수가 다시 잇는다
+  const strR = sh(new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.012, 1), string)), strL = sh(new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.012, 1), string));
+  xbG.add(strR); xbG.add(strL);
+
+  // ---------- 드로우콜 병합(움직이는 그룹은 따로) ----------
+  c3MergeStatic(bowG); c3MergeStatic(bolt); c3MergeStatic(xbG, [bowG, bolt, strR, strL]); c3MergeStatic(capeG);
+  c3MergeStatic(armR); c3MergeStatic(armL);
+  c3MergeStatic(legR); c3MergeStatic(legL);
+  c3MergeStatic(headGrp);
+  c3MergeStatic(upper, [headGrp, armR, armL, xbG, capeG]);
+
+  limbs.armR = armR; limbs.armL = armL; limbs.legR = legR; limbs.legL = legL; limbs.bodyGrp = bodyGrp; limbs.upper = upper; limbs.xbow = xbG;
+
+  // ---------- 자세 ----------
+  // 시간표(초): 겨눔 0~0.24 → 0.24 에 발사(반동) → 0.4~1.0 장전(석궁을 앞으로 숙여 등자를 밟고 시위를 당긴다 → 화살을 얹는다). 게임 AI 가 같은 값으로 화살을 낸다.
+  const MC_T = { shoot: { hit: 0.24, end: 1.0 } };
+  limbs.MC_T = MC_T;
+  // rax/lax 앞으로 듦 · raz/laz 옆으로 · ray/lay 비틂 · 석궁 xrx(숙임) xry(돌림) · 석궁 자리 = 오른손 + 오프셋
+  const P_IDLE = { rax: 0.32, raz: 0.12, ray: 0, lax: 0.55, laz: -0.42, lay: 0.5, xrx: -0.55, xry: 0.5, xrz: 0.25, xox: -0.04, xoy: 0.0, xoz: -0.02 };
+  const P_READY = { rax: 1.38, raz: 0.05, ray: -0.3, lax: 1.42, laz: -0.2, lay: 0.55, xrx: 0.0, xry: 0.0, xrz: 0.0, xox: -0.26, xoy: 0.22, xoz: 0.14 };
+  let cb = 0, cbT = 0, atk = null, atkT = 0, dn = 0, dnT = 0, wph = 0, loaded = 1;
+  const lerp = (a, b, k) => a + (b - a) * k;
+  const ease = (k) => k * k * (3 - 2 * k);
+  limbs._mcCombat = function (on) { cbT = on ? 1 : 0; };
+  limbs._mcAttack = function (kind) { atk = kind; atkT = 0; cbT = 1; };
+  limbs._mcBusy = function () { return !!atk; };
+  limbs._mcDown = function (on) { dnT = on ? 1 : 0; if (on) atk = null; };
+  limbs._mcReset = function () { cb = cbT; dn = dnT; atk = null; loaded = 1; };
+  const _e = new THREE.Euler(), _v = new THREE.Vector3(), _m = new THREE.Vector3(), P = {};
+  const handAt = (arm, ax, ay, az) => { _e.set(ax, ay, az); _v.set(0, -ARM_L, -0.01).applyEuler(_e); return { x: arm.position.x + _v.x, y: arm.position.y + _v.y, z: arm.position.z + _v.z }; };
+  // 화살이 나가는 자리(grp 로컬) — 석궁 앞 끝
+  limbs._mcMuzzle = function () { _m.set(0, 0.12, -0.7); xbG.updateMatrix(); _m.applyMatrix4(xbG.matrix); upper.updateMatrix(); _m.applyMatrix4(upper.matrix); bodyGrp.updateMatrix(); _m.applyMatrix4(bodyGrp.matrix); return _m; };
+  const strSet = (s, ax, ay, az, bx, by, bz) => { const dx = bx - ax, dy = by - ay, dz = bz - az, l = Math.hypot(dx, dy, dz) || 1e-4; s.position.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2); s.scale.set(1, 1, l); s.lookAt(s.position.x + dx, s.position.y + dy, s.position.z + dz); };
+  limbs._mcUpdate = function (t, dt, move) {
+    dt = dt || 0.016; move = Math.max(0, Math.min(1.4, move || 0));
+    cb += (cbT - cb) * Math.min(1, dt * 7); dn += (dnT - dn) * Math.min(1, dt * 5);
+    if (atk) { atkT += dt; if (atkT >= MC_T[atk].end) { atk = null; loaded = 1; } }
+    wph += dt * (2.2 + move * 8.0);
+    const sw = Math.sin(wph) * Math.min(1, move);
+    legR.rotation.x = sw * 0.6 * (1 - dn) - 1.15 * dn; legL.rotation.x = -sw * 0.6 * (1 - dn) + 0.35 * dn;
+    bodyGrp.position.y = Math.abs(Math.sin(wph)) * 0.035 * Math.min(1, move) * (1 - dn) - 0.27 * dn + Math.sin(t * 1.5) * 0.007;
+    const k = ease(cb);
+    for (const key in P_IDLE) P[key] = lerp(P_IDLE[key], P_READY[key], k);
+    P.rax += sw * 0.18 * (1 - k); P.lax += -sw * 0.12 * (1 - k);
+    let lean = 0, kick = 0, flex = 0, crouch = 0;
+    if (atk === 'shoot') {
+      const T = MC_T.shoot;
+      if (atkT < T.hit) { const w = ease(atkT / T.hit); P.rax = lerp(P.rax, 1.32, w); P.lax = lerp(P.lax, 1.5, w); lean = -0.04 * w; flex = 0; }   // 어깨에 대고 겨눈다
+      else if (atkT < T.hit + 0.16) { const w = (atkT - T.hit) / 0.16; kick = Math.sin(w * Math.PI) * 1.0; flex = 1 - w; loaded = 0; P.rax = 1.32 - 0.25 * kick; P.lax = 1.5 - 0.2 * kick; lean = -0.04 - 0.08 * kick; }   // 반동
+      else {   // 장전: 석궁 앞을 바닥 쪽으로 숙이고 몸을 숙여 시위를 당긴다 → 얹고 다시 든다
+        const r = (atkT - T.hit - 0.16) / (T.end - T.hit - 0.16), dip = Math.sin(Math.min(1, r) * Math.PI);
+        P.xrx = lerp(P.xrx, -1.05, dip); P.rax = lerp(P.rax, 0.65, dip); P.lax = lerp(P.lax, 0.25, dip); P.laz = lerp(P.laz, -0.2, dip); crouch = 0.35 * dip; lean = 0.22 * dip;
+        if (r > 0.55) loaded = 1;
+      }
+    }
+    if (atk !== 'shoot') headGrp.rotation.x *= Math.max(0, 1 - dt * 8);
+    // 쓰러짐: 무릎 꿇고 석궁을 떨군다
+    P.rax = lerp(P.rax, 0.1, dn); P.lax = lerp(P.lax, 0.2, dn); P.xrx = lerp(P.xrx, -1.3, dn); P.xrz = lerp(P.xrz, 0.6, dn);
+    armR.rotation.set(P.rax, P.ray, P.raz); armL.rotation.set(P.lax, P.lay, P.laz);
+    const hr = handAt(armR, P.rax, P.ray, P.raz);
+    xbG.position.set(hr.x + P.xox, hr.y + P.xoy - crouch * 0.1, hr.z + P.xoz + kick * 0.09);
+    xbG.rotation.set(P.xrx + kick * 0.18, P.xry, P.xrz);
+    if (dn > 0.01) xbG.position.y = lerp(xbG.position.y, 0.32, dn);
+    // 활이 쏠 때 앞으로 펴진다 · 시위는 걸쇠(장전) ↔ 활 앞(쏜 뒤)
+    bowG.scale.set(1, 1, 1 - 0.55 * flex); bolt.visible = loaded > 0;
+    const sz = loaded ? -0.06 : -0.56 + 0.06 * flex;
+    for (const sg of [-1, 1]) strSet(sg > 0 ? strR : strL, sg * 0.4, 0.05, -0.58 + 0.14 * (1 - 0.55 * flex), 0, 0.1, sz);
+    upper.rotation.x = 0.04 * k + lean + 0.6 * dn; upper.rotation.y = -0.18 * k * (1 - dn);
+    bodyGrp.position.y -= crouch * 0.12;
+    capeG.rotation.x = 0.1 + 0.05 * Math.sin(t * 2.6) + Math.min(1, move) * 0.3 - lean * 0.6;
+    capeG.rotation.z = 0.04 * Math.sin(t * 1.9 + 1);
+  };
+  limbs._mcUpdate(0, 0.016, 0);
+}
+
+// ============================================================
 //  불의 사냥개(hellhound) — 101층부터 3~4마리 무리로 나오는 4막 돌진 몹.
 //  굶주린 늑대 몸에 굳은 용암 껍질: 갈비뼈 사이·옆구리 실금으로 속불이 비친다 · 목덜미부터 등줄기를 따라 타오르는 불 갈기 ·
 //  길쭉한 주둥이 속(벌어진 아래턱)이 용암처럼 빛나고 눈은 노란 불빛 · 뒤로 젖힌 뿔 같은 귀 · 끝에 불이 붙은 가는 꼬리.
@@ -26645,10 +26841,17 @@ const MERC_TYPES = {
 // 공격하던 것보다 먼저 그쪽으로 방패를 돌린다(v882 는 늘 목표만 봐서 도발로 둘러싼 몹의 옆·뒤 타격이 그대로 들어왔다) · 체력 1.2 → 1.35 배 · 한 방 상한 20% → 15%
 const SHIELD2_ON = MSHIELD_ON && !/[?&]shield2=0/.test(location.search);
 if (SHIELD2_ON) Object.assign(MERC_TYPES.shield, { hpK: 1.35, hitCap: 0.15, brace: true });
-const MERC_ORDER = ['spear', 'shield'];
+// v884 석궁수(?mxbow=0 이면 여관이 안 판다): 2막을 깨면 · 체력 0.7 배 · 노려지지 않음(어그로 상한 0) · 관통 화살(앞 12 를 꿰뚫는다 — 맞은 적마다 1.25) ·
+// 사거리 9 · 적이 4.5 안으로 오면 물러선다(플레이어에서 7 넘게는 안 간다) · 화살 길이 막히면(벽) 다가가 쏠 자리를 찾는다
+const MXBOW_ON = MERC_ON && !/[?&]mxbow=0/.test(location.search);
+MERC_TYPES.xbow = { icon: '🏹', name: '석궁수', role: '뒤에서 관통 화살을 쏘는 원거리 지원 — 적에게 노려지지 않고 거리를 둔다', base: 100, build: 'xbow',
+  hpK: 0.7, armor: 0.8, front: 0, reach: 0, cap: 0, retreat: [0.5, 0.85], flank: false, spacing: false, dodgeProj: true, bossAggro: false,
+  ranged: { range: 9, keep: 4.5, k: 1.25, len: 12, speed: 32 } };
+const MERC_ORDER = MXBOW_ON ? ['spear', 'shield', 'xbow'] : ['spear', 'shield'];
 function mercT() { return MERC_TYPES[merc.type] || MERC_TYPES.spear; }
 function mercUnlocked(id) {
   if (id === 'shield') return MSHIELD_ON && (godMode || ((meta && meta.actCleared) || 0) >= 1 || !!(meta && meta.restUnlocked));   // 1막을 깨면(예전 저장은 restUnlocked)
+  if (id === 'xbow') return MXBOW_ON && (godMode || ((meta && meta.actCleared) || 0) >= 2 || !!(meta && meta.act2Cleared));     // v884: 2막을 깨면(예전 저장은 act2Cleared)
   return id === 'spear';
 }
 function mercHireCost(id) { return (MERC_TYPES[id || 'spear'] || MERC_TYPES.spear).base * (1 + Math.min(LAST_ACT, (meta && meta.actCleared) || 0)); }   // 깬 막이 많을수록 몸값이 오른다(창잡이 80 · 160 · 240 … · 방패병 100 · 200 …)
@@ -26677,6 +26880,10 @@ const _mcProxy = { obj: null, radius: 0.42 };   // navFineStep·navSteer 가 몬
     '적을 끌어모아 방패로 받아 내는 탱커 — 정면 피해를 크게 줄이고 12초마다 도발한다': ['Tank who draws foes and takes the blows on his shield — heavily reduces frontal damage and taunts every 12s', '敵を引きつけ盾で受け止める壁役 — 正面の被害を大きく減らし12秒ごとに挑発する', '吸引敌人用盾牌硬抗的坦克 — 大幅减少正面伤害，每12秒嘲讽一次', 'Tanque que atrae a los enemigos y aguanta con el escudo — reduce mucho el daño frontal y provoca cada 12 s', 'Tanque que atrai inimigos e aguenta com o escudo — reduz muito o dano frontal e provoca a cada 12 s', 'Танк, притягивающий врагов и принимающий удары на щит — сильно снижает урон спереди и провоцирует каждые 12 с'],
     '🔒 1막을 깨면 고용할 수 있다': ['🔒 Clear Act 1 to hire', '🔒 第1幕クリアで雇用可能', '🔒 通关第1幕后可雇佣', '🔒 Supera el Acto 1 para contratar', '🔒 Conclua o Ato 1 para contratar', '🔒 Пройдите акт 1, чтобы нанять'],
     '도발!': ['Taunt!', '挑発!', '嘲讽!', '¡Provocación!', 'Provocação!', 'Провокация!'],
+    // v884
+    '석궁수': ['Crossbowman', 'クロスボウ兵', '弩手', 'Ballestero', 'Besteiro', 'Арбалетчик'],
+    '뒤에서 관통 화살을 쏘는 원거리 지원 — 적에게 노려지지 않고 거리를 둔다': ['Ranged support firing piercing bolts from behind — foes ignore him and he keeps his distance', '後方から貫通する矢を放つ遠距離支援 — 敵に狙われず距離を保つ', '在后方射出穿透弩箭的远程支援 — 不会被敌人盯上，并保持距离', 'Apoyo a distancia con virotes perforantes desde atrás — los enemigos lo ignoran y mantiene la distancia', 'Apoio à distância com virotes perfurantes por trás — os inimigos o ignoram e ele mantém distância', 'Поддержка издали пробивающими болтами — враги его не трогают, он держит дистанцию'],
+    '🔒 2막을 깨면 고용할 수 있다': ['🔒 Clear Act 2 to hire', '🔒 第2幕クリアで雇用可能', '🔒 通关第2幕后可雇佣', '🔒 Supera el Acto 2 para contratar', '🔒 Conclua o Ato 2 para contratar', '🔒 Пройдите акт 2, чтобы нанять'],
   };
   ['en', 'ja', 'zh', 'es', 'pt', 'ru'].forEach((l, i) => { const d = I18N_DICT[l]; if (d) for (const k in T) if (d[k] === undefined) d[k] = T[k][i]; });
 }
@@ -26692,7 +26899,8 @@ function mercBuild() {
   const _r = Math.random; let s = 0x51ed27; Math.random = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
   try {
     const grp = new THREE.Group(), bodyGrp = new THREE.Group(), headGrp = new THREE.Group(), limbs = {};
-    if (bt === 'shield') buildShieldBody(grp, bodyGrp, headGrp, limbs); else buildMercBody(grp, bodyGrp, headGrp, limbs);
+    if (bt === 'shield') buildShieldBody(grp, bodyGrp, headGrp, limbs); else if (bt === 'xbow') buildXbowBody(grp, bodyGrp, headGrp, limbs); else buildMercBody(grp, bodyGrp, headGrp, limbs);
+    if (bt === 'xbow' && !merc.boltPool) merc.boltPool = mercBoltPoolMake();   // v884 날아가는 화살(같은 LCG 안에서 — uuid)
     grp.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; } });   // 캐릭터는 진짜 그림자를 안 진다(블롭이 대신)
     if (BLOB_ON) { const bl = makeBlobShadow(1.4); grp.add(bl); grp.userData.blob = bl; }
     applyToon(grp);
@@ -26744,7 +26952,8 @@ function mercFloorStart() {
   if (!MERC_ON || !merc.active) { mercHide(); return; }
   mercBuild();
   if (!merc.obj.parent) scene.add(merc.obj);
-  merc.radius = _mcProxy.radius = merc.type === 'shield' ? 0.46 : 0.42;
+  merc.radius = _mcProxy.radius = merc.type === 'shield' ? 0.46 : merc.type === 'xbow' ? 0.4 : 0.42;
+  mercBoltsClear();
   merc.hpMax = Math.max(1, Math.round(player.hpMax * mercT().hpK));
   if (merc.hpFrac !== null) { merc.hp = Math.max(1, Math.round(merc.hpMax * merc.hpFrac)); merc.hpFrac = null; }
   else if (merc.hp < 0) merc.hp = merc.hpMax; else merc.hp = Math.min(merc.hp, merc.hpMax);
@@ -26939,6 +27148,7 @@ function mercPickTgt() {
     if (e.isDead || e.awake === false || !e.obj || !e.obj.parent || a3Blocked(e)) continue;
     const dp = Math.hypot(e.obj.position.x - P.x, e.obj.position.z - P.z); if (dp > MERC_LEASH) continue;
     const dm0 = Math.hypot(e.obj.position.x - M.x, e.obj.position.z - M.z);
+    if (mercT().ranged && e.type === 'golem' && e.golemAwake) continue;   // v884 석궁수: 골렘은 정면 무적이라 화살이 다 막힌다 — 다른 적을 쏜다
     if (e.type === 'wraith' && dm0 > 4) continue;   // 혼령은 치고 빠지며 날아다닌다 — 멀리서 쫓아다니면 시간만 버린다(곁에 왔을 때만)
     const dm = dm0 + dp * 0.35 - (e._agM ? 1.5 : 0);   // 플레이어 곁 적을 조금 더 먼저 · v880: 나를 노리는 적도 먼저(맞서 싸운다)
     if (dm < bd) { bd = dm; best = e; }
@@ -26969,9 +27179,70 @@ function mercTaunt() {
   merc.taunts = (merc.taunts || 0) + 1;
   return n;
 }
+// ----- v884 석궁수 화살 -----
+// 화살 메시는 몸을 지을 때(같은 LCG 안에서) 넷을 만들어 돌려 쓴다. 맞은 적마다 한 번씩 피해 — 벽(충돌체)에 닿거나 길이를 다 가면 끝
+function mercBoltPoolMake() {
+  const mShaft = getLowPolyMat(0x8a6a44), mHead = getLowPolyMat(0x9aa2ac, true), mFl = getLowPolyMat(0x7aa04a);
+  const pool = [];
+  for (let i = 0; i < 4; i++) {
+    const g = new THREE.Group();
+    const sh = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.66), mShaft); g.add(sh);
+    const hd = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.12, 4), mHead); hd.rotation.x = -Math.PI / 2; hd.position.z = -0.38; g.add(hd);
+    const f1 = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.07, 0.12), mFl); f1.position.z = 0.28; g.add(f1);
+    const f2 = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.006, 0.12), mFl); f2.position.z = 0.28; g.add(f2);
+    g.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
+    g.visible = false; pool.push({ obj: g, live: false });
+  }
+  return pool;
+}
+function mercBoltsClear() { if (merc.boltPool) for (const b of merc.boltPool) { b.live = false; b.obj.visible = false; } }
+// 화살 길(맞은 자리에서 목표까지)에 벽·장식 충돌체가 없나
+function mercLos(x0, z0, x1, z1) {
+  const d = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.ceil(d / 0.5));
+  for (let k = 1; k < n; k++) if (wallOverlapAt(x0 + (x1 - x0) * k / n, z0 + (z1 - z0) * k / n, 0.08)) return false;
+  return true;
+}
+function mercShoot() {
+  const R = mercT().ranged, tgt = merc.tgt; if (!R || !merc.boltPool) return 0;
+  const L = merc.limbs, mz = L._mcMuzzle().clone(); merc.obj.updateMatrixWorld(); mz.applyMatrix4(merc.obj.matrixWorld);
+  let dx = -Math.sin(merc.yaw), dz = -Math.cos(merc.yaw);
+  if (tgt && !tgt.isDead && tgt.obj) { const ax = tgt.obj.position.x - mz.x, az = tgt.obj.position.z - mz.z, al = Math.hypot(ax, az); if (al > 0.3 && (ax * dx + az * dz) / al > 0.7) { dx = ax / al; dz = az / al; } }   // 몸이 덜 돌았으면 목표 쪽으로 바로잡는다
+  const b = merc.boltPool.find(o => !o.live); if (!b) return 0;
+  if (b.obj.parent !== scene) scene.add(b.obj);
+  b.live = true; b.x = mz.x; b.z = mz.z; b.y = mz.y; b.dx = dx; b.dz = dz; b.d = 0; b.hit = new Set(); b.sx = merc.obj.position.x; b.sz = merc.obj.position.z;
+  b.obj.position.set(b.x, b.y, b.z); b.obj.rotation.set(0, Math.atan2(-dx, -dz), 0); b.obj.visible = true;
+  if (SFX && SFX.swing) SFX.swing();
+  merc.shots = (merc.shots || 0) + 1;
+  return 1;
+}
+function mercBoltsTick(dt) {
+  if (!merc.boltPool) return;
+  const R = MERC_TYPES.xbow.ranged;
+  for (const b of merc.boltPool) {
+    if (!b.live) continue;
+    const st = R.speed * dt, n = Math.max(1, Math.ceil(st / 0.35));
+    let end = false;
+    for (let k = 0; k < n && !end; k++) {
+      const s = st / n; b.x += b.dx * s; b.z += b.dz * s; b.d += s;
+      if (wallOverlapAt(b.x, b.z, 0.05)) { spawnHitEffect(b.x, b.y, b.z, 0.35); end = true; break; }
+      for (const e of enemies) {
+        if (e.isDead || !e.obj || b.hit.has(e) || a3Blocked(e)) continue;
+        const ex = e.obj.position.x, ez = e.obj.position.z;
+        if (Math.hypot(ex - b.x, ez - b.z) > (e.radius || 0.5) + 0.25) continue;
+        b.hit.add(e);
+        if (skillHit(e, R.k, b.sx, b.sz, 3, 'merc')) merc.boltHits = (merc.boltHits || 0) + 1;
+      }
+      if (b.d >= R.len) end = true;
+    }
+    if (end) { b.live = false; b.obj.visible = false; continue; }
+    b.y += (groundHeightAt(b.x, b.z) + 1.0 - b.y) * Math.min(1, dt * 6);   // 단을 따라 높이만 천천히 맞춘다
+    b.obj.position.set(b.x, b.y, b.z);
+  }
+}
 function mercStrike() {
   const M = merc.obj.position, fx = -Math.sin(merc.yaw), fz = -Math.cos(merc.yaw), kind = merc.atkKind;
   if (kind === 'taunt') { mercTaunt(); return 0; }
+  if (kind === 'shoot') return mercShoot();
   const T = mercT(), sg = merc.type === 'shield';
   let hit = 0;
   for (const e of enemies.slice()) {
@@ -26998,6 +27269,7 @@ function mercStrike() {
 }
 // ----- 매 프레임(update 안, 적 루프 뒤) -----
 function mercUpdate(dt) {
+  if (MERC_ON && merc.boltPool) mercBoltsTick(dt);   // v884 날아가는 화살(용병이 쓰러져도 마저 간다)
   if (!MERC_ON || !merc.active || !merc.obj || merc.gone) return;
   const L = merc.limbs, P = player.obj.position, M = merc.obj.position;
   merc.t += dt;
@@ -27044,10 +27316,10 @@ function mercUpdate(dt) {
   let reach = 0, dT = 0, flank = null;
   if (tgt) {
     const tx = tgt.obj.position.x, tz = tgt.obj.position.z; dT = Math.hypot(tx - M.x, tz - M.z);
-    reach = (tgt.radius || 0.5) + merc.radius + mercT().reach;
+    reach = mercT().ranged ? mercT().ranged.range : (tgt.radius || 0.5) + merc.radius + mercT().reach;
     faceX = tx - M.x; faceZ = tz - M.z;
     // 골렘은 정면 무적(등 뒤만) — 봇과 같은 공식으로 몸 뒤 지점을 노린다
-    if (tgt.type === 'golem' && tgt.golemAwake) {
+    if (tgt.type === 'golem' && tgt.golemAwake && !mercT().ranged) {
       const gx = Math.sin(tgt.obj.rotation.y), gz = Math.cos(tgt.obj.rotation.y), rx = M.x - tx, rz = M.z - tz, rl = Math.hypot(rx, rz) || 1;
       flank = { back: (gx * rx + gz * rz) / rl < -0.6, x: tx - gx * (reach - 0.3), z: tz - gz * (reach - 0.3) };
     }
@@ -27056,7 +27328,19 @@ function mercUpdate(dt) {
   if (!dz0 && merc.atkT < 0) {
     let gx = null, gz = null, stop = 0;
     if (tgt) {
-      if (flank && !flank.back) { gx = flank.x; gz = flank.z; stop = 0.25; }
+      const RG = mercT().ranged;
+      if (RG) {   // v884 석궁수: 사거리 안 + 화살 길이 트였으면 선 채로 쏜다 · 너무 가까우면 물러선다 · 아니면 다가간다
+        const tx = tgt.obj.position.x, tz = tgt.obj.position.z, los = mercLos(M.x, M.z, tx, tz);
+        if (!los || dT > RG.range - 0.3) { gx = tx; gz = tz; stop = los ? RG.range - 1.2 : 1.0; }
+        else if (dT < RG.keep && dP < 7) {
+          const ax = (M.x - tx) / (dT || 1), az = (M.z - tz) / (dT || 1);
+          for (const [rx, rz] of [[ax, az], [ax * 0.7 - az * 0.7, az * 0.7 + ax * 0.7], [ax * 0.7 + az * 0.7, az * 0.7 - ax * 0.7]]) {
+            const fx2 = M.x + rx * 1.6, fz2 = M.z + rz * 1.6;
+            if (mercFree(fx2, fz2) && Math.hypot(fx2 - P.x, fz2 - P.z) < 7.5) { gx = fx2; gz = fz2; stop = 0.2; break; }
+          }
+        }
+      }
+      else if (flank && !flank.back) { gx = flank.x; gz = flank.z; stop = 0.25; }
       else if (tgt._agM || !mercT().flank) { if (dT > reach - 0.1) { gx = tgt.obj.position.x; gz = tgt.obj.position.z; stop = reach - 0.35; } }   // v880: 나를 노리는 적은 마주 서서 받는다(옆으로 돌아도 따라 돈다)
       else {
         // 옆구리로: 적은 플레이어를 보고 휘두르므로, 적→플레이어 방향에 직각인 자리(용병 쪽 옆)에 서면 그 공격에 안 휘말린다.
@@ -27140,12 +27424,13 @@ function mercUpdate(dt) {
     if (merc.atkT >= T.end) { merc.atkT = -1; merc.atkCd = MERC_CD; }
   } else if (AGGRO_ON && mercT().taunt && !(AGGRO_BOSSFLOOR_OFF && !mercT().bossAggro && player.floor % 10 === 0) && !dz0 && !merc.retreat && merc.atkCd <= 0 && merc.tauntCd <= 0 && mercTauntCount() > 0) {   // v882 도발
     merc.tauntCd = mercT().taunt.cd; merc.atkKind = 'taunt'; merc.atkT = 0; merc.hitDone = false; L._mcAttack('taunt');
-  } else if (tgt && !dz0 && merc.atkCd <= 0 && dT <= reach + 0.1 && !(flank && !flank.back)) {
+  } else if (tgt && !dz0 && merc.atkCd <= 0 && dT <= reach + 0.1 && !(flank && !flank.back) && (!mercT().ranged || mercLos(M.x, M.z, tgt.obj.position.x, tgt.obj.position.z))) {
     const fx = -Math.sin(merc.yaw), fz = -Math.cos(merc.yaw), al = ((tgt.obj.position.x - M.x) * fx + (tgt.obj.position.z - M.z) * fz) / (dT || 1);
     if (al > 0.8 || dT < 0.5) {
       merc.atkN++;
       let near = 0; for (const e of enemies) if (!e.isDead && e.awake !== false && Math.hypot(e.obj.position.x - M.x, e.obj.position.z - M.z) < reach + 0.4) near++;
-      if (merc.type === 'shield') merc.atkKind = (merc.atkN % 3 === 0) ? 'bash' : 'cut';   // v882: 셋째마다 방패 밀치기
+      if (merc.type === 'xbow') merc.atkKind = 'shoot';   // v884
+      else if (merc.type === 'shield') merc.atkKind = (merc.atkN % 3 === 0) ? 'bash' : 'cut';   // v882: 셋째마다 방패 밀치기
       else merc.atkKind = (merc.atkN % 3 === 0 && near >= 2) ? 'sweep' : 'thrust';
       merc.atkT = 0; merc.hitDone = false; L._mcAttack(merc.atkKind);
     }
@@ -27191,11 +27476,12 @@ function innRefresh() {
   box.textContent = '';
   for (const id of MERC_ORDER) {
     if (id === 'shield' && !MSHIELD_ON) continue;
+    if (id === 'xbow' && !MXBOW_ON) continue;
     const T = MERC_TYPES[id], open = mercUnlocked(id), cost = mercHireCost(id), ok = open && !hired && meta.gold >= cost;
     const b = document.createElement('button');
     b.style.cssText = 'display:block; width:100%; margin-bottom:8px; padding:10px 12px; text-align:left; border-radius:11px; border:1px solid #9fb0c8; background:rgba(120,140,180,0.22); color:#dde8ff; line-height:1.35;';
     const h = document.createElement('div'); h.style.cssText = 'font-size:14px; font-weight:700;';
-    const right = hType === id ? _i18n('✅ 고용함 — 다음 던전에 함께 간다') : !open ? _i18n('🔒 1막을 깨면 고용할 수 있다') : cost.toLocaleString() + 'G';
+    const right = hType === id ? _i18n('✅ 고용함 — 다음 던전에 함께 간다') : !open ? _i18n(id === 'xbow' ? '🔒 2막을 깨면 고용할 수 있다' : '🔒 1막을 깨면 고용할 수 있다') : cost.toLocaleString() + 'G';
     h.textContent = T.icon + ' ' + _i18n(T.name) + '  ·  ' + right;
     const d = document.createElement('div'); d.style.cssText = 'font-size:12px; font-weight:400; opacity:0.8; margin-top:2px;'; d.textContent = _i18n(T.role);
     b.appendChild(h); b.appendChild(d);
