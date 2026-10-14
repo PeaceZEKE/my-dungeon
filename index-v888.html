@@ -4520,7 +4520,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v887'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v888'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -27035,12 +27035,14 @@ function mercXpOf(id) { return (MLV_ON && meta && meta.mercXp && meta.mercXp[id]
 function mercLvOf(id) { const x = mercXpOf(id); let l = 1; while (l < MLV_XP.length && x >= MLV_XP[l]) l++; return l; }
 function mercLv() { return mercLvOf(merc.type); }
 function mercHpMax() { return Math.max(1, Math.round(player.hpMax * mercT().hpK * (1 + 0.05 * (mercLv() - 1)))); }
-function mercDmgMul() { return 1 + 0.06 * (mercLv() - 1); }
+function mercDmgMul() { return (1 + 0.06 * (mercLv() - 1)) * (merc.type === 'spear' && MGEAR2_ON ? 1 + 0.04 * mercGearLv('spear') : 1); }   // v888 창날: 피해 +4%/Lv
 // v887 용병 장비(?mgear=0 이면 없음): 종류마다 한 벌(meta.mercGear[종류] = Lv0~5) · 대장간에서 골드로 만들고 강화 · 고용한 종류의 것만 저절로 쓰인다
 const MGEAR_ON = MERC_ON && !/[?&]mgear=0/.test(location.search);
 const MGEAR_COST = [250, 400, 600, 850, 1150];   // Lv1(제작) ~ Lv5
+// v888(?mgear2=0 이면 v887): 봇 측정에서 창날(공격 간격만)이 넷 중 가장 약했다 — 사거리 안에 있는 시간이 절반이라 간격 단축이 실제 초당 피해 +14% 로 희석(석궁 +24%) · 피해 +4%/Lv 를 더한다
+const MGEAR2_ON = MGEAR_ON && !/[?&]mgear2=0/.test(location.search);
 const MERC_GEAR = {
-  spear:  { name: '기사단 창날', icon: '🔱', desc: l => _i18n('공격 간격 {a}초').replace('{a}', (MERC_CD - 0.06 * l).toFixed(2)) },
+  spear:  { name: '기사단 창날', icon: '🔱', desc: l => MGEAR2_ON ? _i18n('공격 간격 {a}초 · 피해 +{b}%').replace('{a}', (MERC_CD - 0.06 * l).toFixed(2)).replace('{b}', 4 * l) : _i18n('공격 간격 {a}초').replace('{a}', (MERC_CD - 0.06 * l).toFixed(2)) },
   shield: { name: '탑 방패', icon: '🛡️', desc: l => _i18n('정면에서 받는 피해 {a}% · 도발 간격 {b}초').replace('{a}', Math.round((0.3 - 0.04 * l) * 100)).replace('{b}', 12 - l) },
   xbow:   { name: '연발 석궁', icon: '🏹', desc: l => _i18n('화살 사거리 {a} · 화살 피해 ×{b}').replace('{a}', 12 + 2 * l).replace('{b}', (0.9 * (1 + 0.05 * l)).toFixed(2)) },
   monk:   { name: '성자의 염주', icon: '📿', desc: l => _i18n('치유 간격 {a}초 · 축복 범위 {b}').replace('{a}', 15 - 1.5 * l).replace('{b}', 4.5 + 0.5 * l) },
@@ -27112,6 +27114,7 @@ const _mcProxy = { obj: null, radius: 0.42 };   // navFineStep·navSteer 가 몬
     '연발 석궁': ['Repeating Crossbow', '連発クロスボウ', '连发弩', 'Ballesta de repetición', 'Besta de repetição', 'Многозарядный арбалет'],
     '성자의 염주': ['Saint\'s Prayer Beads', '聖者の数珠', '圣者念珠', 'Rosario del santo', 'Terço do santo', 'Чётки святого'],
     '공격 간격 {a}초': ['Attack interval {a}s', '攻撃間隔 {a}秒', '攻击间隔 {a}秒', 'Intervalo de ataque {a} s', 'Intervalo de ataque {a} s', 'Интервал атаки {a} с'],
+    '공격 간격 {a}초 · 피해 +{b}%': ['Attack interval {a}s · Damage +{b}%', '攻撃間隔 {a}秒 · ダメージ +{b}%', '攻击间隔 {a}秒 · 伤害 +{b}%', 'Intervalo de ataque {a} s · Daño +{b}%', 'Intervalo de ataque {a} s · Dano +{b}%', 'Интервал атаки {a} с · Урон +{b}%'],
     '정면에서 받는 피해 {a}% · 도발 간격 {b}초': ['Frontal damage taken {a}% · Taunt every {b}s', '正面の被ダメージ {a}% · 挑発間隔 {b}秒', '正面受到伤害 {a}% · 嘲讽间隔 {b}秒', 'Daño frontal recibido {a}% · Provoca cada {b} s', 'Dano frontal recebido {a}% · Provoca a cada {b} s', 'Урон спереди {a}% · Провокация раз в {b} с'],
     '화살 사거리 {a} · 화살 피해 ×{b}': ['Bolt range {a} · Bolt damage ×{b}', '矢の射程 {a} · 矢のダメージ ×{b}', '弩箭射程 {a} · 弩箭伤害 ×{b}', 'Alcance del virote {a} · Daño ×{b}', 'Alcance do virote {a} · Dano ×{b}', 'Дальность болта {a} · Урон ×{b}'],
     '치유 간격 {a}초 · 축복 범위 {b}': ['Heal every {a}s · Blessing radius {b}', '回復間隔 {a}秒 · 祝福範囲 {b}', '治疗间隔 {a}秒 · 祝福范围 {b}', 'Cura cada {a} s · Radio de bendición {b}', 'Cura a cada {a} s · Raio da bênção {b}', 'Лечение раз в {a} с · Радиус благословения {b}'],
