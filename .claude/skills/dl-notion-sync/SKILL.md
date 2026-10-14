@@ -13,7 +13,7 @@ description: Dungeon Legion 작업을 노션 프로젝트 허브에 최신화할
 |---|---|
 | 허브 「Dungeon Legion — 프로젝트 허브」 | `3f922520-baed-816f-9724-fe7ba7e19b81` · https://app.notion.com/p/3f922520baed816f9724fe7ba7e19b81 |
 | DB 「작업 로그」 | 데이터베이스 `c976bb5f368540a38e373410f1a16b45` · **data source `collection://8f53dd97-baff-42c9-8d00-4e6256ed4eef`** |
-| 「지금까지 한 작업 — 버전 이력」 | (PAGE_HISTORY) |
+| 「지금까지 한 작업 — 버전 이력」 | `3f922520-baed-8159-85de-d9b2bb5d4735` · https://app.notion.com/p/3f922520baed815985ded9b2bb5d4735 |
 | 「앞으로 할 작업 — 백로그」 | `3f922520-baed-817d-8f4f-d05132c56bcf` · https://app.notion.com/p/3f922520baed817d8f4fd05132c56bcf |
 | 「유니티 컨버팅 계획」 | (PAGE_UNITY) |
 | 「크레이지게임즈 조사」 | (PAGE_CG) |

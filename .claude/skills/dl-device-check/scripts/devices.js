@@ -68,7 +68,12 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '--port') opt.port = +v();
   else if (a === '--out') opt.out = v();
   else if (a === '--no-sheet') opt.sheet = false;
-  else if (a === '-h' || a === '--help') { console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(1, 30).join('\n')); process.exit(0); }
+  else if (a === '-h' || a === '--help') {
+    // 머리 주석 전체(첫 비주석 줄 앞까지)
+    const L = fs.readFileSync(__filename, 'utf8').split('\n').slice(1);
+    const end = L.findIndex(l => !l.startsWith('//'));
+    console.log(L.slice(0, end < 0 ? L.length : end).join('\n')); process.exit(0);
+  }
   else { console.error('모르는 인자: ' + a); process.exit(2); }
 }
 if (!opt.vps.length) opt.vps = DEFAULT_VPS.slice();
@@ -97,8 +102,14 @@ for (const [k, ok] of [['floor', Number.isInteger(opt.floor) && opt.floor >= 1],
 if (!['day', 'night'].includes(opt.tod)) { console.error('✗ --tod 는 day|night'); process.exit(2); }
 if (!['knight', 'mage', 'archer'].includes(opt.cls)) { console.error('✗ --class 는 knight|mage|archer'); process.exit(2); }
 
-const root = execSync('git rev-parse --show-toplevel', { cwd: __dirname }).toString().trim();
-const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+// 저장소 루트: git 이 없거나(압축본) 실패하면 스킬 폴더 기준 네 단계 위(.claude/skills/dl-device-check/scripts → 루트)
+let root;
+try { root = execSync('git rev-parse --show-toplevel', { cwd: __dirname, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); }
+catch (e) { root = path.resolve(__dirname, '..', '..', '..', '..'); }
+if (!fs.existsSync(path.join(root, 'index.html'))) { console.error('✗ 저장소 루트를 못 찾음(index.html 없음): ' + root); process.exit(1); }
+const htmlBuf = fs.readFileSync(path.join(root, 'index.html'));
+const html = htmlBuf.toString('utf8');
+const wantMd5 = require('crypto').createHash('md5').update(htmlBuf).digest('hex');
 const want = (html.match(/^const GAME_VERSION = '(v\d+)'/m) || [])[1];
 if (!want) { console.error('✗ index.html 에서 GAME_VERSION 을 못 읽음'); process.exit(1); }
 const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '').replace('T', '-');
