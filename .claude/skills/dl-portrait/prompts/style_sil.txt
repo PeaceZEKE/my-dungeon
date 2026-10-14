@@ -1,0 +1,3 @@
+Pixel art character portrait in exactly the same style as the reference image: a chunky low-resolution pixel art bust portrait drawn on a 64x64 pixel grid (each pixel a clear hard-edged square, no anti-aliasing, no smooth gradients), limited palette of about 16 colors, dark outlines, warm torchlit highlights from the left and cool blue rim light from the right, plain flat dark navy background (#1b2540) filling the whole square, same framing as the reference (head and shoulders, three-quarter view, head near the top, shoulders cut by the bottom edge). Dark-fantasy medieval setting, grounded and serious mood. Not cute, not cartoonish, no text.
+
+Subject: 
