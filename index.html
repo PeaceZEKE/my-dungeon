@@ -4566,7 +4566,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v893'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v894'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -13906,7 +13906,7 @@ function storyCollect() {
   meta.lore[n.L.id] = 1; saveMeta();
   if (KSFX_ON && SFX.ksfx) SFX.ksfx('reward');
   const i = STORY_LORE.indexOf(n.L);
-  storyBar(_i18n('📜 원정대의 기록') + ' ' + (i + 1) + '/' + STORY_LORE.length + ' — ' + _i18n(n.L.who), _i18n(n.L.text));
+  storyBar(_i18n('📜 기록') + ' ' + (i + 1) + '/' + STORY_LORE.length + ' — ' + _i18n(n.L.who), _i18n(n.L.text));
 }
 // 안내 띠(v823)를 빌려 쓴다 — 떠 있던 안내는 내린다(이미 본 것으로 기록돼 다시 안 뜬다). ?tut=0 이어도 뜬다
 function storyBar(title, body, narr) {
@@ -14137,6 +14137,7 @@ function storyActTick(dt) {
   ['en', 'ja', 'zh', 'es', 'pt', 'ru'].forEach((l, i) => { const d = I18N_DICT[l]; if (d) for (const k in T) if (d[k] === undefined) d[k] = T[k][i]; });
 }
 { const T = {
+    '📜 기록': ['📜 Record', '📜 記録', '📜 记录', '📜 Registro', '📜 Registro', '📜 Запись'],   // v894 안내 띠 제목
     '📜 원정대의 기록': ['📜 Expedition Records', '📜 遠征隊の記録', '📜 远征队的记录', '📜 Registros de la expedición', '📜 Registros da expedição', '📜 Записи экспедиции'],
     '55년 전 먼저 내려간 첫 원정대 열둘이 남긴 글. 쓰러진 모험가 곁에서 주울 수 있다.': ['Writings left by the twelve of the first expedition, who went down fifty-five years ago. Found beside fallen adventurers.', '55年前に先に降りた最初の遠征隊十二人が残した文。倒れた冒険者のそばで拾える。', '五十五年前先行下去的第一支远征队十二人留下的文字。可在倒下的冒险者身旁拾取。', 'Escritos de los doce de la primera expedición, que bajaron hace cincuenta y cinco años. Se encuentran junto a aventureros caídos.', 'Escritos dos doze da primeira expedição, que desceram há cinquenta e cinco anos. Encontrados ao lado de aventureiros caídos.', 'Записи двенадцати из первой экспедиции, спустившейся пятьдесят пять лет назад. Их находят рядом с павшими искателями.'],
     '아직 찾지 못한 기록': ['A record not yet found', 'まだ見つけていない記録', '尚未找到的记录', 'Un registro aún no encontrado', 'Um registro ainda não encontrado', 'Запись ещё не найдена'],
