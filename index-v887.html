@@ -4520,7 +4520,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v886'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v887'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -27036,6 +27036,26 @@ function mercLvOf(id) { const x = mercXpOf(id); let l = 1; while (l < MLV_XP.len
 function mercLv() { return mercLvOf(merc.type); }
 function mercHpMax() { return Math.max(1, Math.round(player.hpMax * mercT().hpK * (1 + 0.05 * (mercLv() - 1)))); }
 function mercDmgMul() { return 1 + 0.06 * (mercLv() - 1); }
+// v887 용병 장비(?mgear=0 이면 없음): 종류마다 한 벌(meta.mercGear[종류] = Lv0~5) · 대장간에서 골드로 만들고 강화 · 고용한 종류의 것만 저절로 쓰인다
+const MGEAR_ON = MERC_ON && !/[?&]mgear=0/.test(location.search);
+const MGEAR_COST = [250, 400, 600, 850, 1150];   // Lv1(제작) ~ Lv5
+const MERC_GEAR = {
+  spear:  { name: '기사단 창날', icon: '🔱', desc: l => _i18n('공격 간격 {a}초').replace('{a}', (MERC_CD - 0.06 * l).toFixed(2)) },
+  shield: { name: '탑 방패', icon: '🛡️', desc: l => _i18n('정면에서 받는 피해 {a}% · 도발 간격 {b}초').replace('{a}', Math.round((0.3 - 0.04 * l) * 100)).replace('{b}', 12 - l) },
+  xbow:   { name: '연발 석궁', icon: '🏹', desc: l => _i18n('화살 사거리 {a} · 화살 피해 ×{b}').replace('{a}', 12 + 2 * l).replace('{b}', (0.9 * (1 + 0.05 * l)).toFixed(2)) },
+  monk:   { name: '성자의 염주', icon: '📿', desc: l => _i18n('치유 간격 {a}초 · 축복 범위 {b}').replace('{a}', 15 - 1.5 * l).replace('{b}', 4.5 + 0.5 * l) },
+};
+function mercGearLv(id) { return (MGEAR_ON && meta && meta.mercGear && meta.mercGear[id]) || 0; }
+function mercGearUp(id) {
+  const lv = mercGearLv(id); if (!MERC_GEAR[id] || lv >= 5 || !mercUnlocked(id)) return;
+  const cost = MGEAR_COST[lv]; if (meta.gold < cost) return;
+  if (!godMode) meta.gold -= cost;
+  if (!meta.mercGear) meta.mercGear = {};
+  meta.mercGear[id] = lv + 1; syncRunMeta(); saveMeta();
+  if (KSFX_ON) SFX.ksfx(lv === 0 ? 'craft' : 'upgrade'); else SFX.pickup && SFX.pickup();
+  toast((lv === 0 ? '⚒️ ' : '⬆️ ') + _i18n(MERC_GEAR[id].name) + ' Lv.' + (lv + 1) + '!', 2000);
+  renderSmith();
+}
 // 층을 내려갈 때(descend 첫머리) — 쓰러지지 않고 함께 온 용병만
 function mercGainXp() {
   if (!MLV_ON || godMode || !merc.active || merc.down || merc.gone) return;
@@ -27084,6 +27104,17 @@ const _mcProxy = { obj: null, radius: 0.42 };   // navFineStep·navSteer 가 몬
     // v884
     '석궁수': ['Crossbowman', 'クロスボウ兵', '弩手', 'Ballestero', 'Besteiro', 'Арбалетчик'],
     '뒤에서 관통 화살을 쏘는 원거리 지원 — 적에게 노려지지 않고 거리를 둔다': ['Ranged support firing piercing bolts from behind — foes ignore him and he keeps his distance', '後方から貫通する矢を放つ遠距離支援 — 敵に狙われず距離を保つ', '在后方射出穿透弩箭的远程支援 — 不会被敌人盯上，并保持距离', 'Apoyo a distancia con virotes perforantes desde atrás — los enemigos lo ignoran y mantiene la distancia', 'Apoio à distância com virotes perfurantes por trás — os inimigos o ignoram e ele mantém distância', 'Поддержка издали пробивающими болтами — враги его не трогают, он держит дистанцию'],
+    // v887
+    '용병 장비': ['Mercenary gear', '傭兵装備', '佣兵装备', 'Equipo de mercenario', 'Equipamento de mercenário', 'Снаряжение наёмника'],
+    '고용한 종류의 장비가 저절로 쓰인다': ['the hired type uses its gear automatically', '雇った種類の装備が自動で使われる', '所雇类型的装备会自动生效', 'el tipo contratado lo usa automáticamente', 'o tipo contratado o usa automaticamente', 'нанятый тип использует его сам'],
+    '기사단 창날': ['Knightly Spearhead', '騎士団の槍穂', '骑士团枪刃', 'Punta de lanza caballeresca', 'Ponta de lança da ordem', 'Рыцарский наконечник'],
+    '탑 방패': ['Tower Shield', 'タワーシールド', '塔盾', 'Escudo torre', 'Escudo torre', 'Башенный щит'],
+    '연발 석궁': ['Repeating Crossbow', '連発クロスボウ', '连发弩', 'Ballesta de repetición', 'Besta de repetição', 'Многозарядный арбалет'],
+    '성자의 염주': ['Saint\'s Prayer Beads', '聖者の数珠', '圣者念珠', 'Rosario del santo', 'Terço do santo', 'Чётки святого'],
+    '공격 간격 {a}초': ['Attack interval {a}s', '攻撃間隔 {a}秒', '攻击间隔 {a}秒', 'Intervalo de ataque {a} s', 'Intervalo de ataque {a} s', 'Интервал атаки {a} с'],
+    '정면에서 받는 피해 {a}% · 도발 간격 {b}초': ['Frontal damage taken {a}% · Taunt every {b}s', '正面の被ダメージ {a}% · 挑発間隔 {b}秒', '正面受到伤害 {a}% · 嘲讽间隔 {b}秒', 'Daño frontal recibido {a}% · Provoca cada {b} s', 'Dano frontal recebido {a}% · Provoca a cada {b} s', 'Урон спереди {a}% · Провокация раз в {b} с'],
+    '화살 사거리 {a} · 화살 피해 ×{b}': ['Bolt range {a} · Bolt damage ×{b}', '矢の射程 {a} · 矢のダメージ ×{b}', '弩箭射程 {a} · 弩箭伤害 ×{b}', 'Alcance del virote {a} · Daño ×{b}', 'Alcance do virote {a} · Dano ×{b}', 'Дальность болта {a} · Урон ×{b}'],
+    '치유 간격 {a}초 · 축복 범위 {b}': ['Heal every {a}s · Blessing radius {b}', '回復間隔 {a}秒 · 祝福範囲 {b}', '治疗间隔 {a}秒 · 祝福范围 {b}', 'Cura cada {a} s · Radio de bendición {b}', 'Cura a cada {a} s · Raio da bênção {b}', 'Лечение раз в {a} с · Радиус благословения {b}'],
     // v886
     '⚔️ 용병 레벨 업!': ['⚔️ Mercenary level up!', '⚔️ 傭兵レベルアップ!', '⚔️ 佣兵升级!', '⚔️ ¡Mercenario sube de nivel!', '⚔️ Mercenário subiu de nível!', '⚔️ Наёмник повысил уровень!'],
     '함께 내려간 층만큼 자란다 — 레벨마다 체력 +5% · 공격 +6%': ['Grows with every floor you descend together — +5% HP and +6% attack per level', '共に降りた階層だけ成長する — レベルごとに体力+5%・攻撃+6%', '每一起下一层就会成长 — 每级生命+5%、攻击+6%', 'Crece con cada piso que bajáis juntos — +5% vida y +6% ataque por nivel', 'Cresce a cada andar que descem juntos — +5% vida e +6% ataque por nível', 'Растёт с каждым этажом, пройденным вместе — +5% здоровья и +6% атаки за уровень'],
@@ -27133,7 +27164,7 @@ function mercBlessTick(dt) {
   let want = 0;
   if (B && mercLive() && player.alive && !inTown && !inRest) {
     const M = merc.obj.position, P = player.obj.position;
-    if (Math.hypot(M.x - P.x, M.z - P.z) <= B.r + (merc.blessAdd ? 0.6 : 0)) want = Math.max(1, Math.round((player.atk - merc.blessAdd) * (B.k + 0.005 * (mercLv() - 1))));
+    if (Math.hypot(M.x - P.x, M.z - P.z) <= B.r + 0.5 * mercGearLv('monk') + (merc.blessAdd ? 0.6 : 0)) want = Math.max(1, Math.round((player.atk - merc.blessAdd) * (B.k + 0.005 * (mercLv() - 1))));
   }
   if (want !== merc.blessAdd) { player.atk += want - merc.blessAdd; merc.blessAdd = want; }
   if (want && dt) merc.blessT = (merc.blessT || 0) + dt;   // 측정용(축복을 받은 시간)
@@ -27214,7 +27245,7 @@ function mercHurt(amount, src, hazard, from) {
   if (T.front && !hazard) {
     const fp = from || (src && src.obj && src.obj.position);
     if (fp) { const M = merc.obj.position, dx = fp.x - M.x, dz = fp.z - M.z, dl = Math.hypot(dx, dz);
-      if (dl < 0.05 || (dx * -Math.sin(merc.yaw) + dz * -Math.cos(merc.yaw)) / dl >= Math.cos(T.frontArc)) { arm = T.front; blocked = true; } }
+      if (dl < 0.05 || (dx * -Math.sin(merc.yaw) + dz * -Math.cos(merc.yaw)) / dl >= Math.cos(T.frontArc)) { arm = T.front - (merc.type === 'shield' ? 0.04 * mercGearLv('shield') : 0); blocked = true; } }   // v887 탑 방패
   }
   let a = Math.max(1, Math.floor(amount * arm * (MBOSS_ON && src && src.isBoss ? MERC_BOSS_DMG_K : 1)));
   if (player.floor > ACT_LEN) a = Math.min(a, Math.ceil(merc.hpMax * (T.hitCap || (AGGRO_ON ? MERC_HIT_CAP_AGGRO : MERC_HIT_CAP))));
@@ -27451,9 +27482,9 @@ function mercBoltsTick(dt) {
         const ex = e.obj.position.x, ez = e.obj.position.z;
         if (Math.hypot(ex - b.x, ez - b.z) > (e.radius || 0.5) + 0.25) continue;
         b.hit.add(e);
-        if (skillHit(e, R.k, b.sx, b.sz, 3, 'merc')) merc.boltHits = (merc.boltHits || 0) + 1;
+        if (skillHit(e, R.k * (1 + 0.05 * mercGearLv('xbow')), b.sx, b.sz, 3, 'merc')) merc.boltHits = (merc.boltHits || 0) + 1;
       }
-      if (b.d >= R.len) end = true;
+      if (b.d >= R.len + 2 * mercGearLv('xbow')) end = true;   // v887 연발 석궁
     }
     if (end) { b.live = false; b.obj.visible = false; continue; }
     b.y += (groundHeightAt(b.x, b.z) + 1.0 - b.y) * Math.min(1, dt * 6);   // 단을 따라 높이만 천천히 맞춘다
@@ -27466,7 +27497,7 @@ function mercHealCast() {
   if (!player.alive || Math.hypot(M.x - P.x, M.z - P.z) > H.r + 1.0) return 0;
   const amt = Math.max(1, Math.ceil(player.hpMax * (H.k + 0.01 * (mercLv() - 1)))), got = Math.min(amt, player.hpMax - player.hp);
   player.hp = Math.min(player.hpMax, player.hp + amt);
-  merc.healCd = H.cd; merc.heals = (merc.heals || 0) + 1; merc.healAmt = (merc.healAmt || 0) + got;
+  merc.healCd = H.cd - 1.5 * mercGearLv('monk'); merc.heals = (merc.heals || 0) + 1; merc.healAmt = (merc.healAmt || 0) + got;
   dmgNumAdd(P.x, P.y + 2.0, P.z, '+' + amt, 'mheal');
   if (SK2_ON) { sk2RingFx(P.x, P.z, 0.4, 1.6, 0xffd27a, 0.5, 0.7); sk2RingFx(M.x, M.z, 0.3, 1.0, 0xffd27a, 0.4, 0.5); }
   spawnHitEffect(P.x, P.y + 1.2, P.z, 0.6);
@@ -27662,11 +27693,11 @@ function mercUpdate(dt) {
     merc.atkT += dt;
     const T = L.MC_T[merc.atkKind];
     if (!merc.hitDone && merc.atkT >= T.hit) { merc.hitDone = true; mercStrike(); }
-    if (merc.atkT >= T.end) { merc.atkT = -1; merc.atkCd = MERC_CD; }
+    if (merc.atkT >= T.end) { merc.atkT = -1; merc.atkCd = MERC_CD - (merc.type === 'spear' ? 0.06 * mercGearLv('spear') : 0); }   // v887 기사단 창날
   } else if (healWant && !dz0 && dP <= HL.r) {   // v885 치유(공격 쿨과 상관없이 — 위험이 없을 때)
     merc.atkKind = 'heal'; merc.atkT = 0; merc.hitDone = false; L._mcAttack('heal');
   } else if (AGGRO_ON && mercT().taunt && !(AGGRO_BOSSFLOOR_OFF && !mercT().bossAggro && player.floor % 10 === 0) && !dz0 && !merc.retreat && merc.atkCd <= 0 && merc.tauntCd <= 0 && mercTauntCount() > 0) {   // v882 도발
-    merc.tauntCd = mercT().taunt.cd; merc.atkKind = 'taunt'; merc.atkT = 0; merc.hitDone = false; L._mcAttack('taunt');
+    merc.tauntCd = mercT().taunt.cd - mercGearLv('shield'); merc.atkKind = 'taunt'; merc.atkT = 0; merc.hitDone = false; L._mcAttack('taunt');
   } else if (tgt && !dz0 && merc.atkCd <= 0 && dT <= reach + 0.1 && !(flank && !flank.back) && (!mercT().ranged || mercLos(M.x, M.z, tgt.obj.position.x, tgt.obj.position.z))) {
     const fx = -Math.sin(merc.yaw), fz = -Math.cos(merc.yaw), al = ((tgt.obj.position.x - M.x) * fx + (tgt.obj.position.z - M.z) * fz) / (dT || 1);
     if (al > 0.8 || dT < 0.5) {
@@ -34083,7 +34114,7 @@ var ui2 = (() => {   // var: 이 줄보다 먼저 정의된 toast()·refreshSkil
   ICON.horn = genIcon(g => { for (let i = 0; i <= 20; i++) { const t = i / 20, ang = Math.PI * (1.05 - 0.75 * t), R = 6.2, cx = 7.8 + Math.cos(ang) * R, cy = 9.6 - Math.sin(ang) * R * 1.15, rr = 1.9 * (1 - t) + 0.4; for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) if (Math.hypot(x - cx, y - cy) <= rr) g[y][x] = t < 0.45 ? 'w' : t < 0.75 ? 'd' : 'r'; } }, { k: '#0b0a0c', w: '#efe6cc', d: '#a8987a', r: '#5a4636' });
   ICON.sigil = genIcon(g => { for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) { const d = Math.hypot(x - 5.5, y - 6.5); if (d <= 4.4 && d > 2.6) g[y][x] = (x + y < 11) ? 'Y' : 'y'; else if (d <= 1.9) g[y][x] = 'r'; } for (const [x, y] of [[2, 1], [2, 2], [3, 2], [9, 1], [9, 2], [8, 2]]) g[y][x] = 'd'; }, { k: '#0b0a0c', y: '#c89a2a', Y: '#f0c040', r: '#e8402a', d: '#a8987a' });
   const MAT_IC = { goblin_fang: 'fang', bone_shard: 'bone', orc_hide: 'hide', candle_wax: 'candle', magma_core: 'flame', frost_crystal: 'crystal', brood_chitin: 'chitin', glutton_maw: 'molar', king_crown: 'crown', beast_scale: 'lscale', exec_blade: 'axeblade', sovereign_horn: 'horn' };
-  const ITEM_IC = { fang_blade: 'dagger', bone_plate: 'armor', orc_belt: 'belt', wraith_seal: 'seal', magma_heart: 'flame', frost_blessing: 'crystal', maw_cleaver: 'cleaver', chitin_plate: 'chitin', rot_crown: 'crown', lava_mail: 'lmail', exec_axe: 'axe', sovereign_seal: 'sigil' };
+  const ITEM_IC = { fang_blade: 'dagger', bone_plate: 'armor', orc_belt: 'belt', wraith_seal: 'seal', magma_heart: 'flame', frost_blessing: 'crystal', maw_cleaver: 'cleaver', chitin_plate: 'chitin', rot_crown: 'crown', lava_mail: 'lmail', exec_axe: 'axe', sovereign_seal: 'sigil', mg_spear: 'pierce', mg_shield: 'shield', mg_xbow: 'rain', mg_monk: 'orb' };
   const EMO_IC = { '⚔️': 'sword', '⚡': 'bolt', '❤️': 'heart', '🥾': 'boot', '💰': 'coin', '🧪': 'potion', '✨': 'spark', '🔮': 'orb' };
   const icCache = {};
   function icURL(n, s) { const k = n + s; if (!icCache[k]) { const I = ICON[n]; const c = document.createElement('canvas'); c.width = c.height = 12 * s; const g = c.getContext('2d'); for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) { const ch = I.a[y][x]; if (ch !== '.') { g.fillStyle = I.p[ch]; g.fillRect(x * s, y * s, s, s); } } icCache[k] = c.toDataURL(); } return icCache[k]; }
@@ -37026,6 +37057,33 @@ function renderSmith() {
     html += '</div>';
     row.innerHTML = html;
     itemWrap.appendChild(row);
+  }
+  // v887 용병 장비 — 열린 종류만
+  if (MGEAR_ON) {
+    const ids = MERC_ORDER.filter(id => mercUnlocked(id) && MERC_GEAR[id]);
+    if (ids.length) {
+      const hd = document.createElement('div');
+      hd.style.cssText = 'font-size:13px; font-weight:bold; color:#ffd86b; margin-top:6px; text-align:left;';
+      hd.textContent = _i18n('용병 장비') + ' — ' + _i18n('고용한 종류의 장비가 저절로 쓰인다');
+      itemWrap.appendChild(hd);
+    }
+    for (const id of ids) {
+      const G = MERC_GEAR[id], lv = mercGearLv(id);
+      const row = document.createElement('div');
+      row.style.cssText = 'background:rgba(34,28,22,0.9); border:1px solid #5a9ac0; border-radius:10px; padding:10px 12px;';
+      let html = '<div style="display:flex; align-items:center; gap:8px;"><div style="font-size:22px;">' + (ui2 ? ui2.itemIc('mg_' + id) : G.icon) + '</div><div style="flex:1; text-align:left;">';
+      html += '<div style="font-size:14px; font-weight:bold; color:#ffe6c0;">' + _i18n(G.name) + ' <span style="font-size:10px; color:#a0d0f0;">' + _i18n(MERC_TYPES[id].name) + '</span>' + (lv > 0 ? ' <span style="color:#9fd0a0;">Lv.' + lv + '</span>' : '') + '</div>';
+      html += '<div style="font-size:12px; color:#cdb89a;">' + G.desc(lv > 0 ? lv : 1) + (lv > 0 && lv < 5 ? ' → ' + G.desc(lv + 1) : '') + '</div></div></div>';
+      html += '<div style="display:flex; gap:6px; margin-top:8px; align-items:center;">';
+      if (lv < 5) {
+        const cost = MGEAR_COST[lv], can = meta.gold >= cost;
+        html += '<div style="flex:1; font-size:11px; color:#b0a08a; text-align:right;">' + (ui2 ? ui2.emo('💰', 1) : '💰') + cost + '</div>';
+        html += '<button data-mgear-up="' + id + '" ' + (can ? '' : 'disabled') + ' style="padding:7px 14px; font-size:13px; ' + (can ? 'background:rgba(200,160,90,0.25); border-color:#c8a05a; color:#ffd9a0;' : 'opacity:0.4;') + '">' + (lv === 0 ? _i18n('">제작</button>') : _i18n('">강화</button>')).replace(/^">|<\/button>$/g, '') + '</button>';
+      } else html += _i18n('<div style="flex:1; font-size:11px; color:#9fd0a0; text-align:right;">최대 강화</div>');
+      html += '</div>';
+      row.innerHTML = html; itemWrap.appendChild(row);
+    }
+    itemWrap.querySelectorAll('[data-mgear-up]').forEach(b => onTap(b, () => mercGearUp(b.getAttribute('data-mgear-up'))));
   }
   // 버튼 이벤트(렌더마다 재바인딩)
   itemWrap.querySelectorAll('[data-smith-craft]').forEach(b => onTap(b, () => smithCraft(b.getAttribute('data-smith-craft'))));
