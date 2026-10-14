@@ -29,7 +29,7 @@
 //   · 시드·시계는 addInitScript 로 부팅보다 먼저 건다(evaluate 안에서 걸면 이미 늦다).
 //   · performance.now / Date.now / setTimeout 을 게임 시계로 — 토스트·힌트가 뷰포트마다 다르게 사라지지 않게.
 //   · 장면을 찍을 때는 rAF 를 끊고 tick() 을 직접 돌린다(반짝이·흔들림이 뷰포트마다 다른 순간에 찍히지 않게).
-//   · 서버는 저장소 루트에서 — 서빙 버전이 저장소 index.html 과 다르면 멈춘다.
+//   · 서버는 저장소 루트에서 — 서빙하는 index.html 이 저장소 것과 버전·내용(md5)이 다르면 멈춘다.
 //   · 바깥 요청(CrazyGames SDK 등)은 막는다.
 'use strict';
 const fs = require('fs');
@@ -119,16 +119,28 @@ fs.mkdirSync(outDir, { recursive: true });
 // ---------- 서버(저장소 루트) ----------
 function fetchVersion() {
   return new Promise(res => {
-    const req = http.get({ host: '127.0.0.1', port: opt.port, path: '/index.html', timeout: 5000 }, r => {
-      let body = ''; r.setEncoding('utf8');
-      r.on('data', c => { body += c; });
-      r.on('end', () => { const m = body.match(/GAME_VERSION = '(v\d+)'/); res({ up: true, v: m ? m[1] : null }); });
+    const req = http.get({ host: '127.0.0.1', port: opt.port, path: '/index.html', timeout: 20000 }, r => {
+      const chunks = [];
+      r.on('data', c => { chunks.push(c); });
+      r.on('end', () => {
+        const buf = Buffer.concat(chunks), m = buf.toString('utf8').match(/GAME_VERSION = '(v\d+)'/);
+        res({ up: true, v: m ? m[1] : null, md5: require('crypto').createHash('md5').update(buf).digest('hex') });
+      });
     });
     req.on('error', () => res({ up: false }));
     req.on('timeout', () => { req.destroy(); res({ up: false }); });
   });
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// playwright 모듈 — 경로를 박아 두면 node 가 다른 곳에 깔린 환경에서 죽는다. 로컬 → 전역(npm root -g) → 예전 고정 경로 순(dl-harness 와 같다)
+function loadPlaywright() {
+  const tries = ['playwright'];
+  try { tries.push(path.join(execSync('npm root -g', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(), 'playwright')); } catch (e) {}
+  tries.push('/opt/node22/lib/node_modules/playwright');
+  for (const t of tries) { try { return require(t); } catch (e) {} }
+  throw new Error('playwright 모듈을 못 찾았다(' + tries.join(' · ') + ') — npm i -g playwright 로 모듈만 받고, 브라우저는 받지 말 것(/opt/pw-browsers 동봉본을 쓴다)');
+}
 
 async function launch(chromium) {
   const a = ['--enable-unsafe-swiftshader', '--use-gl=swiftshader', '--no-sandbox'];
@@ -137,6 +149,7 @@ async function launch(chromium) {
     // npm playwright 와 동봉 브라우저 빌드 번호가 어긋나면 동봉본을 직접(CLAUDE.md '렌더 변경을 비교할 때')
     if (!/Executable doesn't exist/.test(String(e))) throw e;
     const base = '/opt/pw-browsers', cands = [];
+    if (!fs.existsSync(base)) throw e;
     for (const d of fs.readdirSync(base)) {
       if (d.startsWith('chromium_headless_shell-')) cands.push(path.join(base, d, 'chrome-linux', 'headless_shell'));
       else if (d.startsWith('chromium-')) cands.push(path.join(base, d, 'chrome-linux', 'chrome'));
@@ -329,14 +342,17 @@ function fmtRow(r, s) {
       console.log(`  localhost:${opt.port} 에 서버가 없어 저장소 루트에서 띄운다`);
       server = spawn('python3', ['-m', 'http.server', String(opt.port), '--bind', '127.0.0.1'], { cwd: root, stdio: 'ignore' });
       for (let i = 0; i < 40 && !st.up; i++) { await sleep(250); st = await fetchVersion(); }
-      if (!st.up) { console.log('✗ 서버를 못 띄웠다'); process.exit(1); }
+      if (!st.up) { console.log('✗ 서버를 못 띄웠다'); server.kill(); process.exit(1); }
     }
-    if (st.v !== want) {
-      console.log(`✗ localhost:${opt.port} 이 ${st.v} 를 서빙한다(저장소 index.html 은 ${want}) — 저장소 루트에서 다시 띄울 것(CLAUDE.md '테스트용 웹서버는 반드시 저장소 루트에서')`);
+    if (st.v !== want || st.md5 !== wantMd5) {
+      // 버전이 같아도 내용이 다를 수 있다(버전을 올리기 전의 작업 트리 ↔ 다른 폴더의 HEAD) — 내용 해시까지 본다(serve.sh 와 같다)
+      console.log(`✗ localhost:${opt.port} 이 서빙하는 index.html(${st.v}, md5 ${String(st.md5).slice(0, 12)})이 저장소 것(${want}, md5 ${wantMd5.slice(0, 12)})과 다르다 — ` +
+        `다른 폴더에서 띄운 서버다. 끄고 저장소 루트에서 다시 띄울 것: pkill -f "http.serve[r] ${opt.port}" (CLAUDE.md '테스트용 웹서버는 반드시 저장소 루트에서')`);
+      if (server) server.kill();
       process.exit(1);
     }
     console.log(`✓ 서버 ${st.v} · 층 ${opt.floor} · 시드 ${opt.seed} · 장면 ${shots.join(',')} · 결과 ${outDir}`);
-    const { chromium } = require('/opt/node22/lib/node_modules/playwright');
+    const { chromium } = loadPlaywright();
     const browser = await launch(chromium);
     for (const vp of vps) {
       const t0 = Date.now();

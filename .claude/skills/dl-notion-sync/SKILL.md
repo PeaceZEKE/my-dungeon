@@ -15,7 +15,7 @@ description: Dungeon Legion 작업을 노션 프로젝트 허브에 최신화할
 | DB 「작업 로그」 | 데이터베이스 `c976bb5f368540a38e373410f1a16b45` · **data source `collection://8f53dd97-baff-42c9-8d00-4e6256ed4eef`** |
 | 「지금까지 한 작업 — 버전 이력」 | `3f922520-baed-8159-85de-d9b2bb5d4735` · https://app.notion.com/p/3f922520baed815985ded9b2bb5d4735 |
 | 「앞으로 할 작업 — 백로그」 | `3f922520-baed-817d-8f4f-d05132c56bcf` · https://app.notion.com/p/3f922520baed817d8f4fd05132c56bcf |
-| 「유니티 컨버팅 계획」 | (PAGE_UNITY) |
+| 「유니티 컨버팅 계획」 | `3f922520-baed-81ce-801b-d11cf8343792` · https://app.notion.com/p/3f922520baed81ce801bd11cf8343792 |
 | 「크레이지게임즈 조사」 | (PAGE_CG) |
 | 「출시 목표와 과정」 | (PAGE_RELEASE) |
 
@@ -47,7 +47,7 @@ ID 가 안 맞으면(사용자가 옮겼거나 지웠으면) `notion-search` 로
    - 출시 목표와 과정: 단계 체크리스트·완료 기준이 움직였으면.
    - 유니티 계획: 유니티 관련 결정·작업일 때만.
    - 허브 첫 콜아웃의 '현재 배포 vNNN (날짜 기준)' 은 **main 머지 때만** 바꾼다.
-4. 표를 넣을 때는 노션 표 문법(`<table header-row="true"><tr><td>…`)을 쓴다 — 마크다운 파이프 표는 글자로 남는다. 긴 문서를 통째로 올릴 때는 `scripts/md2notion.py <in.md> <out.md>` 로 바꾼 뒤 올린다(첫 `# 제목` 줄은 빼 준다 — 제목은 properties 로).
+4. 파일 이름(`CLAUDE.md`·`index.html` 등)은 **백틱으로 감싼다** — 그냥 쓰면 노션이 `http://CLAUDE.md` 링크로 바꿔 버린다(10-14 실제로 겪음). 표를 넣을 때는 노션 표 문법(`<table header-row="true"><tr><td>…`)을 쓴다 — 마크다운 파이프 표는 글자로 남는다. 긴 문서를 통째로 올릴 때는 `scripts/md2notion.py <in.md> <out.md>` 로 바꾼 뒤 올린다(첫 `# 제목` 줄은 빼 준다 — 제목은 properties 로).
 5. 끝나면 사용자 보고에 "노션 작업 로그·<페이지> 갱신"을 한 줄 넣는다.
 
 ## 하지 말 것
