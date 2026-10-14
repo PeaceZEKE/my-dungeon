@@ -553,7 +553,7 @@ html.rotland .overlay p { font-size: clamp(11px, 2vh, 14px); }
     <div id="innTitle" style="font-size:18px; font-weight:900; color:#cfeeff; margin-bottom:6px;">🛏️ 여관</div>
     <div id="innDesc" style="font-size:13px; color:#9fb4c4; margin-bottom:16px;">떠돌이 용병이 일거리를 찾고 있다.</div>
     <div id="innTypes"></div>
-    <div id="innNote" style="font-size:12px; color:#9fb4c4; margin-bottom:14px; line-height:1.45;"></div>
+    <div id="innNote" style="font-size:12px; color:#9fb4c4; margin-bottom:14px; line-height:1.45; white-space:pre-line;"></div>
     <button id="innCharBtn" style="display:block; width:100%; margin-bottom:10px; padding:13px; font-size:14px; font-weight:700; border-radius:11px; border:1px solid #9fb0c8; background:rgba(120,140,180,0.22); color:#dde8ff;">🔄 캐릭터 변경</button>
     <button id="innCancel" style="display:block; width:100%; padding:10px; font-size:13px; border-radius:10px; border:1px solid #707688; background:rgba(80,80,90,0.18); color:#aab0c0;">닫기</button>
   </div>
@@ -4520,7 +4520,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v885'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v886'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -27027,6 +27027,28 @@ MERC_TYPES.monk = { icon: '✨', name: '수도사', role: '곁에서 공격력�
   staffK: 0.8, heal: { below: 0.5, k: 0.15, cd: 15, r: 7 }, bless: { r: 4.5, k: 0.1 } };
 const MERC_ORDER = ['spear'].concat(MSHIELD_ON ? ['shield'] : [], MXBOW_ON ? ['xbow'] : [], MMONK_ON ? ['monk'] : []);
 function mercT() { return MERC_TYPES[merc.type] || MERC_TYPES.spear; }
+// v886 용병 레벨(?mlv=0 이면 없음 — 늘 Lv1): 종류마다 따로 자란다(meta.mercXp[종류]). 그 용병과 함께 쓰러지지 않고 내려간 층 하나에 1, 보스 층은 3.
+// 레벨마다 체력 +5% · 공격 +6% · 수도사 치유 +1%p · 축복 +0.5%p. Lv10 까지 누적 162층(한 막 30층 + 보스 셋이면 36 → Lv4 안팎)
+const MLV_ON = MERC_ON && !/[?&]mlv=0/.test(location.search);
+const MLV_XP = [0, 6, 15, 27, 42, 60, 81, 105, 132, 162];
+function mercXpOf(id) { return (MLV_ON && meta && meta.mercXp && meta.mercXp[id]) || 0; }
+function mercLvOf(id) { const x = mercXpOf(id); let l = 1; while (l < MLV_XP.length && x >= MLV_XP[l]) l++; return l; }
+function mercLv() { return mercLvOf(merc.type); }
+function mercHpMax() { return Math.max(1, Math.round(player.hpMax * mercT().hpK * (1 + 0.05 * (mercLv() - 1)))); }
+function mercDmgMul() { return 1 + 0.06 * (mercLv() - 1); }
+// 층을 내려갈 때(descend 첫머리) — 쓰러지지 않고 함께 온 용병만
+function mercGainXp() {
+  if (!MLV_ON || godMode || !merc.active || merc.down || merc.gone) return;
+  const id = merc.type, l0 = mercLvOf(id);
+  if (!meta.mercXp) meta.mercXp = {};
+  meta.mercXp[id] = (meta.mercXp[id] || 0) + (player.floor % 10 === 0 ? 3 : 1);
+  const l1 = mercLvOf(id);
+  if (l1 > l0) {
+    toast(_i18n('⚔️ 용병 레벨 업!') + '  ' + (MERC_TYPES[id] ? _i18n(MERC_TYPES[id].name) : '') + ' Lv ' + l1, 2600);
+    if (KSFX_ON && SFX.ksfx) SFX.ksfx('skill', 0.8);
+  }
+  saveMeta();
+}
 function mercUnlocked(id) {
   if (id === 'shield') return MSHIELD_ON && (godMode || ((meta && meta.actCleared) || 0) >= 1 || !!(meta && meta.restUnlocked));   // 1막을 깨면(예전 저장은 restUnlocked)
   if (id === 'xbow') return MXBOW_ON && (godMode || ((meta && meta.actCleared) || 0) >= 2 || !!(meta && meta.act2Cleared));     // v884: 2막을 깨면(예전 저장은 act2Cleared)
@@ -27062,6 +27084,9 @@ const _mcProxy = { obj: null, radius: 0.42 };   // navFineStep·navSteer 가 몬
     // v884
     '석궁수': ['Crossbowman', 'クロスボウ兵', '弩手', 'Ballestero', 'Besteiro', 'Арбалетчик'],
     '뒤에서 관통 화살을 쏘는 원거리 지원 — 적에게 노려지지 않고 거리를 둔다': ['Ranged support firing piercing bolts from behind — foes ignore him and he keeps his distance', '後方から貫通する矢を放つ遠距離支援 — 敵に狙われず距離を保つ', '在后方射出穿透弩箭的远程支援 — 不会被敌人盯上，并保持距离', 'Apoyo a distancia con virotes perforantes desde atrás — los enemigos lo ignoran y mantiene la distancia', 'Apoio à distância com virotes perfurantes por trás — os inimigos o ignoram e ele mantém distância', 'Поддержка издали пробивающими болтами — враги его не трогают, он держит дистанцию'],
+    // v886
+    '⚔️ 용병 레벨 업!': ['⚔️ Mercenary level up!', '⚔️ 傭兵レベルアップ!', '⚔️ 佣兵升级!', '⚔️ ¡Mercenario sube de nivel!', '⚔️ Mercenário subiu de nível!', '⚔️ Наёмник повысил уровень!'],
+    '함께 내려간 층만큼 자란다 — 레벨마다 체력 +5% · 공격 +6%': ['Grows with every floor you descend together — +5% HP and +6% attack per level', '共に降りた階層だけ成長する — レベルごとに体力+5%・攻撃+6%', '每一起下一层就会成长 — 每级生命+5%、攻击+6%', 'Crece con cada piso que bajáis juntos — +5% vida y +6% ataque por nivel', 'Cresce a cada andar que descem juntos — +5% vida e +6% ataque por nível', 'Растёт с каждым этажом, пройденным вместе — +5% здоровья и +6% атаки за уровень'],
     // v885
     '수도사': ['Monk', '修道士', '武僧', 'Monje', 'Monge', 'Монах'],
     '곁에서 공격력을 올려 주고, 위험하면 체력을 채워 주는 지원형 — 15초마다 치유': ['Support who raises your attack while nearby and heals you when you are in danger — heals every 15s', 'そばにいると攻撃力を上げ、危ない時は体力を回復する支援役 — 15秒ごとに回復', '在身边时提升你的攻击力，危急时为你回复体力的辅助 — 每15秒治疗一次', 'Apoyo que sube tu ataque a su lado y te cura cuando corres peligro — cura cada 15 s', 'Suporte que aumenta seu ataque por perto e cura você quando está em perigo — cura a cada 15 s', 'Поддержка: рядом повышает вашу атаку, а в опасности лечит — лечение каждые 15 с'],
@@ -27108,7 +27133,7 @@ function mercBlessTick(dt) {
   let want = 0;
   if (B && mercLive() && player.alive && !inTown && !inRest) {
     const M = merc.obj.position, P = player.obj.position;
-    if (Math.hypot(M.x - P.x, M.z - P.z) <= B.r + (merc.blessAdd ? 0.6 : 0)) want = Math.max(1, Math.round((player.atk - merc.blessAdd) * B.k));
+    if (Math.hypot(M.x - P.x, M.z - P.z) <= B.r + (merc.blessAdd ? 0.6 : 0)) want = Math.max(1, Math.round((player.atk - merc.blessAdd) * (B.k + 0.005 * (mercLv() - 1))));
   }
   if (want !== merc.blessAdd) { player.atk += want - merc.blessAdd; merc.blessAdd = want; }
   if (want && dt) merc.blessT = (merc.blessT || 0) + dt;   // 측정용(축복을 받은 시간)
@@ -27150,7 +27175,7 @@ function mercFloorStart() {
   if (!merc.obj.parent) scene.add(merc.obj);
   merc.radius = _mcProxy.radius = merc.type === 'shield' ? 0.46 : merc.type === 'xbow' ? 0.4 : 0.42;
   mercBoltsClear();
-  merc.hpMax = Math.max(1, Math.round(player.hpMax * mercT().hpK));
+  merc.hpMax = mercHpMax();
   if (merc.hpFrac !== null) { merc.hp = Math.max(1, Math.round(merc.hpMax * merc.hpFrac)); merc.hpFrac = null; }
   else if (merc.hp < 0) merc.hp = merc.hpMax; else merc.hp = Math.min(merc.hp, merc.hpMax);
   merc.tgt = null; merc.atkT = -1; merc.atkCd = 0.6; merc.inv = 1.0; merc.kbX = merc.kbZ = 0; merc.calm = 0; merc.tauntCd = 3; merc.healCd = Math.min(merc.healCd || 0, 3);
@@ -27162,7 +27187,7 @@ function mercFloorStart() {
 // 쓰러진 용병을 다시 합류시키거나(체력 frac) 살아 있으면 frac 만큼 채운다. 다시 합류했으면 true
 function mercRevive(frac) {
   if (!MERC_ON || !merc.active) return false;
-  merc.hpMax = Math.max(1, Math.round(player.hpMax * mercT().hpK));
+  merc.hpMax = mercHpMax();
   if (merc.down) {
     merc.down = false; merc.gone = false; merc.hp = Math.max(1, Math.ceil(merc.hpMax * frac));
     if (merc.obj && dungeon && !inTown && !inRest) {
@@ -27439,7 +27464,7 @@ function mercBoltsTick(dt) {
 function mercHealCast() {
   const H = MERC_TYPES.monk.heal, M = merc.obj.position, P = player.obj.position;
   if (!player.alive || Math.hypot(M.x - P.x, M.z - P.z) > H.r + 1.0) return 0;
-  const amt = Math.max(1, Math.ceil(player.hpMax * H.k)), got = Math.min(amt, player.hpMax - player.hp);
+  const amt = Math.max(1, Math.ceil(player.hpMax * (H.k + 0.01 * (mercLv() - 1)))), got = Math.min(amt, player.hpMax - player.hp);
   player.hp = Math.min(player.hpMax, player.hp + amt);
   merc.healCd = H.cd; merc.heals = (merc.heals || 0) + 1; merc.healAmt = (merc.healAmt || 0) + got;
   dmgNumAdd(P.x, P.y + 2.0, P.z, '+' + amt, 'mheal');
@@ -27484,7 +27509,7 @@ function mercUpdate(dt) {
   if (!MERC_ON || !merc.active || !merc.obj || merc.gone) return;
   const L = merc.limbs, P = player.obj.position, M = merc.obj.position;
   merc.t += dt;
-  const nm = Math.max(1, Math.round(player.hpMax * mercT().hpK));
+  const nm = mercHpMax();
   if (nm !== merc.hpMax) { if (nm > merc.hpMax && !merc.down && merc.hp >= 0) merc.hp += nm - merc.hpMax; merc.hpMax = nm; merc.hp = Math.min(merc.hp, nm); }
   merc.inv = Math.max(0, merc.inv - dt);
   if (AGGRO_ON && merc.hp >= 0) {   // v880 물러나기
@@ -27682,7 +27707,7 @@ function openInn() {
   const ov = $('innOverlay'); if (!ov) { openCharChange(); return; }
   $('innTitle').textContent = _i18n('🛏️ 여관');
   $('innDesc').textContent = _i18n('떠돌이 용병이 일거리를 찾고 있다.');
-  $('innNote').textContent = _i18n('다음 던전 한 번 함께 간다 · 알아서 따라오며 싸운다 · 쓰러지면 회복의 샘·쉼터에서 다시 합류');
+  $('innNote').textContent = _i18n('다음 던전 한 번 함께 간다 · 알아서 따라오며 싸운다 · 쓰러지면 회복의 샘·쉼터에서 다시 합류') + (MLV_ON ? '\n' + _i18n('함께 내려간 층만큼 자란다 — 레벨마다 체력 +5% · 공격 +6%') : '');
   $('innCharBtn').textContent = _i18n('🔄 캐릭터 변경');
   $('innCancel').textContent = _i18n('닫기');
   innRefresh();
@@ -27702,9 +27727,16 @@ function innRefresh() {
     b.style.cssText = 'display:block; width:100%; margin-bottom:8px; padding:10px 12px; text-align:left; border-radius:11px; border:1px solid #9fb0c8; background:rgba(120,140,180,0.22); color:#dde8ff; line-height:1.35;';
     const h = document.createElement('div'); h.style.cssText = 'font-size:14px; font-weight:700;';
     const right = hType === id ? _i18n('✅ 고용함 — 다음 던전에 함께 간다') : !open ? _i18n(id === 'monk' ? '🔒 3막을 깨면 고용할 수 있다' : id === 'xbow' ? '🔒 2막을 깨면 고용할 수 있다' : '🔒 1막을 깨면 고용할 수 있다') : cost.toLocaleString() + 'G';
-    h.textContent = T.icon + ' ' + _i18n(T.name) + '  ·  ' + right;
+    const lv = mercLvOf(id), xp = mercXpOf(id);
+    h.textContent = T.icon + ' ' + _i18n(T.name) + (MLV_ON ? ' Lv ' + lv : '') + '  ·  ' + right;
+    if (MLV_ON && open) {   // v886: 다음 레벨까지 진행 막대
+      const lo = MLV_XP[lv - 1], hi = MLV_XP[lv], bar = document.createElement('div');
+      bar.style.cssText = 'height:4px; margin-top:5px; background:rgba(0,0,0,0.45); border-radius:2px; overflow:hidden;';
+      const f = document.createElement('i'); f.style.cssText = 'display:block; height:100%; background:#d9b56c; width:' + (hi === undefined ? 100 : Math.round((xp - lo) / (hi - lo) * 100)) + '%;';
+      bar.appendChild(f); b._lvBar = bar;
+    }
     const d = document.createElement('div'); d.style.cssText = 'font-size:12px; font-weight:400; opacity:0.8; margin-top:2px;'; d.textContent = _i18n(T.role);
-    b.appendChild(h); b.appendChild(d);
+    b.appendChild(h); b.appendChild(d); if (b._lvBar) b.appendChild(b._lvBar);
     b.disabled = !ok; b.style.opacity = (ok || hType === id) ? '1' : '0.45';
     onTap(b, (e) => { if (e) e.stopPropagation(); innHire(id); });
     box.appendChild(b);
@@ -28752,6 +28784,7 @@ function skillHit(e, dmgMul, px, pz, kbForce, numCls) {   // numCls: 숫자 색(
   const dx = e.obj.position.x - px, dz = e.obj.position.z - pz;
   const d = Math.hypot(dx, dz) || 1;
   // 골렘: 정면 무적(등 뒤만). 휴면 중엔 무효.
+  if (numCls === 'merc' && MLV_ON) dmgMul *= mercDmgMul();   // v886 용병 레벨
   let dmg = Math.floor((player.atk + 4) * dmgMul);
   if (e.type === 'golem') {
     if (!e.golemAwake) { spawnHitEffect(e.obj.position.x, e.obj.position.y + e.scale, e.obj.position.z, 0.4); return false; }
@@ -33268,6 +33301,7 @@ function update(dt) {
 }
 
 function descend() {
+  if (MERC_ON) mercGainXp();   // v886
   if (!player.hitThisFloor) player.noHitFloors++; player.hitThisFloor = false;
   // 막 사이 쉼터: 막 마지막 층(30·60·90…, 보스)을 클리어하면 다음 층 대신 여행자의 쉼터로 진입한다.
   // v819: 쉼터 도착을 저장한다(saveRun 이 inRest 를 보고 rest 필드를 넣는다) — 예전엔 보스층 시작 상태만 남아 이어하면 보스를 또 잡았다
