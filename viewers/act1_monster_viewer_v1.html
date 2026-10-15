@@ -1046,13 +1046,15 @@ function a1Monster(type, isBoss, isRanged, grp, bodyGrp, headGrp, limbs) {
     const W = limbs.weapon;
     [grp, bodyGrp, headGrp, limbs.armR, limbs.armL, limbs.legR, limbs.legL, W].forEach(a1Clear);
     const K = a1Kit(type === 'goblin' ? 0x51 : type === 'skeleton' ? 0x52 : 0x53);
+    // 스켈레톤 궁수는 활을 왼손에 든다 — 무기 그룹을 왼팔로 옮긴다(limbs.weapon 은 그대로 이 그룹)
+    if (type === 'skeleton' && isRanged && !isBoss) limbs.armL.add(W);
     const P = { K, grp, bodyGrp, headGrp, limbs, W, isBoss, isRanged };
     if (type === 'goblin') a1Goblin(P);
     else if (type === 'skeleton') a1Skeleton(P);
     else a1Orc(P);
     // 관절 그룹마다 따로 합친다 — 무기는 팔과 따로(스켈레톤 보스가 던질 때 숨긴다)
     c3MergeStatic(bodyGrp); c3MergeStatic(headGrp);
-    c3MergeStatic(limbs.armR, [W]); c3MergeStatic(limbs.armL); c3MergeStatic(limbs.legR); c3MergeStatic(limbs.legL);
+    c3MergeStatic(limbs.armR, [W]); c3MergeStatic(limbs.armL, [W]); c3MergeStatic(limbs.legR); c3MergeStatic(limbs.legL);
     c3MergeStatic(W);
   });
 }
@@ -1359,10 +1361,11 @@ function a1ArrowMesh() {
     return out;
   });
 }
-// 활 쏘는 자세 — 원거리 휘두름 시간(0.5초) 동안: 0~0.4 두 팔을 앞으로 들어 겨누고 당김 → 0.5 놓음(발사 = 기존 t ≥ 0.5) → 내림
+// 활 쏘는 자세 — 원거리 휘두름 시간(0.5초) 동안: 0~0.4 활 든 왼팔을 앞으로 뻗고 오른손으로 시위를 당김 → 0.5 놓음(발사 = 기존 t ≥ 0.5) → 내림
+// bow = 왼팔 rotation.x · draw = 오른팔 rotation.x · drawZ = 오른팔 rotation.z(몸 가운데로 당김)
 function a1BowPose(t) {
   const up = t < 0.4 ? 1 - Math.pow(1 - t / 0.4, 2) : t < 0.6 ? 1 : Math.max(0, 1 - (t - 0.6) / 0.4);
-  return { r: up * Math.PI * 0.5, l: up * Math.PI * 0.42, lz: -up * 0.35 };
+  return { bow: up * Math.PI * 0.5, draw: up * Math.PI * 0.42, drawZ: up * 0.35 };
 }
 
 // ---------- 오크 ----------
@@ -1758,12 +1761,12 @@ function step(dt) { if (autoSpin) { camYaw += dt * 0.32; updateCam(); } if (atkT
     let aR = -s * 0.5; const aL = s * 0.5;
     const SW = h.isRanged ? 0.5 : 0.62;
     if (atkT >= 0 && atkT < SW) {
-      if (h.isRanged && h.v2 && h.type === 'skeleton') { const bp = a1BowPose(atkT / 0.5); aR = bp.r; L.armL.rotation.z = bp.lz; L.armL.rotation.x = bp.l; }
+      if (h.isRanged && h.v2 && h.type === 'skeleton') { const bp = a1BowPose(atkT / 0.5); aR = bp.draw; L.armR.rotation.z = bp.drawZ; L.armL.rotation.x = bp.bow; }
       else if (h.isRanged) aR = Math.PI * 0.8 - (atkT / 0.5) * Math.PI * 1.2;
       else if (atkT < 0.4) { const w = atkT / 0.4, eo = 1 - (1 - w) * (1 - w); aR = eo * Math.PI * 1.05; }
       else { const p = Math.min(1, (atkT - 0.4) / 0.22); aR = Math.PI * 1.05 - p * p * p * Math.PI * 0.55; }
     }
-    L.armR.rotation.x = aR; if (!(h.isRanged && h.v2 && h.type === 'skeleton' && atkT >= 0 && atkT < 1)) { L.armL.rotation.x = aL; L.armL.rotation.z = 0; }
+    L.armR.rotation.x = aR; if (!(h.isRanged && h.v2 && h.type === 'skeleton' && atkT >= 0 && atkT < 1)) { L.armL.rotation.x = aL; L.armR.rotation.z = 0; }
     // 뷰어: 화살이 날아가는 모습(게임은 spawnFireball 이 같은 메시를 쓴다)
     if (h.isRanged && h.v2 && h.type === 'skeleton') {
       if (atkT >= 0.25 && !h.shot) { h.shot = true; h.arrow = a1ArrowMesh(); h.arrow.position.set(h.obj.position.x, 1.0 * h.obj.scale.x, -0.6); h.arrow.rotation.y = Math.PI; scene.add(h.arrow); h.arrowT = 0; }
