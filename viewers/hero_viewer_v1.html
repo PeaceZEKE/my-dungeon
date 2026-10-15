@@ -1020,6 +1020,8 @@ const HERO2_POSE = { legX: 0.17, legY: 0.66, torsoY: 0.76, armX: 0.43, armY: 1.0
 // 막기 자세에서 방패 그룹을 팔 끝 쪽으로 내미는 자리(게임 update 의 막기 목표에 같이 쓴다 — 기본 −0.5 그대로면 주먹이 방패 앞면을 뚫는다).
 // 막기에서는 방패 로컬 +z 가 팔 +y(어깨 쪽)라, 판이 주먹(팔 −0.56 ± 0.08)보다 팔 끝 쪽에 있어야 손이 방패 뒤에서 쥔다.
 const HERO2_SHIELD_BLOCK_Y = -0.71;
+// 막기에서 방패 높이 — 팔이 앞으로 들려 팔 +z 가 월드 아래다. 게임 기본 −0.18 에서 0.12 내린다(사용자 지시). 판과 나란한 방향이라 손·판 앞뒤는 그대로.
+const HERO2_SHIELD_BLOCK_Z = -0.06;
 function hero2Pose(K, cls) {
   if (!K._pose0) K._pose0 = { legX: Math.abs(K.legR.position.x), legY: K.legR.position.y, torsoY: K.torsoGrp.position.y, armX: Math.abs(K.armR.position.x), armY: K.armR.position.y, headY: K.headGrp.position.y };
   const P = cls === 'knight' ? HERO2_POSE : K._pose0;
