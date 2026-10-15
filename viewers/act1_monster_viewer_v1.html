@@ -1293,11 +1293,16 @@ function a1Skeleton(P) {
     K.band(W, 0.028, 0.09, LEA, 0, 0, -0.02, 6);
     K.seg(W, [0, 0.44, 0.06], [0, -0.44, 0.06], 0.005, 0.005, K.mat(0xb0a888), 3);
   } else if (isBoss) {
-    // 거대한 넙다리뼈 곤봉 — 끝 두 마디에 가시
-    K.seg(W, [0, -0.05, 0], [0, 0.85, 0], 0.07, 0.09, BONE, 6);
-    [-1, 1].forEach(sx => K.ico(W, 0.13, BONE_L, sx * 0.08, 0.92, 0, 1, 0.9, 0.95, 1, 0.01));
-    K.ico(W, 0.1, BONE, 0, -0.08, 0, 1.1, 0.8, 1, 0);
-    for (let i = 0; i < 6; i++) { const a = i * 1.05; K.cone(W, 0.025, 0.1, BONE_L, 4, Math.cos(a) * 0.15, 0.82 + (i % 2) * 0.1, Math.sin(a) * 0.12, Math.sin(a) * 1.4, 0, -Math.cos(a) * 1.4); }
+    // 중대장 철퇴 — 쇠 자루(가죽 손잡이) · 날개 여섯 장 머리 · 꼭대기 가시
+    K.seg(W, [0, -0.12, 0], [0, 0.78, 0], 0.035, 0.04, IRON_D, 6);
+    K.band(W, 0.045, 0.22, LEA, 0, 0.0, 0, 6);
+    K.ico(W, 0.045, IRON, 0, -0.13, 0, 1, 1, 1, 0);
+    K.cyl(W, 0.07, 0.07, 0.05, IRON_D, 6, 0, 0.66, 0);
+    K.ico(W, 0.11, IRON_D, 0, 0.84, 0, 1, 1.15, 1, 1);
+    // 날개 — 아래가 좁고 위로 갈수록 바깥으로 불룩한 쐐기(옆에서 보면 상자가 아니라 철퇴 머리로 읽힌다)
+    const fl = [[0.03, -0.14], [0.1, -0.06], [0.15, 0.05], [0.12, 0.12], [0.03, 0.16]];
+    for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; K.plate(W, fl, 0.03, IRON, 0, 0.84, 0, 0, a, 0); }
+    K.cone(W, 0.04, 0.12, IRON, 4, 0, 1.03, 0, 0, 0, 0);
   } else {
     // 이 빠진 녹슨 곧은 검
     K.seg(W, [0, -0.07, 0], [0, 0.11, 0], 0.022, 0.022, GRIP, 5);
@@ -1380,9 +1385,12 @@ function a1Orc(P) {
   // 전투 칠 — 가슴·배의 붉은 줄
   [[-0.2, 0.42, -0.24, 0.5], [-0.12, 0.2, -0.26, 0.4], [0.24, 0.15, -0.2, -0.4]].forEach(([x, y, z, r]) => K.box(bodyGrp, 0.14, 0.025, 0.02, PAINT, x, y, z, 0.2, 0, r));
   // 비스듬한 가죽 멜빵 + 쇠고리
-  K.box(bodyGrp, 0.08, 0.66, 0.04, LEA, 0.02, 0.3, -0.27, 0.12, 0, -0.75);
-  K.box(bodyGrp, 0.08, 0.6, 0.04, LEA_D, 0.02, 0.3, 0.29, -0.1, 0, 0.75);
-  K.put(bodyGrp, new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.015, 4, 8), IRON), -0.14, 0.46, -0.28, 0.1, 0, 0);
+  // 가슴 타원(반축 x 0.435 · y 0.3 · z 0.285)을 오른어깨 → 왼옆구리로 비스듬히 감는 고리(양면 가죽 띠) — 몸에 붙어 돈다
+  const strapG = new THREE.Group(); strapG.position.set(0, 0.33, 0.01); strapG.rotation.set(0.15, 0, 0.75); bodyGrp.add(strapG);
+  K.put(strapG, new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.085, 16, 1, true), K.mat(0x3a2414, 'cloth')), 0, 0, 0).scale.set(0.385, 1, 0.315);
+  K.put(strapG, new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.03, 16, 1, true), K.mat(0x26170c, 'cloth')), 0, 0.045, 0).scale.set(0.39, 1, 0.32);
+  K.put(bodyGrp, new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.016, 4, 8), IRON), 0.0, 0.33, -0.33, 0.15, 0, 0);
+  for (let i = 0; i < 3; i++) K.ico(strapG, 0.016, IRON, Math.cos(-2.0 - i * 0.35) * 0.385, 0, Math.sin(-2.0 - i * 0.35) * 0.315, 1, 1, 1, 0);
   // 넓은 허리띠 + 쇠 버클 · 해진 가죽 치마
   K.band(bodyGrp, 0.3, 0.1, LEA_D, 0, -0.04, 0, 10).scale.set(1.15, 1, 1);
   K.box(bodyGrp, 0.12, 0.09, 0.03, IRON, 0, -0.04, -0.32, 0, 0, 0);
