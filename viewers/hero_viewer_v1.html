@@ -1043,7 +1043,7 @@ function hero2Knight(K) { return hero2Lcg(901001, () => {
   // ---- 투구: 코덱스 4면도(refs/ui/초상화/knight_helm_4view.png) — 둥근 두개골 + 앞에서 뒤로 넘어가는 금 띠 셋 · 이마 금 띠 ·
   //      부리처럼 튀어나온 각진 면갑(가운데 능선) · 면갑 양옆 판의 세로 눈 틈 · 벌어진 턱받이와 목가리개(금 테) · 옆 금 원판 ----
   const hd0 = K.headGrp; hero2Clear(hd0);
-  const hd = new THREE.Group(); hd.position.y = -0.37; hd.scale.setScalar(1.12); hd0.add(hd);   // 링 y 0…0.8 → 머리 그룹 −0.37 부터 · 1.12 배(사용자 지시로 키움 — 밑단 자리는 그대로, 위로 커진다)
+  const hd = new THREE.Group(); hd.position.y = -0.37; hd.scale.set(1.12, 1.0, 1.12); hd0.add(hd);   // 링 y 0…0.8 → 머리 그룹 −0.37 부터 · 가로·앞뒤 1.12 배 · 세로 1.0(사용자 지시 — 키운 뒤 세로만 다시 줄임, 밑단 자리는 그대로)
   const RG = HELM_RINGS, NR = RG.length - 1, NP = RG[0].length - 3;
   const rAt = (R, ph) => { const k = (ph + Math.PI) / (2 * Math.PI) * NP, k0 = Math.floor(k), f = k - k0; return R[3 + ((k0 % NP) + NP) % NP] * (1 - f) + R[3 + ((k0 + 1) % NP + NP) % NP] * f; };
   const ringAt = t => { const u = Math.max(0, Math.min(NR, t * NR)), i = Math.min(NR - 1, Math.floor(u)), f = u - i, A = RG[i], B2 = RG[i + 1]; return A.map((v, j) => v * (1 - f) + B2[j] * f); };
