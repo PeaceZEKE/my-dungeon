@@ -996,24 +996,54 @@ function hero2Knight(K) { return hero2Lcg(901001, () => {
   const SP = (r, ws, hs, t0, t1) => new THREE.SphereGeometry(r, ws || 8, hs || 5, 0, Math.PI * 2, t0 || 0, t1 || Math.PI);
   const P8 = Math.PI / 8;
 
-  // ---- 투구: 커버의 아멧 — 둥근 두개골 + 볏 · 앞으로 솟은 V 면갑 · V 를 따라 꺾인 눈 틈 · 옆 금 원판 ----
+  // ---- 투구: 코덱스 4면도(refs/ui/초상화/knight_helm_4view.png) — 둥근 두개골 + 앞에서 뒤로 넘어가는 금 띠 셋 · 이마 금 띠 ·
+  //      부리처럼 튀어나온 각진 면갑(가운데 능선) · 면갑 양옆 판의 세로 눈 틈 · 벌어진 턱받이와 목가리개(금 테) · 옆 금 원판 ----
   const hd = K.headGrp; hero2Clear(hd);
-  h2(hd, SP(0.3, 10, 7), STEEL, 0, 0.1, 0.04, 0, 0, 0, 1, 1.12, 1.05);
-  for (const [zz, yy, rx] of [[-0.18, 0.37, -0.62], [0.04, 0.43, 0], [0.26, 0.37, 0.62]]) h2(hd, B(0.045, 0.04, 0.2), STEEL_L, 0, yy, zz, rx);   // 두개골을 따라 굽은 볏
-  // 면갑: 4각 원뿔대(뒤 절반은 두개골 속)를 앞 모서리가 가운데 능선이 되게 세운다 — 평면 둘이 능선에서 만나고
-  // 이마에서 넓고 턱으로 좁아지는 각진 판(초상화). 눈 틈은 능선 양옆 판 위에 세로로 하나씩.
-  const FR = 0.33, FZ = 0.78, FC = -0.09, FA = Math.atan(FZ);
-  h2(hd, C(FR, 0.16, 0.46, 4), STEEL_L, 0, -0.02, FC, 0, Math.PI, 0, 1, 1, FZ);
-  h2(hd, C(FR + 0.012, FR + 0.012, 0.035, 4), GOLD, 0, 0.215, FC - 0.004, 0, Math.PI, 0, 1, 1, FZ);   // 이마 턱(V)
-  h2(hd, B(0.022, 0.46, 0.022), STEEL, 0, -0.02, FC - (FR + 0.16) / 2 * FZ - 0.005, -Math.atan((FR - 0.16) * FZ / 0.46));   // 가운데 능선
+  // 단면 표: [y, 반지름, 앞 능선 돌출] — 앞(−z)에서 ±HPH 안은 반지름이 각도에 '선형'으로 늘어 평면 둘이 능선에서 만난다
+  const HP = [[0.44, 0.0005, 0.0], [0.4, 0.13, 0.25], [0.32, 0.22, 0.12], [0.22, 0.285, 0.05], [0.1, 0.31, 0.03], [0.07, 0.315, 0.08],
+              [0.02, 0.31, 0.2], [-0.08, 0.3, 0.44], [-0.15, 0.29, 0.5], [-0.21, 0.27, 0.2], [-0.27, 0.255, 0.08]];
+  const HZ = 1.08, HC = 0.03, HPH = 1.05;
+  const hR = (i, ph) => { const [, R, P] = HP[i], a = Math.abs(ph); return R * (1 + (a < HPH ? P * (1 - a / HPH) : 0)); };
+  const hPt = (i, ph, off) => { const r = hR(i, ph) + off; return [r * Math.sin(ph), HP[i][0], HC - r * Math.cos(ph) * HZ]; };
+  // 표면 조각: 단면 i0..i1 · 각도 p0..p1 · 표면에서 off 만큼 띄움(금 띠·눈 틈은 같은 표면을 따른다)
+  const patch = (i0, i1, p0, p1, n, off, yMix) => {
+    const pos = [];
+    for (let i = i0; i < i1; i++) for (let k = 0; k < n; k++) {
+      const a0 = p0 + (p1 - p0) * k / n, a1 = p0 + (p1 - p0) * (k + 1) / n;
+      const A = hPt(i, a0, off), B2 = hPt(i, a1, off), Cc = hPt(i + 1, a1, off), D2 = hPt(i + 1, a0, off);
+      pos.push(...A, ...Cc, ...D2, ...A, ...B2, ...Cc);
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g;
+  };
+  // 띠: 단면 i 높이 근처를 위아래 dh 로 감싼 고리(같은 반지름 함수)
+  const band = (y, dh, p0, p1, n, off) => {
+    const i = HP.findIndex(e => e[0] <= y) - 1, t = (HP[i][0] - y) / (HP[i][0] - HP[i + 1][0]);
+    const rr = ph => hR(i, ph) * (1 - t) + hR(i + 1, ph) * t + off, pos = [];
+    for (let k = 0; k < n; k++) {
+      const a0 = p0 + (p1 - p0) * k / n, a1 = p0 + (p1 - p0) * (k + 1) / n;
+      const P = (a, yy) => { const r = rr(a); return [r * Math.sin(a), yy, HC - r * Math.cos(a) * HZ]; };
+      const A = P(a0, y + dh), B2 = P(a1, y + dh), Cc = P(a1, y - dh), D2 = P(a0, y - dh);
+      pos.push(...A, ...Cc, ...D2, ...A, ...B2, ...Cc);
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g;
+  };
+  const TAU = Math.PI * 2, VIS = 6;   // 단면 6번(y 0.02) 아래가 면갑
+  h2(hd, patch(0, VIS, -Math.PI, Math.PI, 16, 0), STEEL);
+  h2(hd, patch(VIS, HP.length - 1, -Math.PI, Math.PI, 16, 0), STEEL_L);
+  h2(hd, patch(0, 5, -0.07, 0.07, 1, 0.012), GOLD);                                   // 앞→뒤 가운데 금 띠
+  h2(hd, patch(0, 5, Math.PI - 0.07, Math.PI + 0.07, 1, 0.012), GOLD);
+  for (const sx of [-1, 1]) h2(hd, patch(1, 5, sx * 0.62 - 0.035, sx * 0.62 + 0.035, 1, 0.008), STEEL_D);   // 판 이음매
+  h2(hd, band(0.075, 0.022, -Math.PI, Math.PI, 24, 0.012), GOLD);                    // 이마 금 띠
+  h2(hd, band(-0.255, 0.018, -Math.PI, Math.PI, 24, 0.012), GOLD);                   // 턱 금 테
   for (const sx of [-1, 1]) {
-    const ex = 0.085, ry = 0.06, r = FR - 0.035;   // 눈 틈 윗부분 높이의 반지름
-    h2(hd, B(0.032, 0.24, 0.03), DARK, sx * ex, 0.07, FC - (r - ex) * FZ - 0.008, -0.12, sx * FA, 0);
+    h2(hd, patch(6, 9, sx * 0.33 - 0.065, sx * 0.33 + 0.065, 1, 0.006), DARK);           // 세로 눈 틈(능선 양옆 판 위)
+    h2(hd, C(0.085, 0.085, 0.03, 12), GOLD, sx * 0.32, 0.02, HC, 0, 0, Math.PI / 2);  // 옆 금 원판
+    h2(hd, C(0.035, 0.035, 0.04, 8), STEEL_L, sx * 0.335, 0.02, HC, 0, 0, Math.PI / 2);
   }
-  for (const sx of [-1, 1]) {
-    h2(hd, C(0.075, 0.075, 0.035, 10), GOLD, sx * 0.31, 0.1, 0.04, 0, 0, Math.PI / 2);
-  }
-  h2(hd, C(0.3, 0.36, 0.16, 10, true, -Math.PI * 0.45, Math.PI * 0.9), mk(0x5c6678, 'd'), 0, -0.2, 0.08, 0.12);
+  h2(hd, C(0.255, 0.3, 0.1, 12, true), STEEL_DS, 0, -0.32, HC, 0, 0, 0, 1, 1, HZ);              // 턱받이
+  h2(hd, C(0.305, 0.305, 0.022, 12, true), GOLD_DS, 0, -0.37, HC, 0, 0, 0, 1, 1, HZ);
+  h2(hd, C(0.29, 0.36, 0.13, 12, true, -Math.PI * 0.42, Math.PI * 0.84), STEEL_DS, 0, -0.3, HC + 0.03, 0.12, 0, 0, 1, 1, 1.08);   // 목가리개
+  h2(hd, C(0.365, 0.365, 0.022, 12, true, -Math.PI * 0.42, Math.PI * 0.84), GOLD_DS, 0, -0.365, HC + 0.038, 0.12, 0, 0, 1, 1, 1.08);
 
   // ---- 몸통: 흉갑 · 목가리개 · 허리띠 · 허리 갑판 · 앞 휘장 · 망토 ----
   const to = K.torsoGrp; hero2Clear(to);
