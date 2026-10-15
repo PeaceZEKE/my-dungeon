@@ -36,7 +36,7 @@ python3 $C/covers.py <커버·영상 폴더> --out "$SCRATCH/thumbs.png"   # 커
 **로딩·크기·성능**
 - [ ] 초기 다운로드 ≤ 50MB(모바일 홈 노출은 ≤ 20MB) · 전체 ≤ 250MB/1,500파일 — sdk-audit [1](v897: 3.76MB 단일 파일, gzip 1.29MB). 크게 키우지 말 것(1MB 마다 플레이어를 몇 %씩 잃는다 — Poki 2026-06-05).
 - [ ] 페이지 열기 → 첫 화면 10초 미만(성공작 기준) — cg-sim `[부팅]`(첫 화면 = max(loadingStop, load)) · `--cpu 4`·`--mbps 10` 으로 저사양·느린 망. 최종은 실기기.
-- [ ] **4GB 램 크롬북에서 부드럽게**(아니면 ChromeOS 에서 꺼진다 — requirements/technical) — 실기기 1~4막. 무거우면 `?voxray=0`·`?pxh`·`?tshadow`·`?ssao=0` 을 저사양에서 자동으로 켜는 프리셋(별도 저품질 빌드는 안 만든다 — 2026-10-14 논의). cg-sim fps 는 비교용.
+- [ ] **4GB 램 크롬북에서 부드럽게**(아니면 ChromeOS 에서 꺼진다 — requirements/technical) — 실기기 1~4막. v900 품질 단계(`?q=high|med|low` · 자동 추정 + 실측으로 실시간 내림 — CLAUDE.md '그래픽 품질 단계(v900)')가 있다 — 실기기에서 자동이 어느 단계를 고르는지·그 단계 fps 를 볼 것. 기능 시험은 `node $C/quality.js`(12항목). cg-sim fps 는 비교용(자동화 브라우저는 늘 높음).
 - [ ] WebGL1 에서 부팅·플레이 — `cg-sim --webgl1` 이 `WebGL1 로 부팅했다` · 오류 0(v897 ✓).
 - [ ] 콘솔 에러 0 — 막·기기마다:
   ```bash
