@@ -1069,14 +1069,14 @@ function hero2Knight(K) { return hero2Lcg(901001, () => {
   h2(hd, patch(0.02, 0.96, PI - 0.06, PI + 0.06, 1, 0.01), SM_G);                             // 뒤 세로 금 띠
   for (const sx of [-1, 1]) h2(hd, patch(0.08, 0.33, sx * 0.72 - 0.035, sx * 0.72 + 0.035, 1, 0.008), SM_G);   // 두개골 판 금 띠
   h2(hd, patch(0.32, 0.37, -PI, PI, 12, 0.012), SM_G);                                        // 이마 금 띠
-  h2(hd, patch(0.49, 0.53, 1.45, 2 * PI - 1.45, 4, 0.01), SM_G);                             // 뒤 가로 금 띠
-  h2(hd, patch(0.71, 0.74, 1.45, 2 * PI - 1.45, 4, 0.01), SM_G);
-  h2(hd, patch(0.8, 0.83, -1.6, 1.6, 6, 0.006), SM_D);                                       // 면갑 ↔ 턱받이 틈
-  h2(hd, patch(0.83, 0.86, -1.6, 1.6, 6, 0.01), SM_G);                                       // 턱받이 윗단 금 테
+  h2(hd, patch(0.49, 0.53, 1.45, 2 * PI - 1.45, 7, 0.016), SM_G);                             // 뒤 가로 금 띠
+  h2(hd, patch(0.71, 0.74, 1.45, 2 * PI - 1.45, 7, 0.016), SM_G);
+  h2(hd, patch(0.8, 0.83, -1.6, 1.6, 7, 0.01), SM_D);                                       // 면갑 ↔ 턱받이 틈
+  h2(hd, patch(0.83, 0.86, -1.6, 1.6, 7, 0.014), SM_G);                                       // 턱받이 윗단 금 테
   h2(hd, patch(0.94, 1.0, -PI, PI, 12, 0.012), SM_G);                                         // 아랫단 금 테
   for (const sx of [-1, 1]) {
-    // 세로 눈 틈 — 능선 양옆 판에 큼직하게 · 위가 넓고 바깥 변이 비스듬한 사다리꼴(4면도 정면)
-    h2(hd, hero2Surf((u, ph, o) => { const t = 0.43 + 0.31 * u, i0 = 0.3, o0 = 0.66 - 0.16 * u; return pt(ringAt(t), sx * (i0 + (o0 - i0) * ph), o); },
+    // 세로 눈 틈 — 능선 양옆 판에 · 위가 조금 넓은 가는 사다리꼴(사용자 지시로 폭을 줄이고 바깥으로 옮김)
+    h2(hd, hero2Surf((u, ph, o) => { const t = 0.43 + 0.31 * u, c = 0.53 - 0.08 * u, w = 0.09 - 0.04 * u; return pt(ringAt(t), sx * (c - w + 2 * w * ph), o); },
       u => { const R = ringAt(0.43 + 0.31 * u); return [R[1], R[0], R[2]]; }, 0, 1, 0, 1, 1, 3, 0.008, sx < 0), SM_D);
     const Rr = ringAt(0.46), rr = rAt(Rr, sx * PI / 2) + 0.01, cx = Rr[1] + sx * rr, cy = Rr[0], cz = Rr[2] + 0.02;
     h2(hd, C(0.1, 0.1, 0.035, 6), GOLD, cx, cy, cz, 0, 0, PI / 2);                           // 옆 금 원판(4면도: 지름이 투구 높이의 1/4)
@@ -1151,7 +1151,12 @@ function hero2Knight(K) { return hero2Lcg(901001, () => {
     h2(g, SP(0.1, 4, 3), STEEL, 0, -0.31, 0);
     h2(g, C(0.1, 0.11, 0.2, 6), STEEL, 0, -0.42, 0);
     h2(g, C(0.12, 0.12, 0.03, 6), GOLD, 0, -0.5, 0);
-    h2(g, B(0.16, 0.13, 0.16), STEEL_D, 0, -0.56, 0);
+    if (sign > 0) {   // 오른손 — 검 손잡이(검 그룹 원점 = 팔 −0.55, 손잡이는 앞뒤 z 로 지나간다)를 쥔 주먹
+      h2(g, C(0.115, 0.1, 0.07, 6), STEEL_D, 0, -0.47, 0);                 // 손목 덮개
+      h2(g, B(0.13, 0.13, 0.13), STEEL, 0.012, -0.565, 0);                  // 손등(바깥) — 아래팔만 한 크기
+      h2(g, B(0.045, 0.12, 0.135), STEEL_D, -0.07, -0.58, 0);               // 손잡이를 감은 손가락(몸 쪽 · 아래)
+      h2(g, B(0.06, 0.04, 0.055), STEEL_L, -0.04, -0.5, -0.05);             // 손잡이 위로 걸친 엄지
+    } else h2(g, B(0.16, 0.13, 0.16), STEEL_D, 0, -0.56, 0);
     c3MergeStatic(pd); c3MergeStatic(g, [pd]);   // 어깨 갑옷은 따로 묶어 둔다(뷰어 검증에서 따로 보인다)
     keep.forEach(c => arm.add(c));   // 검·방패 그룹은 맨 뒤로(순서만 바뀐다)
   }
@@ -1173,15 +1178,17 @@ function hero2Knight(K) { return hero2Lcg(901001, () => {
   // ---- 검: 금 십자 손잡이 · 가죽 자루 · 금 머리 · 홈 ----
   const sw = K.swordGrp;
   hero2Clear(sw, [K.blade, K.sPoint]);
-  K.blade.geometry.dispose(); K.blade.geometry = B(0.15, 1.06, 0.045); K.blade.position.y = 0.55;
-  K.sPoint.geometry.dispose(); K.sPoint.geometry = new THREE.ConeGeometry(0.105, 0.26, 4); K.sPoint.position.y = 1.21;
+  // 검 그룹 원점(오른손 주먹 자리)에 손잡이 가운데가 온다 — 손잡이 ±0.11 · 십자 손잡이 0.12 · 날 0.14~1.08 · 끝 1.32(예전 칼끝 1.34 와 거의 같다)
+  K.blade.geometry.dispose(); K.blade.geometry = B(0.11, 0.94, 0.03); K.blade.position.y = 0.61;   // 날을 얇게(예전 0.15 × 0.045)
+  { const pg = new THREE.ConeGeometry(1, 0.24, 4); pg.scale(0.055, 1, 0.016);   // 날과 같은 폭·두께로 납작한 칼끝
+    K.sPoint.geometry.dispose(); K.sPoint.geometry = pg; K.sPoint.rotation.y = 0; K.sPoint.position.y = 1.2; }
   const hilt = new THREE.Group(); sw.add(hilt);
-  h2(hilt, B(0.035, 0.86, 0.05), STEEL_D, 0, 0.52, 0);
-  h2(hilt, B(0.5, 0.07, 0.09), GOLD, 0, 0, 0);
-  for (const sx of [-1, 1]) h2(hilt, SP(0.05, 4, 3), GOLD, sx * 0.26, 0, 0);
-  h2(hilt, B(0.07, 0.07, 0.11), CRIM, 0, 0, 0);
-  h2(hilt, C(0.035, 0.04, 0.24, 6), LEATH, 0, -0.14, 0);
-  h2(hilt, SP(0.065, 4, 3), GOLD, 0, -0.29, 0);
+  h2(hilt, B(0.022, 0.8, 0.036), STEEL_D, 0, 0.6, 0);                       // 날 가운데 홈
+  h2(hilt, B(0.4, 0.06, 0.07), GOLD, 0, 0.12, 0);                           // 십자 손잡이
+  for (const sx of [-1, 1]) h2(hilt, SP(0.042, 4, 3), GOLD, sx * 0.21, 0.12, 0);
+  h2(hilt, B(0.06, 0.06, 0.09), CRIM, 0, 0.12, 0);
+  h2(hilt, C(0.028, 0.032, 0.22, 6), LEATH, 0, 0, 0);                       // 손잡이(주먹이 가운데를 쥔다)
+  h2(hilt, SP(0.055, 4, 3), GOLD, 0, -0.14, 0);                             // 머리
   c3MergeStatic(hilt);
   // ---- 방패: 금 테 · 붉은 바탕 · 은 십자 · 금 돌기(양면) ----
   const shg = K.shieldGrp; hero2Clear(shg);
