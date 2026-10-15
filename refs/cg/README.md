@@ -2,6 +2,7 @@
 
 GPT(codex image_generation, ChatGPT 구독)로 뽑았다. 방향 B(세 직업 + 지옥의 군주) · GPT 가 그린 제목 · 가로는 후보 1(제목 가운데 위) — 사용자 선택.
 참고 이미지: refs/ui/초상화/knight_512.png · witch_512.png · archer_512.png · refs/배경/4막/4막_키아트_1.webp(처음 B) → 이후 B 결과(src_wide_1536x1024.png)를 참고로 세 규격을 다시 뽑음.
+궁수 후드 제거(사용자 지시 — 원래 후드를 안 쓴다): 세 장 각각을 첫 참고로 + archer_512.png 를 둘째 참고로 "궁수만 후드 없이 · 금발 높은 포니테일 · 청록 스카프, 나머지는 그대로" 로 다시 그림(p_fix).
 가로 1536×1024 → 위를 기준으로 1920×1080 크롭(1.25배) · 세로 1024×1536 → 800×1200 · 정사각 1254 → 800. 검사: python3 .claude/skills/dl-crazygames-check/scripts/covers.py refs/cg/cover_*.png (✗0 ⚠0).
 
 ## 프롬프트 — 처음 B(wide_b)
