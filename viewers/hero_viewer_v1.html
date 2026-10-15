@@ -987,6 +987,26 @@ function hero2Clear(grp, keep) {
   grp.children.slice().forEach(ch => { if (ch.isMesh && !(keep && keep.includes(ch))) { grp.remove(ch); ch.geometry.dispose(); } });
 }
 
+// 기사 투구 단면 표(HERO2) — [y, 반지름, 앞 능선 돌출, 뒤 벌어짐, 앞뒤 기울기(z 1당 y), 가로 배율]. 코덱스 4면도(refs/ui/초상화/knight_helm_4view.png) 실루엣에 맞춘 값.
+const HELM_HP = [
+  [0.46, 0.0005, 0, 0, 0.0, 1.0],
+  [0.42, 0.0831, 0.0257, 0, 0.0, 1.0061],
+  [0.34, 0.1738, 0.0517, 0, -0.0009, 1.0115],
+  [0.24, 0.2642, 0.0762, 0, -0.002, 1.0076],
+  [0.12, 0.2944, 0.1134, 0, 0.0011, 1.0005],
+  [0.07, 0.2934, 0.1527, 0, 0.0035, 0.9952],
+  [0.02, 0.292, 0.2563, 0, 0.0024, 0.9941],
+  [-0.08, 0.29, 0.3601, 0, -0.0012, 0.9963],
+  [-0.15, 0.2753, 0.2758, 0.0, -0.0021, 1.0073],
+  [-0.21, 0.2602, 0.1974, 0.06, -0.0006, 1.0206],
+  [-0.26, 0.2557, 0.1274, 0.1225, 0.009, 1.033],
+  [-0.32, 0.2599, 0.0943, 0.1955, 0.1045, 0.8711],
+  [-0.37, 0.2643, 0.0616, 0.2704, 0.1999, 0.7011]];
+const HELM_SY = 1.0107, HELM_HZ = 1.1584, HELM_VIS_Y = 0.02, HELM_CHIN_Y = -0.26, HELM_RONDEL = [0.0562, 0.0901];   // 맞춘 결과 IoU 정면 0.943 · 측면 0.873 · 후면 0.933 · 위 0.911
+// 기사 어깨 갑옷(HERO2) — 코덱스 참고도(refs/ui/초상화/knight_pauldron_4view.png) 실루엣에 맞춘 구조 모델(pfit3 — 바깥 측면 0.793 · 위 0.905 · 정면 0.478 — 정면 참고도는 다른 두 장과 안 맞아 가중치를 낮췄다).
+// 덮개: 타원 단면 일곱(y = top·cos(t)^c1 · 반지름 cr·sin(t)) · 판 k(셋): y0 − k·hL·0.85 부터 hL 아래로, 반지름 cr + 0.006 + k·dr → 아래 끝 +fl.
+// 공용: 앞뒤 배율 HZ · 가로 배율 X · 기울기 T(z 1당 y — 앞이 높다) · 판이 감싸는 각 arc(π 배수, 바깥 중심) · 원판 [ry, rz, rr, ra(0 = 앞, π/2 = 바깥)].
+const PAULD = { oy: 0.06, top: 0.1955, c1: 1.1762, c2: 0.9669, c3: 0.9813, cr: 0.1877, y0: 0.0054, hL: 0.0922, dr: 0.0192, fl: 0.0245, T: -0.3172, HZ: 1.1786, X: 1.0152, arc: 1.4171, ry: 0.0274, rz: 0.0181, rr: 0.08, ra: 1.1172 };
 function hero2Knight(K) { return hero2Lcg(901001, () => {
   const { mk, S, M, D } = hero2Mats();
   const STEEL = mk(0x8f9bb0, 'm'), STEEL_L = mk(0xb4bccb, 'm'), STEEL_D = mk(0x5c6678, 'm'), GOLD = mk(0xc89a3e);
@@ -998,15 +1018,15 @@ function hero2Knight(K) { return hero2Lcg(901001, () => {
 
   // ---- 투구: 코덱스 4면도(refs/ui/초상화/knight_helm_4view.png) — 둥근 두개골 + 앞에서 뒤로 넘어가는 금 띠 셋 · 이마 금 띠 ·
   //      부리처럼 튀어나온 각진 면갑(가운데 능선) · 면갑 양옆 판의 세로 눈 틈 · 벌어진 턱받이와 목가리개(금 테) · 옆 금 원판 ----
-  const hd = K.headGrp; hero2Clear(hd);
-  // 단면 표: [y, 반지름, 앞 능선 돌출] — 앞(−z)에서 ±HPH 안은 반지름이 각도에 '선형'으로 늘어 평면 둘이 능선에서 만난다
-  const HP = [[0.44, 0.0005, 0.0], [0.4, 0.13, 0.25], [0.32, 0.22, 0.12], [0.22, 0.285, 0.05], [0.1, 0.31, 0.03], [0.07, 0.315, 0.08],
-              [0.02, 0.31, 0.2], [-0.08, 0.3, 0.44], [-0.15, 0.29, 0.5], [-0.21, 0.27, 0.2], [-0.27, 0.255, 0.08]];
-  const HZ = 1.08, HC = 0.03, HPH = 1.05;
-  const hR = (i, ph) => { const [, R, P] = HP[i], a = Math.abs(ph); return R * (1 + (a < HPH ? P * (1 - a / HPH) : 0)); };
-  const hPt = (i, ph, off) => { const r = hR(i, ph) + off; return [r * Math.sin(ph), HP[i][0], HC - r * Math.cos(ph) * HZ]; };
-  // 표면 조각: 단면 i0..i1 · 각도 p0..p1 · 표면에서 off 만큼 띄움(금 띠·눈 틈은 같은 표면을 따른다)
-  const patch = (i0, i1, p0, p1, n, off, yMix) => {
+  const hd0 = K.headGrp; hero2Clear(hd0);
+  const hd = new THREE.Group(); hd.scale.y = HELM_SY; hd0.add(hd);
+  // 단면 표: [y, 반지름, 앞 능선 돌출 P, 뒤 벌어짐 Q] — 앞(−z)에서 ±HPH 안은 반지름이 각도에 '선형'으로 늘어 평면 둘이 능선에서 만난다.
+  // 값은 4면도 실루엣과 겹쳐 맞춘 것(silcmp — 정면·측면·후면·위 IoU).
+  const HP = HELM_HP;
+  const HZ = HELM_HZ, HC = 0.03, HPH = 1.05;
+  const hR = (i, ph) => { const [, R, P, Q] = HP[i], a = Math.abs(ph); return R * (1 + (a < HPH ? P * (1 - a / HPH) : 0) + (Q || 0) * Math.max(0, -Math.cos(ph))); };
+  const hPt = (i, ph, off) => { const r = hR(i, ph) + off, z = -r * Math.cos(ph) * HZ; return [r * Math.sin(ph) * (HP[i][5] || 1), HP[i][0] + (HP[i][4] || 0) * z, HC + z]; };
+  const patch = (i0, i1, p0, p1, n, off) => {
     const pos = [];
     for (let i = i0; i < i1; i++) for (let k = 0; k < n; k++) {
       const a0 = p0 + (p1 - p0) * k / n, a1 = p0 + (p1 - p0) * (k + 1) / n;
@@ -1015,35 +1035,34 @@ function hero2Knight(K) { return hero2Lcg(901001, () => {
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g;
   };
-  // 띠: 단면 i 높이 근처를 위아래 dh 로 감싼 고리(같은 반지름 함수)
-  const band = (y, dh, p0, p1, n, off) => {
+  const band = (y, dh, n, off) => {
     const i = HP.findIndex(e => e[0] <= y) - 1, t = (HP[i][0] - y) / (HP[i][0] - HP[i + 1][0]);
     const rr = ph => hR(i, ph) * (1 - t) + hR(i + 1, ph) * t + off, pos = [];
+    const TT = (HP[i][4] || 0) * (1 - t) + (HP[i + 1][4] || 0) * t, XX = (HP[i][5] || 1) * (1 - t) + (HP[i + 1][5] || 1) * t;
     for (let k = 0; k < n; k++) {
-      const a0 = p0 + (p1 - p0) * k / n, a1 = p0 + (p1 - p0) * (k + 1) / n;
-      const P = (a, yy) => { const r = rr(a); return [r * Math.sin(a), yy, HC - r * Math.cos(a) * HZ]; };
+      const a0 = -Math.PI + 2 * Math.PI * k / n, a1 = -Math.PI + 2 * Math.PI * (k + 1) / n;
+      const P = (a, yy) => { const r = rr(a), z = -r * Math.cos(a) * HZ; return [r * Math.sin(a) * XX, yy + TT * z, HC + z]; };
       const A = P(a0, y + dh), B2 = P(a1, y + dh), Cc = P(a1, y - dh), D2 = P(a0, y - dh);
       pos.push(...A, ...Cc, ...D2, ...A, ...B2, ...Cc);
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g;
   };
-  const TAU = Math.PI * 2, VIS = 6;   // 단면 6번(y 0.02) 아래가 면갑
+  const iy = y => HP.findIndex(e => Math.abs(e[0] - y) < 1e-6);
+  const VIS = iy(HELM_VIS_Y), CHIN = iy(HELM_CHIN_Y), N = HP.length - 1;
   h2(hd, patch(0, VIS, -Math.PI, Math.PI, 16, 0), STEEL);
-  h2(hd, patch(VIS, HP.length - 1, -Math.PI, Math.PI, 16, 0), STEEL_L);
-  h2(hd, patch(0, 5, -0.07, 0.07, 1, 0.012), GOLD);                                   // 앞→뒤 가운데 금 띠
-  h2(hd, patch(0, 5, Math.PI - 0.07, Math.PI + 0.07, 1, 0.012), GOLD);
-  for (const sx of [-1, 1]) h2(hd, patch(1, 5, sx * 0.62 - 0.035, sx * 0.62 + 0.035, 1, 0.008), STEEL_D);   // 판 이음매
-  h2(hd, band(0.075, 0.022, -Math.PI, Math.PI, 24, 0.012), GOLD);                    // 이마 금 띠
-  h2(hd, band(-0.255, 0.018, -Math.PI, Math.PI, 24, 0.012), GOLD);                   // 턱 금 테
+  h2(hd, patch(VIS, CHIN, -Math.PI, Math.PI, 16, 0), STEEL_L);
+  h2(hd, patch(CHIN, N, -Math.PI, Math.PI, 16, 0), STEEL);
+  h2(hd, patch(0, VIS - 1, -0.07, 0.07, 1, 0.012), GOLD);                              // 앞→뒤 가운데 금 띠
+  h2(hd, patch(0, N, Math.PI - 0.07, Math.PI + 0.07, 1, 0.012), GOLD);
+  for (const sx of [-1, 1]) h2(hd, patch(1, VIS - 1, sx * 0.62 - 0.035, sx * 0.62 + 0.035, 1, 0.008), STEEL_D);   // 판 이음매
+  h2(hd, band(HP[VIS - 1][0] + 0.005, 0.022, 24, 0.012), GOLD);                        // 이마 금 띠
+  h2(hd, band(HP[CHIN][0], 0.016, 24, 0.012), GOLD);                                   // 턱받이 윗단 금 테
+  h2(hd, band(HP[N][0] + 0.016, 0.016, 24, 0.01), GOLD);                               // 아랫단 금 테
   for (const sx of [-1, 1]) {
-    h2(hd, patch(6, 9, sx * 0.33 - 0.065, sx * 0.33 + 0.065, 1, 0.006), DARK);           // 세로 눈 틈(능선 양옆 판 위)
-    h2(hd, C(0.085, 0.085, 0.03, 12), GOLD, sx * 0.32, 0.02, HC, 0, 0, Math.PI / 2);  // 옆 금 원판
-    h2(hd, C(0.035, 0.035, 0.04, 8), STEEL_L, sx * 0.335, 0.02, HC, 0, 0, Math.PI / 2);
+    h2(hd, patch(VIS, VIS + 3, sx * 0.33 - 0.065, sx * 0.33 + 0.065, 1, 0.006), DARK);   // 세로 눈 틈(능선 양옆 판 위)
+    h2(hd, C(HELM_RONDEL[1], HELM_RONDEL[1], 0.03, 12), GOLD, sx * 0.31, HELM_RONDEL[0], HC, 0, 0, Math.PI / 2);   // 옆 금 원판
+    h2(hd, C(0.035, 0.035, 0.04, 8), STEEL_L, sx * 0.325, HELM_RONDEL[0], HC, 0, 0, Math.PI / 2);
   }
-  h2(hd, C(0.255, 0.3, 0.1, 12, true), STEEL_DS, 0, -0.32, HC, 0, 0, 0, 1, 1, HZ);              // 턱받이
-  h2(hd, C(0.305, 0.305, 0.022, 12, true), GOLD_DS, 0, -0.37, HC, 0, 0, 0, 1, 1, HZ);
-  h2(hd, C(0.29, 0.36, 0.13, 12, true, -Math.PI * 0.42, Math.PI * 0.84), STEEL_DS, 0, -0.3, HC + 0.03, 0.12, 0, 0, 1, 1, 1.08);   // 목가리개
-  h2(hd, C(0.365, 0.365, 0.022, 12, true, -Math.PI * 0.42, Math.PI * 0.84), GOLD_DS, 0, -0.365, HC + 0.038, 0.12, 0, 0, 1, 1, 1.08);
 
   // ---- 몸통: 흉갑 · 목가리개 · 허리띠 · 허리 갑판 · 앞 휘장 · 망토 ----
   const to = K.torsoGrp; hero2Clear(to);
@@ -1072,23 +1091,40 @@ function hero2Knight(K) { return hero2Lcg(901001, () => {
     const keep = arm.children.filter(c => !c.isMesh);
     hero2Clear(arm);
     const g = new THREE.Group(); arm.add(g);
-    // 어깨: 둥근 덮개 + 위팔을 감싸며 내려오는 판 셋(판마다 금 테) + 앞쪽 금 원판(초상화)
-    const oc = sign > 0 ? Math.PI / 2 : -Math.PI / 2, arc = Math.PI * 1.8;
-    h2(g, SP(0.205, 8, 5, 0, Math.PI * 0.55), STEEL_L, sign * 0.03, 0.05, 0, 0, 0, 0, 1.1, 0.85, 1.05);
-    h2(g, C(0.228, 0.228, 0.022, 10, true, oc - arc / 2, arc), GOLD_DS, sign * 0.03, 0.025, 0, 0, 0, 0, 1, 1, 0.97);
-    for (let i = 0; i < 3; i++) {
-      const rt = 0.212 - i * 0.016, rb = 0.232 - i * 0.016, y = -0.03 - i * 0.062, x = sign * (0.035 - i * 0.004);
-      h2(g, C(rt, rb, 0.07, 10, true, oc - arc / 2, arc), i % 2 ? STEEL_DS : STEEL_LDS, x, y, 0, 0, 0, sign * 0.1);
-      h2(g, C(rb + 0.004, rb + 0.004, 0.018, 10, true, oc - arc / 2, arc), GOLD_DS, x, y - 0.035, 0, 0, 0, sign * 0.1);
+    // 어깨: 볏 달린 둥근 덮개 + 계단처럼 내려가는 판 셋(금 테) + 앞 바깥 금 원판 — 위 PAULD 표
+    const pd = new THREE.Group(); pd.name = 'pauld'; pd.position.set(sign * 0.03, PAULD.oy, 0); g.add(pd);
+    const PA = PAULD, ocA = sign * Math.PI / 2, arcA = Math.PI * PA.arc;
+    const ring = (y, R, ph, off) => { const rr = R + off, z = -rr * Math.cos(ph) * PA.HZ; return [rr * Math.sin(ph) * PA.X, y + PA.T * z, z]; };
+    const sheet = (rs, p0, p1, n, off) => {
+      const pos = [];
+      for (let i = 0; i < rs.length - 1; i++) for (let k = 0; k < n; k++) {
+        const a0 = p0 + (p1 - p0) * k / n, a1 = p0 + (p1 - p0) * (k + 1) / n;
+        const A = ring(rs[i][0], rs[i][1], a0, off), B2 = ring(rs[i][0], rs[i][1], a1, off), Cc = ring(rs[i + 1][0], rs[i + 1][1], a1, off), D2 = ring(rs[i + 1][0], rs[i + 1][1], a0, off);
+        pos.push(...A, ...Cc, ...D2, ...A, ...B2, ...Cc);
+      }
+      const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gg.computeVertexNormals(); return gg;
+    };
+    const capR = []; for (let i = 0; i <= 6; i++) { const t = Math.PI / 2 * i / 6; capR.push([PA.top * Math.pow(Math.cos(t), PA.c1), PA.cr * Math.max(0.001, Math.sin(t))]); }
+    h2(pd, sheet(capR, -Math.PI, Math.PI, 16, 0), STEEL_L);
+    h2(pd, sheet(capR.slice(0, 6), -0.07, 0.07, 1, 0.01), GOLD);                         // 볏(앞→뒤 금 띠)
+    h2(pd, sheet(capR.slice(0, 6), Math.PI - 0.07, Math.PI + 0.07, 1, 0.01), GOLD);
+    for (let k = 0; k < 3; k++) {
+      const yt = PA.y0 - k * PA.hL * 0.85, r0 = PA.cr + 0.006 + k * PA.dr, rs = [[yt, r0], [yt - PA.hL, r0 + PA.fl]];
+      const lg = new THREE.Group(); pd.add(lg);
+      lg.add(new THREE.Mesh(sheet(rs, ocA - arcA / 2, ocA + arcA / 2, 12, 0), k % 2 ? STEEL_DS : STEEL_LDS));
+      lg.add(new THREE.Mesh(sheet([[yt - PA.hL + 0.02, r0 + PA.fl * 0.8], [yt - PA.hL, r0 + PA.fl]], ocA - arcA / 2, ocA + arcA / 2, 12, 0.006), GOLD_DS));   // 판 아래 금 테
     }
-    h2(g, C(0.065, 0.065, 0.025, 10), GOLD, -sign * 0.06, 0.0, -0.2, Math.PI / 2);
-    h2(g, C(0.03, 0.03, 0.03, 8), STEEL_D, -sign * 0.06, 0.0, -0.212, Math.PI / 2);
+    { const R0 = PA.cr, ra = PA.ra, rn = new THREE.Vector3(sign * Math.sin(ra), 0, -Math.cos(ra));
+      const cx = sign * R0 * Math.sin(ra) * PA.X, cz = -R0 * Math.cos(ra) * PA.HZ + PA.rz, cy = PA.ry;
+      h2(pd, C(PA.rr, PA.rr, 0.03, 12), GOLD, cx + rn.x * 0.025, cy, cz + rn.z * 0.025).quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), rn);
+      h2(pd, C(PA.rr * 0.55, PA.rr * 0.55, 0.035, 10), STEEL_L, cx + rn.x * 0.04, cy, cz + rn.z * 0.04).quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), rn);
+      h2(pd, SP(PA.rr * 0.3, 6, 4), GOLD, cx + rn.x * 0.06, cy, cz + rn.z * 0.06); }
     h2(g, C(0.095, 0.09, 0.2, 8), STEEL_D, 0, -0.2, 0);
     h2(g, SP(0.1, 6, 4), STEEL, 0, -0.31, 0);
     h2(g, C(0.1, 0.11, 0.2, 8), STEEL, 0, -0.42, 0);
     h2(g, C(0.12, 0.12, 0.03, 8), GOLD, 0, -0.5, 0);
     h2(g, B(0.16, 0.13, 0.16), STEEL_D, 0, -0.56, 0);
-    c3MergeStatic(g);
+    c3MergeStatic(pd); c3MergeStatic(g, [pd]);   // 어깨 갑옷은 따로 묶어 둔다(뷰어 검증에서 따로 보인다)
     keep.forEach(c => arm.add(c));   // 검·방패 그룹은 맨 뒤로(순서만 바뀐다)
   }
   // ---- 다리: 허벅지 · 무릎 · 정강이 · 발 ----
