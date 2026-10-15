@@ -22,15 +22,15 @@ node $C/cg-sim.js --webgl1                 # WebGL1 폴백 부팅
 python3 $C/covers.py <커버·영상 폴더> --out "$SCRATCH/thumbs.png"   # 커버·영상 규격 + 200x112 미리보기
 ```
 - `cg-sim.js` 는 진짜 SDK 요청을 막고 `window.CrazyGames.SDK` 를 가짜로 심어 호출을 시각과 함께 기록한다. 가짜의 광고 동작은 `sdk.crazygames.com/crazygames-sdk-v3.js` 를 읽고 맞췄다(2026-10-15): **`requestAd` 는 아무것도 반환하지 않고 결과는 콜백뿐**, Basic Launch 면 그 자리에서 `adError({code:'adsDisabledBasicLaunch'})`, `adError` 가 없으면 `adFinished` 를 대신 부른다.
-- **v897 결과(2026-10-15)**: sdk-audit ✗ 8 · ⚠ 5 / cg-sim 기본(`--ad error`) ✗ 3(1클릭 뒤 gameplayStart 없음 · adError 인데 보상 · locale) · `--ad finish` ✗ 8(+ 광고가 끝나기 전 보상 · 음소거 시점 · 미드게임이 광고 중에 진행) — 아래 1절의 알려진 숙제다. 고친 판을 흉내 낸 사본(콜백식 광고 + 1클릭 gameplayStart)에서는 광고 관련 ✗ 가 전부 ✓ 로 바뀌는 것을 확인했다.
+- **v897 결과(2026-10-15)**: sdk-audit ✗ 8 · ⚠ 5 / cg-sim 기본(`--ad error`) ✗ 3(1클릭 뒤 gameplayStart 없음 · adError 인데 보상 · locale) · `--ad finish` ✗ 8(+ 광고가 끝나기 전 보상 · 음소거 시점 · 미드게임이 광고 중에 진행) — 아래 1절의 숙제였다. **v898 결과(2026-10-15)**: sdk-audit ✗ 0 · ⚠ 3(Data 모듈 · 부활 카운트다운 · safe-area) / cg-sim `--ad error` ✗ 0 · `--ad finish --touch --cpu 4` ✗ 0(⚠ Data 모듈) — 고친 내용은 CLAUDE.md 'CrazyGames 준수사항' v898 절. cg-sim 이 못 보는 것(iframe 회전 · 첫 방문 언어 다시 열기 · muteAudio · Basic 사전 감지 · 부활 실패 · 광고 중 정지 · 콜백 시간 초과 · 신규/기존 유저 분기)은 페이지에 가짜 SDK 를 심어 따로 시험했다(전부 ✓).
 - 숫자는 SwiftShader(소프트웨어 GL) 값이다 — **로드 시간·fps 절대값은 실기기가 아니다.** `--cpu 1 ↔ 4`, 플래그 켬/끔 비율로만 본다(CLAUDE.md '…비율만 의미가 있다'). 크롬북·폰 판정은 실기기로.
 - 하네스·cg-sim 을 한 서버에 여럿 동시에 돌리지 말 것(CLAUDE.md v827·v881 — `goto` 시간 초과).
 
 ## 1. Basic Launch 제출 전 (P0 — ✗ 가 하나라도 있으면 내지 않는다)
 
 **첫 60초** — Basic 판정은 평균 플레이 시간·1분 전환·D1 을 다른 게임과 비교한다(docs 첫 페이지 · basic-launch-metrics). 통과·탈락을 가른 것은 콘텐츠 깊이가 아니라 첫 1분이었다(개발자 사례 One More Fly · Cyber Gomoku · Poki Vortella).
-- [ ] 신규 유저(저장 없음)가 **1클릭으로 1층 전투**에 들어간다 — 지금은 캐릭터 선택 → 마을 → 구덩이까지 걷기. cg-sim `캐릭터 1클릭 → gameplayStart` 가 ✓ 이고 `(1층)` 이어야 한다(`마을` 이면 ⚠ — 신호만 앞당긴 것).
-- [ ] `gameplayStart` 를 **처음 조작 가능한 순간**에 부른다 — SDK 가 있으면 초기 다운로드를 로딩 시작 → 첫 gameplayStart 로 잰다(requirements/technical).
+- [x] 신규 유저(저장 없음)가 **1클릭으로 1층 전투**에 들어간다 — v898 `quickStartDungeon`(`?quick=0` 이면 v897 처럼 마을부터 — 기존 유저는 늘 마을). cg-sim `캐릭터 1클릭 → gameplayStart` 가 ✓ 이고 `(1층)` 이어야 한다(`마을` 이면 ⚠ — 신호만 앞당긴 것).
+- [x] `gameplayStart` 를 **처음 조작 가능한 순간**에 부른다(v898 — 신규 유저는 1층 `startFloor` · 기존 유저의 마을은 아직 플레이로 안 친다 — Full 전에 볼 것) — SDK 가 있으면 초기 다운로드를 로딩 시작 → 첫 gameplayStart 로 잰다(requirements/technical).
 - [ ] 10초 안에 첫 적, 60초 안에 첫 처치 + 상자 또는 레벨업 · 조작 안내는 막지 않는 오버레이(텍스트 창 없음) · 1~3층에서 첫 사망이 안 나온다 — 새 저장으로 녹화하거나 `dl-playbot` 1~3층.
 
 **로딩·크기·성능**
@@ -49,10 +49,10 @@ python3 $C/covers.py <커버·영상 폴더> --out "$SCRATCH/thumbs.png"   # 커
 **화면·입력**
 - [ ] DPR 1 에서 글씨가 읽힌다 — 창 모드 iframe 907×510·1216×684·1077×606·821×462 · 전체화면 1366×768·1920×1080·1536×864·1280×720 · 모바일 800×450 · 태블릿 1080×607(requirements/gameplay):
   `node .claude/skills/dl-device-check/scripts/devices.js --vp cg907:907x510 --vp cg821:821x462 --vp cg1216:1216x684 --vp fs1366:1366x768 --vp mob:800x450:touch --vp tab:1080x607:touch --floor 5 --out "$SCRATCH/cg-dev"` → `summary.md` 의 작은 글씨 열.
-- [ ] iframe 안에서는 v816 가로 돌려 그리기를 끈다 · 제출 때 방향 '가로'(방향은 제출 설정이라 직접 잠글 필요 없다 — requirements/technical) — sdk-audit [7] ROT_ON.
+- [x] iframe 안에서는 v816 가로 돌려 그리기를 끈다(v898 `inFrame` · `?rotframe=1` 이면 예전처럼) · 제출 때 방향 '가로'(방향은 제출 설정이라 직접 잠글 필요 없다 — requirements/technical) — sdk-audit [7] ROT_ON.
 - [ ] 게임 안 자체 전체화면 버튼 없음 · 외부 링크·다른 게임 홍보·앱스토어 링크 없음 — sdk-audit [7](v897 ✓ — `requestFullscreen` 은 iframe 밖 첫 터치에서만).
 - [ ] AZERTY(물리 키 `e.code` — v897 ✓) · Esc 는 전체화면 종료라 일시정지를 Esc 에만 맡기지 않는다 · Ctrl/Cmd+W 를 막지 않는다 · 144/165Hz 에서 이동·판정이 같다 — 이동·판정은 `clock.getDelta()` dt 기반(상한 0.05)이라 같다. 다만 `tick` 의 60fps 제한(`FRAME_MIN − 0.5`) 때문에 **144Hz 는 3프레임에 1번 = 48fps · 165Hz 55fps**(120Hz 는 60) — 고주사율 실기기에서 부드러움을 볼 것.
-- [ ] 언어: SDK `user.systemInfo.locale` → 없으면 영어 — sdk-audit [5]·cg-sim `[SDK 기능]`. 지금은 저장값 → `navigator.language` → en(`detectLang`). 영어 문장 교정 · 품질이 낮은 번역(es·pt·ru)은 빼는 것도 방법(번역은 '정확하고 품질이 높아야' — requirements/gameplay).
+- [x] 언어: SDK `user.systemInfo.locale` → 없으면 영어 — sdk-audit [5]·cg-sim `[SDK 기능]`. v898: 고른 언어 → 기억한 SDK 로캘(`dungeon_lang_cg`) → `navigator.language` → en · 처음 방문에 다르면 아무것도 안 눌렀을 때 한 번 다시 연다(`cgApplyLocale` · `?cglang=0`). 영어 문장 교정 · 품질이 낮은 번역(es·pt·ru)은 빼는 것도 방법(번역은 '정확하고 품질이 높아야' — requirements/gameplay).
 
 **CLAUDE.md 준수사항 셋 — 되돌리지 말 것**
 - [ ] **광고 중 게임 오디오 음소거** `SFX.suspendForAd()`/`resumeAfterAd()` — 소리가 전부 SFX 의 AudioContext 하나를 거치는지(sdk-audit [4] '오디오 생성처'). **음소거는 광고가 실제로 시작될 때(adStarted)**, 해제는 adFinished/adError 뒤 — cg-sim `--ad finish` 의 `adStarted 에 음소거`·`adFinished 뒤 음소거 해제`.
@@ -60,9 +60,9 @@ python3 $C/covers.py <커버·영상 폴더> --out "$SCRATCH/thumbs.png"   # 커
 - [ ] **미드게임 자체 하한 2분**(`lastMidgameAt < 120000`) — sdk-audit [3]. SDK 도 3분에 최대 1번으로 자동 제한한다.
 
 **광고 코드(보상형·미드게임 — 한 번에 고칠 것)** — requirements/ads · sdk/video-ads
-- [ ] `requestAd(type, { adStarted, adFinished, adError })` 콜백식. 보상은 **adFinished 에서만**, **adError 면 보상 없이** 원래대로(실패 콜백). `await requestAd(...)` 뒤에 보상을 주면 Basic Launch·광고 차단·로드 실패에서 공짜 부활·리롤·골드 2배가 된다(v897 `cgShowRewarded` — cg-sim `--ad error` ✗).
-- [ ] 미드게임은 adFinished/adError 가 올 때까지 진행(`onDone`)·UI 를 막는다 — cg-sim `--ad finish` `미드게임: 광고가 도는 중에 진행` 이 ✗ 면 안 된다.
-- [ ] Basic 동안(adError `adsDisabledBasicLaunch`)에는 광고 버튼을 숨기고 골드 부활만 남긴다 — 지금 `cgAdsAvailable = env === 'crazygames'` 라 Basic 에도 보인다.
+- [x] `requestAd(type, { adStarted, adFinished, adError })` 콜백식(v898 `cgRequestAd`). 보상은 **adFinished 에서만**, **adError 면 보상 없이** 원래대로(실패 콜백). `await requestAd(...)` 뒤에 보상을 주면 Basic Launch·광고 차단·로드 실패에서 공짜 부활·리롤·골드 2배가 된다(v897 `cgShowRewarded` — cg-sim `--ad error` ✗).
+- [x] 미드게임은 adFinished/adError 가 올 때까지 진행(`onDone`)·UI 를 막는다(v898 `cgAdBlock` — 메인 루프 정지 + 화면 막) — cg-sim `--ad finish` `미드게임: 광고가 도는 중에 진행` 이 ✗ 면 안 된다.
+- [x] Basic 동안(adError `adsDisabledBasicLaunch`)에는 광고 버튼을 숨기고 골드 부활만 남긴다 — v898 `cgCheckBasic`(init 직후 배너 모듈 `checkBannerAdsEnabled` 가 `bannersDisabledBasicLaunch` 를 던지는지) + 첫 adError 에서 `cgAdsOff`.
 - [ ] 로컬에서는 이 버그가 안 보인다는 것을 기억할 것 — CrazyGames 도메인 밖에서는 SDK 가 `environment 'disabled'` 라 `requestAd` 가 예외를 던져 실패 경로로 가고, `?adtest=1` 가짜 광고는 2초를 기다렸다 끝난다. **판단은 cg-sim 으로.**
 
 **콘텐츠(PEGI 12)** — 아래 3절.  **에셋(커버·영상·카테고리)** — 아래 4절.
@@ -72,7 +72,7 @@ python3 $C/covers.py <커버·영상 폴더> --out "$SCRATCH/thumbs.png"   # 커
 
 신작 부스트('new' 라벨)는 Full Launch 날짜 기준으로 보이므로 **Full 을 요청하기 전에 전부 끝낸다**(게임 6개 관찰 — 문서화된 내용은 아니다 · Basic → Full 19~55일, 중앙값 약 31일).
 - [ ] gameplayStart: 시작·재개·부활·다음 층마다 / gameplayStop: 메뉴·회차 끝·일시정지·마을·광고. **탭 포커스를 잃었을 때는 부르지 않는다**(sdk/game). v897 위치는 5절 표.
-- [ ] **muteAudio** — `SDK.game.settings.muteAudio` 를 읽고 `addSettingsChangeListener` 로 따라간다(HTML5 필수 — sdk-audit [4]·cg-sim).
+- [x] **muteAudio** — `SDK.game.settings.muteAudio` 를 읽고 `addSettingsChangeListener` 로 따라간다(HTML5 필수 — sdk-audit [4]·cg-sim · v898 `SFX.setCfgMute`).
 - [ ] **Data 모듈로 저장**(로컬 저장에 기대지 말 것 · ≤ 1MB · 제출 때 Progress Save 토글) — 지금 localStorage 키 5개: `dungeon_meta` · `dungeon_meta_test` · `dungeon_run` · `dungeon_lang` · `dungeon_best_score`.
 - [ ] 부활 광고: **세션당 1회**(지금 회차당 1회 + 제안 쿨다운 3분) · **5초 카운트다운** · 부활 직후 무적 2~3초(지금 2.0초) · 광고 없는 대안(골드 부활 — 있음) · 목숨을 잃을 때마다 제안 금지(액션 가이드 · requirements/ads).
 - [ ] 미드게임: 첫 광고는 3~5분 뒤 · 전투 중·메뉴 이동 버튼에서 금지 · 보상형 직후 연달아 금지 · 두 레벨 사이엔 미드게임과 보상형 이어하기 중 하나만 · RPG 는 '아껴서'(막 끝 쉼터 도착 같은 큰 전환점) — v897 자리: 막 끝 쉼터(`descend`) · 정산 → 마을(`restartBtn`).
@@ -99,19 +99,22 @@ PEGI 12: 판타지 캐릭터를 향한 약간 더 그래픽한 폭력 · 중간 
 - [ ] 카테고리: **제출 뒤 장르를 못 바꾼다**(requirements/quality) — Action 이 유력(액션 평균 13분 · D1 8.1% · 비교작 Immortal: Dark Slayer 도 Action).
 - [ ] 큰 업데이트 때 커버 교체(오래된 게임은 세션이 튄다 — 너무 자주는 말 것).
 
-## 5. v897 SDK 연결 지도 (sdk-audit [2] 가 지금 파일에서 다시 뽑는다 — 줄 번호는 밀린다)
+## 5. v898 SDK 연결 지도 (sdk-audit [2] 가 지금 파일에서 다시 뽑는다 — 줄 번호는 밀린다)
 
 | 호출 | 어디서 |
 |---|---|
 | `SDK.init` · `loadingStart` | `initCG`(IIFE, 게임 스크립트 앞부분) — init 이 부팅보다 늦으면 start/stop 을 한꺼번에 |
 | `loadingStop` | 게임 스크립트 끝 `cgLoadingStop()`(셰이더 예열 뒤) |
-| `gameplayStart` | `startFloor`(층 시작) · `doRevive` · `closeBossReward`(카드 대기열이 비면) |
+| `gameplayStart` | `startFloor`(층 시작 — 신규 유저는 캐릭터 카드 → `quickStartDungeon` → 1층) · `doRevive` · `closeBossReward`(카드 대기열이 비면) |
 | `gameplayStop` | `buildTownScene`(마을) · `die` · `showRewardChoice` · `cgShowMidgame` · `returnToTown` · `continueFromRest` |
 | `happytime` | `showRunResult`(신기록) |
 | `reportGameCompletedPercentage` | `startFloor` |
+| 광고 요청 | `cgRequestAd(type, done)` 한 곳 — adStarted 음소거 · adFinished/adError 에 `done(ok, code)` 한 번 · 시작 전 30초/시작 뒤 3분 안전장치 · 동안 `cgAdBlock`(루프 정지 + `#cgAdShield`) |
+| Basic Launch | `cgCheckBasic`(init 직후) · `cgAdsOff`(첫 adError `adsDisabledBasicLaunch` — 떠 있는 광고 버튼까지 숨김) |
+| 언어 · muteAudio | `cgApplyLocale`(SDK 로캘 → `dungeon_lang_cg`) · `cgWatchSettings` → `SFX.setCfgMute` |
 | 미드게임 `cgShowMidgame` | `descend`(막 끝 쉼터 도착) · `#restartBtn`(정산 → 마을) |
 | 보상형 `cgShowRewarded` | `onBossRewardReroll` · `#reviveAdBtn`(부활) · `#overGoldAdBtn`(골드 2배) |
-| 광고 중 음소거 | `setMusicPausedForAd` → `SFX.suspendForAd`/`resumeAfterAd`(ctx.suspend + 새 소리 차단) |
+| 광고 중 음소거 | `cgRequestAd` 의 adStarted → `setMusicPausedForAd` → `SFX.suspendForAd`/`resumeAfterAd`(ctx.suspend + 새 소리 차단 · muteAudio 로 꺼져 있으면 광고 뒤에도 안 켬) |
 | 개발자 버튼 | 마크업 `#charOverlay` 안 · `DEV_MODE = ?adtest=1 \|\| ?dev=1` · `if (!DEV_MODE)` 숨김 · `wireDevReveal`(제목 5연타) |
 
 ## 6. Basic Launch 동안·이후 볼 지표
@@ -141,6 +144,8 @@ Basic: 제한된 이용자에게 노출 · **7일 이상 그리고 500플레이 
 ## 함정
 
 - **`requestAd` 는 프로미스가 아니다** — `await` 해도 바로 끝난다. 결과는 콜백뿐(sdk.js 확인). 그래서 `await` 뒤 보상 코드는 광고를 안 봐도 돈다.
+- **v898 부터 첫 방문 언어가 SDK 로캘과 다르면 한 번 다시 연다** — cg-sim 은 브라우저·SDK 로캘을 둘 다 `en-US` 로 둬서 안 걸린다. `--locale ko-KR` 처럼 다르게 주면 다시 여는 동안 `evaluate` 가 끊길 수 있다(언어 시험은 따로).
+- **v898 부터 캐릭터 카드 클릭이 신규 유저를 1층으로 바로 보낸다**(마을을 안 짓는다) — dl-harness·봇 측정을 v897 이전 빌드와 A/B 할 때는 새 쪽에 `&quick=0`(CLAUDE.md 'CrazyGames 준수사항').
 - **로컬·GitHub Pages 에서는 광고 버그가 안 보인다** — SDK 가 disabled 라 예외 → 실패 경로, `?adtest=1` 은 2초를 기다리는 가짜 광고. 광고 판단은 cg-sim 으로.
 - `cg-sim` 은 postMessage 왕복 지연·배너·광고 차단 팝업·실제 Basic 판정을 흉내 내지 않는다. 로드 시간·fps 는 SwiftShader 값.
 - 페이지를 새로 열어 A/B 하는 측정은 실시간이라 회차마다 흔들린다 — 같은 조건 두 번으로 대조군부터(CLAUDE.md '렌더 변경을 비교할 때').

@@ -1,7 +1,7 @@
 # Dungeon Legion — 저장소 안내
 
-Three.js r128으로 만든 아이소메트릭 던전 크롤러 RPG. **`index.html` 단일 파일**(v897 기준 약 3.9MB,
-37,700줄 남짓 — 동봉 라이브러리·글꼴·효과음·초상화 데이터 포함)이 게임 전부다. GitHub Pages가 `main`에서 배포하므로 `main`에 올라가는 순간
+Three.js r128으로 만든 아이소메트릭 던전 크롤러 RPG. **`index.html` 단일 파일**(v898 기준 약 4.0MB,
+37,800줄 남짓 — 동봉 라이브러리·글꼴·효과음·초상화 데이터 포함)이 게임 전부다. GitHub Pages가 `main`에서 배포하므로 `main`에 올라가는 순간
 라이브다. 현재 CrazyGames 제출을 준비 중이다.
 
 기획(무엇을 만들 것인가)은 **`기획서.md`** 에 있다 — 막별 컨셉·몬스터 라인업·밸런스 표·마일스톤.
@@ -12,10 +12,10 @@ Three.js r128으로 만든 아이소메트릭 던전 크롤러 RPG. **`index.htm
 ## 파일 구조 — 먼저 알아야 할 것
 
 `index.html` 한 파일에 전부 들어 있고, 앞부분은 **동봉된 라이브러리(미니파이)** 다.
-전체를 grep하면 three.js 내부가 쏟아진다. 게임 코드만 보려면 **마지막 `<script>` 블록**(v897 기준 4339줄 이후)으로 한정할 것.
+전체를 grep하면 three.js 내부가 쏟아진다. 게임 코드만 보려면 **마지막 `<script>` 블록**(v898 기준 4339줄 이후)으로 한정할 것.
 줄 번호는 데이터 블록이 늘 때마다 밀린다(v895 초상화 · v832 효과음이 앞에 들어가며 4076 → 4339) — 숫자를 외우지 말고 아래처럼 찾는다.
 
-| 줄(v897) | 내용 |
+| 줄(v898) | 내용 |
 |---|---|
 | 8~354 | 스타일(`ui2css` 포함 · base64 글꼴) |
 | ~355~669 | UI 마크업 |
@@ -24,7 +24,7 @@ Three.js r128으로 만든 아이소메트릭 던전 크롤러 RPG. **`index.htm
 | 4335 | `<script id="npcpor-data">` 초상화 데이터(v895~) |
 | 4338 | `<script id="ksfx-data">` 효과음 데이터(v832~) |
 | **4339~** | **게임 코드 시작**(마지막 `<script>`) |
-| 4406~ | 플래그 정의 블록 (`AD_TEST`/`DEV_MODE`/`PX_MODE` …) · `GAME_VERSION` 은 4596줄 |
+| 4415~ | 플래그 정의 블록 (`AD_TEST`/`DEV_MODE`/`PX_MODE` …) · `GAME_VERSION` 은 4607줄 |
 
 ```bash
 # 게임 코드만 검색하는 방법 — 시작 줄을 매번 구한다
@@ -34,7 +34,7 @@ awk -v s=$S 'NR>s' index.html | grep -n "찾을것"     # 출력 줄 번호 + s 
 
 ## 릴리스 절차
 
-`GAME_VERSION`(v897 기준 4596줄 — `grep -n "const GAME_VERSION" index.html`)을 올리는 것이 릴리스다. 좌측 상단 배지에 표시되고,
+`GAME_VERSION`(v898 기준 4607줄 — `grep -n "const GAME_VERSION" index.html`)을 올리는 것이 릴리스다. 좌측 상단 배지에 표시되고,
 사용자가 배포 확인에 쓴다. **코드를 바꿨으면 반드시 같이 올린다.**
 
 ```js
@@ -162,6 +162,9 @@ sed -n "$((S+1)),$((E-1))p" index.html > /tmp/gc.js && node --check /tmp/gc.js
 | `?crowd=0` | 붐빔 양보 | 몬스터끼리 붐빌 때의 v813 을 끈다 — 서로 밀 때 양보 순위(공격 중 > 다가오는 근접 > 원거리·쉬는 몬스터, 낮은 쪽이 80% 밀림) · 앞이 몬스터로 막혀 0.4초 못 가면 플레이어 둘레로 0.6초 비켜 걷기(이웃 적은 쪽) · 세 번째엔 1초 서서 기다림. v813 |
 | `?ui2=0` | 새 HUD | UI 리뉴얼 1단계(v814)를 끄고 예전 HUD·미니맵으로 — 새 HUD 는 `viewers/ui_mockup_v3.html` 을 옮긴 것: 마름모 초상화(`refs/ui/초상화/` 64px 원본 그대로) + 레벨 · 세리프 직업명 · 픽셀 체력(깎이면 붉은 잔상, 35% 아래 붉게)·기력(막 색)·경험치 막대 · 층 이름판 + 막 이름 · 화면 축으로 45° 돌린 원형 미니맵 · 골드·남은 적 · PC 스킬 Q/E·물약 R 마름모 + 키 안내 · 위쪽 가운데 알림 띠 · 모바일 버튼 그림(자리·크기·터치 판정은 그대로). 게임 화면(GL) 픽셀 해시는 v813 과 같다 |
 | `?rot=0` | 가로 고정 | 터치 기기를 세로로 들었을 때 화면 전체를 90° 돌려 가로로 그리는 것(v816)을 끄고 예전처럼 '가로로 돌려 주세요' 경고만 띄운다. 첫 터치에 전체 화면 + 가로 잠금 시도(iframe 밖, 안드로이드 크롬)도 같이 꺼진다 |
+| `?rotframe=1` | 꺼짐 | v898 부터 iframe(CrazyGames 등) 안에서는 v816 가로 돌려 그리기·방향 잠금을 하지 않는다(포털이 제출 설정으로 방향을 정한다 — 회전 로직 금지). 이 플래그면 iframe 안에서도 v816 처럼 돌려 그린다. 최상위 페이지(GitHub Pages 직접 접속)는 그대로 |
+| `?quick=0` | 켜짐 | v898 **신규 유저 1클릭**을 끈다(v897 — 캐릭터를 고르면 마을부터). 켜면 저장된 진행이 하나도 없는 플레이어(`isNewPlayer` — 골드·쉼터·막 클리어·길잡이 기록·최고 점수·이어하기·`meta.played` 전부 없음)는 캐릭터 카드 한 번에 1층 전투로 들어가고(`quickStartDungeon` → `startFloor` 의 gameplayStart) 마을은 첫 회차가 끝난 뒤 처음 본다. 조작 안내는 1층 길잡이 띠가 맡는다(`?tut=0` 이면 마을과 같은 힌트 패널). **하네스가 캐릭터 카드를 누르므로 v897 이전 빌드와 픽셀 A/B 할 때는 A 쪽에 `&quick=0`**(마을을 안 지어 난수 흐름이 달라진다 — 아래 'CrazyGames 준수사항') |
+| `?cglang=0` | 켜짐 | v898 언어에 CrazyGames SDK 로캘(`user.systemInfo.locale`)을 쓰지 않는다(v897 — 저장값 → 브라우저 언어 → 영어). 켜면 고른 언어 → 기억해 둔 SDK 로캘(`dungeon_lang_cg`) → 브라우저 → 영어. 처음 방문에 SDK 로캘이 지금 언어와 다르면 아무것도 안 눌렀을 때 한 번 다시 연다 |
 | `?bal=0` | 새 수치 | v821 수치 재조정을 끄고 v820 수치로 — 레벨업 경험치 ×1.5(새 1.4) · 레벨당 체력 15(새 12+⌊lv/2⌋) · 막 배율 체력 +0.6/피해 +0.4 per 막(새 +0.35/+0.15) · 궁수 130/12 · 화살 ×1.0(새 110/14 · ×1.5) · 마법사 보호막 100% 차단(새 25% 누수) · 투사체 치명타 없음(새 대장간 치명타 적용) |
 | `?a3b=0` | 켜짐 | v822 3막 일반 몹 고유 행동을 끈다 — 포자 벌레 죽음 포자 구름 · 농침벌 독침(4초 중독, 초당 최대 체력 2%) · 부패한 구울 붙잡기(0.8초 포박, 구울마다 4초) · 살덩이 거인 땅 내려찍기(링 1.1초 예고 → 반경 1.4칸 ×1.3 · 넉백 22, 링 밖으로 걸어 나가 회피) |
 | `?hitfx=0` | 켜짐 | v822 데미지 숫자(DOM 글자, 적 흰색 · 치명타 금색 · 플레이어 빨강)와 플레이어 피격 화면 흔들림을 끈다 |
@@ -2385,13 +2388,30 @@ RGB는 건드리지 않으므로 모서리 하이라이트도 유지된다.
 - 일반 접속에서 치트 버튼(`bossTestBtn`/`maxLevelBtn`) 노출 금지
 - 미드게임 광고는 자체 하한 2분
 
-**알려진 문제(2026-10-15 발견 · v897 미수정) — 제출 전에 고칠 것.** SDK v3 `requestAd(type, callbacks)` 는 **콜백 방식**이다
-(라이브 SDK 를 받아 확인: `async requestAd(e,t){ this.adCallbacks={adFinished, adError, adStarted}; … postMessage }` —
-반환 프로미스는 요청을 보내자마자 끝난다). 그런데 `cgShowRewarded`·`cgShowMidgame` 은 `await requestAd()` 뒤에 보상·진행을 둬서
-**광고가 실패·차단·Basic Launch(`adsDisabledBasicLaunch`)여도 보상(부활·리롤·골드 2배)이 바로 나가고**, 음소거도 광고 시작(`adStarted`)이
-아니라 요청 전에 걸린다. GitHub Pages(environment `disabled`)에서는 광고 버튼 자체가 안 떠서 증상이 없다.
-그 밖에 제출 전 필수로 나온 것: 첫 클릭 한 번에 게임플레이(지금은 마을을 걸어가야 첫 전투) · SDK `systemInfo.locale` 로 언어 고르기 ·
-iframe 안에서는 가로 돌려 그리기(`ROT_ON`) 끄기 · Basic Launch 동안 광고 버튼 숨기기. 점검은 **`dl-crazygames-check`** 스킬(`sdk-audit.sh` · `cg-sim.js`).
+**광고·SDK v898 — 제출 전 P0 고침(`cgRequestAd` · `cgAdBlock` · `cgAdsOff` · `cgApplyLocale` · `SFX.setCfgMute` · `quickStartDungeon`).**
+점검은 **`dl-crazygames-check`** 스킬(`sdk-audit.sh` · `cg-sim.js`) — v897 ✗ 8 → v898 ✗ 0(남은 ⚠ 는 Full 전: Data 모듈 · 부활 5초 카운트다운 · safe-area).
+- **SDK v3 `requestAd(type, {adStarted, adFinished, adError})` 는 콜백 방식이다** — 라이브 SDK(`sdk.crazygames.com/crazygames-sdk-v3.js`)를 받아
+  확인했다: 반환 프로미스는 요청을 보내자마자 끝나고 결과는 콜백뿐 · Basic Launch 면 그 자리에서 `adError({code:'adsDisabledBasicLaunch'})` ·
+  `adError` 를 안 주면 `adFinished` 를 대신 부른다. v897 은 `await requestAd()` 뒤에 보상·진행을 둬서 **광고가 실패·차단·Basic 이어도
+  부활·리롤·골드 2배가 공짜로 나갔고**, 미드게임은 광고가 도는 중에 진행했으며, 음소거는 요청 전에 걸었다.
+  GitHub Pages(environment `disabled`)에서는 광고 버튼 자체가 안 떠서 증상이 없었다 — **광고 판단은 `cg-sim.js` 로**(`--ad error` · `--ad finish`).
+- `cgRequestAd(type, done)` 하나로 모았다: 음소거는 `adStarted` 에서, 해제는 끝·실패 때, `done(ok, code)` 는 정확히 한 번. 보상은 `ok` 일 때만.
+  요청 ~ 결과 동안 `cgAdBlock(true)` — 메인 루프 `tick` 이 맨 앞에서 돌아가고(마지막 화면이 남는다) 화면 전체 막(`#cgAdShield`)이 입력을 막는다.
+  **콜백이 영영 안 오면 화면이 막힌 채 남으므로** 시작 전 30초 · 시작 뒤 3분이면 실패로 본다(보상 없음 · 미드게임은 진행).
+  `requestAd` 가 동기로 던지거나(도메인 밖 SDK) 프로미스가 거부돼도 실패로 처리한다.
+- **Basic Launch 는 init 직후 알 수 있다** — SDK 배너 모듈의 `checkBannerAdsEnabled()` 가 Basic 이면 `bannersDisabledBasicLaunch` 를 던진다
+  (부작용 없음 · 문서에 없는 함수라 없으면 넘어간다). `prefetchAd` 도 같은 에러를 던지지만 광고를 실제로 미리 받으니 쓰지 않는다.
+  못 알아챘어도 첫 `adError('adsDisabledBasicLaunch')` 에서 `cgAdsOff()` 가 떠 있는 버튼(부활·리롤·골드 2배)까지 숨긴다. 골드 부활은 남는다.
+  부활 광고가 실패하면 예전처럼 바로 사망 정산하지 않고 광고 버튼만 내려 창을 남긴다(골드 부활·포기를 고르게).
+- **언어는 SDK 로캘 → 없으면 영어가 요건인데 로캘은 `init` 뒤에야 온다**(부모 창과 메시지 왕복). 게임 스크립트는 그보다 먼저 다 돌아
+  문자열이 굳으므로 `setLang` 과 같은 이유로 다시 열어야 바뀐다. 그래서 로캘을 `dungeon_lang_cg` 에 기억해 두고(다음 접속부터 바로 그 언어),
+  처음 방문에 지금 언어와 다르면 **아직 아무것도 안 눌렀을 때만 한 번** 다시 연다(`sessionStorage` 표식으로 되풀이 방지 · 저장이 막혀 있으면 안 연다).
+  플레이어가 언어 줄에서 고른 것(`dungeon_lang`)이 늘 우선. 지원 안 하는 로캘(fr·de …)은 영어.
+- **muteAudio**: `SDK.game.settings.muteAudio` + `addSettingsChangeListener` → `SFX.setCfgMute`. 광고 음소거(`adMuted`)와 따로 들고 둘 중 하나라도
+  켜져 있으면 `ac()` 가 null(광고가 끝나도 설정으로 꺼져 있으면 안 켜진다). 다시 켤 때는 iOS 의 `'interrupted'` 도 resume 하고, 탭이 다시 보이면 깨운다.
+- **iframe 안에서는 회전 로직을 안 한다**(`inFrame` · `ROT_ON` · `lockOrientation`) — 방향은 제출 설정이다.
+- **신규 유저 1클릭**(`?quick=0`): 캐릭터 카드 → 1층. **그 대신 하네스·봇처럼 캐릭터 카드를 누르고 들어가는 측정은 v898 부터 마을을 안 짓는다** —
+  THREE 객체 수가 달라 난수 흐름이 바뀌므로 v897 이전 빌드와 픽셀 A/B 하면 DIFF 다. `AB_A_FLAGS='&quick=0'` 이면 5·45·75·104층 해시가 v897 과 같다(실측).
 
 ## 켜지 않기로 한 것
 

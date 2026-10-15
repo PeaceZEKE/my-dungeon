@@ -93,6 +93,7 @@ node $H --floor 10 --seed 12345 --setup "killEnemy(enemies.find(e => e.isBoss))"
 - **씬 첫 렌더가 난수를 먹는다**(three 내부 지연 생성, 마을 첫 렌더 8개 — 이 스킬을 만들며 잰 값). 하네스가 끼워 넣는 렌더(마을 스크린샷·해시)는 그동안 `Math.random` 을 따로 된 LCG 로 바꿔 끼워 `--shots` 유무가 해시를 안 바꾼다.
 - **update 만 돌리면 잔디가 새까맣다** — `updatePixelGrass` 는 메인 루프 몫(CLAUDE.md v809 계측 함정). `--steps`·`--hash` 가 같이 부른다.
 - **마을↔던전 FOV** 는 메인 루프의 `_lastInTown` 비교가 바꾼다 — `--steps`·`--hash` 가 같이 한다.
+- **v898 부터 캐릭터 카드 클릭이 신규 유저(빈 저장)를 마을 없이 1층으로 보낸다**(`?quick=0` 이면 예전처럼 마을부터). 하네스는 빈 저장으로 카드를 누르므로 마을을 안 짓고, THREE 객체 수가 달라 난수 흐름이 바뀐다 — **v897 이전 빌드와 A/B 할 때는 새 쪽에 `AB_A_FLAGS='&quick=0'`**(실측: 그러면 5·45·75·104층 SAME, 없으면 전부 DIFF). v898 이후끼리는 상관없다.
 - **히트스톱·보스 슬로모·120층 낙하·막 전환 글은 메인 루프 몫**(CLAUDE.md v870) — `--steps`·`__dlSteps` 가 tick 순서대로 돌린다(update 만 부르면 보상 카드가 영영 안 뜬다).
 - **픽셀 배열을 페이지 밖으로 옮기지 말 것**(장당 2MB, 타임아웃) — 해시·격자 평균은 페이지 안에서.
 - npm playwright ↔ 동봉 브라우저 빌드가 어긋나면 `/opt/pw-browsers` 의 동봉본을 `executablePath` 로(자동). playwright 모듈은 로컬 → `npm root -g` → `/opt/node22/…` 순으로 찾는다.

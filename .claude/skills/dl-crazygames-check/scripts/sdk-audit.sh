@@ -83,8 +83,18 @@ for w in cgLoadingStop cgGameplayStart cgGameplayStop cgHappytime cgShowMidgame 
   CALLS "(^|[^A-Za-z0-9_])$w[(]" "function $w[(]"
 done
 GSITES=$(CALLS '(^|[^A-Za-z0-9_])cgGameplayStart[(]' 'function cgGameplayStart[(]')
+# v898: 캐릭터 카드 처리(beginGameWith)가 부르는 함수 중 1층을 바로 시작하는 것(enterDungeonFromTown · resetGame · startFloor)이 있으면 1클릭 경로
+QS=""; BG=$(G 'function beginGameWith[(]' | head -1 | cut -d: -f1)
+if [ -n "$BG" ]; then
+  for fn in $(BODY "$BG" | grep -o '[A-Za-z_][A-Za-z0-9_]*(' | tr -d '(' | sort -u); do
+    FL=$(G "function $fn[(]" | head -1 | cut -d: -f1); [ -z "$FL" ] && continue
+    if BODY "$FL" | grep -qE 'enterDungeonFromTown\(|resetGame\(|startFloor\('; then QS="$fn ${FL}줄 · 조건 $(BODY "$BG" | grep -m1 "$fn(" | sed 's/^[ \t]*//' | cut -c1-80)"; break; fi
+  done
+fi
 if [ -z "$GSITES" ] && [ "$(GN 'SDK[.]game[.]gameplayStart')" -le 1 ]; then
   bad "gameplayStart 호출처가 없다 — SDK 를 넣었으면 처음 플레이 가능한 순간에 꼭(초기 다운로드를 그 시점까지 잰다)"
+elif [ -n "$QS" ] && printf '%s' "$GSITES" | grep -q 'startFloor'; then
+  ok "캐릭터 카드(beginGameWith ${BG}줄) → 1층(startFloor 의 gameplayStart): $QS — 실제 1클릭은 cg-sim 으로"
 elif printf '%s' "$GSITES" | grep -qE 'beginGame|buildTownScene|enterTownMode|exitTownToDungeon|onTap\(#.char'; then
   ok "gameplayStart 가 첫 클릭 경로에도 있다: $(printf '%s' "$GSITES" | awk '{print $1" "$2}' | tr '\n' ' ')"
 else
@@ -98,6 +108,10 @@ RA=$(P='requestAd[(]' awk 'NR > ENVIRON["S"] + 0 && NR < ENVIRON["E"] + 0 && $0 
 for L in $RA; do
   C=$(CALLTEXT "$L")
   FNL=$(awk -v s="$S" -v l="$L" 'NR > s && NR < l && /^[ \t]*\(?(async[ \t]+)?function[ \t]+[A-Za-z0-9_$]+/ { n = NR } END { print n + 0 }' "$F")
+  # 콜백을 변수로 넘기면(requestAd(type, cbs)) 같은 함수 안에서 그 변수를 만든 곳까지 함께 본다(v898 cgRequestAd)
+  CBV=$(printf '%s' "$C" | head -1 | sed -n 's/^requestAd([^,]*,[ \t]*\([A-Za-z_$][A-Za-z0-9_$]*\)[ \t]*).*/\1/p')
+  if [ -n "$CBV" ]; then C="$C
+$(sed -n "${FNL},${L}p" "$F")"; fi
   FN=$(sed -n "${FNL}p" "$F" | grep -o 'function [A-Za-z0-9_$]*' | head -1 | cut -d' ' -f2)
   TYPE=$(printf '%s' "$C" | grep -o "requestAd(['\"][a-z]*" | head -1 | grep -o '[a-z]*$')
   info "$L ${FN:-?} [${TYPE:-?}] $(printf '%s' "$C" | head -1 | cut -c1-90)"
@@ -109,7 +123,10 @@ for L in $RA; do
     fi
   else ok "$L: adError 콜백 있음"; fi
   if printf '%s' "$C" | grep -q 'adError' && ! printf '%s' "$C" | grep -q 'adFinished'; then bad "$L: adFinished 콜백이 없다 — 보상·진행 재개는 adFinished 에서만"; fi
-  if printf '%s' "$C" | grep -q 'adStarted'; then ok "$L: adStarted 콜백 있음(음소거·일시정지는 여기서)"
+  if printf '%s' "$C" | grep -q 'adStarted'; then
+    PRE=$(awk -v a="$FNL" -v b="$L" 'NR >= a && NR < b && /setMusicPausedForAd\(true\)|suspendForAd\(/ && !/adStarted/ { print NR }' "$F" | head -1)
+    if [ -n "$PRE" ]; then bad "$L: adStarted 콜백이 있는데 음소거를 그 밖(${PRE}줄)에서도 한다 — 광고가 안 뜨면(Basic·차단) 소리가 끊긴다"
+    else ok "$L: adStarted 콜백 있음 · 음소거는 그 안에서만"; fi
   else
     PRE=$(awk -v a="$FNL" -v b="$L" 'NR >= a && NR < b && /setMusicPausedForAd\(true\)|suspendForAd\(/ { print NR }' "$F" | head -1)
     if [ -n "$PRE" ]; then bad "$L: 음소거를 광고 요청 전(${PRE}줄)에 한다 — 규정은 광고가 실제로 시작될 때(adStarted). 광고가 안 뜨면(Basic·차단) 잠깐 소리가 끊긴다"
