@@ -142,13 +142,17 @@ def main():
                 ch = m.get('char') or {'cx': m.get('scr', [im.width, im.height])[0] // 2, 'cy': m.get('scr', [im.width, im.height])[1] // 2}
                 dpr = r.get('dpr', 1)
                 cw = H
-                tiles.append((crop_1to1(im, ch['cx'] * dpr, ch['cy'] * dpr, cw, H), '1:1 (줄이지 않음)'))
+                # dpr 이 1 이 아니면 스크린샷이 기기 픽셀이라 1:1 은 'CSS px 가 아니라 기기 픽셀 1:1'(텍셀이 dpr 배 크게 보인다)
+                cap1 = '1:1 (줄이지 않음)' + (f' · 기기 픽셀 dpr {dpr}' if dpr != 1 else '')
+                tiles.append((crop_1to1(im, ch['cx'] * dpr, ch['cy'] * dpr, cw, H), cap1))
         labs = label_lines(r, shots, meta.get('small', 11), meta.get('smallrel', 1.6))
         w = pad * 2 + sum(t[0].width for t in tiles) + gap * max(0, len(tiles) - 1)
         h = pad + len(labs) * line_h + 6 + (H if tiles else 0) + pad
         rows.append((labs, tiles, w, h))
 
+    q = meta.get('query') or ''
     head = f"dl-device-check  ·  {meta['version']}  ·  시드 {meta['seed']}  ·  {meta['floor']}층  ·  {meta['cls']}  ·  " + \
+           (f"?tut=0{q}  ·  " if q else '') + \
            f"장면은 같은 높이({H}px)로 줄임 — 가로 폭 차이 = 옆으로 더 보이는 양  ·  마지막 칸은 1:1"
     head_h = 46
     W = max([r[2] for r in rows] + [900])

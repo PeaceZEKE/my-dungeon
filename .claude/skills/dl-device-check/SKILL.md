@@ -10,31 +10,31 @@ description: Dungeon Legion(index.html 단일 파일 게임)이 PC 웹과 모바
 ## 1. 돌리기 (저장소 루트에서)
 
 ```bash
-# 서버: 이미 떠 있으면 그대로(버전이 저장소 index.html 과 다르면 스크립트가 멈춘다). 없으면 스크립트가 루트에서 잠깐 띄운다
+# 서버: 이미 떠 있으면 그대로(서빙하는 index.html 이 저장소 것과 버전·내용(md5)이 다르면 스크립트가 멈춘다). 없으면 스크립트가 루트에서 잠깐 띄웠다가 끝날 때 끈다
 bash .claude/skills/dl-harness/scripts/serve.sh 8899     # 계속 띄워 둘 때
 
-OUT=<스크래치패드>/devices-$(date +%H%M)
+OUT="${TMPDIR:-/tmp}/devices-$(date +%H%M)"     # 세션에서는 시스템 프롬프트의 스크래치패드 경로로 바꿀 것(--out 을 빼면 $TMPDIR/dl-device-check-<시각>)
 node .claude/skills/dl-device-check/scripts/devices.js --floor 5 --out "$OUT"
 #   → $OUT/sheet.png (접촉 시트) · $OUT/summary.md (표) · $OUT/metrics.json · $OUT/<뷰포트>-<장면>.png
 ```
 - 기본 5개 뷰포트 × (마을 + 던전) 뷰포트당 40~60초, 합쳐 4~6분(SwiftShader · 다른 브라우저 작업과 겹치면 더 걸린다). `run_in_background` 로 돌리고 로그의 `== 완료 ==` / `== 일부 실패 ==` 를 기다린다.
 - 시트를 사용자에게 보여 줄 때는 `SendUserFile`(display: render)로 `sheet.png` 를.
 
-자주 쓰는 변형:
+자주 쓰는 변형(위 `node … devices.js --out "$OUT"` 뒤에 붙인다):
 ```bash
 --vp phone:844x390:touch --vp tall:390x844:touch     # 세로로 든 폰(가로 돌려 그리기 v816 — 시트에 '(가로 돌려 그림)')
 --vp tab:1180x820:touch --vp pc4k:2560x1440           # 태블릿 · 큰 모니터(HUD ×2)
---vp phone3x:844x390:touch:dpr3                       # 실제 폰처럼 dpr 3(게임은 setPixelRatio(1) 이라 화면은 같고 DOM 글씨만 선명)
+--vp phone3x:844x390:touch:dpr3                       # 실제 폰처럼 dpr 3(게임은 setPixelRatio(1) 이라 화면은 같고 DOM 글씨만 선명 · 1:1 칸은 기기 픽셀이라 텍셀이 3배로 보인다)
 --shots title,town,dungeon                            # 캐릭터 선택 화면까지
---query '&ui2=0'   --query '&pxh=360'                 # 플래그 대조(새 HUD 끔 · 텍셀 크기 바꿈)
+--query '&ui2=0'   --query '&pxh=360'                 # 플래그(여러 번 주면 이어 붙음 · 모든 뷰포트 공통 — 켬/끔 대조는 --out 을 달리해 두 번 돌려 시트 둘을 나란히)
 --floor 45 --class archer --tod night --hints         # 다른 막·직업·밤 마을·조작 힌트 패널 남김
 --small 12 --smallrel 1.8                             # 작은 글씨 문턱 조정
 ```
-`--vp` 를 하나라도 주면 기본 목록을 대신한다. 형식 `이름:가로x세로[:touch][:dprN]`. `--help` 로 전체 옵션.
+`--vp` 를 하나라도 주면 기본 목록을 대신한다. 형식 `[이름:]가로x세로[:touch][:dprN]`(이름을 빼면 크기가 이름). `--help` 로 전체 옵션.
 
 ## 2. 무엇을 보나 (시트 이름표 · summary.md 열 순서대로)
 
-1. **세로 FOV 30° 고정 → 캐릭터 크기가 같은가.** `applyAdaptiveFOV()` 는 화면비 ≥ 16:9 이면 세로 FOV 30 그대로 두고 가로만 넓힌다 → '캐릭터 높이 %' 가 모든 16:9 이상 기기에서 같아야 한다(실측 v897: 마을·던전 9.06%). 16:9 보다 좁은 화면(4:3 태블릿·세로 폰)은 세로 FOV 가 커져(가로 시야 유지) 캐릭터가 작아진다 — 의도된 동작인지 확인.
+1. **세로 FOV 30° 고정 → 캐릭터 크기가 같은가.** `applyAdaptiveFOV()` 는 화면비 ≥ 16:9 이면 세로 FOV 30 그대로 두고 가로만 넓힌다 → '캐릭터 높이 %' 가 모든 16:9 이상 기기에서 같아야 한다(실측 v897: 기사 마을·던전 9.06% · 궁수 9.23% — 직업끼리가 아니라 같은 직업의 뷰포트끼리 비교). 16:9 보다 좁은 화면(4:3 태블릿·세로 폰)은 세로 FOV 가 커져(가로 시야 유지) 캐릭터가 작아진다 — 의도된 동작인지 확인.
 2. **가로 시야.** 같은 높이로 줄인 시트에서 그림 폭 차이가 곧 '옆으로 더 보이는 양'이다. '바닥 보이는 범위 가로×세로(칸)' 로 숫자 비교(실측: 844×390 5.89×3.62 · 16:9 4.84×3.62 — 모바일이 옆으로 약 22% 더 본다).
 3. **텍셀 크기(PX_FIXED_H 320).** 저해상 버퍼 세로가 늘 320 이라 '텍셀 = 화면 세로 / 320' px — 390 → 1.22 · 540 → 1.69 · 720 → 2.25 · 768 → 2.4 · 1080 → 3.375. **정수가 아니면 텍셀 줄마다 1px 차가 난다** — 마지막 '1:1 (줄이지 않음)' 칸에서 도트 크기·고르지 않음을 직접 본다. 픽셀 크기를 바꾸는 손잡이는 `?pxh=` 이지 `PIXEL_SCALE` 이 아니다(CLAUDE.md).
 4. **HUD 배율 단계.** `--ui2z` = 화면 세로 900 미만 ×1 · 1260 미만 ×1.5 · 그 위 ×2. 경계 바로 아래(예: 1366×768 · 1600×900 근처)는 ×1 이라 HUD 가 상대적으로 가장 작게 보인다 — 'HUD 배율' 열과 그림으로 확인.
@@ -51,7 +51,7 @@ node .claude/skills/dl-device-check/scripts/devices.js --floor 5 --out "$OUT"
 - 화면 크기는 `scrW()/scrH()` 로 읽는다 — 세로 폰을 돌려 그리는 동안 `innerWidth` 는 실제(세로) 기준이다(CLAUDE.md '가로 고정(v816)').
 - 터치 뷰포트는 `hasTouch + isMobile + 안드로이드 UA` — 게임의 `isTouchDevice` 가 참이 되는지 'touch/PC' 이름표로 확인된다.
 - 바깥 요청은 막는다(CrazyGames SDK). 페이지 오류가 나면 그 뷰포트 줄에 ✗ 와 첫 오류가 찍히고 종료 코드 1.
-- Playwright 는 `/opt/node22/lib/node_modules/playwright`, 브라우저 빌드가 어긋나면 `/opt/pw-browsers` 동봉본을 `executablePath` 로(자동).
+- Playwright 모듈은 `require('playwright')` → `npm root -g` → `/opt/node22/lib/node_modules/playwright` 순(dl-harness 와 같다), 브라우저 빌드가 어긋나면 `/opt/pw-browsers` 동봉본을 `executablePath` 로(자동).
 
 ## 4. 판단할 때의 함정
 
@@ -62,7 +62,7 @@ node .claude/skills/dl-device-check/scripts/devices.js --floor 5 --out "$OUT"
 
 ## 5. 글꼴
 
-`sheet.py` 는 한글 이름표용 글꼴을 ① 시스템(`fc-list :lang=ko`) ② `assets/font.ttf`(고운바탕 Bold 부분 집합 · OFL 1.1 — `assets/OFL.txt`, 이 스킬 스크립트의 글자만 · 약 160KB) ③ PIL 기본(한글 깨짐) 순으로 고른다. 이름표에 새 한글을 넣었고 시스템 한글 글꼴이 없는 환경이면:
+`sheet.py` 는 한글 이름표용 글꼴을 ① 시스템(`fc-list :lang=ko`) ② `assets/font.ttf`(고운바탕 Bold 부분 집합 · OFL 1.1 — `assets/OFL.txt`, 이 스킬 스크립트의 글자만 · 약 170KB) ③ PIL 기본(한글 깨짐) 순으로 고른다. 이름표에 새 한글을 넣었고 시스템 한글 글꼴이 없는 환경이면:
 ```bash
 bash .claude/skills/dl-device-check/scripts/mkfont.sh <한글 TTF>   # 원본: github.com/yangheeryu/Gowun-Batang
 ```

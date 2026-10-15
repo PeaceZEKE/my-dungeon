@@ -10,7 +10,7 @@
 //   --vp SPEC        뷰포트(여러 번 · 하나라도 주면 기본 목록을 대신한다)
 //                    SPEC = 이름:가로x세로[:touch][:dpr2]   예) phone:844x390:touch  pc:1920x1080  tall:390x844:touch
 //   --shots LIST     찍을 장면(기본 town,dungeon · title 을 더할 수 있다 — 캐릭터 선택 화면)
-//   --query Q        URL 뒤에 덧붙일 것(예: '&ui2=0' · '&pxh=360'). 기본 쿼리는 '?tut=0'
+//   --query Q        URL 뒤에 덧붙일 것(예: '&ui2=0' · '&pxh=360' — 여러 번 주면 이어 붙인다). 기본 쿼리는 '?tut=0'
 //   --class C        knight|mage|archer(기본 knight)
 //   --tod day|night  마을 시간대(기본 day — 자동이면 실제 시각을 따라 실행마다 달라진다)
 //   --hints          마을 조작 힌트 패널(#howtoHint)을 그대로 둔다(기본은 숨김)
@@ -56,7 +56,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '--seed') opt.seed = +v();
   else if (a === '--vp') opt.vps.push(v());
   else if (a === '--shots') opt.shots = v();
-  else if (a === '--query') opt.query = v();
+  else if (a === '--query') { const q = v(); opt.query += (q.startsWith('&') ? q : '&' + q.replace(/^\?/, '')); }   // 여러 번 주면 이어 붙인다
   else if (a === '--class') opt.cls = v();
   else if (a === '--tod') opt.tod = v();
   else if (a === '--hints') opt.hints = true;
@@ -290,7 +290,7 @@ async function runViewport(browser, vp) {
   const pageErrors = [];
   page.on('pageerror', e => pageErrors.push(String(e && e.message || e)));
   await page.addInitScript(initScript, opt.seed);
-  const q = '?tut=0' + (opt.query ? (opt.query.startsWith('&') ? opt.query : '&' + opt.query.replace(/^\?/, '')) : '');
+  const q = '?tut=0' + opt.query;   // opt.query 는 인자 단계에서 이미 '&…' 꼴
   const url = `http://127.0.0.1:${opt.port}/index.html${q}`;
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 240000 });
   await page.waitForFunction(() => typeof beginGameWith === 'function' && typeof startRunAtFloorReset === 'function' && typeof tick === 'function' && typeof lastFrameT === 'number', null, { timeout: 120000 });
