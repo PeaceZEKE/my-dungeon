@@ -1237,10 +1237,14 @@ function a1Skeleton(P) {
   K.box(headGrp, 0.15, 0.03, 0.02, HOLE, 0, -0.145, -0.14, 0, 0, 0);
   for (let i = 0; i < 5; i++) K.box(headGrp, 0.018, 0.035, 0.015, BONE_L, -0.06 + i * 0.03, -0.13, -0.148, 0, 0, 0);
   if (isBoss) {
-    // 금관(뾰족한 봉우리 · 붉은 보석) · 털 깃
-    K.band(headGrp, 0.2, 0.08, GOLD, 0, 0.17, 0.02, 10);
-    for (let i = 0; i < 5; i++) { const a = -Math.PI * 0.5 + i * (Math.PI * 2 / 5); K.cone(headGrp, 0.04, 0.13, GOLD, 4, Math.sin(a) * 0.19, 0.27, Math.cos(a) * 0.19 + 0.02, 0, 0, 0); }
-    K.box(headGrp, 0.04, 0.04, 0.02, K.mat(0xc01818, 'glow'), 0, 0.17, -0.18, 0, 0, Math.PI / 4);
+    // 중대장 투구 — 코 가리개·볼 가리개 달린 쇠 투구 + 정수리 붉은 말총 볏(지휘관 표시)
+    K.put(headGrp, new THREE.Mesh(new THREE.SphereGeometry(0.25, 9, 5, 0, Math.PI * 2, 0, Math.PI * 0.55), IRON), 0, 0.04, 0.02).scale.set(1, 0.95, 1.05);
+    K.band(headGrp, 0.252, 0.05, IRON_D, 0, 0.05, 0.02, 10);
+    K.box(headGrp, 0.04, 0.13, 0.03, IRON_D, 0, 0.0, -0.24, 0, 0, 0);
+    [-1, 1].forEach(sx => K.box(headGrp, 0.05, 0.16, 0.13, IRON_D, sx * 0.21, -0.04, -0.07, 0, sx * 0.25, 0));
+    K.box(headGrp, 0.05, 0.05, 0.4, RUST, 0, 0.27, 0.03, 0, 0, 0);
+    const CREST = K.mat(0x6e1612, 'cloth');
+    for (let i = 0; i < 7; i++) { const t = i / 6; K.box(headGrp, 0.05, 0.13 - t * 0.04, 0.07, CREST, 0, 0.33 + Math.sin(t * Math.PI) * 0.03, -0.17 + t * 0.4, 0.3 - t * 0.8, 0, 0); }
   } else if (isRanged) {
     K.ico(headGrp, 0.27, ROBE, 0, 0.06, 0.05, 0.98, 0.98, 1.06, 1, 0.01);
     K.cone(headGrp, 0.15, 0.26, ROBE_D, 5, 0, 0.26, 0.2, -0.9, 0, 0);
@@ -1301,18 +1305,24 @@ function a1Skeleton(P) {
   }
 
   if (isBoss) {
-    // 털 깃 · 흉갑 · 붉은 망토 · 금 띠 버클
-    const FUR = K.mat(0x7a7268), FUR_D = K.mat(0x55504a);
-    for (let i = 0; i < 13; i++) {
-      const a = -Math.PI * 0.6 + i * (Math.PI * 1.2 / 12), r = 0.23;
-      const x = Math.sin(a) * r, z = Math.cos(a) * r * 0.85 + 0.05;
-      K.seg(bodyGrp, [x * 0.8, 0.46, z * 0.8], [x + Math.sin(a) * 0.12, 0.4 + (i % 2) * 0.07, z + Math.cos(a) * 0.12], 0.07, 0.012, i % 2 ? FUR : FUR_D, 4);
-    }
-    K.ico(rg, 0.21, IRON, 0, 0.02, -0.05, 1.25, 1.0, 0.7, 1);
-    [limbs.armR, limbs.armL].forEach(L => { K.ico(L, 0.13, IRON_D, 0, 0.02, 0, 1.15, 0.75, 1.15, 1); K.band(L, 0.12, 0.035, GOLD, 0, -0.04, 0, 8); });
-    K.box(rg, 0.06, 0.16, 0.02, GOLD, 0, 0.02, -0.17, 0, 0, Math.PI / 4);
-    K.plate(bodyGrp, [[-0.26, 0], [0.26, 0], [0.3, -0.45], [0.18, -0.52], [0.06, -0.46], [-0.06, -0.55], [-0.18, -0.48], [-0.3, -0.44]], 0.02, K.mat(0x4a0e14, 'cloth'), 0, 0.46, 0.2, -0.12, 0, 0);
-    K.cyl(bodyGrp, 0.05, 0.05, 0.02, GOLD, 8, 0, 0.04, -0.17, Math.PI / 2, 0, 0);
+    // 찌그러진 흉갑(가슴에 옛 왕국의 왕관 문장 — 20층 보스 대사와 맞춘다) · 양어깨 견갑 · 왼어깨에 걸친 해진 짧은 망토
+    K.ico(rg, 0.21, IRON, 0, 0.02, -0.05, 1.25, 1.0, 0.72, 1, 0.006);
+    K.box(rg, 0.36, 0.035, 0.03, IRON_D, 0, -0.1, -0.2, 0, 0, 0);
+    const CRW = K.mat(0x7a6024, 'metal');
+    K.box(rg, 0.09, 0.03, 0.02, CRW, 0, 0.04, -0.205, 0, 0, 0);
+    for (let i = 0; i < 3; i++) K.cone(rg, 0.016, 0.045, CRW, 3, (i - 1) * 0.035, 0.075, -0.205, 0, 0, 0);
+    [limbs.armR, limbs.armL].forEach(L => {
+      K.ico(L, 0.125, IRON_D, 0, 0.03, 0, 1.15, 0.55, 1.15, 1, 0.006);
+      K.ico(L, 0.118, RUST, 0, -0.03, 0, 1.12, 0.4, 1.12, 1);
+      K.band(L, 0.05, 0.12, IRON_D, 0, -0.32, -0.005, 7);   // 팔목 보호대
+    });
+    const CAPE = K.mat(0x4a1214, 'cloth');
+    K.plate(bodyGrp, [[-0.06, 0], [0.24, 0], [0.26, -0.36], [0.17, -0.42], [0.1, -0.35], [0.02, -0.44], [-0.06, -0.38]], 0.02, CAPE, -0.16, 0.48, 0.18, -0.1, -0.35, 0.08);
+    K.seg(bodyGrp, [-0.22, 0.47, -0.05], [0.18, 0.12, -0.2], 0.022, 0.022, CAPE, 4);   // 어깨띠
+    // 허리 — 쇠 버클 띠 · 쇠 허리판 셋
+    K.band(bodyGrp, 0.18, 0.06, LEA, 0, 0.04, 0, 9);
+    K.box(bodyGrp, 0.07, 0.06, 0.03, IRON, 0, 0.04, -0.18, 0, 0, 0);
+    [-1, 0, 1].forEach(i => K.box(bodyGrp, 0.12, 0.14, 0.03, IRON_D, i * 0.12, -0.06, -0.16 + Math.abs(i) * 0.04, 0.12, i * -0.45, 0));
   } else if (isRanged) {
     K.put(bodyGrp, new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 0.55, 9, 1, true), ROBE), 0, 0.1, 0.02).scale.set(1.1, 1, 1);
     for (let i = 0; i < 8; i++) { const a = i * 0.785; K.cone(bodyGrp, 0.04, 0.08, ROBE_D, 3, Math.sin(a) * 0.32, -0.2, Math.cos(a) * 0.3, Math.PI, 0, 0); }
