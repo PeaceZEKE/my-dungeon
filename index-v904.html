@@ -4733,7 +4733,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v903'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v904'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -20342,6 +20342,7 @@ tryLoadModel(player.obj, 'player', (model, mixer) => { player.mixer = mixer; pla
 const HERO2_ON = !/[?&]hero2=0/.test(location.search);
 // ?mage2=0 이면 마법사만 v902 로(덩어리 모델 · 예전 관절 자리 · bodyGrp 1.0 배) — v903 마법사 v2: 매끈한 곡면 모자·머리·케이프·치마 · 기사·궁수와 같은 키
 const HERO2_MAGE2 = HERO2_ON && !/[?&]mage2=0/.test(location.search);
+const HERO2_ARCH2 = HERO2_ON && !/[?&]arch2=0/.test(location.search);   // v904 궁수 v2 — 0 이면 v903 궁수(hero2Archer902)
 // ===== 영웅 모델 v2(HERO2) — 세 직업을 원화(커버·초상화)에 맞춰 다시 짓는다 =====
 // 리그(headGrp·torsoGrp·armR/armL·legR/legL·swordGrp·shieldGrp)와 blade·sPoint·bladeMat·bladeLight 참조는 그대로 두고
 // 예전 메시만 갈아 끼운다 — 애니메이션·스미어·충전 발광·마법사/궁수 전환이 손대지 않고 그대로 돈다.
@@ -20847,7 +20848,7 @@ function hero2Mage902(K, player) { return hero2Lcg(901002, () => {
 }); }
 
 // 궁수 — 리그·애니메이션은 그대로(포니테일 기본 각만 바꾼다), 색을 초상화에 맞추고 팔·배에 셔츠 소매를 입힌다.
-function hero2Archer(K, player) { return hero2Lcg(901003, () => {
+function hero2Archer902(K, player) { return hero2Lcg(901003, () => {
   const root = player.archerRig; if (!root) return;
   const RECOL = { 0xd8c878: 0xc0923a, 0xbfa85c: 0x8a6224, 0x32545c: 0x2c6c6c, 0x243e45: 0x1e4c4e, 0x5a4332: 0x6a4a30, 0x42301f: 0x4a3222 };
   const SHIRT = getLowPolyMat(0xd8c8a2), SHIRT_D = getLowPolyMat(0xb8a682);
@@ -20881,6 +20882,213 @@ function hero2Archer(K, player) { return hero2Lcg(901003, () => {
       m.position.set(Math.sin(a) * r * 0.9, 0.2 + Math.cos(a) * 0.08, 0.02 + Math.cos(a) * 0.12); m.scale.set(0.8, 0.7, 2.4); m.rotation.y = a * 0.6; g.add(m);
     }
     for (const sx of [-1, 1]) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.3, 0.05), lockL); m.position.set(sx * 0.2, -0.08, -0.29); m.rotation.z = sx * 0.25; g.add(m); }
+  }
+}); }
+// 궁수 v2(HERO2) — 초상화(refs/ui/초상화/archer_512.png)·커버: 헝클어진 금발 + 높이 묶은 포니테일 · 옆으로 쓸린 앞머리 · 초록 눈 ·
+// 목을 두껍게 감은 청록 스카프 · 등 뒤 해진 청록 망토 · 가죽 조끼(앞 끈 · 사선 멜빵) · 크림 셔츠 소매 · 가죽 팔보호대 · 반장갑 ·
+// 왼어깨 가죽 견갑 · 허리 가죽 자락 · 무릎까지 오는 장화(접힌 깃 · 끈) · 등에 비스듬한 화살통 · 금 장식 리커브 활.
+// 리그(관절 그룹)·포니테일 사슬·메긴 화살(arrowGrp)·시위 발광(bowGlowMat·빛)은 그대로 두고 예전 메시만 갈아 끼운다.
+function hero2Archer(K, player) { return hero2Lcg(901004, () => {
+  const root = player.archerRig, L = player.archerLimbs; if (!root || !L) return;
+  const { mk } = hero2Mats();
+  const PI = Math.PI;
+  const O = markOrganic(new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: false, roughness: 0.9, metalness: 0 }));
+  const skinOf = c => { const m = getLowPolyMat(c); m.userData.mergeInto = O; return m; };
+  const HAIR = mk(0xc0923a, 'ss'), HAIR_D = mk(0x8a6224, 'ss'), TIE = mk(0x2a1c12);
+  const SKIN = skinOf(0xf0c8a0), EYE = mk(0x2a1a10), IRIS = mk(0x2e7a4a), SHINE = mk(0xf0e8d8);
+  const SCARF = mk(0x2c6c6c, 'ss'), SCARF_D = mk(0x1e4c4e, 'ss'), CAPE = mk(0x1f4a4c, 'ss');
+  const LEA = mk(0x6a4a30, 'ss'), LEA_D = mk(0x4a3222, 'ss'), LEA_L = mk(0x8a6440, 'ss'), STRAP = mk(0x3a2a1a, 'ss');
+  const SHIRT = mk(0xc8b890, 'ss'), SHIRT_D = mk(0xa89874, 'ss'), PANTS = mk(0x5e4630, 'ss'), BOOT = mk(0x4a3222, 'ss'), BOOT_L = mk(0x6e5034, 'ss');
+  const GOLD = mk(0xc89a3e), WOOD = mk(0x4e3020, 'ss'), WOOD_D = mk(0x3a2216), FEATH = mk(0xb84a3a, 'd'), FEATH_W = mk(0xe0d8c8, 'd');
+  const B = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+  const C = (rt, rb, h, n, open) => new THREE.CylinderGeometry(rt, rb, h, n || 8, 1, !!open);
+  const SP = (r, ws, hs) => new THREE.SphereGeometry(r, ws || 8, hs || 6);
+  const surf = (P, c, t0, t1, p0, p1, n, nt, off) => hero2Wind(hero2Surf(P, c, t0, t1, p0, p1, n, nt, off || 0));
+  const rod = (g, a, b, r, mat, n) => { const d = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]), l = d.length();
+    const m = h2(g, C(r, r, l, n || 4), mat, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()); return m; };
+
+  // 예전 메시 걷어 내기 — 메긴 화살(arrowGrp)은 남긴다. 머리·활·화살통 그룹은 먼저 찾아 둔다.
+  let aHead = null, quiverOld = null;
+  root.traverse(o => { if (!o.isMesh || !o.geometry.parameters) return; const p = o.geometry.parameters;
+    if (!aHead && p.radius === 0.34) aHead = o.parent;
+    if (!quiverOld && p.radiusTop === 0.075 && p.height === 0.5) quiverOld = o.parent; });
+  const bowGrp = L.armR.handGrp.children.find(c => c.isGroup);
+  const keep = new Set(); L.arrowGrp.traverse(o => keep.add(o));
+  const old = []; root.traverse(o => { if (o.isMesh && !keep.has(o)) old.push(o); });
+  old.forEach(o => o.parent.remove(o));
+  if (quiverOld) root.remove(quiverOld);
+  const G = parent => { const g = new THREE.Group(); parent.add(g); return g; };
+
+  // ---- 머리: 얼굴 · 초록 눈 · 헝클어진 금발(앞머리는 옆으로 쓸려 이마를 덮고 · 옆머리는 턱까지) ----
+  const hd = G(aHead);
+  h2(hd, SP(0.29, 8, 6), SKIN, 0, -0.03, 0, 0, 0, 0, 1, 1.05, 0.95);
+  for (const sx of [-1, 1]) {
+    const ex = sx * 0.115, ry = sx * 0.4;
+    h2(hd, B(0.11, 0.028, 0.02), EYE, ex, -0.027, -0.262, 0, ry, sx * 0.28);                     // 윗눈꺼풀(안쪽이 내려오게 기울인다 — 부릅뜬 눈. 사용자 지시)
+    h2(hd, SP(0.036, 6, 4), IRIS, ex - sx * 0.007, -0.055, -0.258, 0, ry, 0, 1, 0.85, 0.4);      // 초록 눈동자
+    h2(hd, SP(0.011, 4, 3), SHINE, ex - sx * 0.02, -0.047, -0.274);
+    h2(hd, B(0.095, 0.02, 0.02), HAIR_D, ex + sx * 0.005, 0.03, -0.256, 0, ry, sx * 0.45);        // 눈썹(안쪽이 내려온다)
+  }
+  const HR = 0.325, HC = [0, 0.03, 0.03];
+  // 머리 껍데기: 끝 높이 yE(φ) — 앞은 이마 위(앞머리가 덮는다) · 옆은 귀 · 뒤는 목덜미(묶어 올렸다) · 끝이 들쭉날쭉
+  const yE = ph => { const f = Math.max(0, Math.cos(ph)), b = Math.max(0, -Math.cos(ph)); return 0.1 * Math.pow(f, 0.8) - 0.04 * (1 - f) - 0.03 * b; };   // 짧은 껍데기 — 아래는 다발이 맡는다
+  const hP = (t, ph, off) => {
+    const ye = yE(ph), arc = HR * PI / 2, S = ye >= 0 ? HR * Math.acos(Math.min(1, ye / HR)) : arc - ye, s = t * S;
+    let r, y;
+    if (s <= arc) { const a = s / HR; r = HR * Math.sin(a); y = HR * Math.cos(a); } else { r = HR + 0.01; y = -(s - arc); }
+    const k = Math.min(1, s / arc), sd = Math.abs(Math.sin(ph));
+    // 다발 결 — 이마에서 포니테일 묶은 자리(뒤 위)로 모이게 한다(정수리에서 사방으로 뻗으면 위에서 볼 때 우산살이 된다)
+    const px = r * Math.sin(ph), pz = -r * Math.cos(ph), w1 = px, w2 = 0.8 * y - 0.6 * pz, ax = 0.6 * y + 0.8 * pz, ps = Math.atan2(w2, w1);
+    const near = Math.min(1, Math.max(0, (HR - ax) / (HR * 0.5)));   // 묶은 자리 가까이선 결이 모여 사라진다
+    r += off + (0.024 * Math.pow(Math.abs(Math.cos(4.5 * ps + 0.6)), 5) + 0.012 * Math.sin(7 * ps + 2)) * near + 0.015 * sd * k * k;
+    return [r * Math.sin(ph) + HC[0], y + HC[1], -r * Math.cos(ph) + HC[2]];
+  };
+  h2(hd, surf(hP, () => [0, -0.2, 0.03], 0, 1, -PI, PI, 14, 4), HAIR);
+  // 앞머리 — 이마 위에서 내려오며 옆(+x)으로 쓸린 다발 다섯
+  const lock = (ph0, sweep, y0, len, w, mat, dr) => h2(hd, surf((u, v, o) => {
+    const ph = ph0 + sweep * u * u + (v - 0.5) * w * (1 - u * 0.9), y = y0 - len * u, yr = Math.max(0, y - HC[1]);
+    const rr = Math.sqrt(Math.max(0, HR * HR - yr * yr)) + 0.012 - (dr || 0.02) * u + o;
+    return [rr * Math.sin(ph) + HC[0], y, -rr * Math.cos(ph) + HC[2]];
+  }, () => [HC[0], 0, HC[2]], 0, 1, 0, 1, 2, 2), mat);
+  for (const [ph0, len] of [[-0.62, 0.13], [-0.3, 0.17], [0.02, 0.19], [0.32, 0.15], [0.62, 0.12]]) lock(ph0, 0.22, 0.15, len, 0.36, HAIR);
+  // 옆머리 — 귀 앞으로 턱까지 내려오는 다발(끝이 얼굴 쪽으로 휜다)
+  for (const sx of [-1, 1]) lock(sx * 1.12, -sx * 0.22, 0.06, 0.36, 0.34, HAIR, 0.03);
+  // 옆·뒤 — 껍데기 끝에서 끝이 뾰족한 다발이 겹겹이 내려와 바깥으로 조금씩 뻗친다(길이·색을 엇갈려 헝클어지게)
+  for (let k = 0; k < 11; k++) { const ph = 1.4 + k * (2 * PI - 2.8) / 10, h = Math.abs(Math.sin(ph * 3.7 + 1.1));
+    lock(ph, 0.12 * Math.sin(ph * 2.3), 0.06, 0.15 + 0.1 * h, 0.5, k % 3 === 1 ? HAIR_D : HAIR, -0.05 - 0.03 * h); }
+  c3MergeStatic(hd);
+
+  // ---- 포니테일 — 높이 묶어 뒤로 흘러내린다. 사슬(흔들림)은 그대로, 마디마다 갈래진 다발을 굽는다 ----
+  const segs = L.ponySegs;
+  segs[0].position.set(0, 0.25, 0.2);
+  const tg = G(segs[0]); h2(tg, C(0.066, 0.07, 0.06, 8), TIE, 0, -0.07, 0); h2(tg, SP(0.075, 8, 5), HAIR, 0, -0.03, 0); c3MergeStatic(tg);
+  const nb = [-1.6, 0.0, 0.5, 0.5, 0.4, 0.3, 0.15, -0.1];
+  const PR = [[0.055, 0.08], [0.08, 0.1], [0.1, 0.105], [0.105, 0.1], [0.1, 0.08], [0.08, 0.05], [0.05, 0.005]];
+  for (let i = 1; i < segs.length; i++) {
+    segs[i].position.y = i === 1 ? -0.08 : -0.12;
+    // 끝으로 갈수록 갈래가 깊어져 셋으로 나뉜다
+    const [rt, rb] = PR[i - 1], len = i === segs.length - 1 ? 0.2 : 0.15, g = G(segs[i]);
+    h2(g, surf((u, ph, o) => { const q = (i - 1 + u) / 7, r = (rt + (rb - rt) * u) * (1 + (0.14 + 0.3 * q * q) * Math.pow(Math.abs(Math.cos(1.5 * ph + i * 0.5)), 0.6) - 0.12 * q) + o; return [r * Math.sin(ph), -len * u, r * Math.cos(ph)]; },
+      u => [0, -len * u, 0], 0, 1, -PI, PI, 6, 2), HAIR);
+    c3MergeStatic(g);
+  }
+  for (let i = 0; i < nb.length && i < segs.length; i++) { L.ponyBase[i] = nb[i]; segs[i].rotation.x = nb[i]; }
+
+  // ---- 몸: 가죽 조끼 · 앞 끈 · 사선 멜빵 · 허리띠 · 바지 엉덩이 · 가죽 자락 · 목 스카프 · 등 망토 · 화살통 ----
+  const tb = G(root);
+  const JK = [[0.72, 0.205, 0.15, 0.16], [0.8, 0.2, 0.148, 0.158], [0.92, 0.212, 0.158, 0.168], [1.04, 0.24, 0.172, 0.178], [1.14, 0.25, 0.17, 0.17], [1.22, 0.17, 0.12, 0.12]];
+  const jkAt = y => { let i = 0; while (i < JK.length - 2 && y > JK[i + 1][0]) i++; const A = JK[i], Bq = JK[i + 1], f = Math.max(0, Math.min(1, (y - A[0]) / (Bq[0] - A[0]))); return A.map((v, j) => v * (1 - f) + Bq[j] * f); };
+  const tAt = (y, th, off) => { const R = jkAt(y), s = Math.sin(th), c = Math.cos(th); return [(R[1] + off) * s, y, -((c >= 0 ? R[2] : R[3]) + off) * c]; };
+  const jP = (u, th, o) => tAt(0.72 + 0.5 * u, th, o), jC = u => [0, 0.72 + 0.5 * u, 0];
+  h2(tb, surf(jP, jC, 0, 1, -PI, PI, 10, 4), LEA);
+  h2(tb, surf(jP, jC, 0, 0.07, -PI, PI, 10, 1, 0.007), LEA_D);                 // 아랫단
+  h2(tb, surf(jP, jC, 0.12, 0.82, -0.07, 0.07, 1, 3, 0.006), LEA_D);           // 앞 여밈
+  for (const sx of [-1, 1]) h2(tb, surf(jP, jC, 0.07, 0.86, sx * 1.25 - 0.03, sx * 1.25 + 0.03, 1, 3, 0.005), LEA_D);   // 옆 솔기
+  for (const y of [0.84, 0.92, 1.0, 1.08]) { const p = tAt(y, 0, 0.012); for (const sx of [-1, 1]) h2(tb, B(0.075, 0.012, 0.01), STRAP, p[0], p[1], p[2], 0, 0, sx * 0.55); }   // 끈
+  h2(tb, surf(jP, jC, 0.09, 0.16, -PI, PI, 10, 1, 0.013), STRAP);              // 허리띠
+  { const p = tAt(0.785, 0, 0.022); h2(tb, B(0.07, 0.055, 0.02), GOLD, p[0], p[1], p[2]); }
+  // 사선 멜빵(왼어깨 → 오른 허리 · 등은 왼어깨 → 오른 허리) — 화살통이 여기에 걸린다
+  const band = (th0, th1) => surf((u, v, o) => tAt(1.17 - 0.4 * u + (v - 0.5) * 0.06, th0 + (th1 - th0) * u, 0.015 + o), u => [0, 1.17 - 0.4 * u, 0], 0, 1, 0, 1, 1, 6);
+  h2(tb, band(-0.8, 0.9), STRAP); h2(tb, band(-2.35, -3.98), STRAP);
+  { const p = tAt(0.98, 0.02, 0.026); h2(tb, B(0.045, 0.045, 0.015), GOLD, p[0], p[1], p[2], 0, 0, 0.75); }
+  // 바지 엉덩이 · 가죽 자락(앞 둘 · 뒤 하나)
+  h2(tb, surf((u, th, o) => { const r = 0.205 + 0.02 * u + o; return [r * Math.sin(th), 0.74 - 0.16 * u, -r * Math.cos(th) * 0.78]; }, u => [0, 0.66, 0], 0, 1, -PI, PI, 10, 1), PANTS);
+  for (const [a, b] of [[-1.15, -0.3], [0.3, 1.15], [2.45, 3.83]]) {
+    const fP = (u, v, o) => { const th = a + (b - a) * v, y = 0.755 - (0.15 + 0.05 * Math.sin(PI * v)) * u, r = 0.218 + 0.05 * u + o; return [r * Math.sin(th), y, -r * Math.cos(th) * 0.82]; };
+    h2(tb, surf(fP, u => [0, 0.7, 0], 0, 1, 0, 1, 4, 2), LEA);
+    h2(tb, surf(fP, u => [0, 0.7, 0], 0.84, 1, 0, 1, 4, 1, 0.006), LEA_L);
+  }
+  // 파우치 둘
+  h2(tb, B(0.13, 0.13, 0.09), LEA_D, -0.2, 0.68, -0.09, 0, 0.5, 0); h2(tb, B(0.135, 0.05, 0.095), LEA, -0.2, 0.735, -0.09, 0, 0.5, 0);
+  h2(tb, B(0.12, 0.11, 0.08), LEA_D, 0.19, 0.67, 0.12, 0, -0.6, 0);
+  // 목 · 목에 두껍게 감은 스카프(앞이 조금 처져 턱이 보인다) · 어깨를 덮고 가슴에 늘어진 자락(앞 왼쪽이 더 길다 · 끝이 해졌다)
+  h2(tb, C(0.075, 0.085, 0.16, 6), SKIN, 0, 1.2, 0.01);
+  const wP = (u, ph, o) => { const y = 1.06 + 0.16 * u - 0.04 * Math.max(0, Math.cos(ph)) * u + 0.03 * Math.max(0, -Math.cos(ph)) * u;
+    const r = 0.15 + 0.085 * Math.sin(PI * Math.min(1, u * 1.05)) + 0.025 * Math.sin(3 * ph + u * 4) + o; return [r * Math.sin(ph), y, -r * Math.cos(ph) * 0.95]; };
+  h2(tb, surf(wP, () => [0, 1.14, 0], 0, 1, -PI, PI, 10, 3), SCARF);
+  // 아래로 처진 두 번째 고리(굵게 · 앞이 낮다) + 앞 왼쪽으로 늘어진 끝자락(끝이 해졌다) — 판처럼 넓게 펴면 턱받이가 된다
+  const lpP = (t, ph, o) => { const a = t * 2 * PI, R = 0.205 + 0.018 * Math.sin(3 * a + 1), y = 1.07 - 0.065 * Math.cos(a), rt = 0.055 * (1 + 0.22 * Math.sin(5 * a)) + o;
+    const nx = Math.sin(a), nz = -Math.cos(a) * 0.95; return [nx * (R + rt * Math.cos(ph)), y + rt * Math.sin(ph), nz * (R + rt * Math.cos(ph))]; };
+  h2(tb, surf(lpP, t => { const a = t * 2 * PI; return [Math.sin(a) * 0.205, 1.07 - 0.065 * Math.cos(a), -Math.cos(a) * 0.195]; }, 0, 1, -PI, PI, 5, 14), SCARF_D);
+  { const NE = 4; h2(tb, surf((u, v, o) => { const k = Math.round(v * NE), y = 1.02 - (0.17 + (k % 2 ? 0.035 : 0)) * u, th = -0.42 + (v - 0.5) * (0.5 + 0.2 * u);
+      return tAt(y, th, 0.05 + 0.02 * u + 0.01 * Math.sin(v * 7) + o); }, u => [0, 1.02 - 0.17 * u, 0], 0, 1, 0, 1, NE, 2), SCARF); }
+  // 등 망토 — 어깨뼈에서 허벅지까지 · 아래로 퍼지고 단이 해져 들쭉날쭉(커버)
+  const NC = 12;
+  const cpP = (u, v, o) => { const th = PI + (v - 0.5) * 1.9, k = Math.round(v * NC), hem = 0.46 + (k % 2 ? 0.08 : 0) + 0.04 * Math.sin(v * 5 + 1);
+    const y = 1.13 - (1.13 - hem) * u, r = 0.22 + 0.13 * Math.pow(u, 1.2) + 0.02 * Math.sin(v * 9 + u * 3) * u + o; return [r * Math.sin(th), y, -r * Math.cos(th) + 0.02]; };
+  h2(tb, surf(cpP, u => [0, 1.13 - 0.6 * u, 0], 0, 1, 0, 1, NC, 3), CAPE);
+  // 화살통 — 등에 비스듬히(위가 왼어깨) · 금 테 · 가죽 띠 · 화살 넷(붉은·흰 깃)
+  const qv = G(tb); qv.position.set(0.04, 1.02, 0.4); qv.rotation.set(0.25, 0, 0.5);
+  h2(qv, C(0.078, 0.064, 0.52, 7, true), LEA, 0, 0, 0);
+  h2(qv, C(0.084, 0.084, 0.03, 7, true), GOLD, 0, 0.255, 0);
+  for (const y of [0.1, -0.12]) h2(qv, C(0.082, 0.077, 0.03, 7, true), LEA_D, 0, y, 0);
+  h2(qv, C(0.067, 0.058, 0.04, 7), LEA_D, 0, -0.275, 0);
+  for (let i = 0; i < 4; i++) {
+    const a = i / 4 * 2 * PI + 0.3, x = Math.cos(a) * 0.036, z = Math.sin(a) * 0.036, tilt = 0.08 * Math.cos(a * 2);
+    h2(qv, C(0.008, 0.008, 0.26, 3, true), WOOD_D, x, 0.36, z, tilt, 0, 0);
+    const fm = i % 2 ? FEATH_W : FEATH;
+    for (const r2 of [0, PI / 2]) h2(qv, new THREE.PlaneGeometry(0.036, 0.09), fm, x, 0.45, z, tilt, a + r2, 0);
+  }
+  c3MergeStatic(tb);
+
+  // ---- 팔: 크림 셔츠 소매 · (왼) 가죽 견갑 · 가죽 팔보호대(끈 둘) · 반장갑 ----
+  for (const A of [L.armR, L.armL]) {
+    const s = A.sign, ga = G(A.armGrp);
+    h2(ga, SP(0.105, 6, 4), SHIRT, 0, -0.06, 0, 0, 0, 0, 1.05, 1, 1.05);
+    h2(ga, C(0.09, 0.076, 0.34, 6, true), SHIRT, 0, -0.24, 0);
+    h2(ga, C(0.084, 0.082, 0.05, 6, true), SHIRT_D, 0, -0.41, 0);
+    if (s < 0) {   // 왼어깨 가죽 견갑(둥근 판 둘 · 금 리벳)
+      h2(ga, new THREE.SphereGeometry(0.15, 8, 3, 0, 2 * PI, 0, 1.15), LEA_D, 0.0, -0.05, 0, 0, 0, 0.22, 0.95, 0.72, 0.95);
+      h2(ga, new THREE.SphereGeometry(0.14, 8, 1, 0, 2 * PI, 1.0, 0.25), LEA, 0.0, -0.1, 0, 0, 0, 0.22, 0.95, 0.72, 0.95);
+      for (const z of [-0.06, 0.06]) h2(ga, SP(0.016, 4, 2), GOLD, -0.125, -0.07, z);
+    }
+    c3MergeStatic(ga);
+    const ge = G(A.elbowGrp);
+    h2(ge, SP(0.07, 6, 4), SHIRT_D, 0, 0, 0);
+    h2(ge, C(0.088, 0.08, 0.035, 6, true), LEA_L, 0, -0.035, 0);
+    h2(ge, C(0.08, 0.066, 0.24, 6, true), LEA_D, 0, -0.14, 0);
+    for (const y of [-0.08, -0.2]) h2(ge, C(0.083, 0.078, 0.022, 6, true), STRAP, 0, y, 0);
+    h2(ge, SP(0.013, 4, 2), GOLD, s * 0.083, -0.08, 0);
+    c3MergeStatic(ge);
+    const gh = G(A.handGrp);
+    h2(gh, SP(0.07, 6, 4), LEA_D, 0, 0.005, 0, 0, 0, 0, 1, 1.05, 0.85);
+    h2(gh, SP(0.052, 5, 3), SKIN, 0, -0.06, -0.01, 0, 0, 0, 1, 0.8, 0.85);
+    c3MergeStatic(gh);
+  }
+
+  // ---- 다리: 가죽 바지 · 무릎받이 · 장화(접힌 깃 · 끈 둘 · 금 고리) ----
+  for (const Lg of [L.legR, L.legL]) {
+    const s = Lg.sign, gl = G(Lg.legGrp);
+    h2(gl, C(0.11, 0.093, 0.32, 6, true), PANTS, 0, -0.15, 0);
+    c3MergeStatic(gl);
+    const gk = G(Lg.kneeGrp);
+    h2(gk, SP(0.088, 5, 4), PANTS, 0, 0, 0);
+    h2(gk, SP(0.06, 4, 2), LEA_L, 0, 0.0, -0.07, 0, 0, 0, 1, 1.05, 0.5);
+    h2(gk, C(0.096, 0.084, 0.3, 6, true), BOOT, 0, -0.17, 0);
+    h2(gk, C(0.11, 0.1, 0.07, 6, true), BOOT_L, 0, -0.035, 0, 0.12, 0, 0);
+    for (const y of [-0.14, -0.25]) { h2(gk, C(0.1, 0.096, 0.024, 6, true), STRAP, 0, y, 0); h2(gk, B(0.03, 0.03, 0.015), GOLD, s * 0.1, y, 0, 0, PI / 2, 0); }
+    h2(gk, SP(0.085, 6, 4), BOOT, 0, -0.37, -0.05, 0, 0, 0, 0.95, 0.75, 1.55);
+    h2(gk, B(0.15, 0.03, 0.27), WOOD_D, 0, -0.415, -0.05);
+    c3MergeStatic(gk);
+  }
+
+  // ---- 활: 어두운 나무 리커브(끝이 앞으로 젖혀진다) · 금 끝·고리 · 가죽 손잡이 · 시위(발광 재질 그대로) ----
+  if (bowGrp) {
+    const gb = G(bowGrp);
+    const BOW = [[0, 0.06, 0], [0, 0.22, 0.03], [0, 0.38, 0.075], [0, 0.5, 0.105], [0, 0.585, 0.1], [0, 0.645, 0.06]];
+    for (const sy of [1, -1]) {
+      const pts = BOW.map(p => [0, p[1] * sy, p[2]]);
+      const bP = (t, ph, o) => { const c = hero2CR(pts, t), a = hero2CR(pts, Math.max(0, t - 0.01)), b = hero2CR(pts, Math.min(1, t + 0.01));
+        let ty = b[1] - a[1], tz = b[2] - a[2]; const l = Math.hypot(ty, tz); ty /= l; tz /= l;
+        const r = 0.024 - 0.013 * t + o; return [r * 1.35 * Math.cos(ph), c[1] - tz * r * 0.75 * Math.sin(ph), c[2] + ty * r * 0.75 * Math.sin(ph)]; };
+      h2(gb, surf(bP, t => hero2CR(pts, t), 0, 1, -PI, PI, 5, 5), WOOD);
+      h2(gb, surf(bP, t => hero2CR(pts, t), 0.42, 0.5, -PI, PI, 5, 1, 0.004), GOLD);
+      const tip = hero2CR(pts, 1); h2(gb, SP(0.02, 4, 2), GOLD, tip[0], tip[1], tip[2]);
+      h2(gb, C(0.036, 0.03, 0.03, 6), GOLD, 0, sy * 0.085, 0);
+      rod(gb, hero2CR(pts, 0.86), [0, 0, 0.18], 0.005, player.bowGlowMat);
+    }
+    h2(gb, C(0.03, 0.03, 0.15, 6), LEA_D, 0, 0, 0);
+    c3MergeStatic(gb);
   }
 }); }
 const HERO2_K = { bodyGrp, headGrp, torsoGrp, armR, armL, legR, legL, swordGrp, shieldGrp, blade, sPoint, bladeMat, bladeLight };
@@ -21217,7 +21425,7 @@ function applyArcherLook() {
   legR.children.forEach(m => m.visible = false);
   legL.children.forEach(m => m.visible = false);
   setMageVisible(false); // 마법사 메쉬 숨김
-  if (!player.archerRig) { buildArcherRig(); if (HERO2_ON) hero2Archer(HERO2_K, player); }
+  if (!player.archerRig) { buildArcherRig(); if (HERO2_ON) (HERO2_ARCH2 ? hero2Archer : hero2Archer902)(HERO2_K, player); }
   player.archerRig.visible = true;
   appliedCharLook = 'archer';
 }
