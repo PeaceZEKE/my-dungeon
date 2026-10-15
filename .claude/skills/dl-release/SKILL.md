@@ -1,6 +1,6 @@
 ---
 name: dl-release
-description: Dungeon Legion(index.html 단일 파일 게임)의 릴리스 절차. 게임 코드(index.html)를 고친 뒤 GAME_VERSION 을 올리고(index-vNNN.html 보관본 git mv + cp), 게임 스크립트 문법·보관본 일치·부팅을 검사하고, 작업 브랜치(claude/…)에 커밋·푸시(재시도)하고, 사용자에게 index.html + index-vNNN.html 두 파일을 보낼 때 쓴다. 사용자가 명시적으로 "머지해"라고 했을 때의 main 머지·푸시·라이브 버전 확인과, 머지 뒤 인수인계.md·노션 갱신도 이 스킬이다. 문서만 바꿨을 때(버전 안 올림)의 커밋·푸시도 여기. Triggers — 한국어: 버전 올려, 릴리스, 배포, 커밋하고 푸시, 깃에 올려줘, 머지해, main 에 올려, 라이브 반영, 파일 보내줘, 두 파일, vNNN 으로, 문법 검사. English: bump version, release, ship, deploy, commit and push, merge to main, go live, send the build, version check.
+description: Dungeon Legion(index.html 단일 파일 게임)의 릴리스 절차. 게임 코드(index.html)를 고친 뒤 GAME_VERSION 을 올리고(index-vNNN.html 보관본 git mv + cp), 게임 스크립트 문법·보관본 일치·부팅을 검사하고, 작업 브랜치(claude/…)에 커밋·푸시(재시도)하고, 사용자에게 index.html + index-vNNN.html 두 파일을 보낼 때 쓴다. 사용자가 명시적으로 "머지해"라고 했을 때의 main 머지·푸시·라이브 버전 확인과, 머지 뒤 인수인계.md·노션 갱신도 이 스킬이다. 문서만 바꿨을 때(버전 안 올림)의 커밋·푸시도 여기. Triggers — 한국어 — 버전 올려, 릴리스, 배포, 커밋하고 푸시, 깃에 올려줘, 머지해, main 에 올려, 라이브 반영, 파일 보내줘, 두 파일, vNNN 으로, 문법 검사. English — bump version, release, ship, deploy, commit and push, merge to main, go live, send the build, version check.
 ---
 
 # dl-release — 게임 코드 릴리스

@@ -1,6 +1,6 @@
 ---
 name: dl-new-content
-description: Dungeon Legion(index.html 단일 파일 게임)에 새 기능·몬스터·보스·소품·장판 공격·스킬·UI 창·문자열·효과음을 **넣기 전과 넣은 뒤**에 따라가는 체크리스트. 기본 켜짐 URL 플래그(?x=0 이면 예전 빌드와 픽셀 단위로 같게) · TDZ · 난수 흐름(THREE 생성자의 uuid · 소리·UI 는 Math.random 금지) · 뷰어에서 먼저 모델링 · markOrganic · c3MergeStatic/mergeInto · 반지름 · 팔레트 역산 · 캐릭터 그림자 금지 · 피해 배관(damagePlayer/hazardHit/a3Blocked/skillHit/merc) · ui2 창 목록 · I18N 6개 언어 · 고운바탕 서브셋 검사(scripts/font-check.py) · 검증(5·15·45·75·95·104층 해시 A/B · flood fill · 콘솔 에러 0 · 봇 측정)까지. 구현을 시작할 때, 리뷰할 때, "다 됐다"고 보고하기 전에 쓴다. Triggers — 한국어: 새 몬스터, 새 보스, 몹 추가, 보스 추가, 새 기능 추가, 기능 넣어줘, 소품 추가, 장식 추가, 새 장판, 새 패턴, 새 스킬, 새 창, 새 UI, 새 문자열, 번역 추가, 글꼴 서브셋, 고운바탕, 글자 깨짐, 시스템 글꼴로 떨어짐, 플래그 추가, 체크리스트, 빠뜨린 것 없나, 넣기 전에 확인. English: add a monster, new boss, new feature, new prop, new hazard, new skill, new UI window, new strings, translation, font subset, missing glyph, feature flag, checklist, pre-merge checklist, did I miss anything.
+description: Dungeon Legion(index.html 단일 파일 게임)에 새 기능·몬스터·보스·소품·장판 공격·스킬·UI 창·문자열·효과음을 **넣기 전과 넣은 뒤**에 따라가는 체크리스트. 기본 켜짐 URL 플래그(?x=0 이면 예전 빌드와 픽셀 단위로 같게) · TDZ · 난수 흐름(THREE 생성자의 uuid · 소리·UI 는 Math.random 금지) · 뷰어에서 먼저 모델링 · markOrganic · c3MergeStatic/mergeInto · 반지름 · 팔레트 역산 · 캐릭터 그림자 금지 · 피해 배관(damagePlayer/hazardHit/a3Blocked/skillHit/merc) · ui2 창 목록 · I18N 6개 언어 · 고운바탕 서브셋 검사(scripts/font-check.py) · 검증(5·15·45·75·95·104층 해시 A/B · flood fill · 콘솔 에러 0 · 봇 측정)까지. 구현을 시작할 때, 리뷰할 때, "다 됐다"고 보고하기 전에 쓴다. Triggers — 한국어 — 새 몬스터, 새 보스, 몹 추가, 보스 추가, 새 기능 추가, 기능 넣어줘, 소품 추가, 장식 추가, 새 장판, 새 패턴, 새 스킬, 새 창, 새 UI, 새 문자열, 번역 추가, 글꼴 서브셋, 고운바탕, 글자 깨짐, 시스템 글꼴로 떨어짐, 플래그 추가, 체크리스트, 빠뜨린 것 없나, 넣기 전에 확인. English — add a monster, new boss, new feature, new prop, new hazard, new skill, new UI window, new strings, translation, font subset, missing glyph, feature flag, checklist, pre-merge checklist, did I miss anything.
 ---
 
 # dl-new-content — 새 콘텐츠 넣기 체크리스트
@@ -10,8 +10,10 @@ description: Dungeon Legion(index.html 단일 파일 게임)에 새 기능·몬�
 `dl-harness`(스크린샷·해시 A/B·flood fill·계측) · `dl-release`(버전·문법·커밋·머지) · `dl-device-check`(PC↔모바일) · `dl-portrait`(초상화) · `dl-playbot`/`viewers/playbot/README.md`(밸런스 봇).
 
 ```bash
-# 게임 코드만 검색(앞 4,300여 줄은 three.js·글꼴·데이터 — CLAUDE.md '파일 구조')
-awk 'NR>4338' index.html | grep -n "찾을것"      # 4338 = 마지막 데이터 블록 줄. 바뀌면: grep -n '^<script>$' index.html | tail -1
+# 게임 코드만 검색(앞 4,300여 줄은 three.js·글꼴·초상화·효과음 데이터 — CLAUDE.md '파일 구조'). 저장소 루트에서.
+S=$(grep -n '^<script>$' index.html | tail -1 | cut -d: -f1)        # 게임 스크립트 시작 줄(v897 에서 4339)
+awk -v s="$S" 'NR>s && /찾을것/ {print NR": "$0}' index.html | cut -c1-200   # 줄 번호는 index.html 그대로
+# (awk 'NR>N' | grep -n 은 N 뒤부터 센 상대 줄 번호라 Read/Edit 에 그대로 쓰면 엉뚱한 줄이다)
 ```
 
 ## 0. 시작 전
@@ -85,12 +87,14 @@ awk 'NR>4338' index.html | grep -n "찾을것"      # 4338 = 마지막 데이터
 ### 글꼴 검사 — `scripts/font-check.py`
 
 ```bash
-python3 .claude/skills/dl-new-content/scripts/font-check.py            # 0 = OK · 1 = 빠진 글자(줄·문맥 출력) · 2 = 실행 문제
+python3 .claude/skills/dl-new-content/scripts/font-check.py            # 0 = OK · 1 = 빠진 글자(줄·문맥 출력) · 2 = 실행 문제(fontTools 없음·내려받기 실패 등)
 python3 .claude/skills/dl-new-content/scripts/font-check.py --json     # 기계용
-# 빠졌으면: 원본 TTF 를 받아(gstatic, 약 8MB) '지금 cmap ∪ 화면 한글' 로 다시 굽고 index.html 에 갈아 끼운다
-python3 .claude/skills/dl-new-content/scripts/font-check.py --rebake --fetch --out <스크래치패드>/ko.woff2 --apply
+# 빠졌으면: 원본 TTF 를 받아(gstatic, 약 8MB — $TMPDIR/dl-font-cache 에 두고 재사용) '지금 cmap ∪ 화면 한글' 로 다시 굽고
+#           index.html 에 갈아 끼운다(--apply 만 index.html 을 고친다 — 그 뒤 버전 올리기는 dl-release)
+python3 .claude/skills/dl-new-content/scripts/font-check.py --rebake --fetch --out "$(mktemp -d)/ko.woff2" --apply
 python3 .claude/skills/dl-new-content/scripts/font-check.py            # 다시 검사 → OK
 ```
+- 검사 대상은 기본으로 **이 스크립트가 든 저장소 루트의 `index.html`** 이다(현재 폴더와 무관 — 스크래치패드의 예전 `index.html` 을 잘못 잡지 않게). 다른 파일·사본은 `--file`. 내려받기가 막히면 `--src <GowunBatang-Bold.ttf>`(한글 11,172자짜리 통짜여야 한다 — 스크립트가 확인한다).
 - `<style>`·`<script>`·마크업을 나눠 **화면에 나올 수 있는 한글**(문자열·마크업)과 **주석에만 있는 한글**(JS·CSS·HTML 주석, 셰이더 문자열 속 `//` 주석, 정규식)을 따로 센다. 주석 글자는 빠져도 무해(`--strict` 면 실패로 침).
 - 재굽기는 `pyftsubset` 기본값 + `--flavor=woff2` 와 똑같다 — 같은 글자 목록이면 v897 에 박힌 서브셋(90,892바이트)을 **바이트 단위로 재현**한다. 원본은 Google Fonts **css2** API 로 받는다(옛 css API 는 같은 이름의 39KB 일부 글자 TTF 를 줘서 스크립트가 거부한다 · github raw/jsdelivr 는 이 환경에서 403).
 - 수동: fontTools 가 없으면 `pip install fonttools brotli`. index.html 176줄 근처 `@font-face { font-family: 'UI2Ko'` 의 base64 를 풀어 `TTFont(...).getBestCmap()` 과 게임 문자열의 `[가-힣]` 를 비교 → `pyftsubset GowunBatang-Bold.ttf --text-file=chars.txt --flavor=woff2` → base64 로 그 자리만 교체. `unicode-range` 가 숫자 0-9 도 UI2Ko 로 보내므로(v816 라이닝 숫자) 숫자는 빼지 말 것.
@@ -98,26 +102,30 @@ python3 .claude/skills/dl-new-content/scripts/font-check.py            # 다시 
 ## 6. 검증 레시피 (보고 전에 전부)
 
 ```bash
+cd "$(git rev-parse --show-toplevel)"                         # 아래 경로는 전부 저장소 루트 기준
 H=.claude/skills/dl-harness/scripts/harness.js; A=.claude/skills/dl-harness/scripts/ab.sh
 bash .claude/skills/dl-harness/scripts/serve.sh              # ① 서버는 저장소 루트(버전·md5 확인)
 bash .claude/skills/dl-release/scripts/check.sh              # ② 게임 스크립트 node --check 외
 python3 .claude/skills/dl-new-content/scripts/font-check.py  # ③ 글꼴
 # ④ 플래그 끄면 예전과 같은가 — 1·2·3·4막 6개 층, 같은 세션에서 순서대로(동시 실행 금지)
-for f in 5 15 45 75 95 104; do AB_A_FLAGS='&newfx=0' bash $A main --floor $f --seed 12345; done
+#    B = 이 기능 직전 빌드. 보통 origin/main(라이브) — 로컬 main 은 pull 안 하면 뒤처진다(실측: 로컬 v888 · origin v897).
+#    브랜치에 아직 머지 안 된 다른 작업이 쌓여 있으면 기능 직전 커밋(HEAD~1 · 커밋 해시)을 줄 것.
+git fetch -q origin main
+for f in 5 15 45 75 95 104; do AB_A_FLAGS='&newfx=0' bash $A origin/main --floor $f --seed 12345; done
 #    루프가 넣는 효과(어둠·저체력·눈·횃불)면 --horror, HUD·콤보·이펙트까지면 --frames 20
 #    기본(켜짐)이 다른 막에 영향이 없어야 하면 플래그 없이도 같은 층 A/B
 # ⑤ 도달성(장애물·소품·몹 충돌체를 건드렸으면) — 플레이어 0.5 · 오크 0.575 · 여유 0.6 에서 0
 node $H --floor 25 --seed 5150 --eval "window.__reachR = 0.575" --eval-file .claude/skills/dl-harness/scripts/snippets/reach.js
-# ⑥ 새 코드가 난수를 먹지 않는지(소리·UI·연출·틱 함수)
+# ⑥ 새 코드가 난수를 먹지 않는지(소리·UI·연출·틱 함수 — newFxTick 자리에 새 함수, 0 이어야 한다)
 node $H --floor 15 --seed 12345 --eval "(()=>{let n=0;const r=Math.random;Math.random=function(){n++;return r.apply(this,arguments)};try{for(let i=0;i<120;i++){newFxTick(1/60);}}finally{Math.random=r}return {randomCalls:n}})()"
-# ⑦ 번역이 여섯 언어에 다 있는지
+# ⑦ 번역이 여섯 언어에 다 있는지(키 자리에 새 문자열 — 모든 언어가 [] 여야 한다)
 node $H --floor 1 --eval "['en','ja','zh','es','pt','ru'].map(l=>[l, ['새 문자열 1','새 문자열 2'].filter(k=>!(k in I18N_DICT[l]))])"
 ```
 - [ ] ①~③ 통과 · 하네스 종료 코드 0(**페이지 오류·콘솔 에러 0** — CrazyGames SDK 실패는 '알려진 외부 리소스'로 따로 센다).
-- [ ] ④ 먼저 **대조군**(`bash $A HEAD …` 변경 없는 상태 = SAME)이 같은지 본 뒤에만 믿는다(CLAUDE.md '렌더 변경을 비교할 때'). DIFF 인데 방·적 수가 다르면 난수 흐름이 갈린 것 → 1절 난수 규칙 위반을 찾는다. 빌드 간 해시는 같은 세션에서 연달아(v888).
+- [ ] ④ 먼저 **대조군**(같은 빌드 두 번 — `bash $A index.html --floor 5 --seed 12345` 는 작업 트리를 자기 사본과 비교한다 = SAME 이어야 한다. `bash $A HEAD …` 는 아직 커밋 안 한 변경이 없을 때만 대조군이다)이 같은지 본 뒤에만 믿는다(CLAUDE.md '렌더 변경을 비교할 때'). DIFF 인데 방·적 수가 다르면 난수 흐름이 갈린 것 → 1절 난수 규칙 위반을 찾는다. 빌드 간 해시는 같은 세션에서 연달아(v888).
 - [ ] ⑤ 실패 층은 그 층만 따로 지으면 재현이 안 될 수 있다 — 앞 층부터 순서대로(v851). 반경 1.0(보스)은 기준 아님.
 - [ ] 기능 자체는 `--eval` 로 수치 계측(피해량 = 공식 · 예고 시간 · 패링 · 걸어 나가면 빗나감 · 정리 후 객체 0). 계측 함정은 `dl-harness` 4절(조준은 `mousePos` · 좌표 대입은 벽 통과 · update 직후 플레이어가 계단/함정으로 옮겨질 수 있음 · 멀리 있는 적은 업데이트 안 함).
-- [ ] 밸런스를 건드렸으면 봇(`bash .claude/skills/dl-playbot/scripts/batch.sh -o <폴더> -f act3 -c knight,mage -C old='&newfx=0' -C new=''`, 8시드) — **층당 사망 평균 ± 표준오차**로 판단, 한 방 상한·회복량처럼 '몇 방에 죽나'를 바꾸면 사망 수가 아니라 받은 피해/층으로(CLAUDE.md v870 · v871). 레벨 1 하네스로 밸런스 판단 금지(v759).
+- [ ] 밸런스를 건드렸으면 봇(`bash .claude/skills/dl-playbot/scripts/batch.sh -o <폴더> -f act3 -c knight,mage -C old='&newfx=0' -C new=''`, 기본 8시드 · 끝나면 `node .claude/skills/dl-playbot/scripts/agg.js <폴더>` — 자세한 것은 `dl-playbot`) — **층당 사망 평균 ± 표준오차**로 판단, 한 방 상한·회복량처럼 '몇 방에 죽나'를 바꾸면 사망 수가 아니라 받은 피해/층으로(CLAUDE.md v870 · v871). 레벨 1 하네스로 밸런스 판단 금지(v759).
 - [ ] UI 를 바꿨으면 PC 960×540 · 모바일 844×390 스크린샷(`dl-device-check` 또는 `node $H --viewport mobile --shots …`).
 
 ## 7. 문서 · 릴리스

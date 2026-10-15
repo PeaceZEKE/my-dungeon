@@ -1,6 +1,6 @@
 ---
 name: dl-notion-sync
-description: Dungeon Legion 작업을 노션 프로젝트 허브에 최신화할 때 쓴다 — 버전을 커밋·푸시했거나 main 에 머지했을 때, 기능·수정 하나를 끝냈을 때, 결정이 났거나 작업을 보류했을 때, 새 할 일이 생겼을 때 '작업 로그' 데이터베이스에 한 줄을 넣거나 상태를 바꾸고, '앞으로 할 작업'·'출시 목표와 과정'·'지금까지 한 작업' 페이지의 해당 줄을 고친다. 사용자 지시로 **작업이 끝날 때마다** 한다(CLAUDE.md '노션 최신화'). Triggers — 한국어: 노션 최신화, 노션 갱신, 노션에 올려, 노션 업데이트, 작업 로그, 진행 상황 정리, 백로그 갱신, 로드맵 갱신, 머지 반영, 노션에 기록. English: update Notion, sync Notion, log this to Notion, work log, update the backlog/roadmap page.
+description: Dungeon Legion 작업을 노션 프로젝트 허브에 최신화할 때 쓴다 — 버전을 커밋·푸시했거나 main 에 머지했을 때, 기능·수정 하나를 끝냈을 때, 결정이 났거나 작업을 보류했을 때, 새 할 일이 생겼을 때 '작업 로그' 데이터베이스에 한 줄을 넣거나 상태를 바꾸고, '앞으로 할 작업'·'출시 목표와 과정'·'지금까지 한 작업' 페이지의 해당 줄을 고친다. 사용자 지시로 **작업이 끝날 때마다** 한다(CLAUDE.md '노션 최신화'). Triggers — 한국어 — 노션 최신화, 노션 갱신, 노션에 올려, 노션 업데이트, 작업 로그, 진행 상황 정리, 백로그 갱신, 로드맵 갱신, 머지 반영, 노션에 기록. English — update Notion, sync Notion, log this to Notion, work log, update the backlog/roadmap page.
 ---
 
 # dl-notion-sync — 노션 프로젝트 허브 최신화

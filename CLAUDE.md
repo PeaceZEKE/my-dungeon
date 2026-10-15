@@ -2385,6 +2385,14 @@ RGB는 건드리지 않으므로 모서리 하이라이트도 유지된다.
 - 일반 접속에서 치트 버튼(`bossTestBtn`/`maxLevelBtn`) 노출 금지
 - 미드게임 광고는 자체 하한 2분
 
+**알려진 문제(2026-10-15 발견 · v897 미수정) — 제출 전에 고칠 것.** SDK v3 `requestAd(type, callbacks)` 는 **콜백 방식**이다
+(라이브 SDK 를 받아 확인: `async requestAd(e,t){ this.adCallbacks={adFinished, adError, adStarted}; … postMessage }` —
+반환 프로미스는 요청을 보내자마자 끝난다). 그런데 `cgShowRewarded`·`cgShowMidgame` 은 `await requestAd()` 뒤에 보상·진행을 둬서
+**광고가 실패·차단·Basic Launch(`adsDisabledBasicLaunch`)여도 보상(부활·리롤·골드 2배)이 바로 나가고**, 음소거도 광고 시작(`adStarted`)이
+아니라 요청 전에 걸린다. GitHub Pages(environment `disabled`)에서는 광고 버튼 자체가 안 떠서 증상이 없다.
+그 밖에 제출 전 필수로 나온 것: 첫 클릭 한 번에 게임플레이(지금은 마을을 걸어가야 첫 전투) · SDK `systemInfo.locale` 로 언어 고르기 ·
+iframe 안에서는 가로 돌려 그리기(`ROT_ON`) 끄기 · Basic Launch 동안 광고 버튼 숨기기. 점검은 **`dl-crazygames-check`** 스킬(`sdk-audit.sh` · `cg-sim.js`).
+
 ## 켜지 않기로 한 것
 
 `?toon=N`(조명 계단화)은 두 번 구현하고 두 번 껐다. 선형 밝기로 자르면 아무 일도 안 일어나고

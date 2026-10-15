@@ -80,7 +80,7 @@ def label_lines(r, shots, meta_small=11, meta_rel=1.6):
     kind = '터치' if md.get('isTouchDevice') else 'PC'
     z = md.get('ui2z')
     l1 = f"{r['label']}   {md['scr'][0]}×{md['scr'][1]}  {kind}" + (f"  dpr {r['dpr']}" if r.get('dpr', 1) != 1 else '') + \
-         f"   HUD 배율 ×{z if z is not None else '-'}" + ('   (가로 돌려 그림)' if md.get('rotLand') else '')
+         (f"   HUD 배율 ×{z}" if z is not None else ('   HUD 배율 -' + ('' if md.get('ui2') else ' (새 HUD 꺼짐)'))) + ('   (가로 돌려 그림)' if md.get('rotLand') else '')
     gt = md.get('groundTiles') or [None, None]
     l2 = f"세로 FOV {md['vfov']}°  가로 FOV {md['hfov']}°  (화면비 {md['aspect']})   바닥 보이는 범위 {gt[0]}×{gt[1]}칸" + \
          f"   저해상 {md['lowRes'][0]}×{md['lowRes'][1]} → 텍셀 {md['texelPx']}px"

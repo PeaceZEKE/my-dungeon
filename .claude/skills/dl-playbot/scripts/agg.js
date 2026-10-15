@@ -14,7 +14,8 @@
 //
 // 지표(일반층 = 보스 층이 아닌 층, t > 1 초 — 층 이동 직후 한 프레임짜리 기록은 뺀다):
 //   사망/층 · 피해/층(층마다 잃은 체력 / 최대 체력 — 중독 등 damagePlayer 밖 피해 포함) · 피격/층(hitLog 개수 — floors[].hits 는
-//   '체력이 준 프레임 수'라 중독 도트가 수천 번으로 잡힌다: CLAUDE.md '2·3막 체감 조정' 계측 함정 ①) · 층 시간 · 300초 초과 수 · 물약/층 ·
+//   '체력이 준 프레임 수'라 중독 도트가 수천 번으로 잡힌다: CLAUDE.md '2·3막 체감 조정' 계측 함정 ①) · 층 시간 · 300초 초과 수(시드당) ·
+//   빼내기/층(floors[].unstuck — 봇이 3초 끼면 순간이동한 횟수, 수십이면 그 층은 봇 끼임) · 물약/층 ·
 //   출처/층(일반층 피격 비율 합 / 일반층 수 · 괄호는 한 방 평균/최대) · 보스 층마다 전투 시간(bossT, 초과 제외)·사망.
 // 시드 하나 = 표본 하나. ± 는 표준오차(표준편차 / √시드 수). 비교의 z = 차이 / √(SE₁² + SE₂²) — |z| < 2 면 '잡음 안'.
 'use strict';
@@ -32,7 +33,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '--boss-src') opt.bossSrc = true;
   else if (a === '--md') opt.md = true;
   else if (a === '--json') opt.json = argv[++i];
-  else if (a === '-h' || a === '--help') { console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(1, 19).map(l => l.replace(/^\/\/ ?/, '')).join('\n')); process.exit(0); }
+  else if (a === '-h' || a === '--help') { const L = fs.readFileSync(__filename, 'utf8').split('\n'), end = L.findIndex((l, i) => i > 0 && !l.startsWith('//')); console.log(L.slice(1, end).map(l => l.replace(/^\/\/ ?/, '')).join('\n')); process.exit(0); }
   else inputs.push(a);
 }
 if (!inputs.length) { console.error('사용: node agg.js <결과 폴더|json>… (--help)'); process.exit(2); }
@@ -40,7 +41,9 @@ if (!inputs.length) { console.error('사용: node agg.js <결과 폴더|json>…
 // ── 읽기 ──
 const ACT_LEN = 30, actOf = f => Math.ceil(f / ACT_LEN);
 const CLS_ORDER = ['knight', 'mage', 'archer'];
-const condQuery = {}, condOrder = [], warns = [];
+const condQuery = {}, condOrder = [], warns = [];   // condQuery[이름] = { q: URL 쿼리, merc: 'shield:5' 등 } (conds.tsv)
+const condLabel = c => { const Q = condQuery[c]; return Q ? (Q.q || '쿼리 없음') + (Q.merc ? ' · 용병 ' + Q.merc : '') : null; };
+const condMd = c => { const Q = condQuery[c]; return Q ? (Q.q ? ` \`${Q.q}\`` : '') + (Q.merc ? ` 용병 ${Q.merc}` : '') : ''; };
 const addCond = c => { if (!condOrder.includes(c)) condOrder.push(c); };
 const NAME_RE = /^([A-Za-z0-9_-]+)__(knight|mage|archer)__f(\d+)-(\d+)__s(\d+)\.json$/;
 const files = [];
@@ -48,7 +51,7 @@ for (const inp of inputs) {
   if (!fs.existsSync(inp)) { warns.push('없음: ' + inp); continue; }
   if (fs.statSync(inp).isDirectory()) {
     const tsv = path.join(inp, 'conds.tsv');
-    if (fs.existsSync(tsv)) for (const l of fs.readFileSync(tsv, 'utf8').split('\n')) { if (!l.trim()) continue; const [n, q, m] = l.split('\t'); condQuery[n] = (q || '') + (m ? ' · 용병 ' + m : ''); addCond(n); }
+    if (fs.existsSync(tsv)) for (const l of fs.readFileSync(tsv, 'utf8').split('\n')) { if (!l.trim()) continue; const [n, q, m] = l.split('\t'); condQuery[n] = { q: q || '', merc: m || '' }; addCond(n); }
     const d = fs.existsSync(path.join(inp, 'runs')) ? path.join(inp, 'runs') : inp;
     for (const f of fs.readdirSync(d).sort()) if (f.endsWith('.json')) files.push(path.join(d, f));
   } else files.push(inp);
@@ -76,7 +79,7 @@ if (!runs.length) { console.error('결과가 없다' + (warns.length ? ' — ' +
 const G = new Map();
 const grp = (cond, act, cls) => {
   const k = cond + '|' + act + '|' + cls;
-  if (!G.has(k)) G.set(k, { cond, act, cls, seeds: [], d: [], h: [], hits: [], t: [], to: [], pot: [], nmob: [], lvEnd: [], src: {}, per: {}, bsrc: {}, bper: {}, boss: {}, bossT: [], bossD: [] });
+  if (!G.has(k)) G.set(k, { cond, act, cls, seeds: [], d: [], h: [], hits: [], t: [], to: [], un: [], pot: [], nmob: [], lvEnd: [], src: {}, per: {}, bsrc: {}, bper: {}, boss: {}, bossT: [], bossD: [] });
   return G.get(k);
 };
 for (const R of runs) {
@@ -98,6 +101,7 @@ for (const R of runs) {
       g.h.push(mob.reduce((s, x) => s + x.dmg / x.hpMax, 0) / n * 100);
       g.t.push(mob.reduce((s, x) => s + x.t, 0) / n);
       g.to.push(mob.filter(x => x.timeout).length);
+      g.un.push(mob.reduce((s, x) => s + (x.unstuck || 0), 0) / n);   // 봇 '빼내기'(3초 못 움직이면 순간이동) — 많으면 봇 끼임, 층 시간·초과는 봇 문제
       g.pot.push(mob.reduce((s, x) => s + (x.potions || 0), 0) / n);
       const hl = (r.hitLog || []).filter(h => mf.has(h[0]));
       g.hits.push(hl.length / n);
@@ -133,7 +137,7 @@ const topSrc = (g, nTop) => {
 };
 const summ = g => ({
   cond: g.cond, act: g.act, cls: g.cls, seeds: g.seeds, nMobFloorsPerSeed: ms(g.nmob).m,
-  deathsPF: ms(g.d), dmgPF: ms(g.h), hitsPF: ms(g.hits), floorSec: ms(g.t), timeouts: ms(g.to), potionsPF: ms(g.pot), lvEnd: ms(g.lvEnd),
+  deathsPF: ms(g.d), dmgPF: ms(g.h), hitsPF: ms(g.hits), floorSec: ms(g.t), timeouts: ms(g.to), unstuckPF: ms(g.un), potionsPF: ms(g.pot), lvEnd: ms(g.lvEnd),
   bossSec: ms(g.bossT), bossDeaths: ms(g.bossD),
   bossFloors: Object.entries(g.boss).map(([fl, B]) => ({ floor: +fl, sec: ms(B.t), deaths: ms(B.d), dmgPct: ms(B.dmg), timeouts: B.to, n: B.n })),
   top: topSrc(g, opt.top),
@@ -142,6 +146,7 @@ const summ = g => ({
 const S = [...G.values()].map(summ).sort((a, b) =>
   condOrder.indexOf(a.cond) - condOrder.indexOf(b.cond) || a.act - b.act || CLS_ORDER.indexOf(a.cls) - CLS_ORDER.indexOf(b.cls));
 const conds = condOrder.filter(c => S.some(s => s.cond === c));
+if (!S.length) { console.error(`조건·막·직업 필터에 맞는 결과가 없다(run ${runs.length} 개를 읽었다 — --acts/--class/--cond 를 확인)`); process.exit(1); }
 
 // ── 출력 ──
 const srcTxt = s => s.top.map(t => `${t.k} ${fx(t.pctPerFloor, 0)}%(${fx(t.avgHit, 0)}/${fx(t.maxHit, 0)})`).join(', ');
@@ -161,9 +166,9 @@ if (base) for (const c of conds.filter(x => x !== base)) for (const s of S.filte
 }
 const nSeed = s => new Set(s.seeds).size;
 if (opt.md) {
-  console.log('| 조건 | 막 | 직업 | 시드 | 일반층 사망/층 | 피해/층 | 피격/층 | 층 시간 | 초과 | 보스전 | 보스 사망 | 상위 출처(층당 %, 한 방 평균/최대) |');
+  console.log('| 조건 | 막 | 직업 | 시드 | 일반층 사망/층 | 피해/층 | 피격/층 | 층 시간 | 초과(빼내기/층) | 보스전 | 보스 사망 | 상위 출처(층당 %, 한 방 평균/최대) |');
   console.log('|---|---|---|---|---|---|---|---|---|---|---|---|');
-  for (const s of S) console.log(`| ${s.cond}${condQuery[s.cond] ? ` \`${condQuery[s.cond]}\`` : ''} | ${s.act} | ${s.cls} | ${nSeed(s)}${nSeed(s) < 8 ? ' ⚠' : ''} | ${pm(s.deathsPF)} | ${pm(s.dmgPF, 0, '%')} | ${pm(s.hitsPF, 1)} | ${fx(s.floorSec.m, 0)}s | ${fx(s.timeouts.m, 1)} | ${s.bossSec.n ? pm(s.bossSec, 0, 's') : '-'} | ${s.bossDeaths.n ? pm(s.bossDeaths, 1) : '-'} | ${srcTxt(s) || '-'} |`);
+  for (const s of S) console.log(`| ${s.cond}${condMd(s.cond)} | ${s.act} | ${s.cls} | ${nSeed(s)}${nSeed(s) < 8 ? ' ⚠' : ''} | ${pm(s.deathsPF)} | ${pm(s.dmgPF, 0, '%')} | ${pm(s.hitsPF, 1)} | ${fx(s.floorSec.m, 0)}s | ${fx(s.timeouts.m, 1)}(${fx(s.unstuckPF.m, 1)}) | ${s.bossSec.n ? pm(s.bossSec, 0, 's') : '-'} | ${s.bossDeaths.n ? pm(s.bossDeaths, 1) : '-'} | ${srcTxt(s) || '-'} |`);
   if (S.some(s => nSeed(s) < 8)) console.log('\n⚠ 시드 8 미만 — 판단 보류');
   if (cmpRows.length) {
     console.log(`\n비교(기준 ${base}) — z = 차이/√(SE₁²+SE₂²), |z| < 2 는 잡음 안\n`);
@@ -173,11 +178,11 @@ if (opt.md) {
   }
 } else {
   for (const c of conds) {
-    console.log(`\n== 조건 ${c}${condQuery[c] !== undefined ? ` [${condQuery[c] || '쿼리 없음'}]` : ''} ==`);
+    console.log(`\n== 조건 ${c}${condLabel(c) !== null ? ` [${condLabel(c)}]` : ''} ==`);
     for (const s of S.filter(x => x.cond === c)) {
       const seeds = [...new Set(s.seeds)];
       console.log(`${s.act}막 ${s.cls} (시드 ${seeds.length}${seeds.length < 8 ? ' — 8 미만, 판단 보류' : ''} · 일반층 ${fx(s.nMobFloorsPerSeed, 1)}/시드 · 끝 lv ${fx(s.lvEnd.m, 1)})`);
-      if (s.deathsPF.n) console.log(`   일반층  사망/층 ${pm(s.deathsPF)} · 피해/층 ${pm(s.dmgPF, 0, '%')} · 피격/층 ${pm(s.hitsPF, 1)} · 층 ${fx(s.floorSec.m, 0)}s · 초과 ${fx(s.timeouts.m, 1)} · 물약/층 ${fx(s.potionsPF.m, 2)}`);
+      if (s.deathsPF.n) console.log(`   일반층  사망/층 ${pm(s.deathsPF)} · 피해/층 ${pm(s.dmgPF, 0, '%')} · 피격/층 ${pm(s.hitsPF, 1)} · 층 ${fx(s.floorSec.m, 0)}s · 초과 ${fx(s.timeouts.m, 1)} · 빼내기/층 ${fx(s.unstuckPF.m, 1)} · 물약/층 ${fx(s.potionsPF.m, 2)}`);
       if (s.top.length) console.log(`   출처/층 ${srcTxt(s)}`);
       if (s.bossFloors.length) console.log(`   보스    ${bossTxt(s)}  | 평균 ${s.bossSec.n ? pm(s.bossSec, 0, 's') : '-'} · 사망 ${pm(s.bossDeaths, 1)}`);
       if (s.bossTop.length) console.log(`   보스 출처/시드 ${s.bossTop.map(t => `${t.k} ${fx(t.pctPerSeed, 0)}%(${fx(t.avgHit, 0)})`).join(', ')}`);

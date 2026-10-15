@@ -1,6 +1,6 @@
 ---
 name: dl-portrait
-description: Dungeon Legion 의 NPC·용병·인물 초상화(64px 도트)를 GPT(sprite-gen · codex image_gen, ChatGPT 구독)로 뽑아 게임에 넣을 때 쓴다 — 주제 문장 쓰기 → 후보 A/B 생성 → 비교 시트로 사용자가 고르기 → 64칸 중앙값 + 옥트리 32색으로 줄이기 → refs/ui/초상화/npc/ 보관 → index.html 의 window.NPC_POR_DATA(<script id="npcpor-data">)에 base64 로 넣기 → 대화창·창 머리·여관 카드에 연결 → 브라우저 확인. 기존 초상화를 다시 뽑거나 바꿀 때, codex 로그인(device-auth)이 필요할 때, 초상화 데이터·연결이 맞는지 점검할 때도 이것. Triggers — 한국어: 초상화, 초상화 넣어, 초상화 바꿔, 초상화 다시 뽑아, NPC 얼굴, 대화창 얼굴, 여관 카드 그림, 용병 초상화, 인물 그림, 도트 초상화, 64px, GPT 로 그려, 코덱스 로그인, NPC_POR_DATA, npcpor. English: portrait, NPC portrait, character portrait, face icon, dialog portrait, mercenary portrait, pixel portrait, regenerate portrait, embed portrait, codex login.
+description: Dungeon Legion 의 NPC·용병·인물 초상화(64px 도트)를 GPT(sprite-gen · codex image_gen, ChatGPT 구독)로 뽑아 게임에 넣을 때 쓴다 — 주제 문장 쓰기 → 후보 A/B 생성 → 비교 시트로 사용자가 고르기 → 64칸 중앙값 + 옥트리 32색으로 줄이기 → refs/ui/초상화/npc/ 보관 → index.html 의 window.NPC_POR_DATA(<script id="npcpor-data">)에 base64 로 넣기 → 대화창·창 머리·여관 카드에 연결 → 브라우저 확인. 기존 초상화를 다시 뽑거나 바꿀 때, codex 로그인(device-auth)이 필요할 때, 초상화 데이터·연결이 맞는지 점검할 때도 이것. Triggers — 한국어 — 초상화, 초상화 넣어, 초상화 바꿔, 초상화 다시 뽑아, NPC 얼굴, 대화창 얼굴, 여관 카드 그림, 용병 초상화, 인물 그림, 도트 초상화, 64px, GPT 로 그려, 코덱스 로그인, NPC_POR_DATA, npcpor. English — portrait, NPC portrait, character portrait, face icon, dialog portrait, mercenary portrait, pixel portrait, regenerate portrait, embed portrait, codex login.
 ---
 
 # dl-portrait — GPT 로 초상화 뽑아 게임에 넣기

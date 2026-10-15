@@ -30,7 +30,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null || (cd "$HERE/../../../.." && pwd))"
 RUNJS="$ROOT/viewers/playbot/run.js"
 PRE="$HERE/pw-preload.js"
-export NODE_PATH="${NODE_PATH:+$NODE_PATH:}/opt/node22/lib/node_modules"
+# playwright 는 전역 설치본을 쓴다(run.js 옆에 node_modules 가 없다) — 전역 폴더는 npm root -g, 없으면 node 실행 파일 옆 lib/node_modules
+GNM="$(npm root -g 2>/dev/null)"; [ -d "$GNM" ] || GNM="$(dirname "$(dirname "$(command -v node)")")/lib/node_modules"
+export NODE_PATH="${NODE_PATH:+$NODE_PATH:}$GNM"
 
 usage() { awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "${BASH_SOURCE[0]}"; }
 
@@ -60,6 +62,7 @@ done
 [ -n "$OUT" ] || { echo "✗ -o <결과 폴더> 가 필요하다"; exit 2; }
 [ ${#RANGES[@]} -gt 0 ] || { echo "✗ -f <층 구간> 이 필요하다(예: -f 31-60 · -f act2)"; exit 2; }
 [ -f "$RUNJS" ] || { echo "✗ $RUNJS 가 없다"; exit 2; }
+( cd "$ROOT/viewers/playbot" && node -e "require.resolve('playwright')" ) 2>/dev/null || { echo "✗ playwright 모듈을 못 찾는다(NODE_PATH=$NODE_PATH) — 전역 설치를 확인할 것(브라우저는 playwright install 말고 /opt/pw-browsers 동봉본: pw-preload.js 가 알아서 쓴다)"; exit 2; }
 [[ "$J" =~ ^[1-4]$ ]] || { echo "✗ -j 는 1~4 — 동시 실행이 4 개를 넘으면 page.goto 가 시간 초과로 죽고(CLAUDE.md '용병 2단계' 계측 함정 ①) 코어도 4 개뿐이다"; exit 2; }
 mkdir -p "$OUT/runs" "$OUT/logs" "$OUT/pids"
 OUT="$(cd "$OUT" && pwd)"
@@ -132,7 +135,7 @@ for s in "${SEEDL[@]}"; do for i in "${!CONDN[@]}"; do for k in "${!RA[@]}"; do 
   JN+=("$name"); JC+=("$c"); JA+=("${RA[$k]}"); JB+=("${RB[$k]}"); JS+=("$s"); JQ+=("${CONDQ[$i]}")
 done; done; done; done
 echo "· 일 ${#JN[@]} 개(건너뛴 기존 결과 제외) · 동시 $J · 포트 $PORTS · 결과 $OUT"
-if [ $DRY -eq 1 ]; then for x in "${!JN[@]}"; do printf '  %s  query=[%s]\n' "${JN[$x]}" "${JQ[$x]}"; done; exit 0; fi
+if [ $DRY -eq 1 ]; then for x in "${!JN[@]}"; do printf '  %s  query=[%s]%s\n' "${JN[$x]}" "${JQ[$x]}" "${MERC:+  merc=$MERC}"; done; exit 0; fi
 [ ${#JN[@]} -gt 0 ] || { echo "· 할 일이 없다 — node $HERE/agg.js $OUT"; exit 0; }
 
 # ── 서버 ────────────────────────────────────────────────
@@ -217,6 +220,8 @@ done
 rm -f "$OUT/batch.pid"
 [ "$(md5sum < "$ROOT/index.html" | cut -c1-12)" != "$FILE_MD5" ] && TAINT=1
 if [ $TAINT -eq 1 ]; then echo "TAINTED: index.html changed during batch $STAMP" >> "$OUT/batch-$STAMP.txt"; echo "⚠ 측정 도중 index.html 이 바뀌었다 — 이 묶음 결과는 두 빌드가 섞였을 수 있다(batch-$STAMP.txt)"; fi
-NOK=$(awk '$3=="ok"' "$OUT/done.txt" 2>/dev/null | wc -l); NF=$(awk '$3=="FAIL"' "$OUT/done.txt" 2>/dev/null | wc -l)
-echo "· 끝 — $(( ($(date +%s) - T0) / 60 ))분 · done.txt 누적 ok ${NOK:-0} · FAIL ${NF:-0}"
+# 실패는 '아직 결과가 없는 것'만 센다(끊겼다가 이어 돌려 성공한 run 의 예전 FAIL 줄은 done.txt 에 남는다)
+NOK=$(ls "$OUT"/runs/*.json 2>/dev/null | wc -l)
+NF=$(awk '$3=="FAIL" {print $2}' "$OUT/done.txt" 2>/dev/null | sort -u | while read -r n; do [ -s "$OUT/runs/$n.json" ] || echo "$n"; done | wc -l)
+echo "· 끝 — $(( ($(date +%s) - T0) / 60 ))분 · 결과 ${NOK:-0} 개 · 결과 없는 실패 ${NF:-0} 개(bash $HERE/status.sh $OUT — 같은 명령을 다시 부르면 실패한 것만 다시 돈다)"
 echo "  집계: node $HERE/agg.js $OUT"

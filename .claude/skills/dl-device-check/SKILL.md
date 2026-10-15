@@ -1,6 +1,6 @@
 ---
 name: dl-device-check
-description: Dungeon Legion(index.html 단일 파일 게임)이 PC 웹과 모바일에서 어떻게 다르게 보이는지 한 번에 비교할 때 쓴다 — 뷰포트 여러 개(기본 모바일 844×390 터치 · PC 960×540 · 1280×720 · 1366×768 · 1920×1080)로 같은 시드의 마을과 던전 N층을 찍고, 카메라 세로/가로 FOV · 바닥에서 보이는 칸 수 · 렌더러/저해상 크기와 텍셀 배율(PX_FIXED_H) · HUD 배율(--ui2z) · isTouchDevice · 캐릭터 화면 높이 · 작은 글씨 · 모바일 버튼 면적을 재서 같은 높이로 맞춘 이름표 붙은 접촉 시트(PNG)와 표를 만든다. UI·HUD·카메라·픽셀 해상도·글꼴 크기·모바일 조작 버튼을 바꾼 뒤, 또는 CrazyGames 제출 전 기기별 점검에. Triggers — 한국어: 모바일이랑 PC 비교, 기기별 화면, 해상도별, 화면 크기별, 모니터마다, 폰에서 어떻게 보여, 모바일 화면 확인, 뷰포트 비교, 화면비, 가로 시야, 캐릭터 크기가 다르다, 글씨가 작다, HUD 배율, 텍셀 크기, 접촉 시트. English: compare mobile vs PC, device check, viewport comparison, screen sizes, resolutions, aspect ratio, how it looks on phone, contact sheet, HUD scale, small text, FOV per device.
+description: Dungeon Legion(index.html 단일 파일 게임)이 PC 웹과 모바일에서 어떻게 다르게 보이는지 한 번에 비교할 때 쓴다 — 뷰포트 여러 개(기본 모바일 844×390 터치 · PC 960×540 · 1280×720 · 1366×768 · 1920×1080)로 같은 시드의 마을과 던전 N층을 찍고, 카메라 세로/가로 FOV · 바닥에서 보이는 칸 수 · 렌더러/저해상 크기와 텍셀 배율(PX_FIXED_H) · HUD 배율(--ui2z) · isTouchDevice · 캐릭터 화면 높이 · 작은 글씨 · 모바일 버튼 면적을 재서 같은 높이로 맞춘 이름표 붙은 접촉 시트(PNG)와 표를 만든다. UI·HUD·카메라·픽셀 해상도·글꼴 크기·모바일 조작 버튼을 바꾼 뒤, 또는 CrazyGames 제출 전 기기별 점검에. Triggers — 한국어 — 모바일이랑 PC 비교, 기기별 화면, 해상도별, 화면 크기별, 모니터마다, 폰에서 어떻게 보여, 모바일 화면 확인, 뷰포트 비교, 화면비, 가로 시야, 캐릭터 크기가 다르다, 글씨가 작다, HUD 배율, 텍셀 크기, 접촉 시트. English — compare mobile vs PC, device check, viewport comparison, screen sizes, resolutions, aspect ratio, how it looks on phone, contact sheet, HUD scale, small text, FOV per device.
 ---
 
 # dl-device-check — PC 웹 ↔ 모바일 화면 비교
@@ -62,7 +62,7 @@ node .claude/skills/dl-device-check/scripts/devices.js --floor 5 --out "$OUT"
 
 ## 5. 글꼴
 
-`sheet.py` 는 한글 이름표용 글꼴을 ① 시스템(`fc-list :lang=ko`) ② `assets/font.ttf`(고운바탕 Bold 부분 집합 · OFL 1.1 — `assets/OFL.txt`, 이 스킬 스크립트의 글자만 · 약 170KB) ③ PIL 기본(한글 깨짐) 순으로 고른다. 이름표에 새 한글을 넣었고 시스템 한글 글꼴이 없는 환경이면:
+`sheet.py` 는 한글 이름표용 글꼴을 ① 시스템(`fc-list :lang=ko`) ② `assets/font.ttf`(고운바탕 Bold 부분 집합 · OFL 1.1 — `assets/OFL.txt`, 이 스킬 스크립트의 글자만 · 약 180KB) ③ PIL 기본(한글 깨짐) 순으로 고른다. 이름표에 새 한글을 넣었고 시스템 한글 글꼴이 없는 환경이면:
 ```bash
 bash .claude/skills/dl-device-check/scripts/mkfont.sh <한글 TTF>   # 원본: github.com/yangheeryu/Gowun-Batang
 ```

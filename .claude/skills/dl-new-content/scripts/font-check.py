@@ -28,7 +28,7 @@ font-check.py — index.html 에 쓰인 한글 중 박아 둔 고운바탕(UI2Ko
   - 글자 목록은 '지금 cmap ∪ 새 글자' 다. 지금 cmap 에서 빼면 다른 곳에 쓰던 글자가 사라질 수 있다.
 
 옵션
-  --file PATH      검사할 파일(기본: 현재 폴더의 index.html, 없으면 저장소 루트의 index.html)
+  --file PATH      검사할 파일(기본: 이 스크립트가 든 저장소 루트의 index.html — 현재 폴더와 무관)
   --strict         주석에만 있는 빠진 글자도 실패로 친다
   --json           결과를 JSON 한 줄로
   --show N         빠진 글자마다 보여 줄 위치 수(기본 2)
@@ -36,8 +36,8 @@ font-check.py — index.html 에 쓰인 한글 중 박아 둔 고운바탕(UI2Ko
   --with-comments  --emit-text/--rebake 에 주석 한글도 넣는다(CLAUDE.md v814 의 '게임 코드 [가-힣] 전부' 방식)
   --rebake         서브셋을 굽는다(--src 또는 --fetch, --out 필수)
   --src TTF        원본 Gowun Batang Bold TTF
-  --fetch          원본을 Google Fonts CSS API → fonts.gstatic.com 에서 받는다(스크래치패드나 --cache 에 둔다)
-  --cache DIR      --fetch 로 받은 TTF 를 둘 곳(기본: /tmp/dl-font-cache)
+  --fetch          원본(약 8MB)을 Google Fonts css2 API → fonts.gstatic.com 에서 받아 --cache 에 둔다(두 번째부터는 재사용)
+  --cache DIR      --fetch 로 받은 TTF 를 둘 곳(기본: $TMPDIR 또는 /tmp 아래 dl-font-cache)
   --out WOFF2      구운 woff2 를 쓸 곳
   --apply          구운 woff2 의 base64 로 --file 안의 UI2Ko 데이터를 갈아 끼운다(그 뒤 다시 검사)
 """
@@ -48,7 +48,11 @@ import io
 import json
 import os
 import re
+import subprocess
 import sys
+import tempfile
+import traceback
+import urllib.error
 import urllib.request
 
 HANGUL_RANGES = ((0xAC00, 0xD7A3), (0x3131, 0x318E), (0x1100, 0x11FF))
@@ -65,12 +69,19 @@ def is_hangul(ch):
 
 
 def find_default_file():
-    if os.path.isfile('index.html'):
-        return 'index.html'
+    """기본은 **이 스크립트가 든 저장소 루트**의 index.html — 현재 폴더가 아니다.
+    현재 폴더를 먼저 보면 스크래치패드 같은 데 굴러다니던 예전 index.html 을 조용히 검사한다
+    (CLAUDE.md '렌더 변경을 비교할 때' — 스크래치패드에서 띄운 서버가 예전 index.html 을 서빙한 사고와 같은 함정).
+    다른 파일은 --file 로."""
     here = os.path.dirname(os.path.abspath(__file__))
-    root = os.path.abspath(os.path.join(here, '..', '..', '..', '..'))
-    p = os.path.join(root, 'index.html')
-    return p
+    try:
+        root = subprocess.run(['git', '-C', here, 'rev-parse', '--show-toplevel'], capture_output=True,
+                              text=True, timeout=10).stdout.strip()
+    except Exception:
+        root = ''
+    if not root:
+        root = os.path.abspath(os.path.join(here, '..', '..', '..', '..'))   # scripts → dl-new-content → skills → .claude → 루트
+    return os.path.join(root, 'index.html')
 
 
 def load_cmap(src):
@@ -322,7 +333,6 @@ def full_hangul_or_die(ttf):
 def rebake(src_ttf, chars, out_path):
     """pyftsubset 명령과 똑같이 굽는다(subset.main 을 그대로 부른다 — Options() 로 직접 짜면
     로딩 옵션이 달라 48바이트 다른 파일이 나왔다. CLI 와 같아야 박힌 서브셋을 바이트 단위로 재현한다)."""
-    import tempfile
     from fontTools import subset
     from fontTools.ttLib import TTFont
     full_hangul_or_die(src_ttf)
@@ -355,7 +365,7 @@ def main():
     ap.add_argument('--rebake', action='store_true')
     ap.add_argument('--src')
     ap.add_argument('--fetch', action='store_true')
-    ap.add_argument('--cache', default='/tmp/dl-font-cache')
+    ap.add_argument('--cache', default=os.path.join(tempfile.gettempdir(), 'dl-font-cache'))
     ap.add_argument('--out')
     ap.add_argument('--apply', action='store_true')
     a = ap.parse_args()
@@ -405,7 +415,7 @@ def main():
         print('UI2Ko(%s) %d줄 · %.1fKB · 글리프 %d (한글 %d자)' % (
             fname, fline, size / 1024, res['cmapGlyphs'], res['cmapHangul']))
         print('%s 의 한글: 화면에 나올 수 있는 곳 %d자 · 주석에만 %d자' % (
-            os.path.basename(path), res['usedVisible'], res['usedCommentOnly']))
+            os.path.abspath(path), res['usedVisible'], res['usedCommentOnly']))
         if digits_missing:
             print('!! 숫자가 빠졌다(unicode-range 가 0-9 를 UI2Ko 로 보낸다 — v816): ' + ''.join(digits_missing))
         if miss_vis:
@@ -416,8 +426,10 @@ def main():
         else:
             print('OK 화면에 나올 수 있는 한글은 전부 서브셋에 있다')
         if miss_com:
-            print('   (주석에만 있는 빠진 글자 %d자 — 화면에 안 나오므로 무시해도 된다%s)' % (
-                len(miss_com), '' if a.strict else ', --strict 면 실패로 친다'))
+            if a.strict:
+                print('!! --strict: 주석에만 있는 빠진 글자 %d자도 실패로 친다: %s' % (len(miss_com), ''.join(miss_com)))
+            else:
+                print('   (주석에만 있는 빠진 글자 %d자 — 화면에 안 나오므로 무시해도 된다, --strict 면 실패로 친다)' % len(miss_com))
 
     want = set(chr(c) for c in cmap) | set(vis)
     if a.with_comments:
@@ -461,4 +473,20 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    # 종료 코드 약속: 0 OK · 1 빠진 글자 · 2 실행 문제. raise SystemExit("메시지") 는 파이썬 기본으로 1 이 돼
+    # '빠진 글자'와 구분이 안 됐다(fontTools 없음·네트워크 실패도 1) — 여기서 2 로 바꾼다.
+    try:
+        rc = main()
+    except SystemExit as e:
+        if isinstance(e.code, str):
+            print('✗ ' + e.code, file=sys.stderr)
+            rc = 2
+        else:
+            raise
+    except urllib.error.URLError as e:
+        print('✗ 내려받기 실패(%s) — 네트워크·프록시 문제면 --src 로 TTF 를 직접 줄 것' % e, file=sys.stderr)
+        rc = 2
+    except Exception:
+        traceback.print_exc()
+        rc = 2
+    sys.exit(rc)
