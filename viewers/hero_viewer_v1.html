@@ -1003,10 +1003,10 @@ const HELM_HP = [
   [-0.32, 0.2599, 0.0943, 0.1955, 0.1045, 0.8711],
   [-0.37, 0.2643, 0.0616, 0.2704, 0.1999, 0.7011]];
 const HELM_SY = 1.0107, HELM_HZ = 1.1584, HELM_VIS_Y = 0.02, HELM_CHIN_Y = -0.26, HELM_RONDEL = [0.0562, 0.0901];   // 맞춘 결과 IoU 정면 0.943 · 측면 0.873 · 후면 0.933 · 위 0.911
-// 기사 어깨 갑옷(HERO2) — 코덱스 참고도(refs/ui/초상화/knight_pauldron_4view.png) 실루엣에 맞춘 구조 모델(pfit3 — 바깥 측면 0.793 · 위 0.905 · 정면 0.478 — 정면 참고도는 다른 두 장과 안 맞아 가중치를 낮췄다).
-// 덮개: 타원 단면 일곱(y = top·cos(t)^c1 · 반지름 cr·sin(t)) · 판 k(셋): y0 − k·hL·0.85 부터 hL 아래로, 반지름 cr + 0.006 + k·dr → 아래 끝 +fl.
+// 기사 어깨 갑옷(HERO2) — 코덱스 참고도(refs/ui/초상화/knight_pauldron_4view.png) 실루엣에 맞춘 구조 모델(pfit3 — 바깥 측면 0.779 · 정면 0.867 · 위 0.871 · 뒤 0.836). 초상화처럼 판은 두 장(덮개 + 아랫판 하나, NL).
+// 덮개: 타원 단면 일곱(y = top·cos(t)^c1 · 반지름 cr·sin(t)) · 판 k(NL 장): y0 − k·hL·0.85 부터 hL 아래로, 반지름 cr + 0.006 + k·dr → 아래 끝 +fl.
 // 공용: 앞뒤 배율 HZ · 가로 배율 X · 기울기 T(z 1당 y — 앞이 높다) · 판이 감싸는 각 arc(π 배수, 바깥 중심) · 원판 [ry, rz, rr, ra(0 = 앞, π/2 = 바깥)].
-const PAULD = { oy: 0.06, top: 0.1955, c1: 1.1762, c2: 0.9669, c3: 0.9813, cr: 0.1877, y0: 0.0054, hL: 0.0922, dr: 0.0192, fl: 0.0245, T: -0.3172, HZ: 1.1786, X: 1.0152, arc: 1.4171, ry: 0.0274, rz: 0.0181, rr: 0.08, ra: 1.1172 };
+const PAULD = { NL: 1, oy: 0.06, top: 0.197, c1: 1.4871, cr: 0.18, y0: 0.0009, hL: 0.1473, dr: 0.0219, fl: 0.045, T: 0.25, HZ: 0.8827, X: 0.9469, arc: 1.6631, ry: 0.0312, rz: 0.0102, rr: 0.08, ra: 0.4906 };
 function hero2Knight(K) { return hero2Lcg(901001, () => {
   const { mk, S, M, D } = hero2Mats();
   const STEEL = mk(0x8f9bb0, 'm'), STEEL_L = mk(0xb4bccb, 'm'), STEEL_D = mk(0x5c6678, 'm'), GOLD = mk(0xc89a3e);
@@ -1091,7 +1091,7 @@ function hero2Knight(K) { return hero2Lcg(901001, () => {
     const keep = arm.children.filter(c => !c.isMesh);
     hero2Clear(arm);
     const g = new THREE.Group(); arm.add(g);
-    // 어깨: 볏 달린 둥근 덮개 + 계단처럼 내려가는 판 셋(금 테) + 앞 바깥 금 원판 — 위 PAULD 표
+    // 어깨: 볏 달린 둥근 덮개 + 그 아래 겹친 아랫판(금 테) + 앞 금 원판 — 위 PAULD 표
     const pd = new THREE.Group(); pd.name = 'pauld'; pd.position.set(sign * 0.03, PAULD.oy, 0); g.add(pd);
     const PA = PAULD, ocA = sign * Math.PI / 2, arcA = Math.PI * PA.arc;
     const ring = (y, R, ph, off) => { const rr = R + off, z = -rr * Math.cos(ph) * PA.HZ; return [rr * Math.sin(ph) * PA.X, y + PA.T * z, z]; };
@@ -1108,11 +1108,13 @@ function hero2Knight(K) { return hero2Lcg(901001, () => {
     h2(pd, sheet(capR, -Math.PI, Math.PI, 16, 0), STEEL_L);
     h2(pd, sheet(capR.slice(0, 6), -0.07, 0.07, 1, 0.01), GOLD);                         // 볏(앞→뒤 금 띠)
     h2(pd, sheet(capR.slice(0, 6), Math.PI - 0.07, Math.PI + 0.07, 1, 0.01), GOLD);
-    for (let k = 0; k < 3; k++) {
+    h2(pd, sheet([[PA.top * 0.12, PA.cr * 0.985], [-0.005, PA.cr * 1.0]], -Math.PI, Math.PI, 16, 0.01), GOLD_DS);   // 위판 아랫단 금 띠
+    for (let k = 0; k < PA.NL; k++) {
       const yt = PA.y0 - k * PA.hL * 0.85, r0 = PA.cr + 0.006 + k * PA.dr, rs = [[yt, r0], [yt - PA.hL, r0 + PA.fl]];
       const lg = new THREE.Group(); pd.add(lg);
       lg.add(new THREE.Mesh(sheet(rs, ocA - arcA / 2, ocA + arcA / 2, 12, 0), k % 2 ? STEEL_DS : STEEL_LDS));
-      lg.add(new THREE.Mesh(sheet([[yt - PA.hL + 0.02, r0 + PA.fl * 0.8], [yt - PA.hL, r0 + PA.fl]], ocA - arcA / 2, ocA + arcA / 2, 12, 0.006), GOLD_DS));   // 판 아래 금 테
+      lg.add(new THREE.Mesh(sheet([[yt - PA.hL + 0.03, r0 + PA.fl * 0.8], [yt - PA.hL, r0 + PA.fl]], ocA - arcA / 2, ocA + arcA / 2, 12, 0.006), GOLD_DS));   // 판 아래 금 테
+      for (const e of [ocA - arcA / 2, ocA + arcA / 2 - 0.12]) lg.add(new THREE.Mesh(sheet(rs, e, e + 0.12, 1, 0.006), GOLD_DS));   // 판 앞뒤 끝 세로 금 띠
     }
     { const R0 = PA.cr, ra = PA.ra, rn = new THREE.Vector3(sign * Math.sin(ra), 0, -Math.cos(ra));
       const cx = sign * R0 * Math.sin(ra) * PA.X, cz = -R0 * Math.cos(ra) * PA.HZ + PA.rz, cy = PA.ry;
