@@ -1191,16 +1191,15 @@ function hero2Knight(K) { return hero2Lcg(901001, () => {
   h2(hilt, C(0.028, 0.032, 0.3, 6), LEATH, 0, 0, 0);                       // 손잡이(주먹이 가운데를 쥔다)
   h2(hilt, SP(0.055, 4, 3), GOLD, 0, -0.18, 0);                             // 머리
   c3MergeStatic(hilt);
-  // ---- 방패: 금 테 · 붉은 바탕 · 은 십자 · 금 돌기(양면) ----
+  // ---- 방패: 금 테 · 바깥(−z, 적 쪽) 붉은 바탕 + 은 십자 + 금 돌기 · 안쪽(+z, 몸 쪽) 철판 ----
   const shg = K.shieldGrp; hero2Clear(shg);
-  const sg = new THREE.Group(); shg.add(sg);
+  const sg = new THREE.Group(); sg.scale.setScalar(0.85); shg.add(sg);   // 0.85: 사용자 지시로 줄임(손 자리 기준)
   h2(sg, new THREE.ExtrudeGeometry(makeHeaterShape(0.8, 0.7, -0.88), { depth: 0.06, bevelEnabled: false, curveSegments: 4 }), GOLD, 0, 0, 0.01);
-  h2(sg, new THREE.ExtrudeGeometry(makeHeaterShape(0.72, 0.62, -0.78), { depth: 0.1, bevelEnabled: false, curveSegments: 4 }), CRIM, 0, 0, -0.01);
-  for (const zz of [-0.02, 0.1]) {
-    h2(sg, B(0.11, 1.1, 0.02), STEEL_L, 0, 0, zz);
-    h2(sg, B(0.62, 0.11, 0.02), STEEL_L, 0, 0.28, zz);
-    h2(sg, SP(0.08, 5, 3), GOLD, 0, 0.28, zz, 0, 0, 0, 1, 1, 0.5);
-  }
+  h2(sg, new THREE.ExtrudeGeometry(makeHeaterShape(0.72, 0.62, -0.78), { depth: 0.05, bevelEnabled: false, curveSegments: 4 }), CRIM, 0, 0, -0.01);
+  h2(sg, new THREE.ExtrudeGeometry(makeHeaterShape(0.72, 0.62, -0.78), { depth: 0.05, bevelEnabled: false, curveSegments: 4 }), STEEL, 0, 0, 0.04);   // 안쪽 철판
+  h2(sg, B(0.11, 1.1, 0.02), STEEL_L, 0, 0, -0.02);
+  h2(sg, B(0.62, 0.11, 0.02), STEEL_L, 0, 0.28, -0.02);
+  h2(sg, SP(0.08, 5, 3), GOLD, 0, 0.28, -0.02, 0, 0, 0, 1, 1, 0.5);
   c3MergeStatic(sg);
   c3MergeStatic(hd); c3MergeStatic(to);
 }); }
