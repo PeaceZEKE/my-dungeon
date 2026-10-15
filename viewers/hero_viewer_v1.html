@@ -1241,7 +1241,7 @@ function hero2Mage(K, player) { return hero2Lcg(901002, () => {
   const O = markOrganic(new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: false, roughness: 0.9, metalness: 0 }));
   const skinOf = c => { const m = getLowPolyMat(c); m.userData.mergeInto = O; return m; };
   const HAT = mk(0x7a4868, 'ss'), HAT_D = mk(0x5a3050, 'ss'), BAND = mk(0x3a1e30, 'ss'), GOLD = mk(0xc89a3e), GOLD_S = mk(0xc89a3e, 'ss');
-  const HAIR = mk(0xb4304a, 'ss'), HAIR_D = mk(0x7e2036, 'ss'), SKIN = skinOf(0xf2c8a8), EYE = mk(0x2a1420);
+  const HAIR = mk(0xb4304a, 'ss'), HAIR_D = mk(0x7e2036, 'ss'), SKIN = skinOf(0xf2c8a8), EYE = mk(0x2a1420), IRIS = mk(0x7a2232), SHINE = mk(0xf0e4d8);
   const ROBE = mk(0x452a4c, 'ss'), CLOAK = mk(0x2e1c34, 'ss'), LEATH = mk(0x4a3222), BOOT = mk(0x2a1c26), WOOD = mk(0x6a4a2a), RED = mk(0xa62838);
   const B = (w, h, d) => new THREE.BoxGeometry(w, h, d);
   const C = (rt, rb, h, n, open) => new THREE.CylinderGeometry(rt, rb, h, n || 8, 1, !!open);
@@ -1257,7 +1257,13 @@ function hero2Mage(K, player) { return hero2Lcg(901002, () => {
   // ---- 머리: 얼굴 · 물결 붉은 머리(정수리 → 어깨, 앞은 앞머리로 짧게) ----
   const mH = new THREE.Group(); mH.position.y = P.headY; K.bodyGrp.add(mH);
   h2(mH, SP(0.255, 8, 6), SKIN, 0, -0.02, 0, 0, 0, 0, 1, 1.06, 0.95);
-  for (const sx of [-1, 1]) h2(mH, B(0.07, 0.022, 0.02), EYE, sx * 0.095, -0.03, -0.235, 0, sx * 0.3, -sx * 0.12);   // 내리깐 눈
+  // 눈(초상화: 굵은 윗눈꺼풀 선 아래 반쯤 덮인 붉은 갈색 눈동자 · 작은 빛) — 얼굴 면을 따라 바깥으로 조금 돌린다
+  for (const sx of [-1, 1]) {
+    const ex = sx * 0.1, ry = sx * 0.4;
+    h2(mH, B(0.1, 0.022, 0.02), EYE, ex, -0.005, -0.232, 0, ry, -sx * 0.1);                 // 윗눈꺼풀(바깥 끝이 조금 내려간다)
+    h2(mH, SP(0.034, 6, 4), IRIS, ex - sx * 0.004, -0.036, -0.228, 0, ry, 0, 1, 1.15, 0.4);  // 눈동자
+    h2(mH, SP(0.011, 4, 3), SHINE, ex - sx * 0.016, -0.026, -0.243);                          // 빛
+  }
   // 머리카락 껍데기: t 0(정수리) → 1(끝) · 위는 구면 r, 아래는 늘어진 커튼. 끝 높이 yE(φ) — 앞은 앞머리(눈썹 위), 옆·뒤는 어깨
   const HR = 0.3;
   const yE = ph => { const f = Math.max(0, Math.cos(ph)); return -0.46 + 0.52 * Math.pow(f, 0.7) - 0.06 * Math.cos(3 * ph) * (1 - f); };
@@ -1304,8 +1310,8 @@ function hero2Mage(K, player) { return hero2Lcg(901002, () => {
 
   // ---- 몸: 몸판 · 금 단추 줄 · 허리띠 · 주름진 긴 치마(금 단) · 어깨 망토(금 테 · 걸쇠) ----
   const mB = new THREE.Group(); K.bodyGrp.add(mB);
-  // 몸판 단 = [y, 옆, 앞, 뒤] — 허리에서 가슴으로 조금 부풀었다 목으로 좁아진다
-  const BD = [[0.56, 0.2, 0.15, 0.15], [0.7, 0.21, 0.16, 0.16], [0.84, 0.24, 0.2, 0.18], [0.96, 0.23, 0.18, 0.17], [1.06, 0.13, 0.11, 0.11], [1.14, 0.075, 0.075, 0.075]];
+  // 몸판 단 = [y, 옆, 앞, 뒤] — 허리에서 어깨까지 거의 곧게 · 목으로 좁아진다
+  const BD = [[0.56, 0.2, 0.15, 0.15], [0.7, 0.205, 0.155, 0.155], [0.84, 0.215, 0.16, 0.16], [0.96, 0.205, 0.155, 0.155], [1.06, 0.13, 0.11, 0.11], [1.14, 0.075, 0.075, 0.075]];   // 가슴을 부풀리지 않는다(사용자 지시)
   const bdAt = y => { let i = 0; while (i < BD.length - 2 && y > BD[i + 1][0]) i++; const A = BD[i], Bq = BD[i + 1], f = Math.max(0, Math.min(1, (y - A[0]) / (Bq[0] - A[0]))); return A.map((v, j) => v * (1 - f) + Bq[j] * f); };
   const bdP = (u, th, off) => { const y = 0.56 + 0.58 * u, R = bdAt(y), s = Math.sin(th), c = Math.cos(th); return [(R[1] + off) * s, y, -(c >= 0 ? R[2] : R[3]) * c - off * c]; };
   h2(mB, surf(bdP, u => [0, 0.56 + 0.58 * u, 0], 0, 1, -PI, PI, 10, 4), ROBE);
@@ -1321,7 +1327,7 @@ function hero2Mage(K, player) { return hero2Lcg(901002, () => {
   h2(mB, surf(skP, u => [0, 0.58 - 0.5 * u, 0], 0.91, 1, -PI, PI, 16, 1, 0.01), GOLD_S);   // 금 단
   // 어깨 망토: 목 → 어깨를 덮고 위팔 위까지 · 단이 뾰족하게 물결 · 앞은 걸쇠 아래로 살짝 벌어진다
   const ckP = (u, ph, off) => { const pt = 0.5 + 0.5 * Math.cos(5 * ph), y = 1.13 - (0.27 + 0.07 * pt) * u;
-    const rs = 0.11 + 0.32 * (1 - (1 - u) ** 2) + off, rz = rs * (0.82 - 0.06 * Math.max(0, Math.cos(ph)));
+    const rs = 0.11 + 0.32 * (1 - (1 - u) ** 2) + off, rz = rs * (0.82 - 0.24 * Math.max(0, Math.cos(ph)) ** 1.5);   // 앞자락은 몸에 붙게(앞으로 뻗으면 가슴이 커 보인다)
     const open = 0.035 * u * Math.max(0, Math.cos(ph)) ** 8;
     return [rs * Math.sin(ph) + Math.sign(Math.sin(ph)) * open, y, -rz * Math.cos(ph)]; };
   h2(mB, surf(ckP, u => [0, 1.1 - 0.3 * u, 0], 0, 1, -PI, PI, 15, 3), CLOAK);
