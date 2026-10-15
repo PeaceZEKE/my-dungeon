@@ -1246,8 +1246,9 @@ function a1Skeleton(P) {
     const CREST = K.mat(0x6e1612, 'cloth');
     for (let i = 0; i < 7; i++) { const t = i / 6; K.box(headGrp, 0.05, 0.13 - t * 0.04, 0.07, CREST, 0, 0.33 + Math.sin(t * Math.PI) * 0.03, -0.17 + t * 0.4, 0.3 - t * 0.8, 0, 0); }
   } else if (isRanged) {
-    K.ico(headGrp, 0.27, ROBE, 0, 0.06, 0.05, 0.98, 0.98, 1.06, 1, 0.01);
-    K.cone(headGrp, 0.15, 0.26, ROBE_D, 5, 0, 0.26, 0.2, -0.9, 0, 0);
+    // 궁수 — 얼굴을 드러낸 해진 두건(바랜 청색 — 원거리 표시) + 어깨 덮개
+    K.put(headGrp, new THREE.Mesh(new THREE.SphereGeometry(0.27, 10, 6, Math.PI * 1.5 + 0.75, Math.PI * 2 - 1.5, 0, Math.PI * 0.72), ROBE), 0, 0.02, 0.04).scale.set(1, 1.05, 1.08);
+    K.cone(headGrp, 0.1, 0.2, ROBE_D, 5, 0, 0.12, 0.3, -1.2, 0, 0);
   } else {
     // 녹슨 반투구 + 챙
     K.put(headGrp, new THREE.Mesh(new THREE.SphereGeometry(0.245, 9, 4, 0, Math.PI * 2, 0, Math.PI / 2), IRON_D), 0, 0.06, 0.02).scale.set(1, 0.85, 1.05);
@@ -1285,10 +1286,12 @@ function a1Skeleton(P) {
   // 무기
   W.position.set(0, -0.41, -0.01);
   if (isRanged) {
-    K.seg(W, [0, -0.35, 0], [0, 0.8, 0], 0.022, 0.026, GRIP, 5);
-    K.ico(W, 0.06, BONE_L, 0, 0.83, 0, 1, 1.1, 1, 0);
-    const ORB = K.mat(0x66ccff, 'glow'); ORB.emissiveIntensity = 0.9;
-    K.ico(W, 0.055, ORB, 0, 0.94, 0, 1, 1, 1, 0);
+    // 활 — 손잡이가 원점, 활대는 ±y(겨눌 때 세로), 끝이 뒤(+z = 쏘는 이 쪽)로 휜다 · 시위는 +z
+    const WOODB = K.mat(0x4a301a), BOWT = K.mat(0x8c7c58, 'skin');
+    const pts = [[0, 0, -0.02], [0, 0.18, -0.04], [0, 0.34, -0.02], [0, 0.44, 0.06]];
+    [1, -1].forEach(sy => { for (let i = 0; i < 3; i++) K.seg(W, [pts[i][0], pts[i][1] * sy, pts[i][2]], [pts[i + 1][0], pts[i + 1][1] * sy, pts[i + 1][2]], 0.022 - i * 0.004, 0.018 - i * 0.004, WOODB, 5); K.cone(W, 0.016, 0.05, BOWT, 4, 0, 0.46 * sy, 0.07, sy > 0 ? 0.3 : Math.PI - 0.3, 0, 0); });
+    K.band(W, 0.028, 0.09, LEA, 0, 0, -0.02, 6);
+    K.seg(W, [0, 0.44, 0.06], [0, -0.44, 0.06], 0.005, 0.005, K.mat(0xb0a888), 3);
   } else if (isBoss) {
     // 거대한 넙다리뼈 곤봉 — 끝 두 마디에 가시
     K.seg(W, [0, -0.05, 0], [0, 0.85, 0], 0.07, 0.09, BONE, 6);
@@ -1324,9 +1327,37 @@ function a1Skeleton(P) {
     K.box(bodyGrp, 0.07, 0.06, 0.03, IRON, 0, 0.04, -0.18, 0, 0, 0);
     [-1, 0, 1].forEach(i => K.box(bodyGrp, 0.12, 0.14, 0.03, IRON_D, i * 0.12, -0.06, -0.16 + Math.abs(i) * 0.04, 0.12, i * -0.45, 0));
   } else if (isRanged) {
-    K.put(bodyGrp, new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 0.55, 9, 1, true), ROBE), 0, 0.1, 0.02).scale.set(1.1, 1, 1);
-    for (let i = 0; i < 8; i++) { const a = i * 0.785; K.cone(bodyGrp, 0.04, 0.08, ROBE_D, 3, Math.sin(a) * 0.32, -0.2, Math.cos(a) * 0.3, Math.PI, 0, 0); }
+    // 등 화살통(비스듬히 · 깃 넷) · 멜빵 · 왼팔 가죽 팔보호대
+    const qv = new THREE.Group(); qv.position.set(0.06, 0.28, 0.25); qv.rotation.set(0.25, 0, -0.45); bodyGrp.add(qv);
+    K.cyl(qv, 0.07, 0.08, 0.42, LEA, 7, 0, 0, 0);
+    K.band(qv, 0.083, 0.04, RUST, 0, 0.15, 0, 7);
+    for (let i = 0; i < 4; i++) { const a = i * 1.57 + 0.4; K.seg(qv, [Math.cos(a) * 0.035, 0.18, Math.sin(a) * 0.035], [Math.cos(a) * 0.04, 0.3, Math.sin(a) * 0.04], 0.008, 0.008, GRIP, 3); K.cone(qv, 0.025, 0.07, RED, 3, Math.cos(a) * 0.04, 0.32, Math.sin(a) * 0.04, 0, 0, 0); }
+    K.box(bodyGrp, 0.05, 0.6, 0.03, LEA, 0.0, 0.3, -0.2, 0.15, 0, 0.62);
+    K.band(limbs.armL, 0.045, 0.13, LEA, 0, -0.31, -0.005, 6);
   }
+}
+
+// ---------- 스켈레톤 궁수 화살(적 투사체) — 비행 방향(+z)으로 눕는다 ----------
+let _a1ArrowGeo = null;
+function a1ArrowMesh() {
+  return a1Lcg(9021, () => {
+    if (!_a1ArrowGeo) {
+      const K = a1Kit(0x77), g = new THREE.Group();
+      K.seg(g, [0, 0, -0.42], [0, 0, 0.36], 0.018, 0.018, K.mat(0x5a4028), 5);
+      K.cone(g, 0.045, 0.14, K.mat(0x8c8a84, 'metal'), 4, 0, 0, 0.42, Math.PI / 2, 0, 0);
+      [0, 1, 2].forEach(i => { const fl = K.plate(g, [[0, 0], [0.07, -0.03], [0.07, -0.16], [0, -0.12]], 0.006, K.mat(0x8a2a1c, 'cloth'), 0, 0, -0.26, 0, 0, 0); fl.rotation.set(Math.PI / 2, 0, i * 2.094); });
+      c3MergeStatic(g); _a1ArrowGeo = g.children.map(m => [m.geometry, m.material]);
+    }
+    const out = new THREE.Group();
+    for (const [geo, m] of _a1ArrowGeo) { const mm = new THREE.Mesh(geo, m); mm.castShadow = false; out.add(mm); }
+    out.scale.setScalar(0.85);
+    return out;
+  });
+}
+// 활 쏘는 자세 — 원거리 휘두름 시간(0.5초) 동안: 0~0.4 두 팔을 앞으로 들어 겨누고 당김 → 0.5 놓음(발사 = 기존 t ≥ 0.5) → 내림
+function a1BowPose(t) {
+  const up = t < 0.4 ? 1 - Math.pow(1 - t / 0.4, 2) : t < 0.6 ? 1 : Math.max(0, 1 - (t - 0.6) / 0.4);
+  return { r: up * Math.PI * 0.5, l: up * Math.PI * 0.42, lz: -up * 0.35 };
 }
 
 // ---------- 오크 ----------
@@ -1719,11 +1750,18 @@ function step(dt) { if (autoSpin) { camYaw += dt * 0.32; updateCam(); } if (atkT
     let aR = -s * 0.5; const aL = s * 0.5;
     const SW = h.isRanged ? 0.5 : 0.62;
     if (atkT >= 0 && atkT < SW) {
-      if (h.isRanged) aR = Math.PI * 0.8 - (atkT / 0.5) * Math.PI * 1.2;
+      if (h.isRanged && h.v2 && h.type === 'skeleton') { const bp = a1BowPose(atkT / 0.5); aR = bp.r; L.armL.rotation.z = bp.lz; L.armL.rotation.x = bp.l; }
+      else if (h.isRanged) aR = Math.PI * 0.8 - (atkT / 0.5) * Math.PI * 1.2;
       else if (atkT < 0.4) { const w = atkT / 0.4, eo = 1 - (1 - w) * (1 - w); aR = eo * Math.PI * 1.05; }
       else { const p = Math.min(1, (atkT - 0.4) / 0.22); aR = Math.PI * 1.05 - p * p * p * Math.PI * 0.55; }
     }
-    L.armR.rotation.x = aR; L.armL.rotation.x = aL;
+    L.armR.rotation.x = aR; if (!(h.isRanged && h.v2 && h.type === 'skeleton' && atkT >= 0 && atkT < 1)) { L.armL.rotation.x = aL; L.armL.rotation.z = 0; }
+    // 뷰어: 화살이 날아가는 모습(게임은 spawnFireball 이 같은 메시를 쓴다)
+    if (h.isRanged && h.v2 && h.type === 'skeleton') {
+      if (atkT >= 0.25 && !h.shot) { h.shot = true; h.arrow = a1ArrowMesh(); h.arrow.position.set(h.obj.position.x, 1.0 * h.obj.scale.x, -0.6); h.arrow.rotation.y = Math.PI; scene.add(h.arrow); h.arrowT = 0; }
+      if (h.arrow) { h.arrowT += dt; h.arrow.position.z -= 11 * dt; if (h.arrowT > 0.5) { scene.remove(h.arrow); h.arrow = null; } }
+      if (atkT < 0) h.shot = false;
+    }
     if (L._a1Update) L._a1Update(dt, walking);
   }
   if (atkT > 0.9) atkT = -1; renderWithPost(scene); }
