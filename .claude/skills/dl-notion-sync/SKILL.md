@@ -17,7 +17,7 @@ description: Dungeon Legion 작업을 노션 프로젝트 허브에 최신화할
 | 「앞으로 할 작업 — 백로그」 | `3f922520-baed-817d-8f4f-d05132c56bcf` · https://app.notion.com/p/3f922520baed817d8f4fd05132c56bcf |
 | 「유니티 컨버팅 계획」 | `3f922520-baed-81ce-801b-d11cf8343792` · https://app.notion.com/p/3f922520baed81ce801bd11cf8343792 |
 | 「크레이지게임즈 조사」 | (PAGE_CG) |
-| 「출시 목표와 과정」 | (PAGE_RELEASE) |
+| 「출시 목표와 과정」 | `3fa22520-baed-81f8-ae64-d5bd89351faf` · https://app.notion.com/p/3fa22520baed81f8ae64d5bd89351faf |
 
 ID 가 안 맞으면(사용자가 옮겼거나 지웠으면) `notion-search` 로 제목을 찾고, 이 표를 고쳐 커밋한다.
 
