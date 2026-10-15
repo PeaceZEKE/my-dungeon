@@ -164,7 +164,7 @@ sed -n "$((S+1)),$((E-1))p" index.html > /tmp/gc.js && node --check /tmp/gc.js
 | `?rot=0` | 가로 고정 | 터치 기기를 세로로 들었을 때 화면 전체를 90° 돌려 가로로 그리는 것(v816)을 끄고 예전처럼 '가로로 돌려 주세요' 경고만 띄운다. 첫 터치에 전체 화면 + 가로 잠금 시도(iframe 밖, 안드로이드 크롬)도 같이 꺼진다 |
 | `?rotframe=1` | 꺼짐 | v898 부터 iframe(CrazyGames 등) 안에서는 v816 가로 돌려 그리기·방향 잠금을 하지 않는다(포털이 제출 설정으로 방향을 정한다 — 회전 로직 금지). 이 플래그면 iframe 안에서도 v816 처럼 돌려 그린다. 최상위 페이지(GitHub Pages 직접 접속)는 그대로 |
 | `?quick=0` | 켜짐 | v898 **신규 유저 1클릭**을 끈다(v897 — 캐릭터를 고르면 마을부터). 켜면 저장된 진행이 하나도 없는 플레이어(`isNewPlayer` — 골드·쉼터·막 클리어·길잡이 기록·최고 점수·이어하기·`meta.played` 전부 없음)는 캐릭터 카드 한 번에 1층 전투로 들어가고(`quickStartDungeon` → `startFloor` 의 gameplayStart) 마을은 첫 회차가 끝난 뒤 처음 본다. 조작 안내는 1층 길잡이 띠가 맡는다(`?tut=0` 이면 마을과 같은 힌트 패널). **하네스가 캐릭터 카드를 누르므로 v897 이전 빌드와 픽셀 A/B 할 때는 A 쪽에 `&quick=0`**(마을을 안 지어 난수 흐름이 달라진다 — 아래 'CrazyGames 준수사항') |
-| `?cglang=0` | 켜짐 | v898 언어에 CrazyGames SDK 로캘(`user.systemInfo.locale`)을 쓰지 않는다(v897 — 저장값 → 브라우저 언어 → 영어). 켜면 고른 언어 → 기억해 둔 SDK 로캘(`dungeon_lang_cg`) → 브라우저 → 영어. 처음 방문에 SDK 로캘이 지금 언어와 다르면 아무것도 안 눌렀을 때 한 번 다시 연다 |
+| `?cglang=0` | 켜짐 | v898 언어에 CrazyGames SDK 로캘(`user.systemInfo.locale`)을 쓰지 않는다(v897 — 저장값 → 브라우저 언어 → 영어). 켜면 고른 언어 → 기억해 둔 SDK 로캘(`dungeon_lang_cg`) → 브라우저 → 영어. 처음 방문에 SDK 로캘이 지금 언어와 다르면 아무것도 안 눌렀을 때 한 번 다시 연다(v899: 언어마다 한 번 · `environment` 가 `crazygames` 일 때만) |
 | `?bal=0` | 새 수치 | v821 수치 재조정을 끄고 v820 수치로 — 레벨업 경험치 ×1.5(새 1.4) · 레벨당 체력 15(새 12+⌊lv/2⌋) · 막 배율 체력 +0.6/피해 +0.4 per 막(새 +0.35/+0.15) · 궁수 130/12 · 화살 ×1.0(새 110/14 · ×1.5) · 마법사 보호막 100% 차단(새 25% 누수) · 투사체 치명타 없음(새 대장간 치명타 적용) |
 | `?a3b=0` | 켜짐 | v822 3막 일반 몹 고유 행동을 끈다 — 포자 벌레 죽음 포자 구름 · 농침벌 독침(4초 중독, 초당 최대 체력 2%) · 부패한 구울 붙잡기(0.8초 포박, 구울마다 4초) · 살덩이 거인 땅 내려찍기(링 1.1초 예고 → 반경 1.4칸 ×1.3 · 넉백 22, 링 밖으로 걸어 나가 회피) |
 | `?hitfx=0` | 켜짐 | v822 데미지 숫자(DOM 글자, 적 흰색 · 치명타 금색 · 플레이어 빨강)와 플레이어 피격 화면 흔들림을 끈다 |
@@ -2388,7 +2388,7 @@ RGB는 건드리지 않으므로 모서리 하이라이트도 유지된다.
 - 일반 접속에서 치트 버튼(`bossTestBtn`/`maxLevelBtn`) 노출 금지
 - 미드게임 광고는 자체 하한 2분
 
-**광고·SDK v898 — 제출 전 P0 고침(`cgRequestAd` · `cgAdBlock` · `cgAdsOff` · `cgApplyLocale` · `SFX.setCfgMute` · `quickStartDungeon`).**
+**광고·SDK v898 — 제출 전 P0 고침(`cgRequestAd` · `cgAdBlock` · `cgAdsOff` · `cgApplyLocale` · `SFX.setCfgMute` · `quickStartDungeon`) · v899 — 적대적 검토에서 나온 것 고침.**
 점검은 **`dl-crazygames-check`** 스킬(`sdk-audit.sh` · `cg-sim.js`) — v897 ✗ 8 → v898 ✗ 0(남은 ⚠ 는 Full 전: Data 모듈 · 부활 5초 카운트다운 · safe-area).
 - **SDK v3 `requestAd(type, {adStarted, adFinished, adError})` 는 콜백 방식이다** — 라이브 SDK(`sdk.crazygames.com/crazygames-sdk-v3.js`)를 받아
   확인했다: 반환 프로미스는 요청을 보내자마자 끝나고 결과는 콜백뿐 · Basic Launch 면 그 자리에서 `adError({code:'adsDisabledBasicLaunch'})` ·
@@ -2399,6 +2399,11 @@ RGB는 건드리지 않으므로 모서리 하이라이트도 유지된다.
   요청 ~ 결과 동안 `cgAdBlock(true)` — 메인 루프 `tick` 이 맨 앞에서 돌아가고(마지막 화면이 남는다) 화면 전체 막(`#cgAdShield`)이 입력을 막는다.
   **콜백이 영영 안 오면 화면이 막힌 채 남으므로** 시작 전 30초 · 시작 뒤 3분이면 실패로 본다(보상 없음 · 미드게임은 진행).
   `requestAd` 가 동기로 던지거나(도메인 밖 SDK) 프로미스가 거부돼도 실패로 처리한다.
+  **v899 — 시간 제한으로 끝내도 SDK 쪽 광고는 살아 있다**(SDK 는 광고 쪽 시간 제한이 없다). 그래서 ① SDK 가 실제로 끝(`adFinished`·`adError`)을 알릴 때까지
+  `cgAdInFlight` 를 세워 두고 그동안 새 요청은 SDK 로 안 보내고 `done(false, 'busy')` — **SDK v3 는 두 번째 요청이 `adCallbacks` 를 `requestInProgress`
+  검사보다 먼저 바꿔 끼워 첫 요청의 콜백을 가로챈다**(첫 광고가 끝나도 아무도 모른다) ② 시간 제한 뒤에 `adStarted` 가 늦게 오면 그때 다시 음소거·
+  `cgAdBlock(true)` 를 걸고 끝날 때 푼다(보상은 이미 실패로 처리했으니 없음) ③ 시작 뒤 3분 제한은 `SDK.ad.isAdPlaying` 이 참이면 늘린다(최대 10분).
+  SDK 가 끝을 영영 안 알리면 10분 뒤 `cgAdInFlight` 를 다시 쓴다.
 - **Basic Launch 는 init 직후 알 수 있다** — SDK 배너 모듈의 `checkBannerAdsEnabled()` 가 Basic 이면 `bannersDisabledBasicLaunch` 를 던진다
   (부작용 없음 · 문서에 없는 함수라 없으면 넘어간다). `prefetchAd` 도 같은 에러를 던지지만 광고를 실제로 미리 받으니 쓰지 않는다.
   못 알아챘어도 첫 `adError('adsDisabledBasicLaunch')` 에서 `cgAdsOff()` 가 떠 있는 버튼(부활·리롤·골드 2배)까지 숨긴다. 골드 부활은 남는다.
@@ -2407,10 +2412,19 @@ RGB는 건드리지 않으므로 모서리 하이라이트도 유지된다.
   문자열이 굳으므로 `setLang` 과 같은 이유로 다시 열어야 바뀐다. 그래서 로캘을 `dungeon_lang_cg` 에 기억해 두고(다음 접속부터 바로 그 언어),
   처음 방문에 지금 언어와 다르면 **아직 아무것도 안 눌렀을 때만 한 번** 다시 연다(`sessionStorage` 표식으로 되풀이 방지 · 저장이 막혀 있으면 안 연다).
   플레이어가 언어 줄에서 고른 것(`dungeon_lang`)이 늘 우선. 지원 안 하는 로캘(fr·de …)은 영어.
+  **v899 — 표식은 언어마다**(`dungeon_lang_rl` = 다시 연 언어 목록). 포털 언어는 crazygames.com 의 하위 경로라 언어를 바꿔도 같은 탭의 게임 iframe
+  sessionStorage 가 남는다 — v898 의 '세션에 한 번' 은 두 번째 언어부터 그 탭에서 안 바뀌었다. 그 언어로 떴으면 목록에서 지우고(나중에 되돌아와도 열린다),
+  로캘이 매번 엇갈려도 언어 수만큼만 연다. **`environment` 가 `crazygames` 일 때만** — local 모드(localhost · `?useLocalSdk=true`)의 `systemInfo.locale` 은
+  SDK 에 'en-US' 로 박힌 데모 값이라 localhost 에서 테스트하면 늘 영어로 다시 열렸다.
 - **muteAudio**: `SDK.game.settings.muteAudio` + `addSettingsChangeListener` → `SFX.setCfgMute`. 광고 음소거(`adMuted`)와 따로 들고 둘 중 하나라도
   켜져 있으면 `ac()` 가 null(광고가 끝나도 설정으로 꺼져 있으면 안 켜진다). 다시 켤 때는 iOS 의 `'interrupted'` 도 resume 하고, 탭이 다시 보이면 깨운다.
+  **v899 — 조용한 동안 들어온 곡 바꾸기를 기억한다**(`wantTrack` · `resync`). `musicSet` 이 `ac()` null 이면 그냥 돌아가서, 소리를 끈 채 마을에 들어가면
+  다시 켜도 마을 곡이 안 나왔고(마을 곡은 들어갈 때 한 번만 요청된다), 반대로 끈 채 던전에 들어가면 마을 곡이 안 멈춰 있다가 소리를 켜자 던전에서 울렸다.
+  이제 멈추기는 조용해도 하고, 소리가 돌아오면(`setCfgMute(false)` · `resumeAfterAd`) 원하는 곡에 맞춘다(첫 입력 때 건너뛴 효과음 디코드도). 기 모으는 소리도 조용할 때 끈다.
+  **새 '한 번만 요청하는' 소리를 넣으면 같은 식으로 기억해 둘 것** — 매 프레임 요청하는 것(전투 곡 · 환경음 `ambSet`)은 저절로 돌아온다.
 - **iframe 안에서는 회전 로직을 안 한다**(`inFrame` · `ROT_ON` · `lockOrientation`) — 방향은 제출 설정이다.
-- **신규 유저 1클릭**(`?quick=0`): 캐릭터 카드 → 1층. **그 대신 하네스·봇처럼 캐릭터 카드를 누르고 들어가는 측정은 v898 부터 마을을 안 짓는다** —
+- **신규 유저 1클릭**(`?quick=0`): 캐릭터 카드 → 1층. 마을 조작 패널을 건너뛰므로 1층 길잡이는 조작 안내(`ctrl`)를 먼저 띄운다(v899).
+  **init 이 끝나기 전에 카드를 누르면** `cgGameplayStart` 가 상태만 세우고 SDK 에는 못 보낸다(`cgReady` false) — `initCG` 가 끝날 때 `cgPlaying` 이면 그때 보낸다(v899). **그 대신 하네스·봇처럼 캐릭터 카드를 누르고 들어가는 측정은 v898 부터 마을을 안 짓는다** —
   THREE 객체 수가 달라 난수 흐름이 바뀌므로 v897 이전 빌드와 픽셀 A/B 하면 DIFF 다. `AB_A_FLAGS='&quick=0'` 이면 5·45·75·104층 해시가 v897 과 같다(실측).
 
 ## 켜지 않기로 한 것

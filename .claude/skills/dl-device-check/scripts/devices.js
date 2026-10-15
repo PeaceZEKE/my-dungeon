@@ -290,7 +290,7 @@ async function runViewport(browser, vp) {
   const pageErrors = [];
   page.on('pageerror', e => pageErrors.push(String(e && e.message || e)));
   await page.addInitScript(initScript, opt.seed);
-  const q = '?tut=0' + opt.query;   // opt.query 는 인자 단계에서 이미 '&…' 꼴
+  const q = '?tut=0&quick=0' + opt.query;   // opt.query 는 인자 단계에서 이미 '&…' 꼴 · quick=0: v898 신규 유저 1클릭이면 카드가 마을을 건너뛴다
   const url = `http://127.0.0.1:${opt.port}/index.html${q}`;
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 240000 });
   await page.waitForFunction(() => typeof beginGameWith === 'function' && typeof startRunAtFloorReset === 'function' && typeof tick === 'function' && typeof lastFrameT === 'number', null, { timeout: 120000 });
@@ -309,11 +309,12 @@ async function runViewport(browser, vp) {
   }
   if (shots.includes('town') || shots.includes('dungeon')) {
     await page.evaluate(([cls, tod, hints]) => {
-      beginGameWith(cls);                                   // 캐릭터 고르기 → 마을(enterTownMode)
+      beginGameWith(cls);                                   // 캐릭터 고르기 → 마을(enterTownMode · quick=0 이라 새 플레이어여도)
       if (!hints && typeof hideHowtoHint === 'function') hideHowtoHint();
       if (typeof setTownTimeOfDay === 'function') { townTimeAuto = false; setTownTimeOfDay(tod); if (typeof updateTimeBtnLabel === 'function') updateTimeBtnLabel(); }
     }, [opt.cls, opt.tod, opt.hints]);
     await page.evaluate(n => window.__dc.drive(n), opt.frames);
+    if (!(await page.evaluate(() => !!inTown))) throw new Error('캐릭터 카드 뒤 마을이 아니다(빠른 시작?) — 쿼리에 quick=0 이 있는지 볼 것');
     if (shots.includes('town')) await shoot('town');
   }
   if (shots.includes('dungeon')) {

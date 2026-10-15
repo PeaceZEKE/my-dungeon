@@ -124,7 +124,11 @@ $(sed -n "${FNL},${L}p" "$F")"; fi
   else ok "$L: adError 콜백 있음"; fi
   if printf '%s' "$C" | grep -q 'adError' && ! printf '%s' "$C" | grep -q 'adFinished'; then bad "$L: adFinished 콜백이 없다 — 보상·진행 재개는 adFinished 에서만"; fi
   if printf '%s' "$C" | grep -q 'adStarted'; then
-    PRE=$(awk -v a="$FNL" -v b="$L" 'NR >= a && NR < b && /setMusicPausedForAd\(true\)|suspendForAd\(/ && !/adStarted/ { print NR }' "$F" | head -1)
+    # adStarted 콜백 몸통(여러 줄이어도 — 중괄호 깊이로 끝을 찾는다) 안의 음소거는 맞는 자리다(v899: 시간 제한 뒤 늦게 시작된 광고)
+    PRE=$(awk -v a="$FNL" -v b="$L" 'NR >= a && NR < b {
+        if (!ins && /adStarted/) { ins = 1; d = 0; seen = 0 }
+        if (ins) { n = gsub(/[{]/, "{"); m = gsub(/[}]/, "}"); d += n - m; if (n > 0) seen = 1; if (seen && d <= 0) ins = 0; next }
+        if (/setMusicPausedForAd\(true\)|suspendForAd\(/) print NR }' "$F" | head -1)
     if [ -n "$PRE" ]; then bad "$L: adStarted 콜백이 있는데 음소거를 그 밖(${PRE}줄)에서도 한다 — 광고가 안 뜨면(Basic·차단) 소리가 끊긴다"
     else ok "$L: adStarted 콜백 있음 · 음소거는 그 안에서만"; fi
   else

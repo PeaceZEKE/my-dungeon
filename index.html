@@ -4604,7 +4604,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v898'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v899'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -4695,6 +4695,13 @@ let pendingDeathTest = false; // 부활 제안 중인 사망이 테스트 모드
       window.CrazyGames.SDK.game.loadingStart();
       if (cgBootDone) window.CrazyGames.SDK.game.loadingStop();
     } catch (e) {}
+    // v899: init 이 끝나기 전에 카드를 눌러 1층에 들어갔으면(빠른 시작) cgGameplayStart 가 상태만 세우고 SDK 에는 못 보냈다 — 지금 보낸다
+    if (cgPlaying) {
+      try {
+        window.CrazyGames.SDK.game.gameplayStart();
+        if (!godMode && player && player.alive && !inTown) window.CrazyGames.SDK.game.reportGameCompletedPercentage(Math.max(0, Math.min(100, Math.round(player.floor / (LAST_ACT * ACT_LEN) * 100))));
+      } catch (e) {}
+    }
     // 도메인 밖(GitHub Pages 등)에선 init이 성공해도 environment='disabled' → 광고 호출이 전부 예외.
     // 실제 광고 가능 환경(crazygames/local)에서만 보상형 부활 버튼을 노출한다.
     const env = window.CrazyGames.SDK.environment || 'disabled';
@@ -4733,6 +4740,7 @@ function cgAdsOff() {
 // 아직 아무것도 안 눌렀을 때 한 번만 다시 연다(문자열이 로드 때 굳어서 바꾸려면 다시 열어야 한다 — setLang 과 같은 이유).
 function cgApplyLocale() {
   if (/[?&]cglang=0/.test(location.search)) return;
+  try { if (window.CrazyGames.SDK.environment !== 'crazygames') return; } catch (e) { return; }   // v899: local 모드(localhost · ?useLocalSdk)의 systemInfo 는 'en-US' 로 박힌 데모 값이다
   let loc = null;
   try { const si = window.CrazyGames.SDK.user.systemInfo; loc = si && si.locale; } catch (e) {}
   if (!loc) return;
@@ -4741,9 +4749,14 @@ function cgApplyLocale() {
     if (localStorage.getItem('dungeon_lang_cg') !== l) localStorage.setItem('dungeon_lang_cg', l);
     const chosen = localStorage.getItem('dungeon_lang');
     if (chosen && I18N_LANGS.includes(chosen)) return;   // 플레이어가 고른 언어가 우선
-    if (l === LANG || cgUserActed) return;
-    if (localStorage.getItem('dungeon_lang_cg') !== l || sessionStorage.getItem('dungeon_lang_rl')) return;   // 저장이 안 되면 다시 열어도 같다 — 되풀이 방지
-    sessionStorage.setItem('dungeon_lang_rl', '1');
+    // v899: 다시 연 언어를 탭 세션에 적어 둔다 — 언어마다 한 번(예전엔 세션에 한 번이라 포털 언어를 바꾸면 그 탭에서는 안 바뀌었다).
+    // 맞는 언어로 떴으면 그 언어를 지운다(나중에 다시 그 언어로 바꿔도 된다). 로캘이 매번 엇갈려도 언어 수만큼만 연다.
+    const rl = (sessionStorage.getItem('dungeon_lang_rl') || '').split(',').filter(x => I18N_LANGS.includes(x));
+    if (l === LANG) { if (rl.includes(l)) sessionStorage.setItem('dungeon_lang_rl', rl.filter(x => x !== l).join(',')); return; }
+    if (cgUserActed || rl.includes(l)) return;
+    if (localStorage.getItem('dungeon_lang_cg') !== l) return;   // 저장이 안 되면 다시 열어도 같다 — 되풀이 방지
+    rl.push(l); sessionStorage.setItem('dungeon_lang_rl', rl.join(','));
+    if (sessionStorage.getItem('dungeon_lang_rl') !== rl.join(',')) return;
   } catch (e) { return; }
   location.reload();
 }
@@ -4788,25 +4801,42 @@ function cgAdBlock(on) {
   if (on && !sh) { sh = document.createElement('div'); sh.id = 'cgAdShield'; sh.style.cssText = 'position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.35);'; document.body.appendChild(sh); }
   if (sh) sh.style.display = on ? 'block' : 'none';
 }
-// done(ok, code) 를 정확히 한 번 부른다. 음소거는 adStarted 에, 해제는 끝·실패 때. 콜백이 영영 안 오면(시작 전 30초 · 시작 뒤 3분) 실패로 본다 — 보상 없음.
+// done(ok, code) 를 정확히 한 번 부른다. 음소거는 adStarted 에, 해제는 끝·실패 때. 시작 전 30초 동안 콜백이 없으면 실패로 본다 — 보상 없음.
+// v899: SDK 는 광고 쪽 시간 제한이 없고, 두 번째 요청은 첫 요청의 콜백을 가로챈다(adCallbacks 를 requestInProgress 검사보다 먼저 바꿔 끼운다).
+// 그래서 SDK 가 실제로 끝(adFinished · adError)을 알릴 때까지 cgAdInFlight 를 세워 새 요청을 안 보내고('busy' 로 실패),
+// 시작 뒤에는 SDK 가 아직 광고 중(isAdPlaying)이면 기다린다(최대 10분). 시간 제한으로 끝낸 뒤에 광고가 늦게 시작되면 그때 다시 음소거·입력 막기를 건다.
+let cgAdInFlight = false, cgAdInFlightAt = 0;
+function cgSdkAdPlaying() { try { return !!window.CrazyGames.SDK.ad.isAdPlaying; } catch (e) { return false; } }
 function cgRequestAd(type, done) {
-  let settled = false, muted = false, guard = null;
+  if (cgAdInFlight && (Date.now() - cgAdInFlightAt < 600000 || cgSdkAdPlaying())) { done(false, 'busy'); return; }
+  cgAdInFlight = true; cgAdInFlightAt = Date.now();
+  let settled = false, muted = false, late = false, guard = null, startedAt = 0;
   const fin = (ok, code) => {
     if (settled) return; settled = true; clearTimeout(guard);
     if (muted) setMusicPausedForAd(false);
     if (!ok && code === 'adsDisabledBasicLaunch') cgAdsOff();
     done(ok, code);
   };
+  const end = () => {   // SDK 가 끝을 알렸다 — 다음 광고를 걸어도 된다. 늦게 시작된 광고였으면 음소거·막기를 푼다
+    cgAdInFlight = false;
+    if (late) { late = false; setMusicPausedForAd(false); cgAdBlock(false); }
+  };
+  const watch = () => {   // 시작 뒤: SDK 가 아직 광고 중이면 더 기다린다(광고가 길거나 사용자가 광고 화면에 머무는 중)
+    guard = setTimeout(() => { if (cgSdkAdPlaying() && Date.now() - startedAt < 600000) watch(); else fin(false, 'timeout'); }, 180000);
+  };
   const cbs = {
-    adStarted: () => { if (settled || muted) return; muted = true; setMusicPausedForAd(true); clearTimeout(guard); guard = setTimeout(() => fin(false, 'timeout'), 180000); },
-    adFinished: () => fin(true, null),
-    adError: (err) => fin(false, (err && err.code) || 'error'),
+    adStarted: () => {
+      if (settled) { if (!late) { late = true; setMusicPausedForAd(true); cgAdBlock(true); } return; }
+      if (muted) return; muted = true; startedAt = Date.now(); setMusicPausedForAd(true); clearTimeout(guard); watch();
+    },
+    adFinished: () => { end(); fin(true, null); },
+    adError: (err) => { end(); fin(false, (err && err.code) || 'error'); },
   };
   guard = setTimeout(() => fin(false, 'timeout'), 30000);
   try {
     const p = window.CrazyGames.SDK.ad.requestAd(type, cbs);
-    if (p && typeof p.catch === 'function') p.catch(e => fin(false, (e && e.code) || 'error'));
-  } catch (e) { fin(false, (e && e.code) || 'error'); }
+    if (p && typeof p.catch === 'function') p.catch(e => { end(); fin(false, (e && e.code) || 'error'); });
+  } catch (e) { end(); fin(false, (e && e.code) || 'error'); }
 }
 let lastMidgameAt = 0;
 function cgShowMidgame(onDone) {
@@ -4949,12 +4979,19 @@ const SFX = (() => {
     return ctx;
   }
   function suspendForAd() { adMuted = true; try { if (ctx && ctx.state === 'running') ctx.suspend(); } catch (e) {} }
-  function resumeAfterAd() { adMuted = false; if (!cfgMuted) wake(); }
+  function resumeAfterAd() { adMuted = false; if (!cfgMuted) { wake(); resync(); } }
   function isAdMuted() { return adMuted; }
   function setCfgMute(m) {
     cfgMuted = !!m;
     if (cfgMuted) { try { if (ctx && ctx.state === 'running') ctx.suspend(); } catch (e) {} }
-    else if (!adMuted) wake();
+    else if (!adMuted) { wake(); resync(); }
+  }
+  // v899: 조용한 동안(광고·muteAudio) 들어온 곡 바꾸기는 ac() 가 null 이라 버려진다 — 마을 곡처럼 한 번만 요청되는 것은 소리를 다시 켜도 안 돌아왔다.
+  // 원하는 곡(wantTrack)을 들고 있다가 소리가 돌아오면 맞추고, 첫 입력 때 못 한 효과음 디코드도 마저 한다.
+  function resync() {
+    if (adMuted || cfgMuted) return;
+    if (BGM2 && (curTrack ? curTrack.name : null) !== wantTrack) musicSet(wantTrack, 1.5, 0.8);
+    ksfxPreload();
   }
   // 탭·앱이 다시 보이면 소리를 깨운다(iOS 는 백그라운드에서 돌아오면 'interrupted' 로 남는다)
   document.addEventListener('visibilitychange', () => { if (!document.hidden && !adMuted && !cfgMuted) wake(); });
@@ -5044,9 +5081,10 @@ const SFX = (() => {
     chargeNodes = { nodes: [o1, o2, o3, lfo], master };
   }
   function chargeStop(released) {
-    const c = ac(); if (!c || !chargeNodes) return;
-    const t = c.currentTime;
+    if (!chargeNodes) return;
     const { nodes, master } = chargeNodes;
+    if (adMuted || cfgMuted) { chargeNodes = null; nodes.forEach(n => { try { n.stop(); } catch (e) {} }); try { master.disconnect(); } catch (e) {} return; }   // v899: 조용한 동안에도 끈다(예전엔 남아 있다가 소리가 돌아오면 다시 울렸다)
+    const c = master.context, t = c.currentTime;
     master.gain.cancelScheduledValues(t);
     master.gain.setValueAtTime(master.gain.value, t);
     master.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
@@ -5456,7 +5494,7 @@ const SFX = (() => {
       } else if (j % 2 === 0) for (const iv of [0, third, 7]) I.brass(c, out, t, r + 12 + iv, Q * 0.9, 0.05);
     } },
   };
-  let curTrack = null;
+  let curTrack = null, wantTrack = null;
   function schedTrack(tr) {
     const c = ac(); if (!c || tr.dead) return;
     if (tr.next < c.currentTime - 0.05) tr.next = c.currentTime + 0.05;   // 탭이 가려져 타이머가 늦으면 밀린 마디를 몰아 걸지 않고 건너뛴다
@@ -5469,9 +5507,10 @@ const SFX = (() => {
   }
   // 곡 바꾸기: name = 'town' | 'battle' | 'boss' | null. 이전 곡은 fadeOut 초에 걸쳐 줄고 새 곡은 fadeIn 초에 걸쳐 커진다
   function musicSet(name, fadeIn, fadeOut) {
-    if ((curTrack ? curTrack.name : null) === (name || null)) return;
+    wantTrack = name || null;   // v899: 조용한 동안 들어온 요청도 기억한다(resync)
+    if ((curTrack ? curTrack.name : null) === wantTrack) return;
+    if (curTrack) { stopTrack(curTrack, fadeOut === undefined ? 1.5 : fadeOut); curTrack = null; }   // 멈추기는 조용한 동안에도(예전엔 마을 곡이 남아 있다가 던전에서 다시 울렸다)
     const c = ac(); if (!c) return;
-    if (curTrack) { stopTrack(curTrack, fadeOut === undefined ? 1.5 : fadeOut); curTrack = null; }
     const def = name && TRACKS[name]; if (!def) return;
     const B = musBus(c), bus = c.createGain(), send = c.createGain(), now = c.currentTime;
     bus.gain.setValueAtTime(0.0001, now); bus.gain.linearRampToValueAtTime(def.vol, now + Math.max(0.05, fadeIn === undefined ? 2 : fadeIn));
@@ -35189,6 +35228,7 @@ function quickStartDungeon() {
   meta.played = true; saveMeta();
   enterDungeonFromTown(false);
   if (!TUT_ON) showHowtoHint();
+  else { const i = tut.q.indexOf('ctrl'); if (i > 0) { tut.q.splice(i, 1); tut.q.unshift('ctrl'); } }   // v899: 마을 조작 패널을 건너뛰었으니 조작 안내부터(목표 안내 9초 뒤가 아니라)
 }
 // 조작 힌트 패널: 12초 뒤 서서히 사라진다. 조작을 막지 않으므로 그 사이에도 플레이 가능.
 let howtoHintTimer = null;
