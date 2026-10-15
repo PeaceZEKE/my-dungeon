@@ -1,0 +1,1725 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>1막 몬스터 뷰어 v1</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  /* 페이지가 스크롤될 여지를 아예 없앤다.
+     예전에는 body가 100dvh인데 캔버스가 100vh였다. 모바일에서 100vh는 '주소창이 숨은 상태'의
+     큰 높이라 캔버스가 body보다 커지고, 그 상태에서 버튼에 포커스가 가면 브라우저가 그 버튼을
+     보이게 하려고 문서를 스크롤한다(overflow:hidden도 이 스크롤은 못 막는다).
+     그러면 캔버스가 위로 밀려 캐릭터 윗부분만 보인다 — 아랫줄 버튼에서만 나던 증상의 정체다. */
+  html, body { position:fixed; inset:0; width:100%; height:100%; overflow:hidden; background:#070a06; font-family: sans-serif; overscroll-behavior:none; }
+  #app { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action: none; }
+  .ui { position:fixed; left:0; right:0; bottom:0; display:flex; gap:8px; justify-content:center; flex-wrap:wrap; padding:12px; pointer-events:none; }
+  /* touch-action:manipulation — 버튼을 연달아 누를 때 더블탭 확대로 잡히는 것을 막는다.
+     확대되면 화면이 탭한 지점(=아래쪽) 기준으로 잘려 역시 캐릭터 위쪽만 보인다. */
+  .btn { pointer-events:auto; touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+         background:rgba(20,24,34,0.85); color:#e2e8f0; border:1px solid #4a5568; border-radius:8px; padding:10px 14px; font-size:13px; font-weight:bold; cursor:pointer; }
+  .btn:active { background:#2d3748; }
+  .btn.on { border-color:#d7a0b0; color:#f5d8e0; }
+  #ver { position:fixed; right:10px; top:10px; color:#718096; font-size:11px; text-align:right; line-height:1.5; }
+  #hint { position:fixed; left:0; right:0; top:12px; text-align:center; color:#a0aec0; font-size:12px; }
+  @media (max-width: 520px) {
+    .ui { gap:6px; padding:8px 6px calc(8px + env(safe-area-inset-bottom)); }
+    .btn { padding:8px 10px; font-size:12px; border-radius:6px; }
+    #hint { font-size:11px; top:34px; }
+    #ver { font-size:10px; top:8px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="app"></canvas>
+<div id="hint">드래그: 회전 · 휠/핀치: 확대축소</div>
+<div class="ui">
+  <button class="btn" id="typeBtn">고블린</button>
+  <button class="btn" id="varBtn">일반</button>
+  <button class="btn" id="cmpBtn">나란히(예전 · 새)</button>
+  <button class="btn" id="spinBtn">자동회전: 켬</button>
+  <button class="btn" id="walkBtn">이동</button>
+  <button class="btn" id="atkBtn">공격</button>
+  <button class="btn" id="actBtn">스튜디오</button>
+  <button class="btn" id="shadowBtn">그림자: 켬</button>
+  <button class="btn" id="resetBtn">게임 시점</button>
+</div>
+<div id="ver"></div>
+
+<!-- 게임 index.html에 동봉된 것과 같은 three.js r128. CDN을 쓰면 여기서 렌더 검증을 못 하고,
+     게임과 버전이 어긋나면 뷰어에서 맞춘 모양이 게임에서 달라진다. -->
+<script src="three.r128.min.js"></script>
+<script>
+// ============================================================
+//  용병 — 마을 여관에서 고용하는 동료(v879). 몸은 게임과 같은 buildMercBody 를 그대로 쓴다.
+//  렌더 환경 — 게임 index.html에서 그대로 옮겨온 것. 구울 뷰어와 같은 파일을 복사한 것이다.
+//  값 하나라도 바꾸면 뷰어에서 본 것과 게임에 넣은 결과가 달라진다.
+//  옮겨온 것: 저해상도 버퍼 크기 · 톤매핑 · 조명 셰이더 청크(?dspec/?dlight/?drough/?spec) ·
+//            노멀 패스(피부 표식 포함) · 블룸 · 포스트 셰이더 전문 · 픽셀 스냅 · 막별 환경 · 조명 리그
+// ============================================================
+const canvas = document.getElementById('app');
+
+// 실제로 보이는 영역 크기. 모바일 인앱 뷰어·주소창 때문에 window.innerHeight 가 눈에 보이는
+// 높이보다 클 수 있는데, 그대로 쓰면 캔버스 아래쪽이 화면 밖으로 나가고 화면 한가운데 맞춰 둔
+// 캐릭터가 위로 치우쳐 보인다. visualViewport 가 있으면 그쪽이 진짜 보이는 크기다.
+function viewW() { const v = window.visualViewport; return Math.max(1, Math.round(v ? v.width : window.innerWidth)); }
+function viewH() { const v = window.visualViewport; return Math.max(1, Math.round(v ? v.height : window.innerHeight)); }
+// 어떤 경로로든 문서가 스크롤되면 즉시 되돌린다(포커스 이동·인앱 뷰어 제스처 등).
+window.addEventListener('scroll', () => { if (window.scrollX || window.scrollY) window.scrollTo(0, 0); }, { passive: true });
+
+// ---------- 플래그 (게임과 같은 이름·같은 기본값). 쓰는 곳보다 위에 둘 것 — TDZ ----------
+const PX_MODE = !/[?&]px=0/.test(location.search);   // 픽셀아트 렌더(기본 켜짐)
+const BLOB_ON = !/[?&]blob=0/.test(location.search); // 발밑 블롭 그림자
+const BLOB_STEPS = (() => { const m = /[?&]blobsteps=([0-9]+)/.exec(location.search); return m ? parseInt(m[1], 10) : 3; })();
+const VIEWER_VERSION = 'v1';
+
+// ===== 깊이 기반 조명 조절(?dspec / ?dlight) — 게임과 동일 =====
+// 램프 구간(20~33)은 게임의 실측값이다. 게임 카메라가 플레이어에서 25.4 떨어져 있어서
+// 화면에 보이는 것이 전부 이 구간에 들어온다 — 그래서 이 뷰어도 카메라 거리를 25.4로 맞춘다.
+// 거리를 줄이면 램프 바깥으로 나가 이 효과가 통째로 사라지고, 게임과 다른 밝기가 나온다.
+let dSpecStr = 2.0, dLightStr = 0.6, dNear = 20.0, dFar = 33.0;
+{
+  const num = (re) => { const m = re.exec(location.search); return m ? parseFloat(m[1]) : null; };
+  const a = num(/[?&]dspec=([0-9.]+)/);  if (a !== null) dSpecStr = a;
+  const b = num(/[?&]dlight=([0-9.]+)/); if (b !== null) dLightStr = b;
+  const c = num(/[?&]dnear=([0-9.]+)/);  if (c !== null) dNear = c;
+  const d = num(/[?&]dfar=([0-9.]+)/);   if (d !== null) dFar = d;
+}
+function _depthLitChunk() {
+  if (!(dSpecStr > 0.001 || dLightStr > 0.001)) return '';
+  const n = dNear.toFixed(1), f = Math.max(dNear + 0.1, dFar).toFixed(1);
+  const s = dSpecStr.toFixed(3), l = dLightStr.toFixed(3);
+  return '\n' + [
+    'float _dz = -vViewPosition.z;',
+    'float _dt = smoothstep(' + n + ', ' + f + ', _dz);',
+    'float _dks = mix(1.0 + ' + s + ', max(0.0, 1.0 - ' + s + ' * 0.6), _dt);',
+    'reflectedLight.directSpecular *= _dks;',
+    'reflectedLight.indirectSpecular *= _dks;',
+    'float _dkl = mix(1.0 + ' + l + ' * 0.35, max(0.0, 1.0 - ' + l + '), _dt);',
+    'reflectedLight.directDiffuse *= _dkl;'
+  ].join('\n');
+}
+// ===== 러프니스 기반 하이라이트 세기(?drough) — 게임과 동일 =====
+let dRoughStr = 1.2, dRoughLo = 0.40, dRoughHi = 0.95;
+{
+  const m = /[?&]drough=([0-9.]+)/.exec(location.search);
+  if (m) dRoughStr = parseFloat(m[1]);
+  const lo = /[?&]droughlo=([0-9.]+)/.exec(location.search); if (lo) dRoughLo = parseFloat(lo[1]);
+  const hi = /[?&]droughhi=([0-9.]+)/.exec(location.search); if (hi) dRoughHi = parseFloat(hi[1]);
+}
+function _roughSpecChunk() {
+  if (!(dRoughStr > 0.001)) return '';
+  const s = dRoughStr.toFixed(3);
+  const lo = dRoughLo.toFixed(2), hi = Math.max(dRoughLo + 0.01, dRoughHi).toFixed(2);
+  return '\n' + [
+    '#ifdef STANDARD',
+    'float _rg = smoothstep(' + lo + ', ' + hi + ', clamp(roughnessFactor, 0.0, 1.0));',
+    'float _kr = mix(1.0 + ' + s + ', max(0.0, 1.0 - ' + s + ' * 0.5), _rg);',
+    'reflectedLight.directSpecular *= _kr;',
+    'reflectedLight.indirectSpecular *= _kr;',
+    '#endif'
+  ].join('\n');
+}
+// ===== 하이라이트 전체 밝기(?spec) — 게임과 동일 =====
+let dSpecGain = 0.85;
+{ const m = /[?&]spec=([0-9.]+)/.exec(location.search); if (m) dSpecGain = parseFloat(m[1]); }
+function _specGainChunk() {
+  if (Math.abs(dSpecGain - 1.0) < 0.001) return '';
+  const g = dSpecGain.toFixed(3);
+  return '\n' + ['reflectedLight.directSpecular *= ' + g + ';', 'reflectedLight.indirectSpecular *= ' + g + ';'].join('\n');
+}
+// 조합 순서도 게임과 같다: 기본 → 러프니스 → 깊이 → 전체 밝기.
+// 반드시 머티리얼을 하나라도 만들기 전에 갈아끼워야 한다 — three의 프로그램 캐시 키에는
+// 청크 내용이 안 들어가서, 나중에 바꾸면 예전 프로그램이 그대로 재사용된다.
+{
+  const _toonBaseChunk = THREE.ShaderChunk.lights_fragment_end;
+  const _roughCode = _roughSpecChunk(), _depthCode = _depthLitChunk(), _gainCode = _specGainChunk();
+  if (_roughCode || _depthCode || _gainCode) {
+    THREE.ShaderChunk.lights_fragment_end = _toonBaseChunk + _roughCode + _depthCode + _gainCode;
+  }
+}
+
+// ---------- 저해상도 버퍼(게임 computeLowRes 그대로) ----------
+const PIXEL_SCALE = 2;
+// 게임과 같은 값·같은 플래그. 작을수록 픽셀이 커진다(720 기준 360=배율 2, 288=2.5, 240=3).
+// v739~v740 에서 게임이 360 → 288 로 올렸다. 여기가 어긋나면 '1.0× = 게임 실제 픽셀 크기'가 거짓말이 된다.
+const PX_FIXED_H = parseInt((location.search.match(/[?&]pxh=(\d+)/) || [])[1], 10) || 320;
+function computeLowRes(w, h) {
+  if (PX_MODE) {
+    const lh = PX_FIXED_H;
+    return [Math.max(64, Math.round(lh * (w / Math.max(1, h)))), lh];
+  }
+  return [Math.max(320, Math.floor(w / PIXEL_SCALE)), Math.max(240, Math.floor(h / PIXEL_SCALE))];
+}
+const _lr0 = computeLowRes(viewW(), viewH());
+let lowResW = _lr0[0], lowResH = _lr0[1];
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(1);
+renderer.setSize(viewW(), viewH());
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = PX_MODE ? THREE.BasicShadowMap : THREE.PCFShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.autoClear = false;
+
+const rt = new THREE.WebGLRenderTarget(lowResW, lowResH, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
+rt.depthTexture = new THREE.DepthTexture(lowResW, lowResH);
+rt.depthTexture.format = THREE.DepthFormat;
+rt.depthTexture.type = THREE.UnsignedIntType;
+
+const rtNormal = new THREE.WebGLRenderTarget(lowResW, lowResH, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
+rtNormal.texture.generateMipmaps = false;
+rtNormal.stencilBuffer = false;
+const normalMaterial = new THREE.MeshNormalMaterial();
+// 피부 표식용. 노멀 버퍼에 순수 빨강을 찍어 두면 포스트 셰이더가 모서리 하이라이트에서 뺀다.
+const SKIN_TAG_LAYER = 1;
+const skinTagMaterial = new THREE.ShaderMaterial({
+  vertexShader: 'void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: 'void main(){ gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); }',
+});
+
+const quadScene = new THREE.Scene();
+const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const quadMat = new THREE.ShaderMaterial({
+  uniforms: {
+    tColor: { value: rt.texture },
+    tDepth: { value: rt.depthTexture },
+    uTexel: { value: new THREE.Vector2(1 / lowResW, 1 / lowResH) },
+    uOutline: { value: new THREE.Color(0x05070c) },
+    uStrength: { value: 1.0 },
+    uSat: { value: 1.14 },
+    uCon: { value: 1.07 },
+    uSplit: { value: new THREE.Vector3(0.045, 0.012, -0.05) },
+    uVig: { value: 0.5 },
+    uFocusY: { value: 0.52 },
+    uFocusW: { value: 0.18 },
+    uBlurMax: { value: 1.5 },
+    uTiltOn: { value: PX_MODE ? 0.0 : 1.0 },
+    tBloom: { value: null },
+    uBloomStr: { value: 0.85 },
+    uAerialColor: { value: new THREE.Color(0x1a2416) },
+    uAerialStr: { value: 0.45 },
+    uAerialDesat: { value: 0.7 },
+    uAerialNear: { value: 0.5 },
+    uAerialFar: { value: 0.8 },
+    uShadowColor: { value: new THREE.Color(0x203a2c) },
+    uShadowStr: { value: 0.42 },
+    uShadowThresh: { value: 0.42 },
+    uShadowSteps: { value: 0.0 },
+    uNear: { value: 0.1 },
+    uFar: { value: 200 },
+    uPx: { value: PX_MODE ? 1.0 : 0.0 },
+    uPxThresh: { value: 0.10 },
+    uPxThreshK: { value: 0.035 },
+    uPxDark: { value: 0.55 },
+    tNormal: { value: rtNormal.texture },
+    uSubpixel: { value: new THREE.Vector2(0, 0) },
+    uPxNormalStr: { value: 0.30 },
+    uPxNormalBias: { value: new THREE.Vector3(1, 1, 1) },
+    uQuant: { value: 32.0 },
+    uDither: { value: 0.9 },
+    uQuantGamma: { value: 2.2 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+  `,
+  // 게임 quadMat 프래그먼트 셰이더 그대로. 구름 그림자(uCloud*)만 뺐다 —
+  // 던전·쉼터에서는 게임도 uCloudStr=0 으로 통째로 건너뛰므로 결과가 같다.
+  fragmentShader: `
+    uniform sampler2D tColor;
+    uniform sampler2D tDepth;
+    uniform vec2 uTexel;
+    uniform vec3 uOutline;
+    uniform float uStrength;
+    uniform float uSat;
+    uniform float uCon;
+    uniform vec3 uSplit;
+    uniform float uVig;
+    uniform float uFocusY;
+    uniform float uFocusW;
+    uniform float uBlurMax;
+    uniform float uTiltOn;
+    uniform sampler2D tBloom;
+    uniform float uBloomStr;
+    uniform vec3 uAerialColor;
+    uniform float uAerialStr;
+    uniform float uAerialDesat;
+    uniform float uAerialNear;
+    uniform float uAerialFar;
+    uniform vec3 uShadowColor;
+    uniform float uShadowStr;
+    uniform float uShadowThresh;
+    uniform float uShadowSteps;
+    uniform float uNear;
+    uniform float uFar;
+    uniform float uPx;
+    uniform float uPxThresh;
+    uniform float uPxThreshK;
+    uniform float uPxDark;
+    uniform float uQuant;
+    uniform float uDither;
+    uniform float uQuantGamma;
+    uniform sampler2D tNormal;
+    uniform vec2 uSubpixel;
+    uniform float uPxNormalStr;
+    uniform vec3 uPxNormalBias;
+    varying vec2 vUv;
+    vec3 nrmAt(vec2 o) { return texture2D(tNormal, vUv + uSubpixel + o * uTexel).rgb * 2.0 - 1.0; }
+    bool isSkinTag(vec3 n) { return n.r > 0.7 && n.g < -0.7 && n.b < -0.7; }
+    bool isVegTag(vec3 n) { return n.g > 0.7 && n.r < -0.7 && n.b < -0.7; }
+    float outlineAt() { return texture2D(tNormal, vUv + uSubpixel).a; }
+    float nEdge(vec2 o, float dep, vec3 n, float dNb) {
+      vec3 m = nrmAt(o);
+      if (isSkinTag(m) || isVegTag(m)) return 0.0;
+      float depthDiff = dNb - dep;
+      float normalDiff = dot(n - m, uPxNormalBias);
+      float normalInd = clamp(smoothstep(-0.01, 0.01, normalDiff), 0.0, 1.0);
+      float depthInd = clamp(sign(depthDiff * 0.25 + 0.0025), 0.0, 1.0);
+      return distance(n, m) * depthInd * normalInd;
+    }
+    float bayer2(vec2 a) { a = floor(a); return fract(a.x / 2.0 + a.y * a.y * 0.75); }
+    float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
+    float bayer8(vec2 a) { return bayer4(0.5 * a) * 0.25 + bayer2(a); }
+    float linearizeDepth(float d) {
+      float z = d * 2.0 - 1.0;
+      return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear));
+    }
+    void main() {
+      vec2 uv = vUv + uSubpixel;
+      vec4 col = texture2D(tColor, uv);
+      float fdy = abs(vUv.y - uFocusY);
+      float blur = smoothstep(uFocusW, uFocusW + 0.28, fdy) * uTiltOn;
+      if (blur > 0.003) {
+        vec2 br = uTexel * (blur * uBlurMax);
+        vec3 acc = col.rgb * 0.25;
+        acc += texture2D(tColor, uv + vec2( br.x,  br.y)).rgb * 0.125;
+        acc += texture2D(tColor, uv + vec2(-br.x,  br.y)).rgb * 0.125;
+        acc += texture2D(tColor, uv + vec2( br.x, -br.y)).rgb * 0.125;
+        acc += texture2D(tColor, uv + vec2(-br.x, -br.y)).rgb * 0.125;
+        acc += texture2D(tColor, uv + vec2( br.x * 1.8, 0.0)).rgb * 0.0625;
+        acc += texture2D(tColor, uv + vec2(-br.x * 1.8, 0.0)).rgb * 0.0625;
+        acc += texture2D(tColor, uv + vec2(0.0,  br.y * 1.8)).rgb * 0.0625;
+        acc += texture2D(tColor, uv + vec2(0.0, -br.y * 1.8)).rgb * 0.0625;
+        col.rgb = acc;
+      }
+      float c  = linearizeDepth(texture2D(tDepth, uv).x);
+      float l = linearizeDepth(texture2D(tDepth, uv + vec2(-uTexel.x, 0.0)).x);
+      float r = linearizeDepth(texture2D(tDepth, uv + vec2( uTexel.x, 0.0)).x);
+      float u = linearizeDepth(texture2D(tDepth, uv + vec2(0.0,  uTexel.y)).x);
+      float dn= linearizeDepth(texture2D(tDepth, uv + vec2(0.0, -uTexel.y)).x);
+      vec3 graded;
+      if (uPx > 0.5) {
+        float d = clamp(l - c, 0.0, 1.0) + clamp(r - c, 0.0, 1.0)
+                + clamp(u - c, 0.0, 1.0) + clamp(dn - c, 0.0, 1.0);
+        float t = uPxThresh + c * uPxThreshK;
+        float dei = floor(smoothstep(t, t * 1.65, d) * 2.0) / 2.0;
+        dei *= uStrength * (1.0 - blur * 0.85);
+        dei *= step(0.5, outlineAt());
+        float nei = 0.0;
+        if (uPxNormalStr > 0.001) {
+          vec3 n = nrmAt(vec2(0.0));
+          if (!isSkinTag(n) && !isVegTag(n)) {
+            nei += nEdge(vec2( 0.0, -1.0), c, n, dn);
+            nei += nEdge(vec2( 0.0,  1.0), c, n, u);
+            nei += nEdge(vec2(-1.0,  0.0), c, n, l);
+            nei += nEdge(vec2( 1.0,  0.0), c, n, r);
+            nei = step(0.1, nei);
+            float lumIn = dot(col.rgb, vec3(0.299, 0.587, 0.114));
+            nei *= smoothstep(0.04, 0.22, lumIn);
+          }
+        }
+        float k = dei > 0.0 ? (1.0 - uPxDark * clamp(dei, 0.0, 1.0))
+                            : (1.0 + uPxNormalStr * nei);
+        graded = col.rgb * k;
+      } else {
+        float edge = abs(c - l) + abs(c - r) + abs(c - u) + abs(c - dn);
+        float thresh = 0.25 + c * 0.05;
+        float line = smoothstep(thresh, thresh * 1.65, edge) * uStrength;
+        line *= (1.0 - blur * 0.85);
+        graded = mix(col.rgb, uOutline, clamp(line, 0.0, 1.0));
+      }
+      float lum = dot(graded, vec3(0.299, 0.587, 0.114));
+      graded = mix(vec3(lum), graded, uSat);
+      graded = (graded - 0.5) * uCon + 0.5;
+      graded += (lum - 0.5) * uSplit;
+      graded = clamp(graded, 0.0, 1.0);
+      float lum2 = dot(graded, vec3(0.299, 0.587, 0.114));
+      float shMask = 1.0 - smoothstep(0.0, uShadowThresh, lum2);
+      if (uShadowSteps > 0.5) shMask = floor(shMask * uShadowSteps + 0.5) / uShadowSteps;
+      graded = mix(graded, max(graded, uShadowColor), shMask * uShadowStr);
+      float aer = smoothstep(uAerialNear, uAerialFar, c) * uAerialStr;
+      float aLum = dot(graded, vec3(0.299, 0.587, 0.114));
+      graded = mix(graded, vec3(aLum), aer * uAerialDesat);
+      graded = mix(graded, uAerialColor, aer * 0.6);
+      graded += texture2D(tBloom, uv).rgb * uBloomStr;
+      vec2 vc = vUv - 0.5;
+      float vig = 1.0 - dot(vc, vc) * uVig;
+      graded *= clamp(vig, 0.0, 1.0);
+      if (uPx > 0.5 && uQuant > 2.5) {
+        vec2 pix = vUv / uTexel;
+        float qstep = 1.0 / (uQuant - 1.0);
+        vec3 e = pow(max(graded, 0.0), vec3(1.0 / uQuantGamma));
+        float th = (bayer8(pix) - 0.5) * qstep * uDither;
+        e = clamp(floor((e + th) / qstep + 0.5) * qstep, 0.0, 1.0);
+        graded = pow(e, vec3(uQuantGamma));
+      }
+      gl_FragColor = vec4(graded, 1.0);
+    }
+  `,
+  depthTest: false, depthWrite: false
+});
+quadScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), quadMat));
+
+// ---------- 블룸(게임과 동일) ----------
+let bloomW = Math.max(160, Math.floor(lowResW / 2)), bloomH = Math.max(120, Math.floor(lowResH / 2));
+const rtBloom = new THREE.WebGLRenderTarget(bloomW, bloomH, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false });
+const bloomScene = new THREE.Scene();
+const bloomMat = new THREE.ShaderMaterial({
+  uniforms: {
+    tColor: { value: rt.texture },
+    uTexel: { value: new THREE.Vector2(1 / bloomW, 1 / bloomH) },
+    uThresh: { value: 0.62 },   // 1막·3막 0.62 / 2막만 0.70 — 막 전환에서 갈아끼운다
+    uRadius: { value: 2.4 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+  fragmentShader: `
+    precision mediump float;
+    uniform sampler2D tColor; uniform vec2 uTexel; uniform float uThresh; uniform float uRadius;
+    varying vec2 vUv;
+    vec3 bright(vec2 uv){ vec3 c = texture2D(tColor, uv).rgb; float l = dot(c, vec3(0.299,0.587,0.114)); float k = max(0.0, l - uThresh) / max(0.001, 1.0 - uThresh); return c * k; }
+    void main(){
+      vec2 r = uTexel * uRadius;
+      vec3 s = bright(vUv) * 0.196;
+      s += bright(vUv + vec2( r.x, 0.0)) * 0.118; s += bright(vUv + vec2(-r.x, 0.0)) * 0.118;
+      s += bright(vUv + vec2(0.0,  r.y)) * 0.118; s += bright(vUv + vec2(0.0, -r.y)) * 0.118;
+      s += bright(vUv + vec2( r.x,  r.y)) * 0.083; s += bright(vUv + vec2(-r.x,  r.y)) * 0.083;
+      s += bright(vUv + vec2( r.x, -r.y)) * 0.083; s += bright(vUv + vec2(-r.x, -r.y)) * 0.083;
+      gl_FragColor = vec4(s, 1.0);
+    }`,
+  depthTest: false, depthWrite: false,
+});
+bloomScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bloomMat));
+quadMat.uniforms.tBloom.value = rtBloom.texture;
+
+// ---------- 씬 · 카메라 (게임 1막 기본값) ----------
+const TILE = 5;   // 게임의 타일 크기 — 조명 사거리가 전부 이 값의 배수다
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x070a06);
+scene.fog = new THREE.FogExp2(0x070a06, 0.025);
+
+// 게임의 쿼터뷰 카메라. 오프셋 (11.07, 20, 11.07) → 거리 25.40 / 수평에서 51.94° 내려봄.
+// 이 거리·각도·FOV가 어긋나면 원근 왜곡도, 깊이 기반 조명(위 dNear/dFar)도 게임과 달라진다.
+const isoOffsetX = 11.07, isoOffsetY = 20, isoOffsetZ = 11.07;
+const GAME_PLAYER_DIST = Math.hypot(isoOffsetX, isoOffsetY, isoOffsetZ);       // 25.40 — 플레이어의 뷰 깊이
+const GAME_PITCH = Math.atan2(isoOffsetY, Math.hypot(isoOffsetX, isoOffsetZ)); // 0.9065 rad = 51.94°
+// 카메라는 플레이어를 보고, 몬스터는 그보다 3칸쯤 뒤에 선다 — 그래서 몬스터의 뷰 깊이는
+// 플레이어보다 1.06 깊다. 게임을 띄워 직접 잰 값이다(플레이어 25.399 / 근접 교전 중인 몬스터 26.46).
+// 깊이 기반 조명 램프가 20~33이라 이 1.06 차이도 밝기로 드러난다 — 25.40으로 두면 뷰어가 7% 밝게 나온다.
+const GAME_DIST = 26.46;
+// 게임에서 몬스터는 늘 플레이어를 바라보고, 플레이어는 카메라와 몬스터 사이에 있다 —
+// 즉 카메라는 몬스터 정면(로컬 -z) 쪽에서 내려다본다. 그 배치를 그대로 재현한다.
+const GAME_YAW = Math.PI;
+const camera = new THREE.PerspectiveCamera(30, viewW() / viewH(), 0.1, 200);
+const BASE_FOV = 30, BASE_ASPECT = 16 / 9;
+// 확대는 '카메라를 당기는' 게 아니라 'FOV를 좁히는' 방식이어야 한다.
+// 카메라를 가까이 옮기면 뷰 깊이가 램프(20~33) 밖으로 나가 깊이 기반 조명이 통째로 달라지고,
+// 원근 왜곡도 게임보다 커진다. FOV만 좁히면 거리·각도가 그대로라 망원 크롭이 되어
+// 조명·왜곡은 게임 그대로이고 화면에 크게만 보인다.
+// 대신 저해상도 버퍼(360줄)에서 차지하는 픽셀 수는 그만큼 늘어난다 — 즉 배율이 1.0일 때가
+// 게임에서 실제로 보이는 픽셀 크기다. 배지에 배율을 항상 띄워 둔다.
+let camZoom = 8.0;   // 보스보다 2.8배 작으므로 기본 배율도 그만큼 높다(1.0 = 게임 실제 크기)
+let baseFov = BASE_FOV;
+function applyAdaptiveFOV() {
+  const aspect = viewW() / viewH();
+  camera.aspect = aspect;
+  if (aspect >= BASE_ASPECT) baseFov = BASE_FOV;
+  else {
+    const baseVRad = BASE_FOV * Math.PI / 180;
+    const baseHorizontal = 2 * Math.atan(Math.tan(baseVRad / 2) * BASE_ASPECT);
+    const newVRad = 2 * Math.atan(Math.tan(baseHorizontal / 2) / aspect);
+    baseFov = Math.min(105, newVRad * 180 / Math.PI);
+  }
+  // 배율은 화면에 비치는 크기 배수 = tan(fov/2) 비율
+  camera.fov = 2 * Math.atan(Math.tan(baseFov * Math.PI / 360) / camZoom) * 180 / Math.PI;
+  camera.updateProjectionMatrix();
+}
+applyAdaptiveFOV();
+const camDist = GAME_DIST;                     // 게임과 같은 거리. 바꾸지 않는다(위 주석 참고)
+let camYaw = GAME_YAW, camPitch = GAME_PITCH;
+const target = new THREE.Vector3(0, 0.78, 0);  // 모델 중간 높이(게임은 발밑을 본다 — 화면 중앙에 두려고 올린 것뿐)
+function updateCam() {
+  camera.position.set(
+    target.x + camDist * Math.cos(camPitch) * Math.sin(camYaw),
+    target.y + camDist * Math.sin(camPitch),
+    target.z + camDist * Math.cos(camPitch) * Math.cos(camYaw)
+  );
+  camera.lookAt(target);
+  updateLightRig();
+}
+
+// ---------- 조명 리그 (게임 던전과 동일) ----------
+// 게임에서 던전을 밝히는 광원은 전부 '플레이어에게' 붙어 있다(횃불·근접광·시야광).
+// 몬스터는 그 빛을 몇 칸 떨어진 곳에서 받는다 — 광원을 몬스터 안에 두면 안쪽에서 밝혀지는
+// 전혀 다른 그림이 나온다. 그래서 플레이어가 서 있을 자리를 만들어 거기에 리그를 얹는다.
+// 카메라는 늘 플레이어 뒤에 있으므로, 카메라를 돌리면 플레이어도 같이 돈다
+// (= 플레이어가 몬스터 주위를 돌면서 보는 것과 같다).
+const PLAYER_DIST = 3.0;   // 몬스터와 플레이어 사이 거리(근접 교전 간격)
+let discMat = null;   // 바닥 재질 — 아래에서 만든다(모드마다 색이 다르다)
+let studioGrp = null; // 스튜디오 조명 그룹 — 아래에서 만든다(카메라를 따라 돈다)
+const ambientLight = new THREE.AmbientLight(0x1a1e12, 0.88);
+scene.add(ambientLight);
+const torch = new THREE.PointLight(0xffc488, 1.6, TILE * 4.5, 2.0);
+torch.castShadow = true; torch.shadow.mapSize.width = 512; torch.shadow.mapSize.height = 512; torch.shadow.bias = -0.002;
+scene.add(torch);
+const nearLight = new THREE.PointLight(0xfff0dd, 1.2, TILE * 1.4, 2.0);
+scene.add(nearLight);
+const viewLight = new THREE.SpotLight(0xffd2a0, 3.0, TILE * 7, Math.PI / 2.7, 0.8, 1.5);
+viewLight.castShadow = true; viewLight.shadow.mapSize.width = 1024; viewLight.shadow.mapSize.height = 1024;
+viewLight.shadow.bias = -0.0015; viewLight.shadow.camera.near = 0.5; viewLight.shadow.camera.far = TILE * 8;
+scene.add(viewLight);
+const lightTarget = new THREE.Object3D(); scene.add(lightTarget); viewLight.target = lightTarget;
+// 게임의 갱신식 그대로: 횃불 +2.5 / 근접광 +1.2 / 시야광 +3.0, 시야광은 플레이어가 보는 쪽 5칸.
+// 플레이어는 카메라와 몬스터 사이에 서서 몬스터를 바라본다.
+function updateLightRig() {
+  // 스튜디오 리그는 카메라를 따라 돈다(턴테이블) — 어느 각도에서 봐도 조명 관계가 같다.
+  // GAME_YAW 를 빼는 이유: 기본 시점에서 회전이 0 이어야 원본 뷰어와 똑같은 빛 배치가 된다.
+  if (studioGrp) studioGrp.rotation.y = camYaw - GAME_YAW;
+  const px = Math.sin(camYaw) * PLAYER_DIST, pz = Math.cos(camYaw) * PLAYER_DIST;
+  torch.position.set(px, 2.5, pz);
+  nearLight.position.set(px, 1.2, pz);
+  viewLight.position.set(px, 3.0, pz);
+  lightTarget.position.set(px - Math.sin(camYaw) * 5, 0, pz - Math.cos(camYaw) * 5);
+}
+updateCam();
+const castleMoon = new THREE.DirectionalLight(0x7e90c8, 0.16);
+castleMoon.position.set(20, 38, 16);
+castleMoon.castShadow = true; castleMoon.shadow.mapSize.set(1024, 1024);
+castleMoon.shadow.camera.near = 1; castleMoon.shadow.camera.far = 200; castleMoon.shadow.bias = -0.0008;
+castleMoon.shadow.camera.left = -12; castleMoon.shadow.camera.right = 12;
+castleMoon.shadow.camera.top = 12; castleMoon.shadow.camera.bottom = -12;
+castleMoon.visible = false; scene.add(castleMoon); scene.add(castleMoon.target);
+const castleHemi = new THREE.HemisphereLight(0x3a4030, 0x14160c, 0.35);
+scene.add(castleHemi);
+
+// ---------- 스튜디오 조명(뷰어 전용) ----------
+// 처음 올라온 뷰어(glutton_ghoul_viewer v3)의 조명을 값 그대로 가져온 것이다.
+// 색·세기·위치·그림자 카메라 범위까지 손대지 않았다 — 원본이 이 캐릭터에 맞춰 잡아 둔 값이다.
+// 원본은 월드 고정이었지만 여기서는 카메라를 따라 돌린다(아래 updateLightRig) —
+// 돌려서 뒤를 볼 때도 같은 조명으로 보여야 형태를 판단할 수 있기 때문이다.
+// 기본 시점에서는 회전이 0 이라 빛 배치가 원본과 정확히 같다.
+// 주의: 원본은 최상위 그룹을 π 돌려 놔서 이 광원들이 뒤통수를 비추고 있었다.
+// 지금은 정면이 -z 라(게임 규약) 키·언더가 얼굴과 배를 제대로 잡는다.
+const studioAmb = new THREE.AmbientLight(0x6b6070, 0.72);
+scene.add(studioAmb);
+// 방향이 있는 것만 그룹에 담아 카메라를 따라 돌린다(환경광은 방향이 없어 씬 직속).
+// 방향광의 target 은 기본값(월드 원점)을 그대로 둔다 — 그룹이 돌아도 빛은 계속 모델을 향한다.
+studioGrp = new THREE.Group(); scene.add(studioGrp);
+const studioKey = new THREE.DirectionalLight(0xfff0e2, 1.15);
+studioKey.position.set(-4, 10, -5);
+studioKey.castShadow = true; studioKey.shadow.mapSize.set(1024, 1024);
+studioKey.shadow.camera.near = 1; studioKey.shadow.camera.far = 26;
+studioKey.shadow.camera.left = -4; studioKey.shadow.camera.right = 4;
+studioKey.shadow.camera.top = 4.5; studioKey.shadow.camera.bottom = -2;
+studioKey.shadow.bias = -0.0008;
+studioGrp.add(studioKey);
+const studioRim = new THREE.DirectionalLight(0x6f86c0, 0.6);
+studioRim.position.set(5, 3, 5);
+studioGrp.add(studioRim);
+const studioUnder = new THREE.PointLight(0xb07a86, 0.45, 8, 2);
+studioUnder.position.set(0, 0.3, -1.0);
+studioGrp.add(studioUnder);
+const STUDIO_LIGHTS = [studioAmb, studioKey, studioRim, studioUnder];
+const GAME_LIGHTS = [ambientLight, torch, nearLight, viewLight, castleHemi];
+
+// ---------- 막(Act)별 환경 — 0번만 뷰어용이고 나머지는 게임 값 그대로 ----------
+const ACTS = [
+  // 스튜디오: 처음 올라온 뷰어의 환경을 그대로 되살린 것.
+  // 그 뷰어는 카메라가 모델에서 6~7칸 거리라 안개가 모델에 닿지 않았고 대기 원근도 없었다.
+  // 그래서 여기서도 둘 다 끈다 — 안 그러면 같은 조명을 넣어도 원본처럼 보이지 않는다.
+  // 대신 게임(1/2/3막)보다 채도가 높게 나온다. 색 판단은 막 모드에서 할 것.
+  { name: '스튜디오', studio: true, bg: 0x11101a, fogD: 0.0, aerial: 0x11101a, shadowC: 0x1a1826,
+    shadowS: 0.20, aerialS: 0.0, bloom: 0.68, vig: 0.34, floor: 0x090b0a },
+  { name: '1막', floor: 0x0d1109, bg: 0x070a06, fogD: 0.025, aerial: 0x1a2416, shadowC: 0x203a2c, shadowS: 0.42,
+    bloom: 0.62, amb: 0x1a1e12, ambI: 0.88, moon: false,
+    hemi: 0x3a4030, hemiG: 0x14160c, hemiI: 0.35 },
+  { name: '2막', floor: 0x101216, bg: 0x090b0e, fogD: 0.013, aerial: 0x16202c, shadowC: 0x222c54, shadowS: 0.42,
+    bloom: 0.70, amb: 0x444a54, ambI: 0.36, moon: true, moonC: 0x8ea0d8, moonI: 0.32,
+    hemi: 0x3a4360, hemiG: 0x141519, hemiI: 0.24 },
+  // 이 캐릭터의 팔레트는 이 3막 값에서 역산했다 — 색 판단은 여기서 할 것
+  // v742~v749 의 3막 개편 반영. 게임의 `COR_V2`(기본 켜짐 · ?cor=0 이면 예전 톤) 쪽 값이다 —
+  // 자줏빛 그늘/칙칙한 카키에서 **따뜻한 아이보리 석재 ↔ 청록 그늘**로 뒤집혔다.
+  // 바닥색만 게임 상수를 그대로 못 쓴다. 게임의 아이보리 석재(0xb8ae90 등)를 그대로 넣으면
+  // 뷰어 원판이 화면을 가득 채우는 크림색 배경이 되어 캐릭터 색 판단을 망친다 —
+  // 게임 바닥에는 석판 텍스처의 어두운 줄눈·그림자·AO가 얹히기 때문이다.
+  // 그래서 상수가 아니라 **게임 3막 바닥의 실측 출력색([33,47,47], 70층 6종 평균)**을
+  // 목표로 원판 색을 역산했다.
+  // v753 에서 3막을 한 단 더 어둡게 했다(A3DIM — `COR_LIT` 기본 0.62 라 기본 켜짐).
+  // 거리와 무관하게 화면 전체를 들어올리는 광원(환경광·달빛·반구광)을 낮추고 안개를 올렸다.
+  { name: '3막', floor: 0x0b1011, bg: 0x090f10, fogD: 0.024, aerial: 0x14303a, shadowC: 0x1b4a4a, shadowS: 0.40,
+    bloom: 0.62, amb: 0x585a4c, ambI: 0.26, moon: true, moonC: 0x8fb0a4, moonI: 0.16,
+    hemi: 0xa8808a, hemiG: 0x14252a, hemiI: 0.14 },
+  // v854: 4막(지옥) — 게임 buildHellAct 값 그대로. 이 캐릭터의 팔레트는 여기서 역산했다 — 색 판단은 4막에서 할 것.
+  // 원판 색은 게임 4막 바닥(복셀 현무암)의 실측 출력색을 목표로 맞춘 값이다(상수를 그대로 쓰면 줄눈·틈이 없어 밝게 뜬다).
+  { name: '4막', floor: 0x0b0d13, bg: 0x05070a, fogD: 0.028, aerial: 0x0b0f16, shadowC: 0x0a1222, shadowS: 0.40,
+    bloom: 0.62, amb: 0x2a3446, ambI: 0.30, moon: false,
+    hemi: 0x26324a, hemiG: 0x3a1206, hemiI: 0.30 },
+];
+let actIdx = 0;
+function applyAct(i) {
+  const a = ACTS[i];
+  scene.background.setHex(a.bg);
+  scene.fog.color.setHex(a.bg); scene.fog.density = a.fogD;
+  quadMat.uniforms.uAerialColor.value.setHex(a.aerial);
+  quadMat.uniforms.uShadowColor.value.setHex(a.shadowC);
+  quadMat.uniforms.uShadowStr.value = a.shadowS;
+  quadMat.uniforms.uBloomStr.value = 0.85;
+  quadMat.uniforms.uAerialStr.value = (a.aerialS !== undefined) ? a.aerialS : 0.45;
+  quadMat.uniforms.uVig.value = (a.vig !== undefined) ? a.vig : 0.5;
+  bloomMat.uniforms.uThresh.value = a.bloom;
+  if (discMat) discMat.color.setHex(a.floor);
+  for (const L of STUDIO_LIGHTS) L.visible = !!a.studio;
+  for (const L of GAME_LIGHTS) L.visible = !a.studio;
+  if (a.studio) { castleMoon.visible = false; return; }
+  ambientLight.color.setHex(a.amb); ambientLight.intensity = a.ambI;
+  castleMoon.visible = a.moon;
+  if (a.moon) { castleMoon.color.setHex(a.moonC); castleMoon.intensity = a.moonI; }
+  castleHemi.color.setHex(a.hemi); castleHemi.groundColor.setHex(a.hemiG); castleHemi.intensity = a.hemiI;
+}
+applyAct(0);
+
+// ---------- 노멀 패스 (게임과 동일) ----------
+const _normalHidden = [];
+let _normalSkinCount = 0;
+function _hideNonSolid(root) {
+  _normalSkinCount = 0;
+  root.traverse(o => {
+    if (!o.visible) return;
+    const mm = o.material;
+    const organic = mm && (Array.isArray(mm) ? mm.some(x => x && x.userData && x.userData._organic)
+                                             : (mm.userData && mm.userData._organic));
+    if (o.isSprite || o.isPoints || organic || (o.userData && o.userData.fx) || (mm && mm.transparent)) {
+      o.visible = false; _normalHidden.push(o);
+      if (organic) { o.layers.enable(SKIN_TAG_LAYER); _normalSkinCount++; }
+    }
+  });
+}
+function renderNormalPass(sceneToRender) {
+  _normalHidden.length = 0;
+  _hideNonSolid(sceneToRender);
+  const prevOverride = sceneToRender.overrideMaterial;
+  sceneToRender.overrideMaterial = normalMaterial;
+  renderer.setRenderTarget(rtNormal); renderer.clear(); renderer.render(sceneToRender, camera);
+  for (const o of _normalHidden) o.visible = true;
+  _normalHidden.length = 0;
+  if (_normalSkinCount > 0) {
+    // scene.background가 Color면 three가 autoClear와 무관하게 강제 clear한다 → 2패스 동안 null.
+    const prevMask = camera.layers.mask, prevAuto = renderer.autoClear, prevBg = sceneToRender.background;
+    sceneToRender.overrideMaterial = skinTagMaterial;
+    sceneToRender.background = null;
+    camera.layers.set(SKIN_TAG_LAYER);
+    renderer.autoClear = false;
+    renderer.render(sceneToRender, camera);
+    sceneToRender.background = prevBg;
+    renderer.autoClear = prevAuto;
+    camera.layers.mask = prevMask;
+  }
+  sceneToRender.overrideMaterial = prevOverride;
+}
+
+// ---------- 픽셀 스냅 (게임과 동일) ----------
+// 게임은 카메라가 플레이어를 쫓느라 시선이 흔들려서 고정 쿼터니언을 쓴다.
+// 뷰어는 카메라를 사용자가 돌리므로, 그 시점의 카메라 축을 그대로 격자 기준으로 삼는다.
+const _pxRight = new THREE.Vector3(), _pxUp = new THREE.Vector3();
+const _pxSaveP = new THREE.Vector3();
+let _pxSnapped = false;
+function applyPixelSnap() {
+  _pxSnapped = false;
+  if (!PX_MODE) { quadMat.uniforms.uSubpixel.value.set(0, 0); return; }
+  const wpt = 2.0 * camDist * Math.tan(camera.fov * Math.PI / 360.0) / lowResH;
+  if (!(wpt > 0)) { quadMat.uniforms.uSubpixel.value.set(0, 0); return; }
+  _pxRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+  _pxUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+  _pxSaveP.copy(camera.position); _pxSnapped = true;
+  const ax = camera.position.dot(_pxRight), ay = camera.position.dot(_pxUp);
+  const dx = ax - Math.round(ax / wpt) * wpt;
+  const dy = ay - Math.round(ay / wpt) * wpt;
+  camera.position.addScaledVector(_pxRight, -dx).addScaledVector(_pxUp, -dy);
+  camera.updateMatrixWorld(true);
+  quadMat.uniforms.uSubpixel.value.set(dx / wpt / lowResW, dy / wpt / lowResH);
+}
+function releasePixelSnap() {
+  if (!_pxSnapped) return;
+  camera.position.copy(_pxSaveP);
+  camera.updateMatrixWorld(true); _pxSnapped = false;
+}
+function renderWithPost(sceneToRender) {
+  applyPixelSnap();
+  renderer.setRenderTarget(rt); renderer.clear(); renderer.render(sceneToRender, camera);
+  if (PX_MODE && quadMat.uniforms.uPxNormalStr.value > 0.001) renderNormalPass(sceneToRender);
+  if (quadMat.uniforms.uBloomStr.value > 0.001) {
+    renderer.setRenderTarget(rtBloom); renderer.clear(); renderer.render(bloomScene, quadCam);
+  }
+  renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
+  releasePixelSnap();
+}
+
+// ---------- 발밑 블롭 그림자 (게임과 동일) ----------
+// 게임 몬스터는 진짜 그림자를 던지지 않는다(그림자 패스 비용 때문에 castShadow를 전부 끈다).
+// 대신 발밑에 타원 한 장을 깐다 — 보스는 지름 2.3.
+const BLOB_TEX_S = 64;
+const blobTexData = new Uint8Array(BLOB_TEX_S * BLOB_TEX_S * 4);
+for (let by = 0; by < BLOB_TEX_S; by++) for (let bx = 0; bx < BLOB_TEX_S; bx++) {
+  const dx = (bx + 0.5) / BLOB_TEX_S - 0.5, dy = (by + 0.5) / BLOB_TEX_S - 0.5;
+  const d = Math.min(1, Math.hypot(dx, dy) * 2);
+  let a = d >= 1 ? 0 : (d < 0.55 ? 255 : Math.pow(1 - (d - 0.55) / 0.45, 0.85) * 255);
+  if (BLOB_STEPS > 0) a = Math.round((a / 255) * BLOB_STEPS) / BLOB_STEPS * 255;
+  const bi = (by * BLOB_TEX_S + bx) * 4;
+  blobTexData[bi] = 0; blobTexData[bi + 1] = 0; blobTexData[bi + 2] = 0; blobTexData[bi + 3] = a;
+}
+const blobTex = new THREE.DataTexture(blobTexData, BLOB_TEX_S, BLOB_TEX_S, THREE.RGBAFormat);
+blobTex.magFilter = THREE.NearestFilter; blobTex.minFilter = THREE.LinearFilter; blobTex.needsUpdate = true;
+const blobMatShared = new THREE.MeshBasicMaterial({ map: blobTex, color: 0x000000, transparent: true, opacity: 0.72, depthWrite: false });
+function makeBlobShadow(diameter) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blobMatShared);
+  m.rotation.x = -Math.PI / 2; m.position.y = 0.03;
+  m.scale.set(diameter, diameter, 1); m.renderOrder = -1;
+  return m;
+}
+
+// ===== 게임과 동일한 머티리얼/헬퍼 =====
+// 러프니스·메탈니스까지 게임 값 그대로여야 한다 — ?drough 램프(0.40~0.95)가 러프니스를 읽어
+// 하이라이트 배수를 정하므로, 0.9와 0.94는 서로 다른 밝기로 나온다.
+function getLowPolyMat(colorHex, isMetal = false) {
+  return new THREE.MeshStandardMaterial({
+    color: colorHex, flatShading: true,
+    roughness: isMetal ? 0.6 : 0.9,
+    metalness: isMetal ? 0.3 : 0.0
+  });
+}
+// ===== 유기체(피부·살) 표식 — 게임과 동일 =====
+// 이걸 걸어야 ① 하이라이트가 빠지고 ② 노멀이 부드러워지고 ③ 노멀 패스에서 피부로 표식된다.
+// 게임에서는 살로 된 몬스터의 skinMat에 자동으로 걸리지만, 전용 빌더가 자기 재질을 따로
+// 만들면 빠진다 — 이 구울처럼 재질을 직접 만드는 경우엔 반드시 손으로 걸어야 한다.
+const ORGANIC_MATTE = !/[?&]organic=0/.test(location.search);
+let ORGANIC_SMOOTH = 80;
+{ const m = /[?&]osmooth=([0-9.]+)/.exec(location.search); if (m) ORGANIC_SMOOTH = parseFloat(m[1]); }
+function markOrganic(m) {
+  if (!m) return m;
+  m.userData = m.userData || {}; m.userData._skin = true;
+  if (ORGANIC_SMOOTH > 0 && m.flatShading) { m.flatShading = false; m.needsUpdate = true; }
+  if (!ORGANIC_MATTE) return m;
+  if (m.onBeforeCompile && m.onBeforeCompile._organicMark) return m;
+  const prev = m.onBeforeCompile;
+  const fn = function (shader) {
+    if (prev) prev.call(this, shader);
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <lights_fragment_end>',
+      '#include <lights_fragment_end>\n\treflectedLight.directSpecular = vec3(0.0);\n\treflectedLight.indirectSpecular = vec3(0.0);'
+    );
+  };
+  fn._organicMark = true;
+  m.onBeforeCompile = fn;
+  m.userData._organic = true;
+  if (m.roughness !== undefined) m.roughness = 1.0;
+  m.needsUpdate = true;
+  return m;
+}
+function _smoothSkinGeo(geo, cosLimit) {
+  const pos = geo.attributes && geo.attributes.position;
+  const nrm = geo.attributes && geo.attributes.normal;
+  if (!pos || !nrm || pos.count !== nrm.count) return geo;
+  if (geo.userData && geo.userData._skinSmoothed) return geo;
+  const n = pos.count;
+  const buckets = new Map();
+  for (let i = 0; i < n; i++) {
+    const k = Math.round(pos.getX(i) * 1000) + ',' + Math.round(pos.getY(i) * 1000) + ',' + Math.round(pos.getZ(i) * 1000);
+    const a = buckets.get(k); if (a) a.push(i); else buckets.set(k, [i]);
+  }
+  const out = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { out[i * 3] = nrm.getX(i); out[i * 3 + 1] = nrm.getY(i); out[i * 3 + 2] = nrm.getZ(i); }
+  for (const arr of buckets.values()) {
+    if (arr.length < 2) continue;
+    for (const i of arr) {
+      const nx = nrm.getX(i), ny = nrm.getY(i), nz = nrm.getZ(i);
+      let sx = 0, sy = 0, sz = 0;
+      for (const j of arr) {
+        const jx = nrm.getX(j), jy = nrm.getY(j), jz = nrm.getZ(j);
+        if (nx * jx + ny * jy + nz * jz < cosLimit) continue;
+        sx += jx; sy += jy; sz += jz;
+      }
+      const len = Math.sqrt(sx * sx + sy * sy + sz * sz);
+      if (len < 1e-6) continue;
+      out[i * 3] = sx / len; out[i * 3 + 1] = sy / len; out[i * 3 + 2] = sz / len;
+    }
+  }
+  geo.setAttribute('normal', new THREE.BufferAttribute(out, 3));
+  geo.userData = geo.userData || {}; geo.userData._skinSmoothed = true;
+  return geo;
+}
+function smoothSkinNormals(root) {
+  if (!root || !(ORGANIC_SMOOTH > 0)) return;
+  const cosLimit = Math.cos(Math.min(180, ORGANIC_SMOOTH) * Math.PI / 180);
+  const skinGeos = new Set(), otherGeos = new Set();
+  const isSkin = (o) => {
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    return mats.length > 0 && mats.every(x => x && x.userData && x.userData._skin);
+  };
+  root.traverse(function (o) {
+    if (!o.isMesh || !o.geometry || !o.material) return;
+    (isSkin(o) ? skinGeos : otherGeos).add(o.geometry);
+  });
+  if (!skinGeos.size) return;
+  root.traverse(function (o) {
+    if (!o.isMesh || !o.geometry || !skinGeos.has(o.geometry)) return;
+    let g = o.geometry;
+    if (otherGeos.has(g)) { g = g.clone(); o.geometry = g; }
+    _smoothSkinGeo(g, cosLimit);
+  });
+}
+// 결정적 난수(같은 형태 재현)
+let _seed = 20260730;
+function rnd() { _seed = (_seed * 1664525 + 1013904223) % 4294967296; return _seed / 4294967296; }
+function jitterGeometry(geometry, amount) {
+  const pos = geometry.attributes.position;
+  const offsets = new Map();
+  const key = (x, y, z) => x.toFixed(3) + ',' + y.toFixed(3) + ',' + z.toFixed(3);
+  for (let i = 0; i < pos.count; i++) {
+    const k = key(pos.getX(i), pos.getY(i), pos.getZ(i));
+    let off = offsets.get(k);
+    if (!off) { off = [(rnd() - 0.5) * amount, (rnd() - 0.5) * amount, (rnd() - 0.5) * amount]; offsets.set(k, off); }
+    pos.setXYZ(i, pos.getX(i) + off[0], pos.getY(i) + off[1], pos.getZ(i) + off[2]);
+  }
+  geometry.computeVertexNormals(); return geometry;
+}
+// 게임의 보스 빌더와 같다 — 몬스터는 그림자를 던지지 않고 받기만 한다.
+// (그림자 패스 하나가 캐릭터 삼각형만큼 통째로 드는데, 발밑 블롭이 그 역할을 대신한다.)
+// 모델링 중에 형태를 보려면 '그림자: 스튜디오' 버튼으로 켤 수 있다.
+const _shadowCasters = [];
+function sh(o) { o.castShadow = false; o.receiveShadow = true; _shadowCasters.push(o); return o; }
+// ===== 공용 형태·병합 헬퍼 (구울 뷰어와 같은 코드) =====
+// 울룩불룩한 종양 혹 하나
+function lump(r, mat, detail) {
+  const m = sh(new THREE.Mesh(new THREE.IcosahedronGeometry(r, detail === undefined ? 0 : detail), mat));
+  jitterGeometry(m.geometry, r * 0.30);
+  return m;
+}
+// 타원체 표면을 종양 혹으로 뒤덮음(원화의 컬리플라워 살덩이 질감)
+function tumorShell(parent, o) {
+  const out = [];
+  const n = o.count;
+  for (let i = 0; i < n; i++) {
+    const k = i + 0.5;
+    const phi = Math.acos(1 - 2 * k / n);
+    const th = Math.PI * (1 + Math.sqrt(5)) * k;
+    const ux = Math.sin(phi) * Math.cos(th), uy = Math.cos(phi), uz = Math.sin(phi) * Math.sin(th);
+    const jr = 0.90 + rnd() * 0.18;
+    const x = o.cx + ux * o.rx * jr, y = o.cy + uy * o.ry * jr, z = o.cz + uz * o.rz * jr;
+    if (o.skip && o.skip(x, y, z)) continue;
+    const r = o.rMin + rnd() * (o.rMax - o.rMin);
+    const m = lump(r, o.mat || fleshMat((o.yBase || 0) + y), rnd() > 0.72 ? 1 : 0);
+    m.position.set(x, y, z);
+    m.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
+    m.scale.set(1 + rnd() * 0.35, 0.8 + rnd() * 0.4, 1 + rnd() * 0.35);
+    m.userData.bs = m.scale.clone();
+    parent.add(m); out.push(m);
+  }
+  return out;
+}
+// 가는 균열/정맥 라인
+function addSeam(parent, from, to, w, mat) {
+  const a = new THREE.Vector3(...from), b = new THREE.Vector3(...to);
+  const len = a.distanceTo(b);
+  const seg = sh(new THREE.Mesh(new THREE.BoxGeometry(w, len, w * 0.8), mat));
+  seg.position.copy(a).add(b).multiplyScalar(0.5);
+  seg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+  parent.add(seg);
+}
+// 뾰족한 가시(어깨/등)
+function addSpike(parent, x, y, z, h, rx, rz) {
+  const s = sh(new THREE.Mesh(new THREE.ConeGeometry(h * 0.22, h, 4), spikeMat));
+  s.position.set(x, y, z); s.rotation.set(rx, rnd() * 3, rz); parent.add(s); return s;
+}
+
+
+
+// ============================================================
+//  드로우콜 최적화: 움직이지 않는 살덩이들을 머티리얼별로 하나의 지오메트리로 병합
+//  (게임에 넣을 때 380여 개의 드로우콜 → 20개 미만으로 감소)
+// ============================================================
+function mergeGeos(geos) {
+  const list = geos.map(g => (g.index ? g.toNonIndexed() : g));
+  let n = 0; list.forEach(g => n += g.attributes.position.count);
+  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3);
+  let off = 0;
+  list.forEach(g => {
+    pos.set(g.attributes.position.array, off * 3);
+    nor.set(g.attributes.normal.array, off * 3);
+    off += g.attributes.position.count;
+  });
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  return out;
+}
+function mergeStatic(root, skip) {
+  const skipSet = new Set(skip || []);
+  const byMat = new Map();
+  const walk = (obj, mat4) => {
+    obj.children.slice().forEach(ch => {
+      if (skipSet.has(ch)) return;
+      const local = new THREE.Matrix4().compose(ch.position, ch.quaternion, ch.scale);
+      const m = mat4.clone().multiply(local);
+      if (ch.isMesh) {
+        const g = ch.geometry.clone().applyMatrix4(m);
+        if (!byMat.has(ch.material)) byMat.set(ch.material, []);
+        byMat.get(ch.material).push(g);
+        obj.remove(ch);
+      } else if (ch.isGroup) {
+        walk(ch, m);
+        if (ch.children.length === 0) obj.remove(ch);
+      }
+    });
+  };
+  walk(root, new THREE.Matrix4());
+  byMat.forEach((geos, mat) => {
+    const mesh = new THREE.Mesh(mergeGeos(geos), mat);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    root.add(mesh);
+  });
+}
+// ---------- 게임 병합 함수 그대로(mergeInto → 정점색 공용 재질). 뷰어의 mergeStatic 은 이걸 몰라서 게임과 드로우콜·색 경로가 달라진다 ----------
+function c3MergeGeos(geos, cols) {
+  const list = geos.map(g => (g.index ? g.toNonIndexed() : g));
+  let n = 0; list.forEach(g => n += g.attributes.position.count);
+  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3);
+  const col = cols ? new Float32Array(n * 3) : null;
+  let off = 0;
+  list.forEach((g, i) => {
+    pos.set(g.attributes.position.array, off * 3);
+    nor.set(g.attributes.normal.array, off * 3);
+    if (col) {
+      const c = cols[i], cnt = g.attributes.position.count;
+      for (let k = 0; k < cnt; k++) { col[(off + k) * 3] = c.r; col[(off + k) * 3 + 1] = c.g; col[(off + k) * 3 + 2] = c.b; }
+    }
+    off += g.attributes.position.count;
+  });
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  if (col) out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return out;
+}
+// 주의: 병합된 메시는 씬에서 제거되므로 그 변수에 scale/rotation을 줘도 아무 일도 안 일어난다.
+// 움직여야 하는 그룹은 skip 목록에 넣거나 부모 그룹을 대신 움직일 것.
+function c3MergeStatic(root, skip) {
+  const skipSet = new Set(skip || []);
+  const byMat = new Map();
+  const walk = (obj, mat4) => {
+    obj.children.slice().forEach(ch => {
+      if (skipSet.has(ch)) return;
+      const local = new THREE.Matrix4().compose(ch.position, ch.quaternion, ch.scale);
+      const m = mat4.clone().multiply(local);
+      if (ch.isMesh) {
+        const g = ch.geometry.clone().applyMatrix4(m);
+        // 재질에 userData.mergeInto가 있으면 **그 공용 재질로 묶어** 그리고, 원래 색은 정점색으로 넣는다.
+        // 드로우콜은 (병합 그룹 × 재질)이라, 같은 그룹에 있던 재질이 하나로 합쳐지는 만큼 콜이 준다.
+        const key = (ch.material.userData && ch.material.userData.mergeInto) || ch.material;
+        if (!byMat.has(key)) byMat.set(key, { geos: [], cols: [], vc: key !== ch.material });
+        const e2 = byMat.get(key);
+        e2.geos.push(g); e2.cols.push(ch.material.color);
+        obj.remove(ch);
+      } else if (ch.isGroup) {
+        walk(ch, m);
+        if (ch.children.length === 0) obj.remove(ch);
+      }
+    });
+  };
+  walk(root, new THREE.Matrix4());
+  byMat.forEach((e2, mat) => {
+    const mesh = new THREE.Mesh(c3MergeGeos(e2.geos, e2.vc ? e2.cols : null), mat);
+    mesh.castShadow = false; mesh.receiveShadow = true;   // 캐릭터는 진짜 그림자를 안 진다(블롭이 대신)
+    root.add(mesh);
+  });
+}
+
+
+// ============================================================
+//  1막 몬스터 — 고블린·스켈레톤·오크(일반 · 원거리 · 보스).
+//  makeMonOld 안은 게임 v904 createAdvancedMonster 의 사람형 분기를 글자 그대로 옮긴 것(줄 22991~23155),
+//  새 모델은 a1_new 블록(게임에 그대로 들어간다 — 예전 몸을 지은 뒤 메시만 갈아 끼운다).
+// ============================================================
+const darkMetal = getLowPolyMat(0x7a837c, true);  
+const matGobSkin = getLowPolyMat(0x68d391); const matGobCloth = getLowPolyMat(0x744210);
+const matSkelBone = getLowPolyMat(0xe2e8f0); const matSkelArmor = getLowPolyMat(0x4a5568, true);
+const matOrcSkin = getLowPolyMat(0x276749); const matOrcArmor = getLowPolyMat(0x1a202c, true);
+const limbGeoBase = new THREE.BoxGeometry(0.18, 0.45, 0.18); jitterGeometry(limbGeoBase, 0.02);
+// ============================================================
+//  1막 몬스터 v2 — 고블린·스켈레톤·오크(일반 · 원거리 · 보스). 설정화 refs/몬스터/1막/*.png
+//  예전 사람형 몸(createAdvancedMonster)을 다 지은 뒤 메시만 걷어 내고 같은 관절 그룹(bodyGrp · headGrp ·
+//  limbs.armR/armL/legR/legL · limbs.weapon)에 새 부품을 붙인다 — 공용 걷기·휘두르기·보스 패턴이 그대로 돈다.
+//  짓는 동안 Math.random 을 자체 LCG 로 바꿔 끼운다(uuid) — 예전 몸이 먹은 난수는 그대로라 층 생성 흐름이 같다.
+// ============================================================
+function a1Lcg(seed, fn) {
+  const R = Math.random; let s = seed >>> 0;
+  Math.random = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  try { return fn(); } finally { Math.random = R; }
+}
+// 부품 도구 — 재질은 개체마다 새로(히트 플래시가 개체마다 돈다). 색만 다른 재질은 mergeInto 로 한 재질(정점색)에 묶는다.
+function a1Kit(seed) {
+  let s = seed >>> 0;
+  const rr = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  const shared = {};
+  const sharedOf = (kind) => {
+    if (shared[kind]) return shared[kind];
+    let m;
+    if (kind === 'skin') { m = getLowPolyMat(0xffffff); m.vertexColors = true; markOrganic(m); }
+    else if (kind === 'metal') { m = getLowPolyMat(0xffffff, true); m.vertexColors = true; }
+    else if (kind === 'cloth') { m = getLowPolyMat(0xffffff); m.vertexColors = true; m.side = THREE.DoubleSide; }
+    else { m = getLowPolyMat(0xffffff); m.vertexColors = true; }
+    return (shared[kind] = m);
+  };
+  const mats = {};
+  const mat = (hex, kind) => {
+    const k = (kind || 'hard') + hex;
+    if (mats[k]) return mats[k];
+    let m;
+    if (kind === 'glow') m = new THREE.MeshStandardMaterial({ color: hex, emissive: hex, emissiveIntensity: 1.0, roughness: 0.5, flatShading: true });
+    else {
+      m = (kind === 'metal') ? getLowPolyMat(hex, true) : getLowPolyMat(hex);
+      if (kind === 'skin') markOrganic(m);
+      if (kind === 'cloth') m.side = THREE.DoubleSide;
+      m.userData.mergeInto = sharedOf(kind || 'hard');
+    }
+    return (mats[k] = m);
+  };
+  const UP = new THREE.Vector3(0, 1, 0);
+  const put = (parent, m, x, y, z, rx, ry, rz) => {
+    m.position.set(x || 0, y || 0, z || 0); m.rotation.set(rx || 0, ry || 0, rz || 0);
+    m.castShadow = false; m.receiveShadow = true; parent.add(m); return m;
+  };
+  // 같은 좌표의 정점에 같은 오프셋 — 비인덱스 20면체를 정점마다 흔들면 껍질이 깨진 결정 조각이 된다(CLAUDE.md v754)
+  const jit = (geo, a) => {
+    const p = geo.attributes.position, seen = new Map();
+    for (let i = 0; i < p.count; i++) {
+      const k = Math.round(p.getX(i) * 1e4) + ',' + Math.round(p.getY(i) * 1e4) + ',' + Math.round(p.getZ(i) * 1e4);
+      let o = seen.get(k); if (!o) { o = [(rr() - 0.5) * 2 * a, (rr() - 0.5) * 2 * a, (rr() - 0.5) * 2 * a]; seen.set(k, o); }
+      p.setXYZ(i, p.getX(i) + o[0], p.getY(i) + o[1], p.getZ(i) + o[2]);
+    }
+    p.needsUpdate = true; geo.computeVertexNormals(); return geo;
+  };
+  const K = {
+    rr, mat, put, jit, UP,
+    box: (parent, w, h, d, m, x, y, z, rx, ry, rz) => put(parent, new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m), x, y, z, rx, ry, rz),
+    ico: (parent, r, m, x, y, z, sx, sy, sz, det, j) => {
+      const g = new THREE.IcosahedronGeometry(r, det === undefined ? 1 : det); if (j) jit(g, j);
+      const o = put(parent, new THREE.Mesh(g, m), x, y, z); o.scale.set(sx || 1, sy || sx || 1, sz || sx || 1); return o;
+    },
+    cyl: (parent, r0, r1, h, m, n, x, y, z, rx, ry, rz) => put(parent, new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, h, n || 6), m), x, y, z, rx, ry, rz),
+    cone: (parent, r, h, m, n, x, y, z, rx, ry, rz) => put(parent, new THREE.Mesh(new THREE.ConeGeometry(r, h, n || 4), m), x, y, z, rx, ry, rz),
+    // p → q 를 잇는 가늘어지는 기둥(뼈·팔다리·뿔)
+    seg: (parent, p, q, r0, r1, m, n) => {
+      const d = new THREE.Vector3(q[0] - p[0], q[1] - p[1], q[2] - p[2]), len = d.length();
+      const g = new THREE.CylinderGeometry(r1, r0, len, n || 6); g.translate(0, len / 2, 0);
+      const o = put(parent, new THREE.Mesh(g, m), p[0], p[1], p[2]);
+      o.quaternion.setFromUnitVectors(UP, d.normalize()); return o;
+    },
+    // 납작한 판(평면 모양 [x,y] 점들 → 두께 d). 귀·칼날·천 조각
+    plate: (parent, pts, d, m, x, y, z, rx, ry, rz) => {
+      const sh = new THREE.Shape(); sh.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) sh.lineTo(pts[i][0], pts[i][1]);
+      const g = new THREE.ExtrudeGeometry(sh, { depth: d, bevelEnabled: false }); g.translate(0, 0, -d / 2);
+      return put(parent, new THREE.Mesh(g, m), x, y, z, rx, ry, rz);
+    },
+    // 원뿔대 고리 띠(손목·발목 감개, 벨트) — 위아래 반지름이 같으면 통
+    // 판 모양 좌우 뒤집기 — scale.x = -1 로 뒤집으면 감기가 바뀌어 뒷면이 그려진다(ExtrudeGeometry 가 점 순서는 스스로 맞춘다)
+    mir: (pts, sx) => sx < 0 ? pts.map(p => [-p[0], p[1]]) : pts,
+    band: (parent, r, h, m, x, y, z, n) => put(parent, new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.04, h, n || 7, 1, true), m), x, y, z),
+  };
+  return K;
+}
+// 예전 메시를 걷어 낸다 — 그룹(관절)은 남긴다
+function a1Clear(g) { g.children.slice().forEach(c => { if (c.isMesh) g.remove(c); }); }
+
+function a1Monster(type, isBoss, isRanged, grp, bodyGrp, headGrp, limbs) {
+  return a1Lcg(type === 'goblin' ? 9011 : type === 'skeleton' ? 9012 : 9013, () => {
+    const W = limbs.weapon;
+    [grp, bodyGrp, headGrp, limbs.armR, limbs.armL, limbs.legR, limbs.legL, W].forEach(a1Clear);
+    const K = a1Kit(type === 'goblin' ? 0x51 : type === 'skeleton' ? 0x52 : 0x53);
+    const P = { K, grp, bodyGrp, headGrp, limbs, W, isBoss, isRanged };
+    if (type === 'goblin') a1Goblin(P);
+    else if (type === 'skeleton') a1Skeleton(P);
+    else a1Orc(P);
+    // 관절 그룹마다 따로 합친다 — 무기는 팔과 따로(스켈레톤 보스가 던질 때 숨긴다)
+    c3MergeStatic(bodyGrp); c3MergeStatic(headGrp);
+    c3MergeStatic(limbs.armR, [W]); c3MergeStatic(limbs.armL); c3MergeStatic(limbs.legR); c3MergeStatic(limbs.legL);
+    c3MergeStatic(W);
+  });
+}
+
+// ---------- 고블린 ----------
+function a1Goblin(P) {
+  const { K, bodyGrp, headGrp, limbs, W, isBoss, isRanged } = P;
+  const SKIN = K.mat(0x4a6222, 'skin'), SKIN_D = K.mat(0x34481a, 'skin'), SKIN_L = K.mat(0x5a7228, 'skin');
+  const EAR_IN = K.mat(0x6a3a26, 'skin');
+  const LEA = K.mat(0x3e2414), LEA_D = K.mat(0x2a180e), ROPE = K.mat(0x7a6a46), WRAP = K.mat(0x4a2c18);
+  const CLAW = K.mat(0xb8a882), TOOTH = K.mat(0xd8cca8);
+  const IRON = K.mat(0x5a5650, 'metal'), IRON_D = K.mat(0x34322e, 'metal'), RUST = K.mat(0x5a3220, 'metal'), GRIP = K.mat(0x2e1c10);
+  const EYE = K.mat(0xffc830, 'glow'); EYE.emissiveIntensity = 1.2;
+  const ROBE = K.mat(0x142a52, 'cloth'), ROBE_D = K.mat(0x0e1e3e, 'cloth');
+
+  // 몸통 — 앞으로 굽은 가슴, 볼록한 배
+  bodyGrp.position.set(0, 0.46, 0.02);
+  K.ico(bodyGrp, 0.22, SKIN, 0, 0.26, 0.0, 1.3, 1.0, 0.95, 1, 0.012).rotation.x = 0.3;
+  K.ico(bodyGrp, 0.17, SKIN_L, 0, 0.12, -0.05, 1.05, 0.95, 1.0, 1, 0.01);
+  K.ico(bodyGrp, 0.15, SKIN_D, 0, 0.36, 0.1, 1.3, 0.8, 0.9, 0);   // 굽은 등
+  // 가죽 조끼 — 몸통을 감싼 앞이 트인 통(양면) + 해진 아랫단 술
+  const vg = new THREE.Group(); vg.position.set(0, 0.26, 0.0); vg.rotation.x = 0.3; bodyGrp.add(vg);
+  const vest = K.put(vg, new THREE.Mesh(new THREE.CylinderGeometry(0.215, 0.235, 0.34, 10, 1, true, Math.PI + 0.62, Math.PI * 2 - 1.24), K.mat(0x3e2414, 'cloth')), 0, 0, 0);
+  vest.scale.set(1.32, 1, 1.0);
+  for (let i = 0; i < 9; i++) {
+    const a = Math.PI + 0.75 + i * ((Math.PI * 2 - 1.5) / 8);
+    K.cone(vg, 0.035, 0.08 + (i % 3) * 0.03, LEA, 3, Math.sin(a) * 0.27, -0.2 - (i % 3) * 0.015, Math.cos(a) * 0.23, Math.PI, 0, 0);
+  }
+  // 밧줄 허리띠 + 매듭
+  K.band(bodyGrp, 0.2, 0.05, ROPE, 0, 0.02, 0.0, 8);
+  K.ico(bodyGrp, 0.035, ROPE, -0.08, 0.0, -0.2, 1, 1, 1, 0);
+  K.seg(bodyGrp, [-0.08, -0.01, -0.2], [-0.1, -0.14, -0.21], 0.016, 0.012, ROPE, 4);
+  // 해진 허리 천(앞·뒤)
+  K.plate(bodyGrp, [[-0.13, 0], [0.13, 0], [0.12, -0.2], [0.07, -0.27], [0.02, -0.21], [-0.04, -0.29], [-0.1, -0.22], [-0.14, -0.18]], 0.025, LEA, 0, 0.0, -0.19, 0.12, 0, 0);
+  K.plate(bodyGrp, [[-0.12, 0], [0.12, 0], [0.11, -0.15], [0.05, -0.2], [0.0, -0.16], [-0.06, -0.2], [-0.11, -0.15]], 0.025, LEA_D, 0, 0.0, 0.16, -0.15, 0, 0);
+  // 이빨 목걸이
+  for (let i = 0; i < 5; i++) {
+    const a = (i - 2) * 0.32;
+    K.cone(bodyGrp, 0.018, 0.07, TOOTH, 4, Math.sin(a) * 0.15, 0.4 - Math.abs(i - 2) * 0.015, -0.17 - Math.cos(a) * 0.03, Math.PI, 0, 0);
+  }
+
+  // 머리 — 몸통보다 앞·아래(굽은 목). 큰 대머리 · 무거운 눈썹 · 갈고리 코 · 넓은 입 · 큰 귀
+  headGrp.position.set(0, 0.86, -0.1);
+  const skull = K.ico(headGrp, 0.27, SKIN, 0, 0.04, 0.03, 1.05, 0.98, 1.0, 1, 0.012);
+  K.ico(headGrp, 0.2, SKIN_D, 0, -0.1, -0.07, 1.15, 0.6, 0.95, 1);              // 턱·뺨
+  // 눈썹뼈(안쪽이 내려온 화난 눈) · 눈
+  [-1, 1].forEach(sx => {
+    K.box(headGrp, 0.15, 0.06, 0.09, SKIN_L, sx * 0.1, 0.06, -0.22, 0.3, 0, sx * 0.32);
+    K.box(headGrp, 0.095, 0.05, 0.03, EYE, sx * 0.1, 0.0, -0.245, 0, sx * 0.2, sx * 0.2);
+  });
+  // 갈고리 코 — 콧등에서 아래로 휘어 내려온다
+  K.seg(headGrp, [0, 0.01, -0.24], [0, -0.06, -0.37], 0.05, 0.035, SKIN_L, 5);
+  K.seg(headGrp, [0, -0.06, -0.37], [0, -0.14, -0.36], 0.035, 0.012, SKIN_L, 5);
+  // 입 — 어두운 틈 + 작은 이빨
+  K.box(headGrp, 0.2, 0.035, 0.03, K.mat(0x1a0c08), 0, -0.13, -0.245, 0, 0, 0);
+  for (let i = 0; i < 6; i++) K.cone(headGrp, 0.012, 0.035, TOOTH, 3, -0.08 + i * 0.032, -0.118, -0.255, Math.PI, 0, 0);
+  // 귀 — 옆으로 크게 뻗어 끝이 살짝 처진다(바깥 피부 + 안쪽 붉은 갈색)
+  const earPts = [[0, -0.09], [0.22, -0.1], [0.42, -0.06], [0.56, -0.02], [0.42, 0.05], [0.2, 0.08], [0, 0.1]];
+  const earIn = [[0.03, -0.06], [0.2, -0.065], [0.38, -0.035], [0.2, 0.05], [0.03, 0.065]];
+  [-1, 1].forEach(sx => {
+    const eg = new THREE.Group(); eg.position.set(sx * 0.24, 0.05, 0.02); eg.rotation.set(0.05, sx * -0.35, sx * -0.12); headGrp.add(eg);
+    K.plate(eg, K.mir(earPts, sx), 0.03, SKIN, 0, 0, 0);
+    K.plate(eg, K.mir(earIn, sx), 0.02, EAR_IN, 0, 0, -0.018);
+  });
+  if (isBoss) {
+    // 뿔 달린 찌그러진 쇠 투구 · 정수리 띠 리벳
+    K.ico(headGrp, 0.29, IRON_D, 0, 0.1, 0.03, 1.07, 0.78, 1.04, 1, 0.01);
+    K.box(headGrp, 0.06, 0.05, 0.6, RUST, 0, 0.3, 0.03, 0, 0, 0);
+    K.band(headGrp, 0.3, 0.06, RUST, 0, -0.02, 0.03, 9);
+    [-1, 1].forEach(sx => {
+      K.seg(headGrp, [sx * 0.24, 0.14, 0.03], [sx * 0.4, 0.3, 0.02], 0.06, 0.045, CLAW, 5);
+      K.seg(headGrp, [sx * 0.4, 0.3, 0.02], [sx * 0.42, 0.5, 0.06], 0.045, 0.008, CLAW, 5);
+    });
+  } else if (isRanged) {
+    // 주술사 두건(귀는 옆으로 빠져나온다)
+    K.ico(headGrp, 0.31, ROBE, 0, 0.08, 0.06, 0.95, 0.95, 1.05, 1, 0.01);
+    K.cone(headGrp, 0.17, 0.3, ROBE_D, 5, 0, 0.3, 0.2, -0.9, 0, 0);
+  }
+
+  // 팔 — 가는 위팔 · 감개 감은 팔뚝 · 큰 손과 발톱
+  const arm = (L, sx) => {
+    L.position.set(sx * 0.33, 0.72, 0.02);
+    K.ico(L, 0.075, SKIN_D, 0, -0.02, 0, 1, 1, 1, 0);   // 어깨
+    K.seg(L, [0, -0.02, 0], [0, -0.2, 0.0], 0.055, 0.045, SKIN, 6);
+    K.seg(L, [0, -0.2, 0.0], [0, -0.36, -0.01], 0.048, 0.055, SKIN, 6);
+    K.band(L, 0.06, 0.1, WRAP, 0, -0.3, -0.005, 6);
+    K.ico(L, 0.07, SKIN_L, 0, -0.42, -0.01, 1.0, 0.9, 1.05, 0);   // 손
+    for (let i = 0; i < 3; i++) K.cone(L, 0.012, 0.05, CLAW, 3, (i - 1) * 0.035, -0.48, -0.04, -0.5, 0, 0);
+  };
+  arm(limbs.armR, 1); arm(limbs.armL, -1);
+  // 다리 — 짧은 허벅지 · 정강이 감개 · 넓은 발과 발톱
+  const leg = (L, sx) => {
+    L.position.set(sx * 0.12, 0.4, 0.04);
+    K.seg(L, [0, 0, 0], [0, -0.18, -0.02], 0.075, 0.06, SKIN, 6);
+    K.band(L, 0.065, 0.13, WRAP, 0, -0.26, -0.02, 6);
+    K.seg(L, [0, -0.18, -0.02], [0, -0.36, 0.0], 0.058, 0.05, SKIN_D, 6);
+    K.ico(L, 0.08, SKIN, 0, -0.37, -0.06, 1.0, 0.42, 1.5, 0);   // 발
+    for (let i = 0; i < 3; i++) K.cone(L, 0.013, 0.045, CLAW, 3, (i - 1) * 0.04, -0.39, -0.18, -Math.PI / 2, 0, 0);
+  };
+  leg(limbs.legR, 1); leg(limbs.legL, -1);
+
+  // 무기 — 손에 쥔 자리(-0.42)에서 앞(+y = 앞)으로. 이 빠진 녹슨 칼(끝이 넓은 식칼 꼴)
+  W.position.set(0, -0.42, -0.01);
+  if (isRanged) {
+    K.seg(W, [0, -0.35, 0], [0, 0.75, 0], 0.025, 0.03, GRIP, 5);
+    K.ico(W, 0.07, TOOTH, 0, 0.8, 0, 1, 1.1, 1, 0);                 // 지팡이 끝 해골
+    const ORB = K.mat(0x66ccff, 'glow'); ORB.emissiveIntensity = 0.9;
+    K.ico(W, 0.06, ORB, 0, 0.92, 0, 1, 1, 1, 0);
+    for (let i = 0; i < 3; i++) K.seg(W, [0, 0.72, 0], [Math.cos(i * 2.1) * 0.07, 0.95, Math.sin(i * 2.1) * 0.07], 0.012, 0.006, GRIP, 3);
+  } else {
+    K.seg(W, [0, -0.06, 0], [0, 0.12, 0], 0.025, 0.025, GRIP, 5);
+    K.box(W, 0.12, 0.03, 0.05, IRON, 0, 0.13, 0, 0, 0, 0);
+    const bl = isBoss
+      ? [[-0.04, 0.14], [0.05, 0.14], [0.11, 0.42], [0.15, 0.7], [0.08, 0.66], [0.1, 0.74], [0.02, 0.78], [-0.05, 0.72], [-0.07, 0.5], [-0.05, 0.3]]
+      : [[-0.035, 0.14], [0.04, 0.14], [0.08, 0.36], [0.1, 0.56], [0.06, 0.53], [0.05, 0.6], [-0.02, 0.62], [-0.05, 0.5], [-0.045, 0.3]];
+    K.plate(W, bl, 0.025, IRON, 0, 0, 0);
+    K.plate(W, [[-0.035, 0.16], [-0.01, 0.16], [-0.02, 0.55], [-0.045, 0.48]], 0.03, RUST, 0, 0, 0.004);
+  }
+
+  if (isBoss) {
+    // 늑대 털 망토(어깨를 두른 뾰족한 털 다발) · 해골 목걸이 · 넓은 징 박힌 띠와 둥근 버클
+    const FUR = K.mat(0x6e6a62), FUR_D = K.mat(0x4a4640);
+    for (let i = 0; i < 13; i++) {
+      const a = -Math.PI * 0.62 + i * (Math.PI * 1.24 / 12), r = 0.25;
+      const x = Math.sin(a) * r, z = Math.cos(a) * r * 0.85 + 0.05;
+      const out = [Math.sin(a), 0, Math.cos(a)];
+      K.seg(bodyGrp, [x * 0.8, 0.44, z * 0.8], [x + out[0] * 0.14, 0.36 + (i % 2) * 0.06, z + out[2] * 0.14], 0.07, 0.01, i % 2 ? FUR : FUR_D, 4);
+    }
+    K.ico(bodyGrp, 0.05, TOOTH, 0, 0.3, -0.23, 1, 1.1, 0.8, 0);
+    K.band(bodyGrp, 0.215, 0.09, LEA_D, 0, 0.02, 0, 9);
+    K.cyl(bodyGrp, 0.06, 0.06, 0.02, IRON, 8, 0, 0.02, -0.21, Math.PI / 2, 0, 0);
+    for (let i = 0; i < 6; i++) { const a = -1.2 + i * 0.48; K.ico(bodyGrp, 0.014, IRON, Math.sin(a) * 0.22, 0.02, -Math.cos(a) * 0.2, 1, 1, 1, 0); }
+  } else if (isRanged) {
+    // 주술사 — 해진 어깨 망토
+    K.plate(bodyGrp, [[-0.26, 0], [0.26, 0], [0.28, -0.35], [0.15, -0.42], [0.04, -0.36], [-0.08, -0.44], [-0.2, -0.36], [-0.28, -0.3]], 0.03, ROBE, 0, 0.47, 0.17, -0.25, 0, 0);
+    [-1, 1].forEach(sx => K.ico(bodyGrp, 0.11, ROBE_D, sx * 0.2, 0.42, 0.04, 1.1, 0.6, 1.1, 0));
+  }
+}
+
+// ---------- 스켈레톤 ----------
+function a1Skeleton(P) {
+  const { K, bodyGrp, headGrp, limbs, W, isBoss, isRanged } = P;
+  const BONE = K.mat(0x8c7c58, 'skin'), BONE_D = K.mat(0x6a5c40, 'skin'), BONE_L = K.mat(0x9c8c64, 'skin');
+  const HOLE = K.mat(0x0c0806);
+  const IRON = K.mat(0x4a4844, 'metal'), IRON_D = K.mat(0x34322e, 'metal'), RUST = K.mat(0x4e2e1e, 'metal');
+  const MAIL = K.mat(0x3a3a38, 'cloth'), RED = K.mat(0x5a1414, 'cloth'), LEA = K.mat(0x3a2414), GRIP = K.mat(0x2a1a10);
+  const GOLD = K.mat(0x8a6a1e, 'metal');
+  const EYE = K.mat(0xff2a1a, 'glow'); EYE.emissiveIntensity = 1.4;
+  const ROBE = K.mat(0x142a52, 'cloth'), ROBE_D = K.mat(0x0e1e3e, 'cloth');
+
+  // 골반 · 등뼈 · 갈비뼈(앞이 트인 활 넷) · 복장뼈
+  bodyGrp.position.set(0, 0.5, 0.02);
+  K.ico(bodyGrp, 0.12, BONE, 0, -0.02, 0, 1.45, 0.7, 0.9, 1);
+  for (let i = 0; i < 4; i++) K.cyl(bodyGrp, 0.04, 0.04, 0.05, BONE_D, 6, 0, 0.05 + i * 0.055, 0.05);
+  const rg = new THREE.Group(); rg.position.set(0, 0.3, 0.0); rg.rotation.x = 0.12; bodyGrp.add(rg);
+  for (let i = 0; i < 4; i++) {
+    const r = 0.19 - Math.abs(i - 1.2) * 0.025;
+    const t = K.put(rg, new THREE.Mesh(new THREE.TorusGeometry(r, 0.022, 4, 10, Math.PI * 1.55), i % 2 ? BONE : BONE_L), 0, 0.1 - i * 0.075, 0, Math.PI / 2, 0, Math.PI * 0.725 - Math.PI / 2);
+    t.scale.set(1.15, 0.9, 1);
+  }
+  K.box(rg, 0.05, 0.24, 0.04, BONE_L, 0, -0.02, -0.17, -0.12, 0, 0);
+  // 해진 사슬 갑옷 — 등·옆구리(앞은 갈비뼈가 드러난다) + 술
+  const mg = new THREE.Group(); mg.position.set(0, 0.32, 0.01); bodyGrp.add(mg);
+  K.put(mg, new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 0.3, 10, 1, true, Math.PI + 0.85, Math.PI * 2 - 1.7), MAIL), 0, 0, 0).scale.set(1.2, 1, 1);
+  for (let i = 0; i < 8; i++) { const a = Math.PI + 1.0 + i * ((Math.PI * 2 - 2.0) / 7); K.cone(mg, 0.035, 0.07 + (i % 3) * 0.035, MAIL, 3, Math.sin(a) * 0.27, -0.18 - (i % 2) * 0.02, Math.cos(a) * 0.24, Math.PI, 0, 0); }
+  // 허리 — 가죽 띠 + 앞에 늘어진 바랜 붉은 천
+  K.band(bodyGrp, 0.17, 0.05, LEA, 0, 0.04, 0, 8);
+  K.cyl(bodyGrp, 0.035, 0.035, 0.02, RUST, 6, -0.1, 0.04, -0.16, Math.PI / 2, 0, 0);
+  K.plate(bodyGrp, [[-0.1, 0], [0.1, 0], [0.11, -0.2], [0.05, -0.27], [0.01, -0.21], [-0.05, -0.3], [-0.1, -0.22]], 0.02, RED, 0.02, 0.02, -0.16, 0.08, 0, 0);
+  K.plate(bodyGrp, [[-0.12, 0], [0.12, 0], [0.1, -0.16], [0.03, -0.22], [-0.04, -0.16], [-0.11, -0.2]], 0.02, RED, 0, 0.02, 0.14, -0.1, 0, 0);
+
+  // 머리 — 해골 · 검은 눈구멍 속 붉은 눈동자 · 벌린 턱 · 녹슨 반투구
+  headGrp.position.set(0, 0.92, -0.04);
+  K.ico(headGrp, 0.22, BONE_L, 0, 0.03, 0.02, 1.0, 1.0, 1.05, 1, 0.008);
+  K.box(headGrp, 0.2, 0.1, 0.16, BONE, 0, -0.1, -0.06, 0, 0, 0);          // 광대·윗니 자리
+  const jaw = K.box(headGrp, 0.18, 0.05, 0.16, BONE_D, 0, -0.2, -0.05, 0.25, 0, 0);
+  [-1, 1].forEach(sx => {
+    K.box(headGrp, 0.085, 0.075, 0.03, HOLE, sx * 0.075, -0.0, -0.195, 0, 0, sx * -0.15);
+    K.box(headGrp, 0.03, 0.03, 0.02, EYE, sx * 0.075, -0.005, -0.205, 0, 0, 0);
+  });
+  K.cone(headGrp, 0.025, 0.05, HOLE, 3, 0, -0.07, -0.205, 0, 0, Math.PI);
+  K.box(headGrp, 0.15, 0.03, 0.02, HOLE, 0, -0.145, -0.14, 0, 0, 0);
+  for (let i = 0; i < 5; i++) K.box(headGrp, 0.018, 0.035, 0.015, BONE_L, -0.06 + i * 0.03, -0.13, -0.148, 0, 0, 0);
+  if (isBoss) {
+    // 금관(뾰족한 봉우리 · 붉은 보석) · 털 깃
+    K.band(headGrp, 0.2, 0.08, GOLD, 0, 0.17, 0.02, 10);
+    for (let i = 0; i < 5; i++) { const a = -Math.PI * 0.5 + i * (Math.PI * 2 / 5); K.cone(headGrp, 0.04, 0.13, GOLD, 4, Math.sin(a) * 0.19, 0.27, Math.cos(a) * 0.19 + 0.02, 0, 0, 0); }
+    K.box(headGrp, 0.04, 0.04, 0.02, K.mat(0xc01818, 'glow'), 0, 0.17, -0.18, 0, 0, Math.PI / 4);
+  } else if (isRanged) {
+    K.ico(headGrp, 0.27, ROBE, 0, 0.06, 0.05, 0.98, 0.98, 1.06, 1, 0.01);
+    K.cone(headGrp, 0.15, 0.26, ROBE_D, 5, 0, 0.26, 0.2, -0.9, 0, 0);
+  } else {
+    // 녹슨 반투구 + 챙
+    K.put(headGrp, new THREE.Mesh(new THREE.SphereGeometry(0.245, 9, 4, 0, Math.PI * 2, 0, Math.PI / 2), IRON_D), 0, 0.06, 0.02).scale.set(1, 0.85, 1.05);
+    K.cyl(headGrp, 0.28, 0.28, 0.025, RUST, 10, 0, 0.06, 0.02);
+  }
+
+  // 팔 — 위팔뼈 · 팔꿈치 마디 · 아래팔 · 손목 쇠고리 · 손가락
+  const arm = (L, sx) => {
+    L.position.set(sx * 0.3, 0.76, 0.02);
+    K.ico(L, 0.06, BONE_L, 0, 0, 0, 1, 1, 1, 0);
+    K.seg(L, [0, 0, 0], [0, -0.2, 0.01], 0.028, 0.024, BONE, 5);
+    K.ico(L, 0.04, BONE_L, 0, -0.21, 0.01, 1, 1, 1, 0);
+    K.seg(L, [0, -0.21, 0.01], [0, -0.38, -0.01], 0.024, 0.03, BONE, 5);
+    K.band(L, 0.04, 0.05, RUST, 0, -0.33, -0.005, 6);
+    K.ico(L, 0.045, BONE_L, 0, -0.41, -0.01, 1, 0.8, 1.1, 0);
+    for (let i = 0; i < 3; i++) K.seg(L, [(i - 1) * 0.022, -0.43, -0.03], [(i - 1) * 0.025, -0.48, -0.05], 0.009, 0.007, BONE, 3);
+  };
+  arm(limbs.armR, 1); arm(limbs.armL, -1);
+  // 어깨 갑옷 — 오른쪽(무기 쪽) 하나
+  K.ico(limbs.armR, 0.11, IRON, 0.01, 0.02, 0, 1.1, 0.75, 1.15, 1);
+  K.band(limbs.armR, 0.1, 0.03, RUST, 0.01, -0.03, 0, 8);
+  // 다리 — 넙다리뼈 · 무릎 · 정강이 · 발목 쇠고리 · 납작한 발
+  const leg = (L, sx) => {
+    L.position.set(sx * 0.12, 0.44, 0.03);
+    K.ico(L, 0.05, BONE_L, 0, 0, 0, 1, 1, 1, 0);
+    K.seg(L, [0, 0, 0], [0, -0.2, -0.01], 0.034, 0.028, BONE, 5);
+    K.ico(L, 0.048, BONE_L, 0, -0.21, -0.015, 1, 1, 1, 0);
+    K.seg(L, [0, -0.21, -0.01], [0, -0.4, 0.0], 0.028, 0.024, BONE, 5);
+    K.band(L, 0.04, 0.05, RUST, 0, -0.36, 0, 6);
+    K.box(L, 0.08, 0.04, 0.17, BONE_D, 0, -0.42, -0.05, 0, 0, 0);
+    for (let i = 0; i < 3; i++) K.box(L, 0.02, 0.025, 0.05, BONE_L, (i - 1) * 0.027, -0.425, -0.15, 0, 0, 0);
+  };
+  leg(limbs.legR, 1); leg(limbs.legL, -1);
+
+  // 무기
+  W.position.set(0, -0.41, -0.01);
+  if (isRanged) {
+    K.seg(W, [0, -0.35, 0], [0, 0.8, 0], 0.022, 0.026, GRIP, 5);
+    K.ico(W, 0.06, BONE_L, 0, 0.83, 0, 1, 1.1, 1, 0);
+    const ORB = K.mat(0x66ccff, 'glow'); ORB.emissiveIntensity = 0.9;
+    K.ico(W, 0.055, ORB, 0, 0.94, 0, 1, 1, 1, 0);
+  } else if (isBoss) {
+    // 거대한 넙다리뼈 곤봉 — 끝 두 마디에 가시
+    K.seg(W, [0, -0.05, 0], [0, 0.85, 0], 0.07, 0.09, BONE, 6);
+    [-1, 1].forEach(sx => K.ico(W, 0.13, BONE_L, sx * 0.08, 0.92, 0, 1, 0.9, 0.95, 1, 0.01));
+    K.ico(W, 0.1, BONE, 0, -0.08, 0, 1.1, 0.8, 1, 0);
+    for (let i = 0; i < 6; i++) { const a = i * 1.05; K.cone(W, 0.025, 0.1, BONE_L, 4, Math.cos(a) * 0.15, 0.82 + (i % 2) * 0.1, Math.sin(a) * 0.12, Math.sin(a) * 1.4, 0, -Math.cos(a) * 1.4); }
+  } else {
+    // 이 빠진 녹슨 곧은 검
+    K.seg(W, [0, -0.07, 0], [0, 0.11, 0], 0.022, 0.022, GRIP, 5);
+    K.ico(W, 0.03, IRON_D, 0, -0.08, 0, 1, 1, 1, 0);
+    K.box(W, 0.17, 0.03, 0.045, IRON_D, 0, 0.12, 0, 0, 0, 0);
+    K.plate(W, [[-0.04, 0.13], [0.04, 0.13], [0.04, 0.62], [0.025, 0.66], [0.035, 0.7], [0.0, 0.8], [-0.04, 0.7], [-0.04, 0.45], [-0.028, 0.42], [-0.04, 0.38]], 0.02, IRON, 0, 0, 0);
+    K.plate(W, [[-0.012, 0.15], [0.012, 0.15], [0.006, 0.66], [-0.006, 0.66]], 0.024, RUST, 0, 0, 0.002);
+  }
+
+  if (isBoss) {
+    // 털 깃 · 흉갑 · 붉은 망토 · 금 띠 버클
+    const FUR = K.mat(0x7a7268), FUR_D = K.mat(0x55504a);
+    for (let i = 0; i < 13; i++) {
+      const a = -Math.PI * 0.6 + i * (Math.PI * 1.2 / 12), r = 0.23;
+      const x = Math.sin(a) * r, z = Math.cos(a) * r * 0.85 + 0.05;
+      K.seg(bodyGrp, [x * 0.8, 0.46, z * 0.8], [x + Math.sin(a) * 0.12, 0.4 + (i % 2) * 0.07, z + Math.cos(a) * 0.12], 0.07, 0.012, i % 2 ? FUR : FUR_D, 4);
+    }
+    K.ico(rg, 0.21, IRON, 0, 0.02, -0.05, 1.25, 1.0, 0.7, 1);
+    [limbs.armR, limbs.armL].forEach(L => { K.ico(L, 0.13, IRON_D, 0, 0.02, 0, 1.15, 0.75, 1.15, 1); K.band(L, 0.12, 0.035, GOLD, 0, -0.04, 0, 8); });
+    K.box(rg, 0.06, 0.16, 0.02, GOLD, 0, 0.02, -0.17, 0, 0, Math.PI / 4);
+    K.plate(bodyGrp, [[-0.26, 0], [0.26, 0], [0.3, -0.45], [0.18, -0.52], [0.06, -0.46], [-0.06, -0.55], [-0.18, -0.48], [-0.3, -0.44]], 0.02, K.mat(0x4a0e14, 'cloth'), 0, 0.46, 0.2, -0.12, 0, 0);
+    K.cyl(bodyGrp, 0.05, 0.05, 0.02, GOLD, 8, 0, 0.04, -0.17, Math.PI / 2, 0, 0);
+  } else if (isRanged) {
+    K.put(bodyGrp, new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 0.55, 9, 1, true), ROBE), 0, 0.1, 0.02).scale.set(1.1, 1, 1);
+    for (let i = 0; i < 8; i++) { const a = i * 0.785; K.cone(bodyGrp, 0.04, 0.08, ROBE_D, 3, Math.sin(a) * 0.32, -0.2, Math.cos(a) * 0.3, Math.PI, 0, 0); }
+  }
+}
+
+// ---------- 오크 ----------
+function a1Orc(P) {
+  const { K, bodyGrp, headGrp, limbs, W, isBoss, isRanged } = P;
+  const SKIN = K.mat(0x34521e, 'skin'), SKIN_D = K.mat(0x243a16, 'skin'), SKIN_L = K.mat(0x40602a, 'skin');
+  const PAINT = K.mat(0x6a1a12, 'skin'), TUSK = K.mat(0x9c8c66, 'skin'), HAIR = K.mat(0x14100c);
+  const LEA = K.mat(0x3a2414), LEA_D = K.mat(0x26170c), KILT = K.mat(0x4e3018, 'cloth');
+  const IRON = K.mat(0x4a4844, 'metal'), IRON_D = K.mat(0x302e2a, 'metal'), STEEL = K.mat(0x6a6862, 'metal'), RUST = K.mat(0x4e2e1e, 'metal');
+  const WOOD = K.mat(0x3a2414), RED = K.mat(0x5a1410, 'cloth'), BONE = K.mat(0x9c8c66);
+  const EYE = K.mat(0xff3a1a, 'glow'); EYE.emissiveIntensity = 1.3;
+  const ROBE = K.mat(0x142a52, 'cloth'), ROBE_D = K.mat(0x0e1e3e, 'cloth');
+
+  // 몸통 — 떡 벌어진 가슴 · 승모근 · 배
+  bodyGrp.position.set(0, 0.6, 0.02);
+  K.ico(bodyGrp, 0.3, SKIN, 0, 0.32, 0.02, 1.45, 1.0, 0.95, 1, 0.012).rotation.x = 0.15;
+  [-1, 1].forEach(sx => K.ico(bodyGrp, 0.16, SKIN_L, sx * 0.14, 0.36, -0.17, 1.1, 0.8, 0.6, 1));   // 가슴 근육
+  K.ico(bodyGrp, 0.22, SKIN_D, 0, 0.08, -0.02, 1.25, 0.9, 0.95, 1);
+  K.ico(bodyGrp, 0.2, SKIN_D, 0, 0.56, 0.08, 1.7, 0.55, 0.9, 1);                                  // 승모근
+  // 전투 칠 — 가슴·배의 붉은 줄
+  [[-0.2, 0.42, -0.24, 0.5], [-0.12, 0.2, -0.26, 0.4], [0.24, 0.15, -0.2, -0.4]].forEach(([x, y, z, r]) => K.box(bodyGrp, 0.14, 0.025, 0.02, PAINT, x, y, z, 0.2, 0, r));
+  // 비스듬한 가죽 멜빵 + 쇠고리
+  K.box(bodyGrp, 0.08, 0.66, 0.04, LEA, 0.02, 0.3, -0.27, 0.12, 0, -0.75);
+  K.box(bodyGrp, 0.08, 0.6, 0.04, LEA_D, 0.02, 0.3, 0.29, -0.1, 0, 0.75);
+  K.put(bodyGrp, new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.015, 4, 8), IRON), -0.14, 0.46, -0.28, 0.1, 0, 0);
+  // 넓은 허리띠 + 쇠 버클 · 해진 가죽 치마
+  K.band(bodyGrp, 0.3, 0.1, LEA_D, 0, -0.04, 0, 10).scale.set(1.15, 1, 1);
+  K.box(bodyGrp, 0.12, 0.09, 0.03, IRON, 0, -0.04, -0.32, 0, 0, 0);
+  K.box(bodyGrp, 0.06, 0.05, 0.035, IRON_D, 0, -0.04, -0.325, 0, 0, 0);
+  K.plate(bodyGrp, [[-0.17, 0], [0.17, 0], [0.18, -0.24], [0.1, -0.32], [0.03, -0.25], [-0.05, -0.33], [-0.13, -0.26], [-0.18, -0.22]], 0.025, KILT, 0, -0.08, -0.3, 0.1, 0, 0);
+  K.plate(bodyGrp, [[-0.25, 0], [0.25, 0], [0.26, -0.22], [0.12, -0.3], [0.0, -0.23], [-0.13, -0.3], [-0.26, -0.22]], 0.025, KILT, 0, -0.08, 0.26, -0.12, 0, 0);
+  [-1, 1].forEach(sx => K.plate(bodyGrp, [[-0.12, 0], [0.12, 0], [0.11, -0.2], [0.02, -0.26], [-0.08, -0.2]], 0.025, LEA, sx * 0.32, -0.08, 0, 0, sx * Math.PI / 2, sx * 0.12));
+
+  // 머리 — 굵은 눈썹 · 내민 아래턱과 엄니 · 붉은 눈 · 뾰족한 귀 · 상투
+  headGrp.position.set(0, 1.18, -0.12);
+  K.ico(headGrp, 0.22, SKIN, 0, 0.03, 0.02, 1.08, 1.0, 1.0, 1, 0.01);
+  K.box(headGrp, 0.3, 0.07, 0.1, SKIN_D, 0, 0.06, -0.17, 0.25, 0, 0);                           // 눈썹뼈
+  K.box(headGrp, 0.3, 0.14, 0.2, SKIN_L, 0, -0.12, -0.1, -0.1, 0, 0);                            // 아래턱
+  K.ico(headGrp, 0.06, SKIN_L, 0, -0.02, -0.21, 1.2, 0.8, 0.9, 0);                               // 코
+  [-1, 1].forEach(sx => {
+    K.box(headGrp, 0.06, 0.035, 0.02, EYE, sx * 0.08, 0.0, -0.205, 0, 0, sx * 0.25);
+    K.cone(headGrp, 0.035, 0.13, TUSK, 4, sx * 0.1, -0.03, -0.21, -0.25, 0, sx * -0.15);         // 엄니(아래턱에서 위로)
+    K.cone(headGrp, 0.045, 0.16, SKIN, 3, sx * 0.24, 0.04, 0.03, 0, 0, sx * -1.3);                // 귀
+    K.box(headGrp, 0.03, 0.12, 0.02, PAINT, sx * 0.13, -0.06, -0.2, 0, 0, sx * 0.2);
+  });
+  K.box(headGrp, 0.14, 0.025, 0.02, K.mat(0x140806), 0, -0.1, -0.205, 0, 0, 0);
+  if (isBoss) {
+    // 뿔 달린 검은 쇠 투구 · 얼굴 가리개
+    K.ico(headGrp, 0.25, IRON_D, 0, 0.08, 0.02, 1.08, 0.85, 1.05, 1);
+    K.box(headGrp, 0.05, 0.16, 0.05, IRON, 0, 0.02, -0.22, 0, 0, 0);
+    [-1, 1].forEach(sx => {
+      K.seg(headGrp, [sx * 0.2, 0.14, 0.02], [sx * 0.36, 0.26, 0.0], 0.06, 0.045, BONE, 5);
+      K.seg(headGrp, [sx * 0.36, 0.26, 0.0], [sx * 0.38, 0.46, -0.04], 0.045, 0.008, BONE, 5);
+    });
+  } else if (isRanged) {
+    K.ico(headGrp, 0.27, ROBE, 0, 0.08, 0.05, 1.05, 0.98, 1.08, 1, 0.01);
+    K.cone(headGrp, 0.15, 0.26, ROBE_D, 5, 0, 0.28, 0.2, -0.9, 0, 0);
+  } else {
+    K.ico(headGrp, 0.08, HAIR, 0, 0.22, 0.06, 1.0, 1.3, 1.0, 0);
+    K.band(headGrp, 0.045, 0.04, RED, 0, 0.3, 0.07, 6);
+    K.seg(headGrp, [0, 0.31, 0.07], [0.02, 0.36, 0.2], 0.04, 0.02, HAIR, 5);
+    K.seg(headGrp, [0.02, 0.36, 0.2], [0.0, 0.22, 0.3], 0.02, 0.01, HAIR, 4);
+  }
+
+  // 팔 — 굵은 어깨 · 위팔 · 팔뚝 · 쇠·가죽 팔목 보호대 · 큰 주먹
+  const arm = (L, sx) => {
+    L.position.set(sx * 0.46, 0.92, 0.04);
+    K.ico(L, 0.15, SKIN, 0, -0.02, 0, 1.0, 1.0, 1.0, 1);
+    K.seg(L, [0, -0.04, 0], [0, -0.28, 0.0], 0.11, 0.1, SKIN, 7);
+    K.seg(L, [0, -0.28, 0.0], [0, -0.5, -0.02], 0.1, 0.11, SKIN_L, 7);
+    K.band(L, 0.115, 0.14, LEA, 0, -0.43, -0.015, 8);
+    K.band(L, 0.12, 0.05, IRON, 0, -0.43, -0.015, 8);
+    K.ico(L, 0.11, SKIN_D, 0, -0.58, -0.03, 1.0, 0.9, 1.05, 1);
+  };
+  arm(limbs.armR, 1); arm(limbs.armL, -1);
+  // 왼어깨 가시 견갑(보스는 양쪽)
+  const pauld = (L, sx) => {
+    K.ico(L, 0.2, IRON_D, 0, 0.04, 0, 1.15, 0.7, 1.15, 1);
+    K.band(L, 0.21, 0.04, RUST, 0, -0.02, 0, 9);
+    for (let i = 0; i < 3; i++) K.cone(L, 0.045, 0.17, BONE, 4, sx * (0.04 + i * 0.07), 0.13 - i * 0.02, (i - 1) * 0.08, 0, 0, sx * -0.6);
+  };
+  pauld(limbs.armL, -1); if (isBoss) pauld(limbs.armR, 1);
+  // 다리 — 짧고 굵은 허벅지 · 가죽 장화(쇠띠)
+  const leg = (L, sx) => {
+    L.position.set(sx * 0.18, 0.5, 0.04);
+    K.seg(L, [0, 0, 0], [0, -0.24, -0.01], 0.14, 0.12, SKIN, 7);
+    K.cyl(L, 0.12, 0.13, 0.26, LEA, 8, 0, -0.34, -0.01);
+    K.band(L, 0.135, 0.05, IRON, 0, -0.3, -0.01, 8);
+    K.box(L, 0.2, 0.08, 0.3, LEA_D, 0, -0.46, -0.07, 0, 0, 0);
+  };
+  leg(limbs.legR, 1); leg(limbs.legL, -1);
+
+  // 무기 — 손(-0.58)에서 앞으로. 나무 자루 · 한쪽(보스 양쪽) 초승달 날
+  W.position.set(0, -0.58, -0.03);
+  if (isRanged) {
+    K.seg(W, [0, -0.35, 0], [0, 0.85, 0], 0.03, 0.035, WOOD, 5);
+    K.ico(W, 0.08, BONE, 0, 0.9, 0, 1, 1.1, 1, 0);
+    const ORB = K.mat(0x66ccff, 'glow'); ORB.emissiveIntensity = 0.9;
+    K.ico(W, 0.07, ORB, 0, 1.02, 0, 1, 1, 1, 0);
+    for (let i = 0; i < 3; i++) K.seg(W, [0, 0.82, 0], [Math.cos(i * 2.1) * 0.09, 1.05, Math.sin(i * 2.1) * 0.09], 0.014, 0.007, BONE, 3);
+  } else {
+    K.seg(W, [0, -0.15, 0], [0, 0.9, 0], 0.035, 0.038, WOOD, 6);
+    for (let i = 0; i < 3; i++) K.band(W, 0.042, 0.03, LEA_D, 0, 0.0 + i * 0.05, 0, 6);
+    K.cyl(W, 0.055, 0.055, 0.2, IRON_D, 6, 0, 0.72, 0);
+    const blade = [[0.04, 0.6], [0.16, 0.56], [0.27, 0.5], [0.33, 0.62], [0.35, 0.74], [0.33, 0.86], [0.27, 0.98], [0.16, 0.9], [0.04, 0.84]];
+    K.plate(W, blade, 0.03, STEEL, 0, 0, 0);
+    K.plate(W, [[0.28, 0.52], [0.34, 0.62], [0.36, 0.74], [0.34, 0.86], [0.28, 0.96], [0.31, 0.74]], 0.035, K.mat(0x8a8a84, 'metal'), 0, 0, 0);
+    if (isBoss) { K.plate(W, K.mir(blade, -1), 0.03, STEEL, 0, 0, 0); K.cone(W, 0.04, 0.16, IRON, 4, 0, 0.92, 0, 0, 0, 0); }
+  }
+
+  if (isBoss) {
+    // 붉은 전투 깃발 앞판(흰 무늬) · 해골 버클
+    K.plate(bodyGrp, [[-0.15, 0], [0.15, 0], [0.16, -0.55], [0.06, -0.48], [0.0, -0.58], [-0.06, -0.48], [-0.16, -0.55]], 0.025, RED, 0, 0.5, -0.31, 0.08, 0, 0);
+    K.plate(bodyGrp, [[-0.08, 0], [0.0, -0.08], [0.08, 0], [0.08, -0.04], [0.0, -0.12], [-0.08, -0.04]], 0.03, K.mat(0x8c8270, 'cloth'), 0, 0.28, -0.33, 0.08, 0, 0);
+    K.ico(bodyGrp, 0.07, BONE, 0, -0.04, -0.33, 1, 1, 0.7, 0);
+  } else if (isRanged) {
+    K.plate(bodyGrp, [[-0.3, 0], [0.3, 0], [0.32, -0.45], [0.18, -0.52], [0.04, -0.44], [-0.1, -0.53], [-0.24, -0.45], [-0.32, -0.4]], 0.03, ROBE, 0, 0.6, 0.24, -0.15, 0, 0);
+    [-1, 1].forEach(sx => K.ico(bodyGrp, 0.15, ROBE_D, sx * 0.3, 0.55, 0.05, 1.2, 0.6, 1.2, 0));
+  }
+}
+
+
+function makeMonOld(type, isBoss, isRanged, v2) {
+  let scale, skinMat, armorMat;
+  if (type === 'goblin') { scale = isBoss ? 1.8 : 0.8; skinMat = matGobSkin.clone(); armorMat = matGobCloth.clone(); }
+  else if (type === 'skeleton') { scale = isBoss ? 2.0 : 0.95; skinMat = matSkelBone.clone(); armorMat = matSkelArmor.clone(); }
+  else { scale = isBoss ? 2.4 : 1.15; skinMat = matOrcSkin.clone(); armorMat = matOrcArmor.clone(); }
+  markOrganic(skinMat);
+  if (isRanged) armorMat = getLowPolyMat(0x2b4c8c);
+  const grp = new THREE.Group();
+  const bodyGrp = new THREE.Group(); const headGrp = new THREE.Group(); const limbs = {};
+  const isOrc = (type === 'orc');
+  // 오크는 떡 벌어진 상체(넓고 두꺼운 몸통)
+  const torsoGeo = isOrc ? new THREE.BoxGeometry(0.8, 0.7, 0.55) : new THREE.BoxGeometry(0.5, 0.6, 0.4);
+
+  const torso = new THREE.Mesh(torsoGeo, armorMat); torso.castShadow = true; bodyGrp.add(torso);
+  if (type === 'ghoul') {
+    // 곱사등 혹(등 위로 솟음)
+    const humpGeo = new THREE.IcosahedronGeometry(0.34, 1);
+    const hump = new THREE.Mesh(humpGeo, skinMat); hump.position.set(0, 0.22, 0.16); hump.scale.set(1.15, 1.0, 1.2); hump.castShadow = true; bodyGrp.add(hump);
+    // 드러난 갈비뼈
+    const boneMat = getLowPolyMat(0xcabf9c);
+    for (let i = 0; i < 3; i++) { const rib = new THREE.Mesh(new THREE.TorusGeometry(0.17 - i * 0.02, 0.02, 4, 8, Math.PI), boneMat); rib.position.set(0, 0.12 - i * 0.12, -0.2); rib.rotation.x = Math.PI / 2 + 0.2; bodyGrp.add(rib); }
+    // 등 가시뼈
+    for (let i = 0; i < 5; i++) { const t = i / 4; const spike = new THREE.Mesh(new THREE.ConeGeometry(0.045 - t * 0.02, 0.14 - t * 0.04, 4), boneMat); spike.position.set((Math.random() - 0.5) * 0.04, 0.3 - t * 0.34, 0.04 + t * 0.22); spike.rotation.x = -0.5 + t * 0.4; spike.castShadow = true; bodyGrp.add(spike); }
+    // 옆구리 상처
+    const wound = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 0), getLowPolyMat(0x6e2b2b)); wound.position.set(0.24, 0.06, -0.08); wound.scale.set(0.5, 1.3, 0.4); wound.rotation.z = 0.4; bodyGrp.add(wound);
+    // 허리 수의 자락(앞으로 늘어진 너덜천)
+    const ragMat = getLowPolyMat(0x49555f); ragMat.side = THREE.DoubleSide;
+    for (const sx of [-0.16, 0.0, 0.18]) { const rag = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.5), ragMat); rag.position.set(sx, -0.3, -0.16); rag.rotation.x = 0.35 + (Math.random() - 0.5) * 0.2; rag.castShadow = true; bodyGrp.add(rag); }
+  }
+  if (type === 'skeleton') { const ribs = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.4, 0.35), skinMat); ribs.castShadow = true; bodyGrp.add(ribs); }
+  if (isOrc) {
+    // 두꺼운 어깨(승모근) 덩어리
+    const trap = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.28, 0.5), skinMat); trap.position.y = 0.42; trap.castShadow = true; bodyGrp.add(trap);
+  }
+  bodyGrp.position.y = isOrc ? 0.62 : 0.5; grp.add(bodyGrp);
+
+  const headGeo = new THREE.IcosahedronGeometry(0.35, 1);
+  const head = new THREE.Mesh(headGeo, skinMat); head.castShadow = true; headGrp.add(head);
+  if (type === 'ghoul') {
+    head.scale.set(1.05, 0.92, 1.25); // 앞뒤로 긴 두개골
+    // 벌어진 턱 + 이빨
+    const boneMat = getLowPolyMat(0xcabf9c);
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.34), skinMat); jaw.position.set(0, -0.22, -0.12); jaw.rotation.x = 0.3; headGrp.add(jaw);
+    for (let i = 0; i < 4; i++) { const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.1, 3), boneMat); tooth.position.set(-0.12 + i * 0.08, -0.12, -0.28); headGrp.add(tooth); }
+  }
+
+  const eyeMat = new THREE.MeshStandardMaterial({ color: (type === 'skeleton' ? 0x220000 : type === 'ghoul' ? 0xd8ffe6 : 0xaa0000), emissive: (type === 'skeleton' ? 0x110000 : type === 'ghoul' ? 0x86f0b0 : 0x330000), emissiveIntensity: (type === 'skeleton' ? 0.2 : type === 'ghoul' ? 0.7 : 0.4), roughness: 0.6 });
+  const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), eyeMat); eyeL.position.set(-0.15, 0.1, -0.3);
+  const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), eyeMat); eyeR.position.set(0.15, 0.1, -0.3);
+  if (type !== 'skeleton') { eyeL.rotation.z = -0.2; eyeR.rotation.z = 0.2; } 
+  headGrp.add(eyeL); headGrp.add(eyeR);
+
+  if (type === 'goblin') {
+    const ear = new THREE.ConeGeometry(0.1, 0.4, 4); ear.translate(0, 0.2, 0);
+    const eL = new THREE.Mesh(ear, skinMat); eL.position.set(-0.25, 0, 0); eL.rotation.z = Math.PI/3; headGrp.add(eL);
+    const eR = new THREE.Mesh(ear, skinMat); eR.position.set(0.25, 0, 0); eR.rotation.z = -Math.PI/3; headGrp.add(eR);
+    if(isBoss) { const helm = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4, 1), darkMetal.clone()); helm.position.y = 0.1; headGrp.add(helm); }
+  } else if (type === 'orc') {
+    const tusk = new THREE.ConeGeometry(0.04, 0.2, 3);
+    const tL = new THREE.Mesh(tusk, matSkelBone); tL.position.set(-0.1, -0.05, -0.33); headGrp.add(tL);
+    const tR = new THREE.Mesh(tusk, matSkelBone); tR.position.set(0.1, -0.05, -0.33); headGrp.add(tR);
+    if(isBoss) { const helm = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.3, 6), darkMetal.clone()); helm.position.y = 0.2; headGrp.add(helm); }
+  } else if (type === 'skeleton' && isBoss) {
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 0.2, 5), getLowPolyMat(0xf6e05e, true)); crown.position.y = 0.3; headGrp.add(crown);
+  }
+
+  headGrp.position.y = isOrc ? 1.15 : 0.9; grp.add(headGrp); limbs.head = headGrp;
+  if (type === 'ghoul') {
+    // 곱사등: 머리를 앞으로(-Z) 쭉 내밀고 살짝 아래로. 몸통도 앞으로 숙임.
+    headGrp.position.set(0, 0.82, -0.34); headGrp.rotation.x = 0.35;
+    bodyGrp.rotation.x = 0.28; bodyGrp.position.z = 0.06;
+  }
+
+  // 오크는 팔다리가 굵음(특히 팔). 어깨에 큰 패드(견갑) 부착.
+  const limbGeoThick = new THREE.BoxGeometry(0.30, 0.5, 0.30);
+  const createLimb = (x, y, z, isArm) => {
+    const l = new THREE.Group();
+    const geo = (isOrc && isArm) ? limbGeoThick : limbGeoBase;
+    const m = new THREE.Mesh(geo, skinMat); m.position.y = -0.2; m.castShadow = true; l.add(m);
+    if (isOrc && isArm) {
+      // 두툼한 어깨 견갑 + 팔뚝 근육 덩어리
+      const pad = new THREE.Mesh(new THREE.IcosahedronGeometry(0.26, 0), armorMat); pad.position.y = 0.08; pad.castShadow = true; l.add(pad);
+      const fore = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.26, 0.34), skinMat); fore.position.y = -0.4; fore.castShadow = true; l.add(fore);
+    } else if (isBoss) {
+      const p = new THREE.Mesh(new THREE.IcosahedronGeometry(0.25, 0), armorMat); p.position.y = 0.05; l.add(p);
+    }
+    l.position.set(x, y, z); grp.add(l); return l;
+  };
+
+  // 오크는 어깨가 넓어 팔 간격도 넓힘
+  const armX = isOrc ? 0.5 : 0.35;
+  const armY = isOrc ? 0.85 : 0.7;
+  const legX = isOrc ? 0.22 : 0.15;
+  const legY = isOrc ? 0.5 : 0.4;
+  limbs.armR = createLimb(armX, armY, 0, true); limbs.armL = createLimb(-armX, armY, 0, true);
+  limbs.legR = createLimb(legX, legY, 0, false); limbs.legL = createLimb(-legX, legY, 0, false);
+  if (type === 'ghoul') {
+    // 양팔 끝(손)에 길고 굽은 발톱 3개씩
+    const clawMat = getLowPolyMat(0x2c2c28);
+    for (const arm of [limbs.armR, limbs.armL]) {
+      for (let i = 0; i < 3; i++) {
+        const claw = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.26, 4), clawMat);
+        claw.position.set(-0.06 + i * 0.06, -0.46, -0.05); claw.rotation.x = -0.5; claw.castShadow = true; arm.add(claw);
+      }
+    }
+    // 팔을 약간 앞으로 늘어뜨림(덮치는 자세)
+    limbs.armR.rotation.x = 0.5; limbs.armL.rotation.x = 0.5;
+  }
+
+  const wpnGrp = new THREE.Group();
+  if (type === 'ghoul') {
+    // 구울은 무기 없음 — 발톱 손. wpnGrp는 비워 두고 아래에서 양팔 끝에 발톱을 단다.
+  } else if (isRanged) {
+    // 마법 지팡이: 긴 막대 + 끝에 빛나는 보주
+    const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 1.1, 5), getLowPolyMat(0x3b2a14, false)); staff.position.y = 0.45; staff.castShadow = true;
+    const orbMat = new THREE.MeshBasicMaterial({ color: 0x66ccff });
+    const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.13, 0), orbMat); orb.position.y = 1.05;
+    wpnGrp.add(staff); wpnGrp.add(orb);
+  } else if (type === 'skeleton' && isBoss) { 
+    // 보스 스켈레톤만 뼈 곤봉(던지는 무기). 일반 스켈레톤은 아래 else(고블린 검)를 사용.
+    const club = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.13, 1.0, 6), matSkelBone); club.position.y = 0.5; club.castShadow = true; wpnGrp.add(club);
+    const knob = new THREE.Mesh(new THREE.IcosahedronGeometry(0.18, 0), matSkelBone); knob.position.y = 1.0; knob.castShadow = true; wpnGrp.add(knob);
+  } else if (type === 'orc') { 
+    // 굵은 나무 자루 + 강철 도끼머리. 일반=한쪽날, 보스=양날.
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.065, 1.2, 6), getLowPolyMat(0x5a3a1a, false)); handle.position.y = 0.45; handle.castShadow = true; wpnGrp.add(handle);
+    const steel = getLowPolyMat(0xc2cad2, true);
+    const headY = 0.9; // 도끼머리가 붙는 자루 높이
+
+    // 자루를 감싸는 강철 소켓(머리와 자루를 잇는 부분)
+    const socket = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.26, 6), steel); socket.position.y = headY; socket.castShadow = true; wpnGrp.add(socket);
+
+    // 한쪽 도끼날(쐐기): 안쪽이 자루(소켓)에 밀착, 바깥으로 갈수록 넓어지는 반달형 날
+    // shape는 X(자루에서 바깥 거리)-Y(높이) 평면. 자루 표면 x=0.09에서 시작.
+    function makeBlade(dir) { // dir: +1 또는 -1 (자루 기준 어느 쪽으로 뻗을지)
+      const shape = new THREE.Shape();
+      shape.moveTo(0.08, 0.16);      // 위쪽 안쪽(자루에 붙음)
+      shape.lineTo(0.40, 0.30);      // 위쪽 날끝(바깥, 위로 벌어짐)
+      shape.quadraticCurveTo(0.52, 0.0, 0.40, -0.30); // 날의 곡선 모서리(반달)
+      shape.lineTo(0.08, -0.16);     // 아래쪽 안쪽
+      shape.quadraticCurveTo(0.06, 0.0, 0.08, 0.16);  // 안쪽 살짝 오목
+      const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.07, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 1 });
+      geo.translate(0, 0, -0.035);
+      const blade = new THREE.Mesh(geo, steel);
+      blade.scale.x = dir;           // -1이면 반대쪽으로 미러
+      blade.position.y = headY; blade.castShadow = true;
+      return blade;
+    }
+    wpnGrp.add(makeBlade(1));
+    if (isBoss) wpnGrp.add(makeBlade(-1)); // 보스는 양날
+
+    // 자루 끝 강철 스파이크
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.16, 5), steel); cap.position.y = 1.08; wpnGrp.add(cap);
+  } else { 
+    // 고블린 검: 짧은 단검 대신 길쭉한 검(자루+칼날+칼끝)으로 — 휘두를 때 잘 보이게.
+    const steelG = darkMetal.clone();
+    // 손잡이(자루)
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.22, 5), getLowPolyMat(0x4a3320, false)); grip.position.y = 0.11; grip.castShadow = true; wpnGrp.add(grip);
+    // 코등이(가드)
+    const cross = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.06, 0.08), steelG); cross.position.y = 0.23; cross.castShadow = true; wpnGrp.add(cross);
+    // 칼날(길게)
+    const gblade = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.8, 0.05), steelG); gblade.position.y = 0.65; gblade.castShadow = true; wpnGrp.add(gblade);
+    // 칼끝
+    const gtip = new THREE.Mesh(new THREE.ConeGeometry(0.085, 0.22, 4), steelG); gtip.position.y = 1.13; gtip.rotation.y = Math.PI / 4; gtip.castShadow = true; wpnGrp.add(gtip);
+  }
+  // 원거리 캐스터는 푸른 로브(망토)를 두름
+  if (isRanged) {
+    const robe = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.55, 0.9, 7), getLowPolyMat(0x2b4c8c));
+    robe.position.y = 0.45; robe.castShadow = true; grp.add(robe);
+    const hood = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.45, 7), getLowPolyMat(0x21407a));
+    hood.position.y = 1.05; hood.castShadow = true; grp.add(hood);
+  }
+  
+  if (isBoss) wpnGrp.scale.setScalar(type === 'skeleton' ? 1.05 : 1.5); // 스켈레톤 보스 곤봉은 0.7배 축소
+  wpnGrp.position.set(0, -0.3, 0); wpnGrp.rotation.x = -Math.PI/2; limbs.armR.add(wpnGrp);
+  limbs.weapon = wpnGrp; // 무기 참조(스켈레톤 보스 투척 시 숨김/복귀용)
+  if (v2 && typeof a1Monster === 'function') a1Monster(type, isBoss, isRanged, grp, bodyGrp, headGrp, limbs);
+  grp.scale.setScalar(scale * (isBoss ? 1 : 1.10));
+  smoothSkinNormals(grp);
+  return { obj: grp, limbs, phase: 0, swing: 0, isRanged, type };
+}
+
+// ---------- 바닥 ----------
+const disc = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.4, 0.05, 48), getLowPolyMat(0x0d1109));
+disc.material.roughness = 1.0; disc.receiveShadow = true; scene.add(disc);
+discMat = disc.material; applyAct(actIdx);
+
+const TYPES = ['goblin', 'skeleton', 'orc'], TYPE_NAME = { goblin: '고블린', skeleton: '스켈레톤', orc: '오크' };
+const VARS = ['일반', '원거리', '보스'];
+let typeIdx = 0, varIdx = 0, cmpMode = 0;   // 0 나란히 · 1 예전만 · 2 새것만
+{ const q = /[?&]type=(\w+)/.exec(location.search); if (q && TYPES.includes(q[1])) typeIdx = TYPES.indexOf(q[1]); const v = /[?&]var=(\d)/.exec(location.search); if (v) varIdx = +v[1]; const c = /[?&]cmp=(\d)/.exec(location.search); if (c) cmpMode = +c[1]; }
+let heroes = [];
+function rebuild() {
+  for (const h of heroes) scene.remove(h.obj);
+  heroes = [];
+  const type = TYPES[typeIdx], boss = varIdx === 2, ranged = varIdx === 1;
+  const sp = boss ? 2.2 : 0.95;
+  const list = cmpMode === 0 ? [[false, sp], [true, -sp]] : cmpMode === 1 ? [[false, 0]] : [[true, 0]];
+  for (const [v2, x] of list) {
+    const p = makeMonOld(type, boss, ranged, v2); p.obj.position.x = x; p.v2 = v2;
+    if (BLOB_ON) p.obj.add(makeBlobShadow((boss ? 2.3 : 1.4) / p.obj.scale.x));
+    scene.add(p.obj); heroes.push(p);
+  }
+  target.y = boss ? 1.5 : 0.62;
+  document.getElementById('typeBtn').textContent = TYPE_NAME[type];
+  document.getElementById('varBtn').textContent = VARS[varIdx];
+  document.getElementById('cmpBtn').textContent = ['나란히(예전 · 새)', '예전만', '새것만'][cmpMode];
+  applyShadowMode(studioShadow); updateCam();
+  updateVer();
+}
+let autoSpin = !/[?&]spin=0/.test(location.search), walking = false, studioShadow = true;
+const verEl = document.getElementById('ver');
+function updateVer() {
+  const real = Math.abs(camZoom - 1) < 0.02;
+  let tri = 0, calls = 0;
+  for (const h of heroes) if (h.v2) h.obj.traverse(o => { if (o.isMesh && o.visible) { calls++; tri += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; } });
+  verEl.innerHTML = 'act1_monster_viewer v1' + (PX_MODE ? ' · px' : ' · px=0') + '<br>' + ACTS[actIdx].name
+    + '<br>' + camZoom.toFixed(1) + '× ' + (real ? '<span style="color:#8ad08a">게임 실제 크기</span>' : '<span style="color:#d08a84">확대</span>')
+    + (cmpMode !== 1 ? '<br>새 모델 메시 ' + calls + ' · 삼각형 ' + Math.round(tri) : '');
+}
+let dragging = false, lastX = 0, lastY = 0, pinchD = 0, pinching = false;
+const ZOOM_MIN = 1.0, ZOOM_MAX = 28.0;
+canvas.addEventListener('mousedown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
+window.addEventListener('mousemove', e => { if (!dragging) return; camYaw -= (e.clientX - lastX) * 0.01; camPitch = Math.max(-1.2, Math.min(1.4, camPitch + (e.clientY - lastY) * 0.01)); lastX = e.clientX; lastY = e.clientY; updateCam(); });
+window.addEventListener('mouseup', () => dragging = false);
+canvas.addEventListener('wheel', e => { e.preventDefault(); camZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, camZoom * Math.exp(-e.deltaY * 0.0015))); applyAdaptiveFOV(); updateVer(); }, { passive: false });
+canvas.addEventListener('touchstart', e => { e.preventDefault(); if (e.touches.length === 1) { dragging = true; pinching = false; lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; } else if (e.touches.length === 2) { pinching = true; dragging = false; pinchD = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); } }, { passive: false });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); if (pinching && e.touches.length === 2) { const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); camZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, camZoom * (d / Math.max(1, pinchD)))); pinchD = d; applyAdaptiveFOV(); updateVer(); } else if (dragging && e.touches.length === 1) { const t = e.touches[0]; camYaw -= (t.clientX - lastX) * 0.01; camPitch = Math.max(-1.2, Math.min(1.4, camPitch + (t.clientY - lastY) * 0.01)); lastX = t.clientX; lastY = t.clientY; updateCam(); } }, { passive: false });
+canvas.addEventListener('touchend', e => { if (e.touches.length === 0) { dragging = false; pinching = false; } }, { passive: false });
+for (const el of document.querySelectorAll('.btn')) { el.addEventListener('mousedown', e => e.preventDefault()); el.addEventListener('click', () => { el.blur(); if (window.scrollX || window.scrollY) window.scrollTo(0, 0); }); }
+function applyShadowMode(on) {
+  studioShadow = on;
+  for (const h of heroes) h.obj.traverse(o => { if (o.isMesh && o.material !== blobMatShared) o.castShadow = on; });
+  const el = document.getElementById('shadowBtn'); el.textContent = '그림자: ' + (on ? '켬' : '끔'); el.classList.toggle('on', on);
+}
+document.getElementById('typeBtn').addEventListener('click', () => { typeIdx = (typeIdx + 1) % TYPES.length; rebuild(); });
+document.getElementById('varBtn').addEventListener('click', () => { varIdx = (varIdx + 1) % VARS.length; rebuild(); });
+let atkT = -1;
+document.getElementById('atkBtn').addEventListener('click', () => { atkT = 0; });
+document.getElementById('cmpBtn').addEventListener('click', () => { cmpMode = (cmpMode + 1) % 3; rebuild(); });
+document.getElementById('spinBtn').addEventListener('click', e => { autoSpin = !autoSpin; e.target.textContent = '자동회전: ' + (autoSpin ? '켬' : '끔'); });
+document.getElementById('walkBtn').addEventListener('click', e => { walking = !walking; e.target.classList.toggle('on', walking); });
+document.getElementById('actBtn').addEventListener('click', e => { actIdx = (actIdx + 1) % ACTS.length; applyAct(actIdx); e.target.textContent = ACTS[actIdx].name; applyShadowMode(!!ACTS[actIdx].studio); updateVer(); });
+document.getElementById('shadowBtn').addEventListener('click', () => applyShadowMode(!studioShadow));
+document.getElementById('resetBtn').addEventListener('click', () => { camZoom = 4.0; camYaw = GAME_YAW; camPitch = GAME_PITCH; applyAdaptiveFOV(); updateCam(); updateVer(); });
+function onResize() {
+  applyAdaptiveFOV(); renderer.setSize(viewW(), viewH());
+  const lr = computeLowRes(viewW(), viewH()); lowResW = lr[0]; lowResH = lr[1];
+  rt.setSize(lowResW, lowResH); rt.depthTexture.image.width = lowResW; rt.depthTexture.image.height = lowResH; rt.depthTexture.needsUpdate = true;
+  rtNormal.setSize(lowResW, lowResH);
+  bloomW = Math.max(160, Math.floor(lowResW / 2)); bloomH = Math.max(120, Math.floor(lowResH / 2));
+  rtBloom.setSize(bloomW, bloomH); bloomMat.uniforms.uTexel.value.set(1 / bloomW, 1 / bloomH); quadMat.uniforms.uTexel.value.set(1 / lowResW, 1 / lowResH);
+  updateCam();
+}
+window.addEventListener('resize', onResize);
+window.addEventListener('orientationchange', () => setTimeout(onResize, 250));
+if (window.visualViewport) { window.visualViewport.addEventListener('resize', onResize); window.visualViewport.addEventListener('scroll', onResize); }
+if (('ontouchstart' in window) || navigator.maxTouchPoints > 0) document.getElementById('hint').textContent = '한 손가락: 회전 · 두 손가락: 확대축소';
+camZoom = 4.0; applyAdaptiveFOV();
+actIdx = 1; applyAct(1); document.getElementById('actBtn').textContent = '1막';
+{ const a = /[?&]act=(\d)/.exec(location.search); if (a) { actIdx = +a[1]; applyAct(actIdx); document.getElementById('actBtn').textContent = ACTS[actIdx].name; } }
+rebuild(); applyShadowMode(!!ACTS[actIdx].studio);
+const clock = new THREE.Clock();
+function step(dt) { if (autoSpin) { camYaw += dt * 0.32; updateCam(); } if (atkT >= 0) atkT += dt;
+  for (const h of heroes) {
+    const L = h.limbs; if (walking) h.phase += 3.5 * dt * 2.5; else h.phase *= 0.8;
+    const s = Math.sin(h.phase);
+    L.legR.rotation.x = s * 0.8; L.legL.rotation.x = -s * 0.8;
+    let aR = -s * 0.5; const aL = s * 0.5;
+    const SW = h.isRanged ? 0.5 : 0.62;
+    if (atkT >= 0 && atkT < SW) {
+      if (h.isRanged) aR = Math.PI * 0.8 - (atkT / 0.5) * Math.PI * 1.2;
+      else if (atkT < 0.4) { const w = atkT / 0.4, eo = 1 - (1 - w) * (1 - w); aR = eo * Math.PI * 1.05; }
+      else { const p = Math.min(1, (atkT - 0.4) / 0.22); aR = Math.PI * 1.05 - p * p * p * Math.PI * 0.55; }
+    }
+    L.armR.rotation.x = aR; L.armL.rotation.x = aL;
+    if (L._a1Update) L._a1Update(dt, walking);
+  }
+  if (atkT > 0.9) atkT = -1; renderWithPost(scene); }
+window.__step = step;
+function animate() { step(Math.min(0.05, clock.getDelta())); requestAnimationFrame(animate); }
+animate();
+</script>
+</body>
+</html>
