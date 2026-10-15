@@ -996,17 +996,23 @@ function hero2Knight(K) { return hero2Lcg(901001, () => {
   const SP = (r, ws, hs, t0, t1) => new THREE.SphereGeometry(r, ws || 8, hs || 5, 0, Math.PI * 2, t0 || 0, t1 || Math.PI);
   const P8 = Math.PI / 8;
 
-  // ---- 투구: 위가 둥근 통투구 + 금 띠 · 세로 금 줄 · 눈 틈 ----
+  // ---- 투구: 커버의 아멧 — 둥근 두개골 + 볏 · 앞으로 솟은 V 면갑 · V 를 따라 꺾인 눈 틈 · 옆 금 원판 ----
   const hd = K.headGrp; hero2Clear(hd);
-  h2(hd, C(0.305, 0.325, 0.36, 10), STEEL, 0, 0.0, 0, 0, 0, 0, 1, 1, 1.08);
-  h2(hd, SP(0.305, 10, 5, 0, Math.PI / 2), STEEL_L, 0, 0.18, 0, 0, 0, 0, 1, 0.85, 1.08);
-  h2(hd, B(0.06, 0.07, 0.44), GOLD, 0, 0.43, 0, -0.08);
-  h2(hd, C(0.335, 0.345, 0.06, 10), GOLD, 0, -0.15, 0, 0, 0, 0, 1, 1, 1.08);
-  h2(hd, C(0.312, 0.312, 0.05, 10), GOLD, 0, 0.175, 0, 0, 0, 0, 1, 1, 1.08);
-  h2(hd, B(0.34, 0.33, 0.05), STEEL_L, 0, 0.02, -0.335, 0.04);
-  h2(hd, B(0.30, 0.045, 0.04), DARK, 0, 0.09, -0.365);
-  h2(hd, B(0.055, 0.46, 0.03), GOLD, 0, 0.06, -0.372, -0.1);
-  for (const yy of [-0.04, -0.1]) h2(hd, B(0.035, 0.035, 0.03), DARK, 0.1, yy, -0.364);
+  const vShape = k => { const sh = new THREE.Shape();   // x = 좌우, y = 앞으로(가운데가 가장 앞)
+    sh.moveTo(-0.29 * k, 0.04); sh.lineTo(-0.14 * k, 0.39 * k + 0.02); sh.lineTo(0, 0.5 * k + 0.02); sh.lineTo(0.14 * k, 0.39 * k + 0.02);
+    sh.lineTo(0.29 * k, 0.04); sh.lineTo(0.22 * k, -0.04); sh.lineTo(0, 0.0); sh.lineTo(-0.22 * k, -0.04); sh.closePath(); return sh; };
+  const vis = (k, h, y, mat) => { const g = new THREE.ExtrudeGeometry(vShape(k), { depth: h, bevelEnabled: false }); return h2(hd, g, mat, 0, y, 0, -Math.PI / 2); };
+  h2(hd, SP(0.3, 10, 7), STEEL, 0, 0.1, 0.02, 0, 0, 0, 1, 1, 1.1);
+  for (const [zz, yy, rx] of [[-0.2, 0.345, -0.62], [0.02, 0.395, 0], [0.24, 0.345, 0.62]]) h2(hd, B(0.045, 0.04, 0.2), STEEL_L, 0, yy, zz, rx);   // 두개골을 따라 굽은 볏
+  vis(1.0, 0.25, -0.18, STEEL_L);          // 아래 면갑(코끝처럼 앞으로 솟음)
+  vis(0.9, 0.06, 0.07, DARK);              // 눈 틈 — 면갑보다 안으로 들어가 V 를 따라 꺾인 검은 줄
+  vis(0.98, 0.07, 0.13, STEEL);            // 이마 판
+  vis(1.02, 0.025, -0.2, GOLD);            // 면갑 아래 금 테
+  for (const sx of [-1, 1]) {
+    h2(hd, C(0.075, 0.075, 0.035, 10), GOLD, sx * 0.31, 0.1, 0.04, 0, 0, Math.PI / 2);
+    h2(hd, B(0.03, 0.03, 0.03), DARK, sx * 0.11, -0.06, -0.33, 0, sx * 0.5);
+    h2(hd, B(0.03, 0.03, 0.03), DARK, sx * 0.13, -0.12, -0.31, 0, sx * 0.5);
+  }
   h2(hd, C(0.3, 0.36, 0.16, 10, true, -Math.PI * 0.45, Math.PI * 0.9), mk(0x5c6678, 'd'), 0, -0.2, 0.08, 0.12);
 
   // ---- 몸통: 흉갑 · 목가리개 · 허리띠 · 허리 갑판 · 앞 휘장 · 망토 ----
@@ -1036,12 +1042,12 @@ function hero2Knight(K) { return hero2Lcg(901001, () => {
     const keep = arm.children.filter(c => !c.isMesh);
     hero2Clear(arm);
     const g = new THREE.Group(); arm.add(g);
-    const pd = new THREE.Group(); pd.position.set(sign * 0.04, 0.04, 0); pd.rotation.z = -sign * 0.32; g.add(pd);
-    h2(pd, SP(0.29, 8, 5, 0, Math.PI * 0.5), STEEL_L, 0, 0, 0, 0, 0, 0, 1.25, 0.6, 1.15);
-    h2(pd, C(0.33, 0.33, 0.03, 8), GOLD, 0, -0.005, 0, 0, 0, 0, 1, 1, 0.92);
-    h2(pd, C(0.31, 0.34, 0.06, 8, false), STEEL, 0, -0.05, 0, 0, 0, 0, 1, 1, 0.9);
-    h2(pd, C(0.29, 0.32, 0.05, 8, false), STEEL_D, 0, -0.1, 0, 0, 0, 0, 1, 1, 0.86);
-    h2(pd, C(0.325, 0.325, 0.02, 8), GOLD, 0, -0.125, 0, 0, 0, 0, 1, 1, 0.86);
+    const pd = new THREE.Group(); pd.position.set(sign * 0.02, 0.03, 0); pd.rotation.z = -sign * 0.22; g.add(pd);
+    h2(pd, SP(0.21, 8, 5, 0, Math.PI * 0.5), STEEL_L, 0, 0, 0, 0, 0, 0, 1.12, 0.62, 1.05);
+    h2(pd, C(0.236, 0.236, 0.025, 8), GOLD, 0, -0.005, 0, 0, 0, 0, 1, 1, 0.94);
+    h2(pd, C(0.22, 0.24, 0.05, 8), STEEL, 0, -0.045, 0, 0, 0, 0, 1, 1, 0.9);
+    h2(pd, C(0.2, 0.22, 0.045, 8), STEEL_D, 0, -0.085, 0, 0, 0, 0, 1, 1, 0.86);
+    h2(pd, C(0.05, 0.05, 0.025, 8), GOLD, 0, -0.03, -0.21, Math.PI / 2);
     h2(g, C(0.095, 0.09, 0.2, 8), STEEL_D, 0, -0.2, 0);
     h2(g, SP(0.1, 6, 4), STEEL, 0, -0.31, 0);
     h2(g, C(0.1, 0.11, 0.2, 8), STEEL, 0, -0.42, 0);
