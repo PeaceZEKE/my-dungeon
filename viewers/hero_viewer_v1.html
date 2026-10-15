@@ -1191,9 +1191,10 @@ function hero2Knight(K) { return hero2Lcg(901001, () => {
   h2(hilt, C(0.028, 0.032, 0.3, 6), LEATH, 0, 0, 0);                       // 손잡이(주먹이 가운데를 쥔다)
   h2(hilt, SP(0.055, 4, 3), GOLD, 0, -0.18, 0);                             // 머리
   c3MergeStatic(hilt);
-  // ---- 방패: 금 테 · 바깥(−z, 적 쪽) 붉은 바탕 + 은 십자 + 금 돌기 · 안쪽(+z, 몸 쪽) 철판 ----
+  // ---- 방패: 금 테 · 붉은 바탕 + 은 십자 + 금 돌기 면(뒤집어서 게임 카메라 쪽) · 반대 면 철판 ----
   const shg = K.shieldGrp; hero2Clear(shg);
   const sg = new THREE.Group(); sg.scale.setScalar(0.85); shg.add(sg);   // 0.85: 사용자 지시로 줄임(손 자리 기준)
+  sg.rotation.y = Math.PI; sg.position.z = 0.051;   // 십자 면이 몸 쪽(= 게임 카메라 쪽)을 보게 뒤집고, 판 두께 가운데를 예전 자리에 둔다
   h2(sg, new THREE.ExtrudeGeometry(makeHeaterShape(0.8, 0.7, -0.88), { depth: 0.06, bevelEnabled: false, curveSegments: 4 }), GOLD, 0, 0, 0.01);
   h2(sg, new THREE.ExtrudeGeometry(makeHeaterShape(0.72, 0.62, -0.78), { depth: 0.05, bevelEnabled: false, curveSegments: 4 }), CRIM, 0, 0, -0.01);
   h2(sg, new THREE.ExtrudeGeometry(makeHeaterShape(0.72, 0.62, -0.78), { depth: 0.05, bevelEnabled: false, curveSegments: 4 }), STEEL, 0, 0, 0.04);   // 안쪽 철판
