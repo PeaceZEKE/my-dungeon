@@ -1028,6 +1028,8 @@ function hero2Pose(K, cls) {
   for (const [g, s] of [[K.legR, Math.sign(K.legR.position.x) || 1], [K.legL, Math.sign(K.legL.position.x) || -1]]) g.position.set(s * P.legX, P.legY, g.position.z);
   for (const [g, s] of [[K.armR, Math.sign(K.armR.position.x) || 1], [K.armL, Math.sign(K.armL.position.x) || -1]]) g.position.set(s * P.armX, P.armY, g.position.z);
   K.torsoGrp.position.y = P.torsoY; K.headGrp.position.y = P.headY;
+  // 기사 다리(길이 0.66)는 마법사 관절(0.55)에서 땅 밑으로 빠진다 — 마법사는 자기 다리만(긴 옷 속)
+  if (cls === 'knight' || cls === 'mage') for (const g of [K.legR, K.legL]) g.children.forEach(m => { if (!(m.userData && m.userData.mage)) m.visible = cls === 'knight'; });
 }
 function hero2Clear(grp, keep) {
   grp.children.slice().forEach(ch => { if (ch.isMesh && !(keep && keep.includes(ch))) { grp.remove(ch); ch.geometry.dispose(); } });
