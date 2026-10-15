@@ -1017,6 +1017,9 @@ function hero2Surf(P, c, t0, t1, p0, p1, n, nt, off, flip) {
 // 기사 신체 비율(HERO2) — 궁수(엉덩이 0.67 · 어깨 1.01 · 머리 1.34)에 맞춘다. 기사·마법사가 같은 관절 리그를 써서
 // 직업을 바꿀 때마다 hero2Pose 로 자리를 맞춘다(마법사는 예전 자리 그대로 — 처음 부를 때 기억해 둔다).
 const HERO2_POSE = { legX: 0.17, legY: 0.66, torsoY: 0.76, armX: 0.43, armY: 1.01, headY: 1.36 };
+// 막기 자세에서 방패 그룹을 팔 끝 쪽으로 내미는 자리(게임 update 의 막기 목표에 같이 쓴다 — 기본 −0.5 그대로면 주먹이 방패 앞면을 뚫는다).
+// 막기에서는 방패 로컬 +z 가 팔 +y(어깨 쪽)라, 판이 주먹(팔 −0.56 ± 0.08)보다 팔 끝 쪽에 있어야 손이 방패 뒤에서 쥔다.
+const HERO2_SHIELD_BLOCK_Y = -0.71;
 function hero2Pose(K, cls) {
   if (!K._pose0) K._pose0 = { legX: Math.abs(K.legR.position.x), legY: K.legR.position.y, torsoY: K.torsoGrp.position.y, armX: Math.abs(K.armR.position.x), armY: K.armR.position.y, headY: K.headGrp.position.y };
   const P = cls === 'knight' ? HERO2_POSE : K._pose0;
@@ -1194,6 +1197,7 @@ function hero2Knight(K) { return hero2Lcg(901001, () => {
   // ---- 방패: 금 테 · 바깥(−z, 적 쪽) 붉은 바탕 + 은 십자 + 금 돌기 · 안쪽(+z, 몸 쪽) 철판 ----
   const shg = K.shieldGrp; hero2Clear(shg);
   const sg = new THREE.Group(); sg.scale.setScalar(0.85); shg.add(sg);   // 0.85: 사용자 지시로 줄임(손 자리 기준)
+  sg.position.z = -0.045;   // 판을 바깥으로 — 평소 자세에서 왼손 주먹이 판 뒷면에 박히지 않게(막기 자세는 HERO2_SHIELD_BLOCK_Y)
   h2(sg, new THREE.ExtrudeGeometry(makeHeaterShape(0.8, 0.7, -0.88), { depth: 0.06, bevelEnabled: false, curveSegments: 4 }), GOLD, 0, 0, 0.01);
   h2(sg, new THREE.ExtrudeGeometry(makeHeaterShape(0.72, 0.62, -0.78), { depth: 0.05, bevelEnabled: false, curveSegments: 4 }), CRIM, 0, 0, -0.01);
   h2(sg, new THREE.ExtrudeGeometry(makeHeaterShape(0.72, 0.62, -0.78), { depth: 0.05, bevelEnabled: false, curveSegments: 4 }), STEEL, 0, 0, 0.04);   // 안쪽 철판
