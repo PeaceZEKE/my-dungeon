@@ -2,7 +2,7 @@
 import sys, json, math, os, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import ortho
 REF = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../refs/ui/초상화/knight_helm_ortho.png')
-H = 0.8; L = 40; NP = int(sys.argv[1]) if len(sys.argv) > 1 else 48
+H = 0.8; L = 40; NP = int(sys.argv[1]) if len(sys.argv) > 1 else 16; LO = int(sys.argv[2]) if len(sys.argv) > 2 else 12   # 출력 단 수(폴리곤 수 = 단 × 방향)
 V = ortho.split(REF); Fm, Sm, Tm = V[0]['mask'], V[1]['mask'], V[3]['mask']
 sf = H / Fm.shape[0]; ss = H / Sm.shape[0]
 rows = []
@@ -27,6 +27,8 @@ def nf(t):
 # 높이 방향 다듬기(폭·앞·뒤) — 그림의 계단 노이즈 제거
 for _ in range(2):
   R[1:-1, 1:] = (R[:-2, 1:] + 2 * R[1:-1, 1:] + R[2:, 1:]) / 4
+# 촘촘하게 잰 값을 LO 단으로 다시 뽑는다(곡면을 그 단으로 짓는다)
+To = np.linspace(0, 1, LO + 1); R = np.stack([To] + [np.interp(To, R[:, 0], R[:, j]) for j in (1, 2, 3)], 1)
 out = []
 for t, rs, zf, zb in R:
   cz = (zf + zb) / 2; rf = cz - zf; rb = zb - cz; n = nf(t)
