@@ -4733,7 +4733,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v905'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v906'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -20349,6 +20349,8 @@ const HERO2_ON = !/[?&]hero2=0/.test(location.search);
 const HERO2_MAGE2 = HERO2_ON && !/[?&]mage2=0/.test(location.search);
 const HERO2_ARCH2 = HERO2_ON && !/[?&]arch2=0/.test(location.search);   // v904 궁수 v2 — 0 이면 v903 궁수(hero2Archer902)
 const A1M = !/[?&]a1m=0/.test(location.search);   // v905 1막 몬스터 v2(고블린·스켈레톤·오크 · 원거리 · 보스) — 0 이면 v904 몸(사람형 상자 모델)
+const A2M = !/[?&]a2m=0/.test(location.search);
+const A2M_TYPES = { ghoul: 1, ghostknight: 1, golem: 1, wraith: 1, courtmage: 1, servantwraith: 1, darkknight: 1, icequeen: 1 };   // v906 2막 몬스터 v2(구울·유령 기사·골렘·혼령·궁중 마법사 · 40/50/60층 보스) — 0 이면 v905 몸
 // ===== 영웅 모델 v2(HERO2) — 세 직업을 원화(커버·초상화)에 맞춰 다시 짓는다 =====
 // 리그(headGrp·torsoGrp·armR/armL·legR/legL·swordGrp·shieldGrp)와 blade·sPoint·bladeMat·bladeLight 참조는 그대로 두고
 // 예전 메시만 갈아 끼운다 — 애니메이션·스미어·충전 발광·마법사/궁수 전환이 손대지 않고 그대로 돈다.
@@ -21117,6 +21119,8 @@ function a1Kit(seed) {
     if (shared[kind]) return shared[kind];
     let m;
     if (kind === 'skin') { m = getLowPolyMat(0xffffff); m.vertexColors = true; markOrganic(m); }
+    else if (kind === 'rock') { m = getLowPolyMat(0xffffff); m.vertexColors = true; markOrganic(m); m.flatShading = true; }   // v906: 각진 면은 살리고 모서리 하이라이트·반사만 뺀다(바위)
+    else if (kind === 'smooth') { m = getLowPolyMat(0xffffff); m.vertexColors = true; m.flatShading = false; m.roughness = 0.75; m.metalness = 0.1; }   // v906: 매끈한 곡면
     else if (kind === 'metal') { m = getLowPolyMat(0xffffff, true); m.vertexColors = true; }
     else if (kind === 'cloth') { m = getLowPolyMat(0xffffff); m.vertexColors = true; m.side = THREE.DoubleSide; }
     else { m = getLowPolyMat(0xffffff); m.vertexColors = true; }
@@ -21130,7 +21134,9 @@ function a1Kit(seed) {
     if (kind === 'glow') m = new THREE.MeshStandardMaterial({ color: hex, emissive: hex, emissiveIntensity: 1.0, roughness: 0.5, flatShading: true });
     else {
       m = (kind === 'metal') ? getLowPolyMat(hex, true) : getLowPolyMat(hex);
-      if (kind === 'skin') markOrganic(m);
+      if (kind === 'skin' || kind === 'rock') markOrganic(m);
+      if (kind === 'rock') m.flatShading = true;
+      if (kind === 'smooth') { m.flatShading = false; m.roughness = 0.75; m.metalness = 0.1; }
       if (kind === 'cloth') m.side = THREE.DoubleSide;
       m.userData.mergeInto = sharedOf(kind || 'hard');
     }
@@ -22114,6 +22120,908 @@ const matOrcSkin = getLowPolyMat(0x276749); const matOrcArmor = getLowPolyMat(0x
 
 const limbGeoBase = new THREE.BoxGeometry(0.18, 0.45, 0.18); jitterGeometry(limbGeoBase, 0.02);
 
+
+// ============================================================
+//  2막 몬스터 v2 — 구울·유령 기사·골렘·혼령·궁중 마법사 + 40/50/60층 보스. 설정화 refs/몬스터/2막/*.jpg
+//  1막 v2(a1Monster)와 같은 방식: 예전 몸을 다 지은 뒤(난수 흐름 그대로) 메시만 걷어 내고 같은 관절 그룹에 새 부품을 붙인다.
+//  짓는 동안 Math.random 을 자체 LCG 로 바꿔 끼운다(uuid). 도구는 a1Kit 을 그대로 쓴다.
+// ============================================================
+// 그룹 아래 메시를 전부 걷어 낸다(그룹·광원은 남긴다) — keep 안의 것은 건드리지 않는다
+function a2ClearDeep(root, keep, keepFn) {
+  const kill = [];
+  root.traverse(o => { if (o === root) return; if (keep && keep.has(o)) return; if (keepFn && keepFn(o)) return; if (o.isMesh || o.isPoints || o.isLine) kill.push(o); });
+  for (const o of kill) { let p = o.parent, kept = false; while (p) { if (keep && keep.has(p)) { kept = true; break; } p = p.parent; } if (!kept && o.parent) o.parent.remove(o); }
+}
+function a2Monster(type, isBoss, isRanged, grp, bodyGrp, headGrp, limbs) {
+  const SEED = { ghoul: 0x61, ghostknight: 0x62, golem: 0x63, wraith: 0x64, courtmage: 0x65, servantwraith: 0x66, darkknight: 0x67, icequeen: 0x68 };
+  return a1Lcg(9100 + (SEED[type] || 0), () => {
+    const K = a1Kit(SEED[type] || 0x60);
+    const P = { K, grp, bodyGrp, headGrp, limbs, W: limbs.weapon, isBoss, isRanged };
+    if (type === 'ghoul') {
+      [grp, bodyGrp, headGrp, limbs.armR, limbs.armL, limbs.legR, limbs.legL, limbs.weapon].forEach(g => g && a1Clear(g));
+      a2Ghoul(P);
+      c3MergeStatic(bodyGrp); c3MergeStatic(headGrp, [P.jaw]); c3MergeStatic(P.jaw);
+      c3MergeStatic(limbs.armR, [limbs.weapon]); c3MergeStatic(limbs.armL); c3MergeStatic(limbs.legR); c3MergeStatic(limbs.legL);
+    } else if (type === 'ghostknight') {
+      const keep = new Set([limbs._gkEyeGlow]);
+      a2ClearDeep(grp, keep);
+      a2GhostKnight(P);
+      [headGrp, limbs._gkArmR.handGrp, limbs._gkArmL.handGrp].forEach(g => c3MergeStatic(g));
+      c3MergeStatic(limbs._gkArmR.elbowGrp, [limbs._gkArmR.handGrp]); c3MergeStatic(limbs._gkArmL.elbowGrp, [limbs._gkArmL.handGrp]);
+      c3MergeStatic(limbs.armR, [limbs._gkArmR.elbowGrp]); c3MergeStatic(limbs.armL, [limbs._gkArmL.elbowGrp]);
+      c3MergeStatic(limbs._gkLegR.kneeGrp); c3MergeStatic(limbs._gkLegL.kneeGrp);
+      c3MergeStatic(limbs.legR, [limbs._gkLegR.kneeGrp]); c3MergeStatic(limbs.legL, [limbs._gkLegL.kneeGrp]);
+      c3MergeStatic(bodyGrp, [limbs.legR, limbs.legL, limbs.armR, limbs.armL]);
+    } else if (type === 'golem') {
+      a2ClearDeep(grp);
+      a2Golem(P);
+      const L = limbs;
+      c3MergeStatic(L._glElbowR); c3MergeStatic(L._glElbowL); c3MergeStatic(L.armR, [L._glElbowR]); c3MergeStatic(L.armL, [L._glElbowL]);
+      c3MergeStatic(L._glKneeR); c3MergeStatic(L._glKneeL); c3MergeStatic(L.legR, [L._glKneeR]); c3MergeStatic(L.legL, [L._glKneeL]);
+      c3MergeStatic(headGrp); c3MergeStatic(L.torsoGrp, [headGrp]);
+    } else if (type === 'wraith') {
+      a2ClearDeep(grp, new Set([limbs.spectral]));
+      a2Wraith(P);
+      c3MergeStatic(headGrp); c3MergeStatic(limbs.armR); c3MergeStatic(limbs.armL); c3MergeStatic(bodyGrp, [limbs.armR, limbs.armL]);
+    } else if (type === 'courtmage') {
+      const L = limbs, keep = new Set([L._cmGem, L._cmGemCore, L._cmGemLight, L._cmEyeGlow, ...L._cmHex, ...L._cmOrbs]);
+      a2ClearDeep(grp, keep);
+      a2CourtMage(P);
+      c3MergeStatic(headGrp); c3MergeStatic(L._cmStaff, [...keep]);
+      c3MergeStatic(L._cmHandR, [L._cmStaff]); c3MergeStatic(L._cmHandL); c3MergeStatic(L._cmElbowR, [L._cmHandR]); c3MergeStatic(L._cmElbowL, [L._cmHandL]);
+      c3MergeStatic(L.armR, [L._cmElbowR]); c3MergeStatic(L.armL, [L._cmElbowL]); c3MergeStatic(bodyGrp, [L.armR, L.armL]);
+    } else if (type === 'servantwraith') {
+      const L = limbs, mist = L._swMist[0].parent;
+      const keep = new Set([L._swCandle, mist, ...L._swFireballs]);
+      a2ClearDeep(grp, keep);
+      a2ServantWraith(P);
+      const hR = L._swCandle.parent, hL = L._swElbowL.children.find(c => c.isGroup && !c.isMesh);
+      c3MergeStatic(headGrp); c3MergeStatic(hR, [L._swCandle]); if (hL) c3MergeStatic(hL);
+      c3MergeStatic(L._swElbowR, [hR]); c3MergeStatic(L._swElbowL, [hL]);
+      c3MergeStatic(L.armR, [L._swElbowR]); c3MergeStatic(L.armL, [L._swElbowL]); c3MergeStatic(bodyGrp, [L.armR, L.armL, ...keep]);
+    } else if (type === 'darkknight') {
+      // 원화대로 새로 짓는다(사용자: 예전 것은 동작 부품·기믹만 — 관절 리그 · 대검 분노 불꽃 · 마그마 발광 재질). 망토도 새로
+      const L = limbs, sub = (g) => g.children.find(c => c.isGroup);
+      const keep = new Set([...(L._dkSwordFlames || [])]);
+      a2ClearDeep(grp, keep);
+      const J = { kneeR: sub(L.legR), kneeL: sub(L.legL), elbowR: sub(L.armR), elbowL: sub(L.armL) };
+      J.handR = L._dkSword.parent; J.handL = sub(J.elbowL);
+      P.J = J;
+      a2DarkKnight(P);
+      c3MergeStatic(headGrp); c3MergeStatic(L._dkSword, [...keep]); c3MergeStatic(J.handR, [L._dkSword]); c3MergeStatic(J.handL);
+      c3MergeStatic(J.elbowR, [J.handR]); c3MergeStatic(J.elbowL, [J.handL]); c3MergeStatic(L.armR, [J.elbowR]); c3MergeStatic(L.armL, [J.elbowL]);
+      c3MergeStatic(J.kneeR); c3MergeStatic(J.kneeL); c3MergeStatic(L.legR, [J.kneeR]); c3MergeStatic(L.legL, [J.kneeL]);
+      c3MergeStatic(bodyGrp, [L.armR, L.armL, L.legR, L.legL, P.cape]);
+    } else if (type === 'icequeen') {
+      const L = limbs, A = [L._iqArmR, L._iqArmL];
+      const head = headGrp, halo = head.children.find(c => c.isGroup && c.children.some(m => m.userData && m.userData.bx !== undefined));
+      const keep = new Set([L._iqBigHaloGrp, halo, A[0].orbGrp, A[1].orbGrp]);
+      // 움직이는 것(떠 있는 고드름 · 파편 · 안개)은 남긴다 — _iqUpdate 가 userData 로 움직인다
+      const moving = (o) => o.isMesh && ((o.userData && (o.userData.a !== undefined || o.userData.spin !== undefined)) || (o.material && o.material.transparent));
+      a2ClearDeep(grp, keep, moving);
+      a2IceQueen(P);
+      c3MergeStatic(head, [...keep, ...head.children.filter(c => c.isGroup)]);
+      head.children.filter(c => c.isGroup && !keep.has(c)).forEach(g => c3MergeStatic(g, g.children.filter(moving)));
+      A.forEach(a => { c3MergeStatic(a.handGrp, [a.orbGrp]); c3MergeStatic(a.elbowGrp, [a.handGrp]); c3MergeStatic(a.armGrp, [a.elbowGrp]); });
+      bodyGrp.children.filter(c => c.isGroup && c !== head && !keep.has(c) && !A.some(a => a.armGrp === c)).forEach(g => c3MergeStatic(g, g.children.filter(moving)));
+    }
+  });
+}
+
+// ---------- 구울 ----------
+// 색은 inv.js 로 역산했다(뷰어 2막 · 몬스터 자리 구의 화면 출력이 설정화 색이 되는 입력값) — 2막은 달빛·환경광이 세서 밝은 색이 하얗게 바랜다
+function a2Ghoul(P) {
+  const { K, bodyGrp, headGrp, limbs } = P;
+  const SKIN = K.mat(0x1c1a2a, 'skin'), SKIN_D = K.mat(0x12131b, 'skin'), SKIN_L = K.mat(0x2a2840, 'skin');
+  const BONE = K.mat(0x534934, 'skin'), TOOTH = K.mat(0x706333), CLAW = K.mat(0x0e0808), MOUTH = K.mat(0x230408);
+  const RAG = K.mat(0x17253d, 'cloth'), RAG_D = K.mat(0x101623, 'cloth'), HAIR = K.mat(0x1c1c2c);
+  const EYE = K.mat(0x9cff5a, 'glow'); EYE.emissiveIntensity = 1.4;
+  const SOCK = K.mat(0x050406);
+
+  // 몸통 — 골반 위로 크게 앞으로 굽은 상체(곱사등), 꺼진 배와 드러난 갈비뼈
+  bodyGrp.position.set(0, 0.5, 0.06);
+  K.ico(bodyGrp, 0.12, SKIN_D, 0, 0.0, 0.0, 1.3, 0.75, 0.95, 1);
+  const tg = new THREE.Group(); tg.position.set(0, 0.04, 0); tg.rotation.x = -0.6; bodyGrp.add(tg);
+  K.ico(tg, 0.17, SKIN, 0, 0.33, 0.02, 1.25, 1.2, 0.82, 1, 0.01);       // 가슴통
+  K.ico(tg, 0.1, SKIN_D, 0, 0.12, 0.0, 1.15, 1.2, 0.75, 1);              // 꺼진 배
+  K.ico(tg, 0.14, SKIN, 0, 0.44, 0.12, 1.35, 0.85, 0.9, 1, 0.01);       // 곱사등
+  for (let i = 0; i < 4; i++)                                             // 갈비뼈(앞·옆으로 감싼다)
+    K.put(tg, new THREE.Mesh(new THREE.TorusGeometry(0.19 - i * 0.012, 0.02, 3, 10, Math.PI * 1.1), BONE), 0, 0.42 - i * 0.07, 0.01, -Math.PI / 2 + 0.2, 0, -0.05 * Math.PI).scale.set(1.15, 0.85, 1);
+  // 등뼈 마디 — 등 표면(가슴통·배·혹 타원체 중 가장 뒤)을 따라 붙인다. 마디 중심을 표면 바로 안쪽에 두어 반쯤 묻힌다
+  const backZ = (y) => { let z = 0; for (const [cy, ry, cz, rz] of [[0.33, 0.204, 0.02, 0.139], [0.12, 0.12, 0.0, 0.075], [0.44, 0.119, 0.12, 0.126]]) { const u = (y - cy) / ry; if (Math.abs(u) < 1) z = Math.max(z, cz + rz * Math.sqrt(1 - u * u)); } return z; };
+  for (let i = 0; i < 8; i++) {
+    const t = i / 7, y = 0.54 - t * 0.48, r = 0.05 - t * 0.014;
+    K.ico(tg, r, BONE, 0, y, backZ(y) - r * 0.45, 1.15, 0.75, 1.0, 0);
+  }
+  [-1, 1].forEach(sx => K.ico(tg, 0.08, SKIN_L, sx * 0.15, 0.48, 0.16, 1.1, 0.5, 0.75, 0));   // 어깨뼈
+  // 수의 — 허리에 감은 너덜천(앞·뒤) + 한쪽 어깨에 걸친 띠
+  K.band(bodyGrp, 0.15, 0.08, RAG_D, 0, 0.04, 0.0, 8);
+  K.plate(bodyGrp, [[-0.15, 0], [0.15, 0], [0.16, -0.16], [0.1, -0.3], [0.06, -0.2], [0.01, -0.34], [-0.05, -0.22], [-0.1, -0.31], [-0.16, -0.17]], 0.02, RAG, 0, 0.06, -0.15, 0.18, 0, 0);
+  K.plate(bodyGrp, [[-0.16, 0], [0.16, 0], [0.17, -0.2], [0.11, -0.36], [0.05, -0.24], [-0.02, -0.38], [-0.08, -0.26], [-0.13, -0.34], [-0.17, -0.18]], 0.02, RAG, 0, 0.06, 0.15, -0.2, 0, 0);
+  K.plate(tg, [[-0.05, 0], [0.05, 0], [0.06, -0.3], [0.02, -0.42], [-0.03, -0.32], [-0.06, -0.28]], 0.02, RAG_D, -0.12, 0.62, -0.06, 0.25, 0, 0.55);
+
+  // 머리 — 크고 앞으로 길게 빠진 두개골 · 깊은 눈구멍에 연두 눈 · 크게 벌어진 턱 · 성긴 머리칼
+  headGrp.position.set(0, 0.98, -0.36); headGrp.rotation.x = 0.1;
+  K.ico(headGrp, 0.22, SKIN_L, 0, 0.07, 0.04, 0.95, 0.9, 1.1, 1, 0.008);    // 머리통
+  K.ico(headGrp, 0.15, SKIN, 0, -0.04, -0.13, 0.95, 0.75, 1.0, 1);          // 위턱·광대
+  K.box(headGrp, 0.3, 0.06, 0.09, SKIN_L, 0, 0.09, -0.17, 0.25, 0, 0);      // 눈썹뼈
+  [-1, 1].forEach(sx => {
+    K.box(headGrp, 0.1, 0.08, 0.04, SOCK, sx * 0.085, 0.035, -0.19, 0, sx * 0.2, sx * -0.15);
+    K.box(headGrp, 0.055, 0.04, 0.02, EYE, sx * 0.085, 0.035, -0.21, 0, sx * 0.2, sx * -0.15);
+  });
+  K.box(headGrp, 0.05, 0.045, 0.03, SOCK, 0, -0.03, -0.26, 0, 0, 0);          // 콧구멍
+  for (let i = 0; i < 7; i++) K.cone(headGrp, 0.019, 0.09, TOOTH, 3, -0.1 + i * 0.034, -0.13, -0.22 + Math.abs(i - 3) * 0.014, Math.PI, 0, 0); // 윗니
+  K.box(headGrp, 0.2, 0.07, 0.12, MOUTH, 0, -0.15, -0.15, 0, 0, 0);
+  // 아래턱 — 경첩에 매단 그룹(벌림)
+  const jaw = new THREE.Group(); jaw.position.set(0, -0.09, -0.02); jaw.rotation.x = 0.55; headGrp.add(jaw); P.jaw = jaw;
+  K.ico(jaw, 0.125, SKIN, 0, -0.07, -0.13, 1.1, 0.5, 1.15, 1);
+  K.box(jaw, 0.17, 0.03, 0.14, MOUTH, 0, -0.035, -0.14, 0, 0, 0);
+  for (let i = 0; i < 6; i++) K.cone(jaw, 0.018, 0.09, TOOTH, 3, -0.085 + i * 0.034, -0.01, -0.22 + Math.abs(i - 2.5) * 0.016, 0, 0, 0);
+  for (let i = 0; i < 7; i++) {                                                // 성긴 머리칼
+    const a = -1.0 + i * 0.33, x = Math.sin(a) * 0.17, z = 0.08 + Math.cos(a) * 0.09;
+    K.seg(headGrp, [x, 0.23, z], [x * 1.5, -0.08 - (i % 3) * 0.07, z + 0.14], 0.014, 0.004, HAIR, 3);
+  }
+  K.seg(bodyGrp, [0, 0.38, -0.26], [0, 0.44, -0.36], 0.065, 0.055, SKIN_D, 5);   // 목
+
+  // 팔 — 아주 길다(무릎 아래까지) · 위팔 근육이 빠진 뒤 앙상한 팔뚝 · 큰 손과 긴 검은 발톱
+  const arm = (L, sx) => {
+    L.position.set(sx * 0.27, 0.9, -0.16);
+    K.ico(L, 0.075, SKIN_L, 0, 0, 0, 1, 1, 1, 0);
+    K.seg(L, [0, 0, 0], [sx * 0.05, -0.3, 0.06], 0.062, 0.034, SKIN, 6);
+    K.ico(L, 0.042, BONE, sx * 0.05, -0.3, 0.08, 1, 1, 1, 0);                    // 팔꿈치
+    K.seg(L, [sx * 0.05, -0.3, 0.06], [sx * 0.03, -0.6, -0.07], 0.042, 0.026, SKIN_D, 6);
+    K.ico(L, 0.03, BONE, sx * 0.03, -0.6, -0.07, 1, 1, 1, 0);                    // 손목뼈
+    K.ico(L, 0.07, SKIN, sx * 0.03, -0.66, -0.1, 1.05, 1.0, 0.7, 0);             // 손바닥
+    for (let i = 0; i < 4; i++) {
+      const x = sx * 0.03 + (i - 1.5) * 0.034;
+      K.seg(L, [x, -0.7, -0.12], [x * 1.15, -0.78, -0.18], 0.017, 0.013, SKIN_D, 3);
+      K.seg(L, [x * 1.15, -0.78, -0.18], [x * 1.2, -0.9, -0.14], 0.017, 0.002, CLAW, 3);
+    }
+  };
+  arm(limbs.armR, 1); arm(limbs.armL, -1);
+  // 다리 — 짧고 무릎이 앞으로 꺾인 다리 · 발톱 달린 맨발
+  const leg = (L, sx) => {
+    L.position.set(sx * 0.13, 0.46, 0.06);
+    K.seg(L, [0, 0, 0], [sx * 0.02, -0.2, -0.1], 0.07, 0.045, SKIN, 6);
+    K.ico(L, 0.05, SKIN_L, sx * 0.02, -0.2, -0.1, 1, 1, 1, 0);
+    K.seg(L, [sx * 0.02, -0.2, -0.1], [sx * 0.02, -0.42, 0.0], 0.045, 0.035, SKIN_D, 6);
+    K.ico(L, 0.065, SKIN, sx * 0.02, -0.43, -0.05, 1.0, 0.45, 1.6, 0);
+    for (let i = 0; i < 3; i++) K.cone(L, 0.015, 0.07, CLAW, 3, sx * 0.02 + (i - 1) * 0.04, -0.45, -0.17, -Math.PI / 2, 0, 0);
+  };
+  leg(limbs.legR, 1); leg(limbs.legL, -1);
+}
+
+// ---------- 유령 기사 ----------
+// 예전 리그 그대로: bodyGrp(바닥 0) · 다리 (±0.2, 0.86) · 무릎 −0.34 · 팔 (±0.46, 1.46) · 팔꿈치 −0.48 · 손 −0.46 · 머리 (0, 1.62, −0.34)
+function a2GhostKnight(P) {
+  const { K, bodyGrp, headGrp, limbs } = P;
+  const ARM = K.mat(0x383b2e), ARM_D = K.mat(0x1c1e18), ARM_L = K.mat(0x534e2f);
+  const MOSS = K.mat(0x112b07), MOSS_L = K.mat(0x1e4410);
+  const CLOTH = K.mat(0x021f2f, 'cloth'), CLOTH_D = K.mat(0x05141b, 'cloth');
+  const GOLD = K.mat(0x6a4410), STRAP = K.mat(0x171104), SLIT = K.mat(0x030303);
+  const BLADE = K.mat(0x595744), BLADE_D = K.mat(0x2a2a20), CHAIN = K.mat(0x2a2214);
+  const EYE = K.mat(0xff5a22, 'glow'); EYE.emissiveIntensity = 1.6; limbs._gkEye = EYE;
+  const MIST = K.mat(0x3ad8c8, 'glow'); MIST.emissiveIntensity = 0.7;
+  const moss = (p, x, y, z, s, sy) => K.ico(p, s, (x * 7 + y * 3) % 0.2 > 0.1 ? MOSS : MOSS_L, x, y, z, 1.25, sy || 0.45, 1.1, 0, s * 0.25);
+
+  // ----- 몸통 -----
+  const T = new THREE.Group(); T.position.set(0, 1.24, 0); T.rotation.x = 0.1; bodyGrp.add(T);
+  K.ico(T, 0.4, ARM, 0, 0.04, 0.0, 1.12, 0.92, 0.82, 1, 0.01);                // 흉갑
+  K.ico(T, 0.3, ARM_D, 0, -0.3, 0.02, 1.15, 0.6, 0.85, 1);                    // 배 갑
+  K.box(T, 0.06, 0.4, 0.06, ARM_L, 0, 0.04, -0.33, 0.12, 0, 0);               // 가운데 능선
+  K.band(T, 0.36, 0.1, ARM_L, 0, 0.34, 0.0, 10);                               // 목가리개
+  K.band(T, 0.3, 0.12, ARM_D, 0, 0.42, 0.02, 10);
+  moss(T, 0.26, 0.22, -0.22, 0.09); moss(T, -0.3, -0.05, -0.18, 0.08); moss(T, 0.2, -0.32, -0.2, 0.07);
+  // 겉옷(타바드) — 앞판 · 왕관 문장 · 해진 끝
+  const tab = [[-0.2, 0], [0.2, 0], [0.22, -0.55], [0.15, -0.72], [0.1, -0.6], [0.04, -0.78], [-0.03, -0.62], [-0.1, -0.75], [-0.16, -0.6], [-0.22, -0.66]];
+  K.plate(T, tab, 0.025, CLOTH, 0, 0.05, -0.35, 0.08, 0, 0);
+  K.plate(T, [[-0.09, 0], [0.09, 0], [0.09, 0.06], [0.05, 0.03], [0.0, 0.08], [-0.05, 0.03], [-0.09, 0.06]], 0.02, GOLD, 0, -0.12, -0.375, 0.08, 0, 0);
+  K.box(T, 0.18, 0.025, 0.02, GOLD, 0, -0.14, -0.37, 0.08, 0, 0);
+  // 망토 — 어깨에서 땅까지 · 해진 끝 · 구멍
+  const cape = [[-0.38, 0], [0.38, 0], [0.42, -0.6], [0.46, -1.0], [0.32, -1.18], [0.24, -1.0], [0.14, -1.2], [0.04, -1.02], [-0.06, -1.22], [-0.16, -1.02], [-0.26, -1.16], [-0.36, -0.98], [-0.46, -1.08], [-0.42, -0.6]];
+  K.plate(T, cape, 0.03, CLOTH_D, 0, 0.36, 0.34, -0.14, 0, 0);
+  K.plate(T, [[-0.1, 0], [0.1, 0], [0.1, 0.07], [0.05, 0.035], [0.0, 0.09], [-0.05, 0.035], [-0.1, 0.07]], 0.02, GOLD, 0, -0.05, 0.42, -0.14, Math.PI, 0);
+  // 허리띠 · 녹슨 사슬 고리
+  K.band(T, 0.34, 0.08, STRAP, 0, -0.18, 0.0, 10);
+  K.box(T, 0.09, 0.08, 0.04, GOLD, 0, -0.18, -0.34, 0, 0, 0);
+  for (let i = 0; i < 6; i++) {
+    const a = -1.9 + i * 0.28, r = 0.35;
+    K.put(T, new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.012, 3, 6), CHAIN), Math.sin(a) * r, -0.26 - Math.sin(i / 5 * Math.PI) * 0.1, -Math.cos(a) * r * 0.92, 0, a, i % 2 ? Math.PI / 2 : 0);
+  }
+  // 틈새로 새는 청록 영기
+  [[0.2, 0.42, -0.1], [-0.22, 0.4, -0.06], [0.0, -0.42, -0.22]].forEach(([x, y, z]) => K.ico(T, 0.045, MIST, x, y, z, 1, 1.6, 1, 0));
+
+  // ----- 머리 — 바가지 투구 · 가로 눈 틈 · 숨구멍 · 정수리 능선 · 옆 원판 -----
+  K.cyl(headGrp, 0.3, 0.29, 0.38, ARM, 10, 0, -0.04, 0.0);
+  K.ico(headGrp, 0.29, ARM, 0, 0.14, 0.0, 1.0, 0.62, 1.0, 1);
+  K.box(headGrp, 0.42, 0.34, 0.08, ARM_L, 0, -0.04, -0.27, 0, 0, 0);          // 얼굴판
+  K.box(headGrp, 0.36, 0.055, 0.06, SLIT, 0, 0.04, -0.31, 0, 0, 0);
+  [-1, 1].forEach(sx => K.box(headGrp, 0.07, 0.04, 0.02, EYE, sx * 0.08, 0.04, -0.335, 0, 0, 0));
+  for (let i = 0; i < 4; i++) K.box(headGrp, 0.02, 0.07, 0.04, SLIT, sx4(i), -0.12, -0.31, 0, 0, 0);
+  function sx4(i) { return -0.09 + i * 0.06; }
+  K.box(headGrp, 0.05, 0.36, 0.09, ARM_L, 0, 0.12, -0.24, 0.6, 0, 0);          // 정수리 능선
+  K.cone(headGrp, 0.06, 0.16, ARM_L, 4, 0, 0.36, -0.1, -0.3, Math.PI / 4, 0);
+  [-1, 1].forEach(sx => { K.cyl(headGrp, 0.08, 0.08, 0.04, GOLD, 8, sx * 0.3, 0.0, 0.02, 0, 0, Math.PI / 2); K.ico(headGrp, 0.03, ARM_L, sx * 0.32, 0.0, 0.02, 1, 1, 1, 0); });
+  K.band(headGrp, 0.31, 0.05, ARM_D, 0, -0.22, 0.0, 10);
+  moss(headGrp, 0.12, 0.24, -0.06, 0.08); moss(headGrp, -0.16, 0.2, 0.08, 0.07);
+
+  // ----- 팔 -----
+  const armMake = (A, sx) => {
+    // 둥근 견갑 + 아래로 겹친 판 둘 · 리벳
+    K.ico(A.armGrp, 0.25, ARM, sx * 0.03, 0.02, 0, 1.15, 0.9, 1.1, 1);
+    K.put(A.armGrp, new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.28, 0.1, 10, 1, true), ARM_L), sx * 0.03, -0.14, 0);
+    K.put(A.armGrp, new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.25, 0.09, 10, 1, true), ARM), sx * 0.03, -0.22, 0);
+    K.cyl(A.armGrp, 0.06, 0.06, 0.03, GOLD, 8, sx * 0.2, 0.06, -0.12, Math.PI / 2 - 0.4, 0, -sx * 0.6);
+    moss(A.armGrp, sx * 0.1, 0.18, -0.08, 0.1, 0.4);
+    K.cyl(A.armGrp, 0.13, 0.12, 0.34, ARM_D, 8, 0, -0.3, 0);
+    K.ico(A.elbowGrp, 0.13, ARM_L, 0, 0, 0.02, 1, 1, 1, 0);
+    K.cyl(A.elbowGrp, 0.13, 0.11, 0.34, ARM, 8, 0, -0.22, 0);
+    K.band(A.elbowGrp, 0.14, 0.06, ARM_L, 0, -0.36, 0, 8);
+    K.box(A.handGrp, 0.2, 0.16, 0.2, ARM_D, 0, -0.02, -0.02, 0, 0, 0);          // 건틀릿
+    for (let k = -1; k <= 1; k++) K.box(A.handGrp, 0.05, 0.06, 0.08, ARM_L, k * 0.06, -0.06, -0.12, 0, 0, 0);
+    K.ico(A.elbowGrp, 0.04, MIST, sx * 0.06, 0.02, -0.08, 1, 1.4, 1, 0);
+  };
+  armMake(limbs._gkArmR, 1); armMake(limbs._gkArmL, -1);
+  // ----- 다리 -----
+  const legMake = (Lg, sx) => {
+    K.cyl(Lg.legGrp, 0.16, 0.14, 0.34, ARM_D, 8, 0, -0.17, 0);
+    K.put(Lg.legGrp, new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.19, 0.12, 9, 1, true), ARM), 0, -0.06, 0);
+    K.ico(Lg.kneeGrp, 0.13, ARM_L, 0, 0, -0.06, 1.1, 1, 0.9, 1);
+    K.cyl(Lg.kneeGrp, 0.14, 0.12, 0.34, ARM, 8, 0, -0.2, 0);
+    K.box(Lg.kneeGrp, 0.25, 0.14, 0.36, ARM_D, 0, -0.43, -0.07, 0, 0, 0);       // 쇠신
+    K.box(Lg.kneeGrp, 0.21, 0.1, 0.14, ARM_L, 0, -0.42, -0.25, 0.3, 0, 0);
+    moss(Lg.kneeGrp, sx * 0.04, -0.36, -0.12, 0.07);
+  };
+  legMake(limbs._gkLegR, 1); legMake(limbs._gkLegL, -1);
+
+  // ----- 대검 — 예전 칼 자리·각도 그대로(손 그룹 −0.12 · 회전 −π/2, π/2) -----
+  const S = new THREE.Group(); S.position.set(0, -0.12, -0.02); S.rotation.set(-Math.PI / 2, Math.PI / 2, 0); limbs._gkArmR.handGrp.add(S);
+  K.plate(S, [[-0.1, 0.06], [0.1, 0.06], [0.1, 1.06], [0.0, 1.32], [-0.1, 1.06]], 0.04, BLADE, 0, 0, 0);
+  K.box(S, 0.04, 0.9, 0.05, BLADE_D, 0, 0.55, 0, 0, 0, 0);                      // 홈
+  [[0.04, 0.42, 0.07], [-0.03, 0.78, 0.06], [0.03, 1.0, 0.05]].forEach(([x, y, r]) => K.ico(S, r, MOSS, x, y, -0.02, 1, 1.5, 0.35, 0));
+  K.put(S, new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.03, 4, 10, Math.PI), ARM_D), 0, -0.13, 0, 0, 0, 0);   // 위로 휜 코등이
+  [-1, 1].forEach(sx => K.ico(S, 0.045, GOLD, sx * 0.22, -0.13, 0, 1, 1, 1, 0));
+  K.cyl(S, 0.04, 0.04, 0.24, STRAP, 6, 0, -0.1, 0);
+  K.ico(S, 0.06, GOLD, 0, -0.25, 0, 1, 1, 1, 0);
+}
+
+// ---------- 골렘 ----------
+// 예전 리그 그대로(정면 = +z — 머리가 +z, 등 약점이 −z): 상체 (0, 1.18) · 머리는 상체 자식 · 팔 (±0.74, 1.46) · 팔꿈치 −0.66 ·
+// 다리 (±0.32, 0.92) · 무릎 −0.54. 발광 재질은 예전 것(limbs._glCoreMat · _glWeakMat)을 그대로 쓴다 — 게임이 세기를 바꾼다.
+function a2Golem(P) {
+  const { K, headGrp, limbs } = P;
+  // 바위는 'rock' 재질(각진 면 그대로 · 모서리 하이라이트·반사 없음) — 각진 재질이면 면마다 흰 모서리 선이 그어져 철사 그물처럼 보였다(예전 골렘도 같다)
+  const ROCK = K.mat(0x313028, 'rock'), ROCK_D = K.mat(0x181a18, 'rock'), ROCK_L = K.mat(0x4e4334, 'rock'), MOSS = K.mat(0x0e2b01, 'rock'), MOSS_D = K.mat(0x0c1b05, 'rock');
+  const CORE = limbs._glCoreMat, WEAK = limbs._glWeakMat;
+  const T = limbs.torsoGrp;
+  const rock = (p, r, m, x, y, z, sx, sy, sz) => K.ico(p, r, m, x, y, z, sx, sy, sz, 1, r * 0.13);
+  // 이끼 — 바위 윗면의 납작한 방석 + 흘러내린 가닥
+  const moss = (p, r, x, y, z, n) => {
+    K.ico(p, r, MOSS, x, y, z, 1.25, 0.32, 1.15, 0, r * 0.2);
+    for (let i = 0; i < (n || 3); i++) { const a = i * 2.1 + x * 5; K.cone(p, r * 0.22, r * 0.9, i % 2 ? MOSS : MOSS_D, 4, x + Math.sin(a) * r * 0.95, y - r * 0.35, z + Math.cos(a) * r * 0.9, Math.PI, 0, 0); }
+  };
+  const crack = (p, a, b) => K.seg(p, a, b, 0.028, 0.02, CORE, 4);
+
+  // ----- 상체 — 넓은 가슴 바위 · 잘록한 허리 · 골반 -----
+  rock(T, 0.52, ROCK, 0, 0.14, 0.0, 1.12, 0.95, 0.92);
+  rock(T, 0.26, ROCK_L, 0.24, 0.02, 0.36, 1.1, 1.0, 0.8);
+  rock(T, 0.26, ROCK, -0.24, 0.04, 0.34, 1.05, 1.0, 0.8);
+  rock(T, 0.26, ROCK_D, 0, -0.36, 0.02, 1.2, 0.8, 1.0);
+  rock(T, 0.32, ROCK, 0, -0.68, 0.0, 1.35, 0.7, 1.0);
+  crack(T, [0, 0.14, 0.5], [0.04, -0.14, 0.44]); crack(T, [0.04, -0.14, 0.44], [-0.04, -0.3, 0.26]);
+  crack(T, [-0.3, -0.62, 0.3], [0.3, -0.62, 0.3]); crack(T, [-0.44, 0.14, 0.26], [-0.36, -0.12, 0.3]);
+  moss(T, 0.3, 0.1, 0.6, 0.0, 4); moss(T, 0.18, -0.2, 0.26, 0.44, 3);
+  // 등 — 바위 고리 한가운데 박힌 푸른 보석(약점)
+  const gem = K.put(T, new THREE.Mesh(new THREE.OctahedronGeometry(0.28, 0), WEAK), 0, 0.22, -0.56);
+  gem.scale.set(0.95, 1.35, 0.6);
+  [[0.34, 0.26], [-0.34, 0.26], [0, 0.66], [0, -0.18], [0.26, -0.02], [-0.26, -0.02]].forEach(([x, y], i) => rock(T, 0.17, i % 2 ? ROCK_D : ROCK, x, y, -0.5, 1, 1, 0.8));
+  crack(T, [-0.3, 0.5, -0.46], [-0.42, 0.0, -0.4]); crack(T, [0.3, 0.5, -0.46], [0.44, 0.04, -0.4]);
+
+  // ----- 머리 — 어깨 사이에 파묻힌 작은 돌 · 호박색 눈 -----
+  headGrp.position.set(0, 0.46, 0.46);
+  rock(headGrp, 0.21, ROCK_D, 0, 0, 0, 1.1, 0.9, 1.0);
+  K.box(headGrp, 0.3, 0.05, 0.06, ROCK_D, 0, 0.07, 0.17, 0, 0, 0);
+  [-1, 1].forEach(sx => K.ico(headGrp, 0.04, CORE, sx * 0.08, 0.02, 0.18, 1.3, 0.8, 0.6, 0));
+  moss(headGrp, 0.12, 0, 0.17, -0.02, 2);
+
+  // ----- 팔 — 큰 바위 어깨 · 굵은 팔 · 바위 주먹 -----
+  // 팔 그룹 자리(±0.74)는 게임이 각성 때 보간하는 값이라 못 옮긴다 — 부품을 바깥으로 0.14 내어 몸통과 띄운다
+  const arm = (A, E, sx) => {
+    const o = sx * 0.14;
+    rock(A, 0.42, ROCK, o + sx * 0.04, 0.06, 0, 1.12, 0.95, 1.05);
+    moss(A, 0.28, o, 0.38, 0.02, 4);
+    rock(A, 0.24, ROCK_D, o, -0.42, 0, 1.0, 1.15, 1.0);
+    crack(A, [o + sx * 0.2, -0.2, 0.18], [o + sx * 0.16, -0.5, 0.18]);
+    rock(E, 0.2, ROCK_L, o, 0, 0, 1, 1, 1);
+    rock(E, 0.25, ROCK, o, -0.32, 0, 1.0, 1.1, 1.0);
+    rock(E, 0.38, ROCK, o, -0.7, 0.02, 1.12, 1.0, 1.12);
+    for (let k = -1; k <= 1; k++) rock(E, 0.11, ROCK_L, o + k * 0.15, -0.84, 0.28, 1, 1, 1);
+    crack(E, [o - 0.2, -0.58, 0.26], [o + 0.2, -0.6, 0.28]);
+  };
+  arm(limbs.armR, limbs._glElbowR, 1); arm(limbs.armL, limbs._glElbowL, -1);
+  // ----- 다리 — 짧고 굵다 -----
+  const leg = (Lg, Kn, sx) => {
+    rock(Lg, 0.32, ROCK_D, 0, -0.26, 0, 1.0, 1.05, 1.0);
+    rock(Kn, 0.22, ROCK_L, 0, 0, 0.06, 1, 1, 1);
+    rock(Kn, 0.28, ROCK, 0, -0.3, 0, 1.0, 1.05, 1.0);
+    rock(Kn, 0.28, ROCK_D, 0, -0.56, 0.1, 1.25, 0.65, 1.45);
+    for (let k = -1; k <= 1; k++) rock(Kn, 0.09, ROCK, k * 0.12, -0.6, 0.38, 1, 0.8, 1);
+    moss(Kn, 0.14, sx * 0.06, -0.12, 0.16, 2);
+  };
+  leg(limbs.legR, limbs._glKneeR, 1); leg(limbs.legL, limbs._glKneeL, -1);
+}
+
+// ---------- 혼령 ----------
+// 예전 리그: bodyGrp y 0.7(떠 있음) · 머리 (0, 1.15, −0.08) · 팔은 bodyGrp 자식. 공격 영체(limbs.spectral)는 그대로 둔다.
+function a2Wraith(P) {
+  const { K, bodyGrp, headGrp, limbs } = P;
+  const HOOD = K.mat(0x0f1535, 'cloth'), HOOD_D = K.mat(0x080a1c, 'cloth');
+  const BONE = K.mat(0x676647, 'skin'), BONE_D = K.mat(0x3e4532, 'skin'), SOCK = K.mat(0x040306);
+  const EYE = K.mat(0xff7a22, 'glow'); EYE.emissiveIntensity = 1.6;
+  // 영기(반투명 · 합치지 않는다 — 투명 재질은 따로 정렬된다)
+  const ecto = (op) => { const m = new THREE.MeshStandardMaterial({ color: 0x009cc0, emissive: 0x0a6a70, emissiveIntensity: 0.35, roughness: 0.8, flatShading: true, transparent: op < 1, opacity: op, depthWrite: op >= 1 }); return m; };
+  const ECTO = ecto(0.82), ECTO_F = ecto(0.5);
+
+  // 몸통 — 반투명 영기 가슴 · 그 앞에 갈비뼈와 등뼈
+  bodyGrp.position.y = 0.7;
+  const T = new THREE.Group(); T.position.set(0, 0.3, 0); T.rotation.x = 0.15; bodyGrp.add(T);
+  K.ico(T, 0.24, ECTO, 0, 0.0, 0.02, 1.0, 1.05, 0.8, 1);
+  for (let i = 0; i < 4; i++) K.put(T, new THREE.Mesh(new THREE.TorusGeometry(0.18 - i * 0.02, 0.018, 3, 9, Math.PI * 1.15), BONE), 0, 0.1 - i * 0.075, -0.02, -Math.PI / 2 + 0.2, 0, -0.07 * Math.PI);
+  K.seg(T, [0, 0.2, 0.1], [0, -0.3, 0.08], 0.026, 0.02, BONE_D, 5);
+  // 다리 대신 꼬리진 안개 — 아래로 가늘어지며 휘는 가닥 셋
+  const tail = (x, z, len, ph, m) => {
+    let p = [x, -0.12, z];
+    for (let i = 0; i < 5; i++) {
+      const t = (i + 1) / 5, q = [x + Math.sin(ph + t * 2.6) * 0.12 * t, -0.12 - len * t, z + 0.08 * t + Math.cos(ph + t * 2) * 0.05];
+      K.seg(T, p, q, 0.17 * (1 - i / 5) + 0.02, 0.17 * (1 - (i + 1) / 5) + 0.012, m, 5); p = q;
+    }
+  };
+  tail(0, 0.02, 0.62, 0, ECTO); tail(-0.12, 0.05, 0.5, 1.7, ECTO_F); tail(0.13, 0.05, 0.54, 3.4, ECTO_F);
+  // 해진 수의 — 두건 아래로 어깨를 덮고 등·옆으로 늘어진다
+  const rag = [[-0.3, 0], [0.3, 0], [0.34, -0.3], [0.26, -0.5], [0.18, -0.36], [0.1, -0.58], [0.02, -0.4], [-0.08, -0.6], [-0.15, -0.38], [-0.24, -0.52], [-0.34, -0.3]];
+  K.plate(T, rag, 0.025, HOOD, 0, 0.26, 0.18, -0.25, 0, 0);
+  [-1, 1].forEach(sx => {
+    K.plate(T, K.mir([[0, 0], [0.16, -0.02], [0.2, -0.3], [0.13, -0.42], [0.08, -0.3], [0.02, -0.4], [-0.02, -0.2]], sx), 0.02, HOOD_D, sx * 0.2, 0.24, -0.02, 0.1, sx * 0.4, sx * 0.25);
+    K.ico(T, 0.11, HOOD, sx * 0.2, 0.22, 0.02, 1.1, 0.6, 1.0, 0);
+  });
+
+  // 머리 — 두건 속 해골 · 주황 눈
+  headGrp.position.set(0, 1.3, -0.06); headGrp.rotation.x = 0.15;
+  K.ico(headGrp, 0.2, BONE, 0, 0.02, 0.02, 0.95, 1.0, 1.0, 1);
+  K.ico(headGrp, 0.13, BONE, 0, -0.1, -0.1, 0.9, 0.7, 0.85, 1);
+  [-1, 1].forEach(sx => { K.box(headGrp, 0.09, 0.08, 0.05, SOCK, sx * 0.075, 0.0, -0.17, 0, 0, 0); K.ico(headGrp, 0.033, EYE, sx * 0.075, 0.0, -0.195, 1, 1, 0.6, 0); });
+  K.box(headGrp, 0.04, 0.04, 0.03, SOCK, 0, -0.07, -0.2, 0, 0, 0);
+  for (let i = 0; i < 5; i++) K.box(headGrp, 0.024, 0.04, 0.02, BONE, -0.05 + i * 0.025, -0.15, -0.19, 0, 0, 0);
+  // 두건 — 얼굴 앞이 트인 껍질 + 뒤로 꺾인 뾰족한 끝
+  K.put(headGrp, new THREE.Mesh(new THREE.SphereGeometry(0.28, 9, 7, Math.PI * 1.5 + 0.8, Math.PI * 2 - 1.6, 0, Math.PI * 0.66), HOOD), 0, 0.02, 0.04).scale.set(1.0, 1.1, 1.05);
+  K.seg(headGrp, [0, 0.24, 0.12], [0, 0.36, 0.3], 0.1, 0.01, HOOD, 5);
+
+  // 팔 — 앞으로 뻗은 뼈 팔 · 갈고리 손가락
+  const arm = (A, sx) => {
+    A.position.set(sx * 0.27, 0.5, -0.04);
+    K.ico(A, 0.05, BONE_D, 0, 0, 0, 1, 1, 1, 0);
+    K.seg(A, [0, 0, 0], [0, -0.3, -0.02], 0.028, 0.022, BONE, 4);
+    K.ico(A, 0.035, BONE_D, 0, -0.3, -0.02, 1, 1, 1, 0);
+    K.seg(A, [0, -0.3, -0.02], [0, -0.32, -0.3], 0.022, 0.018, BONE, 4);
+    K.ico(A, 0.045, BONE, 0, -0.32, -0.34, 1.1, 0.6, 1.0, 0);
+    for (let k = 0; k < 4; k++) {
+      const x = (k - 1.5) * 0.032;
+      K.seg(A, [x, -0.32, -0.37], [x * 1.4, -0.3, -0.47], 0.011, 0.009, BONE, 3);
+      K.seg(A, [x * 1.4, -0.3, -0.47], [x * 1.5, -0.37, -0.53], 0.009, 0.002, BONE, 3);
+    }
+    K.plate(A, K.mir([[-0.06, 0], [0.06, 0], [0.07, -0.18], [0.02, -0.24], [-0.03, -0.17], [-0.07, -0.2]], sx), 0.02, HOOD_D, 0, -0.04, 0.02, 0, 0, 0);
+  };
+  arm(limbs.armR, 1); arm(limbs.armL, -1);
+}
+
+// ---------- 궁중 마법사 ----------
+// 예전 리그: bodyGrp(바닥 0) · 상체 (0, 1.12) · 머리 (0, 1.54, −0.06) · 팔 (±0.36, 1.24, 0.06) · 팔꿈치 −0.38 · 손 −0.34 · 오른손 지팡이 (0, 0.3).
+// 지팡이 보석·마법 조각·그림자 구슬·눈빛 광원과 눈 재질(_cmEyeMat)은 예전 것 그대로 — _cmUpdate 가 계속 움직인다.
+function a2CourtMage(P) {
+  const { K, bodyGrp, headGrp, limbs } = P;
+  const ROBE = K.mat(0x0f113c, 'cloth'), ROBE_D = K.mat(0x080818, 'cloth'), PURP = K.mat(0x170aaf, 'cloth'), TRIM = K.mat(0x423f9c, 'cloth');
+  const MASK = K.mat(0x5e5a4e), GLOVE = K.mat(0x6e6858), GOLD = K.mat(0x8a5410), WOOD = K.mat(0x161009), WOOD_L = K.mat(0x2c1e10);
+  const FROST = K.mat(0x4a5a6a), SOCK = K.mat(0x050308);
+  const EYE = limbs._cmEyeMat;
+  const torso = new THREE.Group(); torso.position.set(0, 1.12, 0); torso.rotation.x = 0.1; bodyGrp.add(torso);
+
+  // ----- 로브 치마 — 바닥까지 퍼지는 통 · 앞 보라 안감 · 해진 단 · 서리 -----
+  K.put(bodyGrp, new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.56, 1.0, 12, 1, true), ROBE), 0, 0.52, 0.02);
+  K.put(bodyGrp, new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.52, 0.98, 10, 1, true, Math.PI * 1.5 - 0.5, 1.0), PURP), 0, 0.52, 0.0).scale.set(1, 1, 0.98);
+  for (let i = 0; i < 16; i++) {
+    const a = i / 16 * Math.PI * 2, r = 0.56;
+    K.cone(bodyGrp, 0.09, 0.07 + (i % 3) * 0.03, i % 4 === 0 ? FROST : ROBE_D, 3, Math.sin(a) * r, 0.05, Math.cos(a) * r, Math.PI, a, 0);
+  }
+  // 앞 띠 — 연보라 테 · 십자 문장 · 끝 뾰족
+  K.plate(bodyGrp, [[-0.11, 0], [0.11, 0], [0.11, -0.72], [0.0, -0.84], [-0.11, -0.72]], 0.02, TRIM, 0, 1.0, -0.39, 0.24, 0, 0);
+  K.plate(bodyGrp, [[-0.08, 0], [0.08, 0], [0.08, -0.66], [0.0, -0.76], [-0.08, -0.66]], 0.02, PURP, 0, 0.98, -0.405, 0.24, 0, 0);
+  K.box(bodyGrp, 0.03, 0.2, 0.02, TRIM, 0, 0.62, -0.5, 0.24, 0, 0); K.box(bodyGrp, 0.12, 0.03, 0.02, TRIM, 0, 0.66, -0.49, 0.24, 0, 0);
+  // ----- 상체 · 높은 깃 · 어깨 털 테 -----
+  K.cyl(torso, 0.34, 0.27, 0.5, ROBE, 10, 0, -0.14, 0);
+  K.ico(torso, 0.3, ROBE, 0, 0.04, 0.0, 1.1, 0.9, 0.9, 1);
+  [-1, 1].forEach(sx => K.ico(torso, 0.17, TRIM, sx * 0.27, 0.16, 0.02, 1.2, 0.7, 1.1, 0, 0.02));
+  K.put(torso, new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.2, 0.32, 10, 1, true, Math.PI * 0.2, Math.PI * 1.6), ROBE_D), 0, 0.42, 0.04);
+  K.put(torso, new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.21, 0.04, 10, 1, true, Math.PI * 0.2, Math.PI * 1.6), TRIM), 0, 0.58, 0.04);
+  K.cone(torso, 0.06, 0.12, GOLD, 4, 0, 0.18, -0.3, -0.2, Math.PI / 4, 0);                  // 가슴 보석 받침
+  K.ico(torso, 0.04, EYE, 0, 0.18, -0.34, 1, 1.3, 0.6, 0);
+  // 사슬 허리띠 · 사슬에 묶인 책
+  K.band(torso, 0.3, 0.05, GOLD, 0, -0.32, 0, 10);
+  for (let i = 0; i < 5; i++) K.put(torso, new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.01, 3, 6), GOLD), 0.18 + i * 0.03, -0.38 - i * 0.05, -0.2, 0, 0.5, i % 2 ? Math.PI / 2 : 0);
+  const book = new THREE.Group(); book.position.set(0.32, -0.62, -0.12); book.rotation.set(0.1, -0.5, 0.1); torso.add(book);
+  K.box(book, 0.2, 0.26, 0.07, WOOD_L, 0, 0, 0, 0, 0, 0);
+  K.box(book, 0.16, 0.22, 0.072, MASK, 0.0, 0, 0.004, 0, 0, 0);
+  K.box(book, 0.21, 0.27, 0.06, GOLD, 0, 0, 0, 0, 0, 0).scale.set(1, 1, 0.6);
+  K.box(book, 0.2, 0.26, 0.075, WOOD_L, 0, 0, -0.003, 0, 0, 0);
+  K.ico(book, 0.03, EYE, 0, 0, -0.045, 1, 1.3, 0.6, 0);
+
+  // ----- 머리 — 흰 가면 · 보라 눈 틈 · 뾰족 두건 -----
+  K.ico(headGrp, 0.2, SOCK, 0, 0, 0.02, 1, 1.05, 1, 1);
+  const mask = K.ico(headGrp, 0.17, MASK, 0, -0.03, -0.1, 0.95, 1.18, 0.62, 1);
+  K.cone(headGrp, 0.06, 0.16, MASK, 4, 0, -0.22, -0.12, Math.PI, Math.PI / 4, 0);         // 뾰족한 턱
+  [-1, 1].forEach(sx => { K.box(headGrp, 0.09, 0.045, 0.02, SOCK, sx * 0.065, 0.02, -0.196, 0, sx * 0.25, sx * 0.3); K.box(headGrp, 0.06, 0.022, 0.02, EYE, sx * 0.065, 0.02, -0.205, 0, sx * 0.25, sx * 0.3); });
+  K.box(headGrp, 0.012, 0.18, 0.02, TRIM, 0, -0.02, -0.205, 0, 0, 0);
+  K.put(headGrp, new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 7, Math.PI * 1.5 + 0.7, Math.PI * 2 - 1.4, 0, Math.PI * 0.7), ROBE), 0, 0.04, 0.04).scale.set(1, 1.15, 1.08);
+  K.seg(headGrp, [0, 0.26, 0.06], [0, 0.46, 0.28], 0.13, 0.015, ROBE, 6);                 // 두건 끝(뒤로 꺾임)
+  K.ico(headGrp, 0.03, GOLD, 0, 0.46, 0.29, 1, 1, 1, 0);
+  K.put(headGrp, new THREE.Mesh(new THREE.TorusGeometry(0.235, 0.03, 3, 12, Math.PI * 1.25), TRIM), 0, 0.02, -0.14, 0.15, 0, -Math.PI * 0.125).scale.set(0.9, 1.2, 1);
+  K.cone(headGrp, 0.04, 0.08, GOLD, 4, 0, 0.29, -0.16, 0.4, Math.PI / 4, 0);
+  K.ico(headGrp, 0.025, EYE, 0, 0.26, -0.2, 1, 1.3, 0.6, 0);
+
+  // ----- 팔 — 넓은 종 소매 · 흰 장갑 -----
+  const arm = (A, E, H, sx) => {
+    K.cyl(A, 0.1, 0.12, 0.38, ROBE, 8, 0, -0.18, 0);
+    K.put(E, new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.17, 0.34, 9, 1, true), ROBE), 0, -0.15, 0);
+    K.put(E, new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.18, 0.05, 9, 1, true), TRIM), 0, -0.32, 0);
+    K.ico(H, 0.06, GLOVE, 0, 0, 0, 1, 0.9, 0.8, 0);
+    for (let k = 0; k < 4; k++) K.seg(H, [(k - 1.5) * 0.025, -0.03, 0], [(k - 1.5) * 0.03, -0.11, -0.03], 0.014, 0.011, GLOVE, 4);
+  };
+  arm(limbs.armR, limbs._cmElbowR, limbs._cmHandR, 1); arm(limbs.armL, limbs._cmElbowL, limbs._cmHandL, -1);
+  // ----- 지팡이 — 마디진 나무 · 위는 초승달 갈고리가 보석을 감싼다(보석 자리 y 1.0 그대로) -----
+  const S = limbs._cmStaff;
+  // 지팡이를 똑바로 세운다(사용자 지시) — 예전엔 팔꿈치가 1.55 굽어 있어 손 축(+y)이 앞을 향해 지팡이가 앞으로 누웠다.
+  // 팔꿈치 각도만큼 되돌리고, 손 기준 '월드 위'(0, cosθ, −sinθ) 쪽으로 0.2 올려 끝이 바닥에 닿게 한다. 보석·마법 조각은 지팡이 자식이라 같이 선다
+  { const th = limbs._cmElbowR.rotation.x, up = 0.2; S.rotation.set(-th, 0, -limbs.armR.rotation.z); S.position.set(0, up * Math.cos(th), -up * Math.sin(th) - 0.04); }
+  K.cyl(S, 0.035, 0.03, 1.72, WOOD, 6, 0, -0.06, 0);
+  [0.5, 0.1, -0.35, -0.7].forEach(y => K.band(S, 0.045, 0.05, GOLD, 0, y, 0, 6));
+  K.cone(S, 0.05, 0.12, GOLD, 4, 0, -0.98, 0, Math.PI, 0, 0);
+  K.put(S, new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.035, 4, 12, Math.PI * 1.45), WOOD_L), 0, 1.02, 0, 0, Math.PI / 2, -Math.PI * 0.4);
+  K.cone(S, 0.035, 0.12, WOOD_L, 4, 0, 1.24, -0.06, -0.6, 0, 0);
+  K.cyl(S, 0.06, 0.04, 0.1, GOLD, 6, 0, 0.82, 0);
+}
+
+// ---------- 40층 시종장의 망령 ----------
+// 예전 리그: 상체 (0, 1.05) · 머리 (0, 1.62, −0.04) · 팔 (±0.26, 1.28) · 팔꿈치 −0.4 · 손 −0.4.
+// 촛대(오른손) · 머리 옆 영혼불 · 아래 안개는 예전 것 그대로(_swUpdate 가 움직이고, 2페이즈에 촛불이 커진다).
+function a2ServantWraith(P) {
+  const { K, bodyGrp, headGrp, limbs } = P;
+  const COAT = K.mat(0x11121b, 'cloth'), COAT_L = K.mat(0x171a28, 'cloth'), VEST = K.mat(0x0c0a10);
+  const SHIRT = K.mat(0x8b7961, 'cloth'), GOLD = K.mat(0x311c08), GOLD_L = K.mat(0x6a4410);
+  const FACE = K.mat(0x2a5a58, 'skin'), FACE_D = K.mat(0x0e2a2a, 'skin'), HAIR = K.mat(0xa8b4c0), SOCK = K.mat(0x020606);
+  const FIRE = K.mat(0x3affe0, 'glow'); FIRE.emissiveIntensity = 1.6;
+  const MOSS = K.mat(0x112b07);
+  const T = new THREE.Group(); T.position.set(0, 1.05, 0); T.rotation.x = 0.06; bodyGrp.add(T);
+  // ----- 상체 — 연미복 · 조끼 · 주름 장식 · 회중시계 -----
+  K.cyl(T, 0.27, 0.22, 0.5, COAT, 10, 0, 0.0, 0);
+  K.ico(T, 0.26, COAT, 0, 0.18, 0.0, 1.15, 0.7, 0.9, 1);
+  K.box(T, 0.22, 0.42, 0.06, VEST, 0, -0.02, -0.22, 0.04, 0, 0);
+  for (let i = 0; i < 4; i++) K.ico(T, 0.018, GOLD_L, 0, 0.1 - i * 0.08, -0.255, 1, 1, 0.6, 0);
+  [-1, 1].forEach(sx => {   // 깃(라펠)
+    K.plate(T, K.mir([[0, 0], [0.13, -0.02], [0.08, -0.3], [0.02, -0.34]], sx), 0.025, COAT_L, sx * 0.06, 0.26, -0.22, 0.12, 0, 0);
+  });
+  // 주름 장식(크라바트) — 겹친 흰 주름
+  for (let i = 0; i < 3; i++) K.cone(T, 0.08 - i * 0.012, 0.12, SHIRT, 5, 0, 0.24 - i * 0.07, -0.25 - i * 0.008, Math.PI, 0, 0);
+  K.band(T, 0.11, 0.07, SHIRT, 0, 0.32, -0.04, 8);
+  // 회중시계 사슬 · 시계
+  K.seg(T, [-0.1, 0.0, -0.26], [0.0, -0.08, -0.27], 0.008, 0.008, GOLD_L, 3); K.seg(T, [0.0, -0.08, -0.27], [0.1, -0.02, -0.26], 0.008, 0.008, GOLD_L, 3);
+  K.cyl(T, 0.04, 0.04, 0.015, GOLD_L, 8, 0.11, -0.06, -0.27, Math.PI / 2, 0, 0);
+  K.cyl(T, 0.032, 0.032, 0.017, SHIRT, 8, 0.11, -0.06, -0.272, Math.PI / 2, 0, 0);
+  // 어깨 — 이끼 묻은 견장
+  [-1, 1].forEach(sx => { K.ico(T, 0.11, COAT_L, sx * 0.25, 0.2, 0.0, 1.1, 0.6, 1.0, 0); K.ico(T, 0.04, MOSS, sx * 0.25, 0.26, -0.03, 1.4, 0.5, 1.2, 0); });
+  // 연미복 자락 — 앞은 짧게, 뒤는 두 갈래로 길게 갈라져 안개로 닳아 든다
+  const tailPts = [[-0.12, 0], [0.12, 0], [0.13, -0.5], [0.09, -0.72], [0.05, -0.6], [0.0, -0.8], [-0.05, -0.62], [-0.1, -0.74], [-0.13, -0.52]];
+  [-1, 1].forEach(sx => K.plate(T, tailPts, 0.025, COAT, sx * 0.12, -0.2, 0.2, -0.12, 0, sx * 0.04));
+  [-1, 1].forEach(sx => K.plate(T, K.mir([[0, 0], [0.12, 0], [0.13, -0.32], [0.07, -0.44], [0.02, -0.36]], sx), 0.025, COAT, sx * 0.1, -0.2, -0.16, 0.08, 0, 0));
+  [-1, 1].forEach(sx => K.plate(T, [[-0.1, 0], [0.1, 0], [0.11, -0.4], [0.05, -0.56], [0.0, -0.44], [-0.06, -0.58], [-0.1, -0.42]], 0.025, COAT_L, sx * 0.26, -0.2, 0.02, 0, sx * Math.PI / 2, 0));
+  K.box(T, 0.06, 0.05, 0.03, GOLD_L, 0, -0.18, 0.26, 0, 0, 0);
+
+  // ----- 머리 — 청록 해골 얼굴 · 뒤로 빗어 넘긴 흰 머리 · 콧수염 · 청록 불 눈 -----
+  K.ico(headGrp, 0.22, FACE, 0, 0.02, 0.0, 0.95, 1.05, 1.0, 1);
+  K.ico(headGrp, 0.14, FACE, 0, -0.12, -0.08, 0.9, 0.8, 0.9, 1);
+  [-1, 1].forEach(sx => {
+    K.box(headGrp, 0.09, 0.08, 0.05, SOCK, sx * 0.075, 0.02, -0.185, 0, sx * 0.15, 0);
+    K.ico(headGrp, 0.03, FIRE, sx * 0.075, 0.02, -0.21, 1, 1.2, 0.6, 0);
+    K.cone(headGrp, 0.02, 0.07, FIRE, 4, sx * 0.075, 0.08, -0.205, 0, 0, sx * -0.3);
+    // 콧수염 — 양옆으로 말려 올라간다
+    K.seg(headGrp, [sx * 0.01, -0.1, -0.22], [sx * 0.08, -0.12, -0.2], 0.022, 0.014, HAIR, 4);
+    K.seg(headGrp, [sx * 0.08, -0.12, -0.2], [sx * 0.12, -0.08, -0.18], 0.014, 0.004, HAIR, 4);
+  });
+  K.box(headGrp, 0.035, 0.04, 0.03, SOCK, 0, -0.05, -0.215, 0, 0, 0);
+  K.box(headGrp, 0.13, 0.05, 0.03, SOCK, 0, -0.17, -0.185, 0, 0, 0);
+  for (let i = 0; i < 5; i++) K.box(headGrp, 0.02, 0.035, 0.02, SHIRT, -0.044 + i * 0.022, -0.165, -0.2, 0, 0, 0);
+  // 흰 머리 — 정수리와 뒤통수를 덮고 뒤·옆으로 쓸려 내려간 부스스한 덩어리(위로 세우면 고슴도치가 된다)
+  K.ico(headGrp, 0.23, HAIR, 0, 0.12, 0.08, 1.12, 0.8, 1.15, 1, 0.025);
+  for (let i = 0; i < 7; i++) {
+    const a = -1.2 + i * 0.4, x = Math.sin(a) * 0.2, z = 0.12 + Math.cos(a) * 0.1;
+    K.seg(headGrp, [x * 0.8, 0.14, z - 0.04], [x * 1.3, -0.02 - Math.abs(x) * 0.2, z + 0.12], 0.075, 0.02, HAIR, 5);
+  }
+  [-1, 1].forEach(sx => { K.seg(headGrp, [sx * 0.17, 0.1, -0.06], [sx * 0.28, -0.04, 0.04], 0.06, 0.018, HAIR, 5); });
+  K.seg(headGrp, [0.02, 0.22, -0.12], [0.1, 0.26, -0.2], 0.05, 0.012, HAIR, 4);   // 이마 위 앞머리 한 가닥
+  [-1, 1].forEach(sx => K.ico(headGrp, 0.05, FACE_D, sx * 0.12, -0.06, -0.16, 1, 0.7, 0.8, 0));   // 광대뼈 그늘
+  // ----- 팔 — 연미복 소매 · 흰 커프스 · 흰 장갑 -----
+  const arm = (A, E, H, sx) => {
+    K.ico(A, 0.08, COAT, 0, 0, 0, 1, 1, 1, 0);
+    K.cyl(A, 0.075, 0.062, 0.4, COAT, 7, 0, -0.2, 0);
+    K.ico(E, 0.06, COAT_L, 0, 0, 0, 1, 1, 1, 0);
+    K.cyl(E, 0.062, 0.07, 0.34, COAT, 7, 0, -0.18, 0);
+    K.put(E, new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.08, 0.06, 7, 1, true), SHIRT), 0, -0.36, 0);
+    if (H) {
+      K.ico(H, 0.06, SHIRT, 0, 0, 0, 1, 0.9, 0.8, 0);
+      for (let k = 0; k < 4; k++) K.seg(H, [(k - 1.5) * 0.026, -0.03, 0], [(k - 1.5) * 0.03, -0.12, -0.04], 0.015, 0.012, SHIRT, 4);
+    }
+  };
+  const hR = limbs._swCandle.parent, hL = limbs._swElbowL.children.find(c => c.isGroup);
+  arm(limbs.armR, limbs._swElbowR, hR, 1); arm(limbs.armL, limbs._swElbowL, hL, -1);
+}
+
+// ---------- 50층 흑기사 ----------
+// 원화(refs/몬스터/2막/darkknight.jpg)대로 새로 — 매끈한 곡면 판(초타원체)에 금 테를 두른다. 각진 판으로 지은 첫 판은 투박했다.
+// 예전 리그: 다리 (±0.24, 0.82) · 무릎 −0.38 · 상체 (0, 1.24) · 머리 (0, 1.62, −0.34) · 팔 (±0.5, 1.48) · 팔꿈치 −0.5 · 손 −0.5 · 대검은 오른손.
+// 마그마 빛은 예전 재질(_dkMagma 금 · _dkMagmaCore 핵 — 분노 때 _gkUpdate 가 세기를 올린다). 망토는 예전 천(흔들림)에 색만.
+// 초타원체 판 — rx·ry·rz 반지름, e1(위아래)·e2(둘레) 지수(작을수록 각진 상자). th 0 = 아래 끝 · 1 = 위 끝, ph 0 = 앞(−z)
+function a2SE(rx, ry, rz, e1, e2, o) {
+  o = o || {}; const t0 = o.t0 === undefined ? 0 : o.t0, t1 = o.t1 === undefined ? 1 : o.t1, p0 = o.p0 === undefined ? -Math.PI : o.p0, p1 = o.p1 === undefined ? Math.PI : o.p1;
+  const sp = (x, e) => Math.sign(x) * Math.pow(Math.abs(x), e);
+  return a2Surf((u, v) => {
+    const th = Math.PI * (1 - (t0 + (t1 - t0) * v)), ph = p0 + (p1 - p0) * u;
+    const st = sp(Math.sin(th), e1);
+    return [rx * st * sp(Math.sin(ph), e2), ry * sp(Math.cos(th), e1), -rz * st * sp(Math.cos(ph), e2)];
+  }, o.nu || 12, o.nv || 8);
+}
+function a2DarkKnight(P) {
+  const { K, bodyGrp, headGrp, limbs, J } = P;
+  // 원화(refs/몬스터/2막/darkknight.jpg) — 넓은 흉갑 가운데 마그마 핵에서 금이 사방으로 · 금 테 두른 각진 판 · 가시 돋친 둥근 견갑(눈·이끼) ·
+  // 뾰족한 통투구에 V 눈빛 · 굵은 뿔 · 허리에 긴 푸른 문장 천과 붉은 너덜천 · 연 모양 무릎판 · 큰 쇠신 · 이 빠진 마그마 대검 · 찢긴 망토.
+  // 판은 상자(삼각형 12)로 — 곡면 판(96)으로 지었더니 1만 삼각형이었다
+  const ARM = K.mat(0x14151f), ARM_D = K.mat(0x09090e), ARM_L = K.mat(0x23263a);
+  const GOLD = K.mat(0x3c1a03), GOLD_D = K.mat(0x221003);
+  const CLOTH = K.mat(0x041052, 'cloth'), RED = K.mat(0x2c0600, 'cloth'), CHAIN = K.mat(0x2a2014), LEA = K.mat(0x161109);
+  const SNOW = K.mat(0x5585f1, 'skin'), MOSS = K.mat(0x123d00, 'skin'), GEM = K.mat(0xff2a10, 'glow'); GEM.emissiveIntensity = 1.3;
+  const HORN = K.mat(0x4a2c16), HORN_L = K.mat(0x6a4626), HORN_D = K.mat(0x120c08), SLIT = K.mat(0x030304);
+  const MAG = limbs._dkMagma, CORE = limbs._dkMagmaCore;
+  // 눈 — 세게 빛나면 블룸·포스트에 하얗게(주황으로) 떠서 붉은색이 안 남는다. 바탕을 검붉게 두고 발광을 낮게
+  //       바탕색을 검정으로 두면 조명을 안 받아 어느 각도에서 봐도 발광색 그대로다(바탕이 있으면 비스듬히 볼 때 살구색으로 떴다)
+  //       원화만큼 밝게 — 심은 노란 주황(블룸으로 번진다) · 둘레는 붉게
+  //       톤매핑을 끈다 — 켜 두면 밝게 할수록 심이 크림색으로 바랜다(ACES 가 밝은 쪽 채도를 누른다). 끄면 적은 색이 그대로 나온다
+  const EYE = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffa21e, emissiveIntensity: 1.8, roughness: 1, metalness: 0, flatShading: true, toneMapped: false });
+  const EYE_D = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xf01c04, emissiveIntensity: 1.7, roughness: 1, metalness: 0, flatShading: true, toneMapped: false });
+  EYE._glowMat = true; EYE_D._glowMat = true;
+  const put = (p, g, m, x, y, z, rx, ry, rz) => K.put(p, new THREE.Mesh(g, m), x, y, z, rx, ry, rz);
+  // 상자 판(크기는 지름) · 가운데에 조금 큰 얇은 금 판을 끼워 가장자리가 금 테로 보이게
+  const B = (p, w, h, d, m, x, y, z, rx, ry, rz) => K.box(p, w, h, d, m, x, y, z, rx, ry, rz);
+  const TB = (p, w, h, d, m, x, y, z, rx, ry, rz) => { const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.set(rx || 0, ry || 0, rz || 0); p.add(g); B(g, w + 0.045, h + 0.045, d * 0.5, GOLD, 0, 0, 0); B(g, w, h, d, m, 0, 0, 0); return g; };   // 금 판은 가운데 두께 절반 — 뒤에서 금 덩어리가 안 보이게
+  const spike = (p, x, y, z, h, r, rx, rz, m) => K.cone(p, r, h, m || ARM_L, 4, x + Math.sin(rz || 0) * h * 0.5 * -1, y + Math.cos(rz || 0) * h * 0.5, z, rx || 0, 0, rz || 0);
+  const crack = (p, pts, r) => { for (let i = 1; i < pts.length; i++) K.seg(p, pts[i - 1], pts[i], r * (1 - (i - 1) / pts.length), r * (1 - i / pts.length) + 0.003, MAG, 3); };
+  const snow = (p, r, x, y, z, sx, sz) => K.ico(p, r, SNOW, x, y, z, sx || 1.4, 0.32, sz || 1.1, 0);
+  const drip = (p, x, y, z, n) => { for (let i = 0; i < n; i++) K.cone(p, 0.022, 0.08 + (i % 2) * 0.06, MOSS, 3, x + i * 0.05, y, z + (i % 2) * 0.03, Math.PI, 0, 0); };
+
+  // ===== 골격 다시 배치(관절 자리만 — 각도는 게임 동작이 돌린다). 다리를 길게(원화는 키의 4할) =====
+  limbs.legR.position.set(0.28, 1.0, 0.04); limbs.legL.position.set(-0.28, 1.0, 0.04);
+  J.kneeR.position.y = -0.46; J.kneeL.position.y = -0.46;
+  limbs.armR.position.set(0.6, 1.66, 0.0); limbs.armL.position.set(-0.6, 1.66, 0.0);
+  headGrp.position.set(0, 2.1, -0.06); headGrp.rotation.x = 0.06;
+
+  // ===== 상체 — 위가 넓은 흉갑 · V 로 모인 가슴판 · 마그마 핵에서 사방으로 금 · 배 판 세 겹 =====
+  const T = new THREE.Group(); T.position.set(0, 1.42, 0); bodyGrp.add(T);
+  B(T, 0.92, 0.44, 0.58, ARM_D, 0, 0.22, 0.02);
+  B(T, 0.7, 0.4, 0.5, ARM_D, 0, -0.14, 0.03);
+  [-1, 1].forEach(sx => {
+    TB(T, 0.4, 0.46, 0.1, ARM, sx * 0.21, 0.16, -0.29, 0.12, sx * -0.32, 0);
+    B(T, 0.12, 0.5, 0.36, ARM_L, sx * 0.44, 0.08, 0.02, 0, 0, sx * 0.1);   // 옆구리
+  });
+  B(T, 0.07, 0.56, 0.08, ARM_L, 0, 0.12, -0.39);                                     // 가운데 능선
+  // 가슴 보석 — 눈과 같은 재질(톤매핑 끔: 붉은 겉 · 노란 주황 심). 마그마 재질은 블룸에 하얗게 떴다. 어두운 받침에 박는다(둘레 문양 없음)
+  put(T, new THREE.OctahedronGeometry(0.135, 0), ARM_D, 0, 0.1, -0.405).scale.set(0.9, 1.35, 0.5);
+  put(T, new THREE.OctahedronGeometry(0.11, 0), EYE_D, 0, 0.1, -0.425).scale.set(0.85, 1.35, 0.5);
+  put(T, new THREE.OctahedronGeometry(0.045, 0), EYE, 0, 0.1, -0.468).scale.set(0.8, 1.3, 0.5);
+  B(T, 0.4, 0.12, 0.36, ARM_L, 0, 0.44, 0.02);                                      // 목가리개
+  for (let i = 0; i < 3; i++) TB(T, 0.66 - i * 0.04, 0.1, 0.5, i % 2 ? ARM_L : ARM, 0, -0.27 - i * 0.1, 0.03, 0.06, 0, 0);
+  // 등 — 어깨를 잇는 사슬과 금 마름모 걸쇠(망토가 여기 걸린다)
+  for (let i = 0; i < 7; i++) { const t = i / 6; put(T, new THREE.TorusGeometry(0.035, 0.012, 3, 4), CHAIN, -0.3 + t * 0.6, 0.38 - Math.sin(t * Math.PI) * 0.14, 0.33, 0, i % 2 ? Math.PI / 2 : 0, 0); }
+  put(T, new THREE.OctahedronGeometry(0.07, 0), GOLD, 0, 0.22, 0.36).scale.set(0.8, 1.2, 0.5);
+  put(T, new THREE.OctahedronGeometry(0.03, 0), GEM, 0, 0.22, 0.39);
+  // ===== 허리 — 가죽 띠 · 보석 금 버클 · 무릎 아래까지 내려오는 푸른 문장 천 · 그 뒤 붉은 너덜천 · 늘어진 사슬 · 엉덩이 판 =====
+  B(T, 0.72, 0.12, 0.52, LEA, 0, -0.58, 0.03);
+  TB(T, 0.16, 0.14, 0.05, GOLD_D, 0, -0.58, -0.25);
+  put(T, new THREE.OctahedronGeometry(0.04, 0), GEM, 0, -0.58, -0.29);
+  const tab = new THREE.Group(); tab.position.set(0, -0.62, -0.3); tab.rotation.x = 0.05; T.add(tab);
+  K.plate(tab, [[-0.13, 0], [0.13, 0], [0.13, -0.62], [0.08, -0.74], [0.04, -0.64], [0.0, -0.78], [-0.05, -0.65], [-0.09, -0.75], [-0.13, -0.64]], 0.02, CLOTH, 0, 0, 0);
+  K.plate(tab, [[-0.14, 0.02], [0.14, 0.02], [0.14, -0.05], [-0.14, -0.05]], 0.024, GOLD, 0, -0.02, -0.004);
+  K.plate(tab, [[0, -0.36], [0.08, -0.46], [0.03, -0.5], [0.05, -0.62], [0, -0.57], [-0.05, -0.62], [-0.03, -0.5], [-0.08, -0.46]], 0.024, GOLD, 0, 0, -0.006);   // 아랫단 금 문양
+  [-1, 1].forEach(sx => {
+    K.plate(T, K.mir([[0, 0], [0.12, 0], [0.14, -0.5], [0.09, -0.4], [0.06, -0.58], [0.02, -0.44], [0.0, -0.52]], sx), 0.02, RED, sx * 0.1, -0.62, -0.26, 0.08, sx * -0.15, 0);
+    { const g = new THREE.Group(); g.position.set(sx * 0.38, -0.7, -0.04); g.rotation.set(0.2, sx * -0.9, sx * 0.25); T.add(g); B(g, 0.2, 0.2, 0.05, ARM, 0, 0, 0); B(g, 0.22, 0.03, 0.06, GOLD, 0, -0.1, 0); }   // 엉덩이 판(아랫단만 금)
+  });
+  for (let i = 0; i < 6; i++) { const t = i / 5; put(T, new THREE.TorusGeometry(0.034, 0.012, 3, 4), CHAIN, 0.3 - t * 0.2, -0.62 - Math.sin(t * Math.PI * 0.8) * 0.3, -0.29 + t * 0.02, 0, 0.3, i % 2 ? Math.PI / 2 : 0); }
+
+  // ===== 투구(원화 그대로) — 팔각 단면의 바가지 투구 · 정수리가 뾰족 · 앞 모서리가 부리처럼 튀어나와 면갑이 V 로 모인다 ·
+  //       가운데로 내려가는 붉은 V 눈 · 그 아래 세로 틈 · 턱 가로 틈 · 뒤에 넓은 금 챙 · 옆에서 솟는 마디진 굵은 C 자 뿔 =====
+  const HN = 8;   // 둘레 8각 — 꼭짓점 하나가 정면(φ = 0)이라 거기가 능선이 된다
+  const ring = [[-0.24, 0.26, 0.12], [-0.06, 0.27, 0.17], [0.12, 0.26, 0.11], [0.28, 0.19, 0.04], [0.44, 0.0, 0.0]];   // [y, 반지름, 앞 부리]
+  const hv = (k, j) => { const ph = k / HN * Math.PI * 2, [y, r, b] = ring[j], c = Math.cos(ph), rr = r + b * Math.max(0, c) * Math.max(0, c); return [rr * Math.sin(ph), y, -rr * c]; };
+  {
+    const pos = [], idx = [];
+    for (let j = 0; j < ring.length; j++) for (let k = 0; k < HN; k++) pos.push(...hv(k, j));
+    for (let j = 0; j < ring.length - 1; j++) for (let k = 0; k < HN; k++) { const a = j * HN + k, b = j * HN + (k + 1) % HN, c = a + HN, d = b + HN; idx.push(a, c, b, b, c, d); }
+    for (let k = 1; k < HN - 1; k++) idx.push(0, k, k + 1);   // 바닥 막음
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+    put(headGrp, g, ARM_L, 0, 0, 0);   // 원화의 투구는 몸 갑옷보다 밝은 은회색
+  }
+  // 면 위 한 점(정면 두 면 — 옆 칸 k = ±1 과 정면 꼭짓점 사이를 t 로, 높이는 고리 j 와 j+1 사이 f 로) + 그 면의 바깥 방향
+  const onFace = (sx, t, j, f, out) => {
+    const k1 = sx > 0 ? 1 : HN - 1, A0 = hv(0, j), A1 = hv(k1, j), B0 = hv(0, j + 1), B1 = hv(k1, j + 1);
+    const L = (a, b, u) => a.map((v, q) => v + (b[q] - v) * u), P0 = L(A0, A1, t), P1 = L(B0, B1, t), P = L(P0, P1, f);
+    const e = [A1[0] - A0[0], A1[2] - A0[2]], nx = sx > 0 ? e[1] : -e[1], nz = sx > 0 ? -e[0] : e[0], nl = Math.hypot(nx, nz);
+    const n = [nx / nl, nz / nl];
+    return { p: [P[0] + n[0] * out, P[1], P[2] + n[1] * out], ry: Math.atan2(-n[0], -n[1]) };
+  };
+  [-1, 1].forEach(sx => {
+    // 눈 — 원화의 Y 자 틈: 면 바깥 끝에서 정면 능선까지 안쪽 아래로 기운 넓은 틈(어둠) · 그 안 붉은 빛(바깥쪽이 밝다).
+    //       두 눈이 능선에서 만나고, 거기서 세로 홈이 투구 아래끝까지 내려간다(아래 · 가운데)
+    const e1 = onFace(sx, 0.47, 1, 0.6, 0.0);
+    const sl = new THREE.Group(); sl.position.set(...e1.p); sl.rotation.set(0, e1.ry, sx * 0.4); headGrp.add(sl);   // 틈의 축(로컬 x = 틈 길이 · −z = 바깥)
+    B(sl, 0.29, 0.085, 0.04, SLIT, 0, 0, 0);
+    // 눈은 틈 안쪽에 작게 — 틈 테두리를 덮지 않게 틈보다 작은 판을 틈 앞면에 바로 붙인다(붉은 둘레 · 노란 심)
+    B(sl, 0.13, 0.04, 0.008, EYE_D, sx * 0.02, 0, -0.022);
+    B(sl, 0.07, 0.018, 0.008, EYE, sx * 0.02, 0, -0.026);
+    // 뿔 — 귀 높이에서 옆으로 나갔다 C 자로 솟아 끝이 위·안을 본다. 굵은 밑동 · 어두운 마디 고리 · 끝으로 갈수록 밝게
+    const pts = [[sx * 0.2, 0.06, 0.06], [sx * 0.36, 0.07, 0.07], [sx * 0.48, 0.18, 0.06], [sx * 0.52, 0.35, 0.03], [sx * 0.47, 0.53, -0.01], [sx * 0.39, 0.68, -0.04]];
+    const cuts = [0, 0.14, 0.16, 0.3, 0.32, 0.45, 0.47, 0.6, 0.62, 0.74, 0.76, 1.0];
+    for (let q = 0; q < cuts.length - 1; q++) {
+      const dark = q % 2 === 1, m = dark ? HORN_D : (cuts[q] > 0.6 ? HORN_L : HORN);
+      put(headGrp, a2Tube(pts, 0.14 + (dark ? 0.008 : 0), 0.025, cuts[q], cuts[q + 1], 5, 1), m);
+    }
+    K.cyl(headGrp, 0.15, 0.15, 0.08, ARM_D, 6, sx * 0.25, 0.06, 0.06, 0, 0, Math.PI / 2);   // 뿔 박힌 자리
+  });
+  for (let j = 2; j < ring.length - 1; j++) { const a = hv(0, j), b = hv(0, j + 1); K.seg(headGrp, [a[0], a[1], a[2] - 0.004], [b[0], b[1], b[2] - 0.004], 0.02, 0.02, ARM, 3); }
+  // 바이저 — 눈 틈 아래에서 세로 홈 양옆으로 볼을 덮는 판 두 장(원화). 투구 면을 따라 0.03 도톰하게 올리고 윗모서리에 밝은 날.
+  //   윗변은 눈 틈 아랫변을 따라 바깥으로 올라간다(틈이 판과 투구 사이 홈이 된다). 면은 정면 꼭짓점과 옆 꼭짓점 사이 두 칸(고리 0~1 · 1~2)
+  {
+    const VIS = K.mat(0x2c2f45);
+    const yTopAt = (t) => 0.004 + 0.131 * (t - 0.47);          // 눈 틈(축 기울기 0.4 · 반폭 0.0425) 아랫변
+    const S = (sx, t, y, out) => { const j = y < ring[1][0] ? 0 : 1, f = (y - ring[j][0]) / (ring[j + 1][0] - ring[j][0]); return onFace(sx, t, j, f, out); };
+    [-1, 1].forEach(sx => {
+      const t0 = 0.2, t1 = 0.97, yb = ring[0][0] + 0.004, ym = ring[1][0];
+      const poly = [[t0, yb], [t1, yb], [t1, ym], [t1, yTopAt(t1)], [t0, yTopAt(t0)], [t0, ym]];
+      const fr = poly.map(([t, y]) => S(sx, t, y, 0.03)), bk = poly.map(([t, y]) => S(sx, t, y, -0.004));
+      const pos = [], n = poly.length;
+      const tri = (a, b, c, nx, nz) => {   // 바깥 방향(nx, nz)을 보게 감는다
+        const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        const cx = u[1] * v[2] - u[2] * v[1], cz = u[0] * v[1] - u[1] * v[0];
+        if (cx * nx + cz * nz < 0) pos.push(...a, ...c, ...b); else pos.push(...a, ...b, ...c);
+      };
+      const N = (o) => [-Math.sin(o.ry), -Math.cos(o.ry)];
+      [[0, 1, 2], [0, 2, 5], [5, 2, 3], [5, 3, 4]].forEach(([a, b, c]) => { const nn = N(fr[b]); tri(fr[a].p, fr[b].p, fr[c].p, nn[0], nn[1]); });   // 줄마다 나눈다(한 꼭짓점 부채꼴이면 가는 삼각형마다 모서리 빛이 그어졌다)
+      for (let i = 0; i < n; i++) {   // 옆 벽 — 바깥 방향은 다각형 바깥(가운데에서 먼 쪽)으로
+        const a = fr[i].p, b = fr[(i + 1) % n].p, c = bk[i].p, d = bk[(i + 1) % n].p;
+        const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], cen = S(sx, (t0 + t1) / 2, -0.1, 0.03).p;
+        const ox = m[0] - cen[0], oy = m[1] - cen[1], oz = m[2] - cen[2];
+        const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        const cr = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+        if (cr[0] * ox + cr[1] * oy + cr[2] * oz < 0) pos.push(...a, ...c, ...b, ...b, ...c, ...d); else pos.push(...a, ...b, ...c, ...b, ...d, ...c);
+      }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
+      put(headGrp, g, VIS, 0, 0, 0);
+      // 금 테두리 — 판 가장자리를 한 바퀴(조금 안쪽 · 판 앞면 위). 꺾이는 고리(y −0.06)에서 한 번 꺾는다
+      const ti0 = t0 + 0.025, ti1 = t1 - 0.025, rim = [[ti0, yb + 0.014], [ti1, yb + 0.014], [ti1, ym], [ti1, yTopAt(ti1) - 0.014], [ti0, yTopAt(ti0) - 0.014], [ti0, ym]]
+        .map(([t, y]) => S(sx, t, y, 0.034).p);
+      for (let i = 0; i < rim.length; i++) K.seg(headGrp, rim[i], rim[(i + 1) % rim.length], 0.015, 0.015, GOLD, 4);
+    });
+  }
+  { // 세로 홈 — 두 눈이 만나는 곳(정면 능선, y ≈ 0.02)에서 투구 아래끝까지. 능선이 y −0.06 에서 꺾이므로 두 토막으로 능선을 따라 눕힌다
+    //   (한 토막 직선이면 꺾인 능선 끝이 홈 앞으로 삐져나와 코처럼 보였다). 가운데 붉은 빛은 뺀다
+    const zAt = (y) => { const j = y > -0.06 ? 1 : 0, a = hv(0, j), b = hv(0, j + 1), f = (y - a[1]) / (b[1] - a[1]); return a[2] + (b[2] - a[2]) * f; };
+    [[0.03, -0.06], [-0.06, -0.25]].forEach(([y0, y1]) => {
+      const z0 = zAt(y0), z1 = zAt(y1), len = Math.hypot(y0 - y1, z0 - z1) + 0.06, rx = Math.atan2(z1 - z0, y0 - y1);
+      B(headGrp, 0.075, len, 0.07, SLIT, 0, (y0 + y1) / 2, (z0 + z1) / 2 - 0.002, rx, 0, 0);
+    });
+  }
+  put(headGrp, new THREE.CylinderGeometry(0.33, 0.29, 0.06, 8), GOLD, 0, -0.22, 0.03);   // 뒤로 넓은 금 챙(앞은 부리에 묻힌다)
+  put(headGrp, new THREE.CylinderGeometry(0.35, 0.35, 0.025, 8), GOLD_D, 0, -0.255, 0.03);
+  // ===== 팔 — 둥근 견갑 두 겹(금 테 · 가시 넷 · 눈 · 이끼) · 금 원판 팔꿈치 · 금 띠 팔뚝(마그마 금) · 큰 건틀릿 =====
+  const arm = (A, E, H, sx) => {
+    const dome = (rx, ry, rz, x, y, z, tz) => {
+      const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.z = tz; A.add(g);
+      put(g, a2SE(rx, ry, rz, 0.55, 0.55, { t0: 0.38, t1: 1, nu: 8, nv: 3 }), ARM, 0, 0, 0);
+      put(g, a2SE(rx + 0.02, ry * 0.4, rz + 0.02, 0.55, 0.55, { t0: 0.4, t1: 0.5, nu: 8, nv: 1 }), GOLD, 0, -ry * 0.04, 0);   // 아랫단 금 테
+      return g;
+    };
+    dome(0.27, 0.2, 0.28, sx * 0.22, -0.18, 0, -sx * 0.7);
+    const top = dome(0.35, 0.3, 0.35, sx * 0.06, 0.0, 0, -sx * 0.34);
+    B(top, 0.05, 0.08, 0.6, ARM_L, 0, 0.28, 0);                                       // 가운데 능선
+    [[-0.12, -0.16, 0.3], [0.0, -0.02, 0.36], [0.12, 0.12, 0.3], [0.2, -0.1, 0.24]].forEach(([x, z, h]) => spike(top, x, 0.26 - Math.abs(x) * 0.5, z, h, 0.06, 0, -x * 1.6));
+    snow(top, 0.13, -0.06, 0.29, 0.1); drip(A, sx * 0.24, -0.26, -0.18, 3); drip(A, sx * 0.3, -0.3, 0.12, 2);
+    B(A, 0.28, 0.4, 0.28, ARM_D, 0, -0.34, 0);
+    put(E, new THREE.CylinderGeometry(0.11, 0.11, 0.04, 6), GOLD, sx * 0.13, 0.0, 0.0, 0, 0, Math.PI / 2);   // 팔꿈치 금 원판
+    spike(E, 0, -0.02, 0.12, 0.14, 0.045, Math.PI / 2 + 0.3, 0);
+    B(E, 0.27, 0.36, 0.27, ARM, 0, -0.26, 0);
+    B(E, 0.2, 0.26, 0.04, ARM_L, 0, -0.26, -0.14);
+    [-0.1, -0.42].forEach(y => B(E, 0.3, 0.035, 0.3, GOLD, 0, y, 0));
+    crack(E, [[sx * 0.04, -0.14, -0.15], [sx * -0.02, -0.24, -0.15], [sx * 0.03, -0.34, -0.15]], 0.012);
+    if (H) {
+      B(H, 0.3, 0.22, 0.3, ARM_D, 0, -0.05, -0.02);
+      for (let k = -1; k <= 1; k++) spike(H, k * 0.08, -0.08, -0.16, 0.09, 0.03, -Math.PI / 2, 0);
+      B(H, 0.32, 0.045, 0.32, GOLD, 0, 0.07, -0.02);
+    }
+  };
+  arm(limbs.armR, J.elbowR, J.handR, 1); arm(limbs.armL, J.elbowL, J.handL, -1);
+  // ===== 다리 — 금 테 허벅지 판 · 연 모양 무릎판(가시 · 눈) · 금 띠 정강이 · 금 코 쇠신 =====
+  const leg = (Lg, Kn, sx) => {
+    B(Lg, 0.28, 0.5, 0.3, ARM_D, 0, -0.22, 0);
+    TB(Lg, 0.24, 0.36, 0.06, ARM, sx * 0.01, -0.2, -0.16, -0.08, 0, 0);
+    TB(Kn, 0.2, 0.2, 0.06, ARM_L, 0, 0.0, -0.18, 0, 0, Math.PI / 4).scale.set(0.9, 1.15, 1);
+    spike(Kn, 0, 0.02, -0.25, 0.12, 0.035, -Math.PI / 2, 0);
+    snow(Kn, 0.07, sx * 0.04, 0.12, -0.17);
+    B(Kn, 0.3, 0.48, 0.32, ARM, 0, -0.26, 0);
+    TB(Kn, 0.24, 0.32, 0.05, ARM_L, 0, -0.27, -0.17, 0.04, 0, 0);                     // 정강이 앞판
+    [-0.1, -0.4].forEach(y => B(Kn, 0.32, 0.03, 0.34, GOLD, 0, y, 0));
+    B(Kn, 0.34, 0.14, 0.5, ARM_D, 0, -0.48, -0.06);                                    // 쇠신
+    B(Kn, 0.3, 0.08, 0.1, GOLD, 0, -0.45, -0.3);
+    K.cone(Kn, 0.1, 0.16, ARM_L, 4, 0, -0.48, -0.38, -Math.PI / 2, Math.PI / 4, 0);
+  };
+  leg(limbs.legR, J.kneeR, 1); leg(limbs.legL, J.kneeL, -1);
+  // ===== 대검 — 넓은 날(가장자리 이 빠짐) · 가운데 마그마 금 · 금 코등이와 붉은 보석 (검 그룹 자리·각도는 게임 동작이 쓰므로 그대로) =====
+  const S = limbs._dkSword;
+  const edge = [[-0.15, 0.12]]; for (let i = 1; i <= 8; i++) edge.push([-0.15 + i * 0.004 + (i % 3 === 1 ? 0.025 : 0), 0.12 + i * 0.2]);
+  const blade = [...edge, [0.0, 2.05], ...edge.slice().reverse().map(([x, y]) => [-x + (Math.round(y * 10) % 3 === 0 ? -0.025 : 0), y])];
+  K.plate(S, blade, 0.06, ARM_L, 0, 0, 0);
+  K.plate(S, [[-0.06, 0.16], [0.06, 0.16], [0.05, 1.7], [0.0, 1.85], [-0.05, 1.7]], 0.066, ARM_D, 0, 0, 0);
+  { let p = [0, 0.18, 0]; for (let i = 1; i <= 8; i++) { const q = [((i % 2) ? 0.035 : -0.035) * (1 - i / 9), 0.18 + i * 0.2, 0]; K.seg(S, p, q, 0.018, 0.016, MAG, 3); p = q; } }
+  B(S, 0.72, 0.1, 0.14, GOLD, 0, 0.06, 0);
+  [-1, 1].forEach(sx => put(S, new THREE.OctahedronGeometry(0.07, 0), GOLD, sx * 0.4, 0.1, 0).scale.set(0.8, 1.4, 0.6));
+  put(S, new THREE.OctahedronGeometry(0.07, 0), GEM, 0, 0.08, -0.07).scale.set(0.9, 1.2, 0.5);
+  K.cyl(S, 0.045, 0.05, 0.36, LEA, 5, 0, -0.16, 0);
+  for (let i = 0; i < 3; i++) B(S, 0.11, 0.025, 0.11, GOLD_D, 0, -0.06 - i * 0.1, 0);
+  put(S, new THREE.OctahedronGeometry(0.08, 0), GOLD, 0, -0.38, 0).scale.set(0.9, 1.3, 0.9);
+  put(S, new THREE.OctahedronGeometry(0.035, 0), GEM, 0, -0.38, -0.06);
+  // ===== 망토 =====
+  a2DarkKnightCape(P);
+  // 분노 때 눈·가슴 보석도 같이 세진다(예전 마그마 재질처럼 _gkGlowMul 을 따른다 — 평소 1, 분노 약 2.7)
+  const prevU = limbs._gkUpdate;
+  limbs._gkUpdate = function (t, dt) {
+    if (prevU) prevU.call(this, t, dt);
+    const k = 1 + ((limbs._gkGlowMul || 1) - 1) * 0.35;
+    EYE.emissiveIntensity = 1.8 * k; EYE_D.emissiveIntensity = 1.7 * k;
+  };
+}
+
+// 흑기사 망토 — 어깨 뒤에서 땅까지 · 아래로 넓어지며 등을 감싸 휜다 · 끝단이 갈래갈래 해지고 구멍 몇 개 · 겉 짙은 파랑 / 안 더 짙게.
+// 정점마다 쉬는 자리를 기억해 두고 매 프레임 물결로 흔든다(예전 _gkUpdate 뒤에 이어 붙인다 — 마그마 맥동·분노 불꽃은 그쪽이 계속 한다)
+function a2DarkKnightCape(P) {
+  const { bodyGrp, limbs } = P;
+  const NU = 8, NV = 8, W0 = 0.86, W1 = 1.3, H = 1.78;
+  const hash = (i) => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+  const len = []; for (let i = 0; i <= NU; i++) len.push(H * (0.86 + 0.14 * hash(i) - (i % 2 === 1 ? 0.1 : 0)));   // 끝단 갈래
+  const rest = [], pos = [], idx = [];
+  for (let j = 0; j <= NV; j++) for (let i = 0; i <= NU; i++) {
+    const u = i / NU, v = j / NV, w = W0 + (W1 - W0) * v, a = (u - 0.5) * w;
+    const y = -v * len[i], bend = 0.32 * (1 - Math.pow((u - 0.5) * 2, 2));   // 가운데가 뒤로 볼록(등을 감싼다)
+    const z = bend * (0.15 + v * 0.85) + v * 0.18;   // 윗단은 거의 곧게(위에서 볼 때 머리 뒤로 활처럼 뜨지 않게)
+    rest.push([a, y, z, u, v]); pos.push(a, y, z);
+  }
+  const holes = new Set([NU * 3 + 2, NU * 5 + 6, NU * 6 + 3]);
+  for (let j = 0; j < NV; j++) for (let i = 0; i < NU; i++) {
+    if (holes.has(j * NU + i)) continue;
+    const a = j * (NU + 1) + i, b = a + 1, c = a + NU + 1, d = c + 1; idx.push(a, c, b, b, c, d);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  const mat = getLowPolyMat(0x061456); mat.side = THREE.DoubleSide; mat.flatShading = false;   // 한 장 양면(안감을 따로 두지 않는다)
+  const capeGrp = new THREE.Group(); capeGrp.position.set(0, 1.74, 0.34); bodyGrp.add(capeGrp);
+  const cape = new THREE.Mesh(g, mat); cape.castShadow = false; cape.receiveShadow = true; capeGrp.add(cape);
+  P.cape = capeGrp;
+  const prev = limbs._gkUpdate;
+  limbs._gkUpdate = function (t, dt) {
+    if (prev) prev.call(this, t, dt);
+    const p = g.attributes.position;
+    for (let k = 0; k < rest.length; k++) {
+      const [x, y, z, u, v] = rest[k];
+      const wave = Math.sin(t * 2.2 + v * 4.0 + u * 1.5) * 0.11 * v + Math.sin(t * 1.5 + u * 3.0) * 0.05 * v;
+      const flap = Math.sin(t * 1.3 + u * 2.0) * 0.04 * v * (u - 0.5);
+      p.setXYZ(k, x + flap, y, z + wave);
+    }
+    p.needsUpdate = true; g.computeVertexNormals();
+  };
+}
+// 매개 곡면(인덱스 격자 → 부드러운 법선). fn(u, v) → [x, y, z], u·v 는 0..1
+function a2Surf(fn, nu, nv) {
+  const pos = [], idx = [];
+  for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) pos.push(...fn(i / nu, j / nv));
+  for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) { const a = j * (nu + 1) + i, b = a + 1, c = a + nu + 1, d = c + 1; idx.push(a, c, b, b, c, d); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return g;
+}
+// 가늘어지는 관(뿔) — Catmull-Rom 중심선을 따라 고리를 놓는다. t0..t1 구간만(색을 나눠 굽기 위해)
+function a2Tube(pts, r0, r1, t0, t1, nr, ns) {
+  const cv = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p)));
+  const frames = cv.computeFrenetFrames(64, false);
+  return a2Surf((u, v) => {
+    const t = t0 + (t1 - t0) * v, p = cv.getPoint(t), k = Math.min(63, Math.round(t * 63));
+    const N = frames.normals[k], B = frames.binormals[k], r = r0 + (r1 - r0) * Math.pow(t, 1.3), a = u * Math.PI * 2;
+    return [p.x + (N.x * Math.cos(a) + B.x * Math.sin(a)) * r, p.y + (N.y * Math.cos(a) + B.y * Math.sin(a)) * r, p.z + (N.z * Math.cos(a) + B.z * Math.sin(a)) * r];
+  }, nr || 8, ns || 6);
+}
+// ---------- 60층 얼음 여왕 ----------
+// 예전 리그: 아래 그룹(바닥 0) · 상체 (0, 1.5) · 팔 (±0.34, 1.62) · 팔꿈치 −0.36 · 손 −0.32 · 머리 (0, 2.04 — bodyGrp 자식) · 왕관 그룹 머리 위 0.42.
+// 등 뒤 큰 고드름 고리(발사체 · _iqGetHalo) · 머리 뒤 고드름 · 손 위 저주 구체 · 떠다니는 고드름·파편·안개·광원은 예전 것 그대로.
+function a2IceQueen(P) {
+  const { K, bodyGrp, headGrp, limbs } = P;
+  const GOWN = K.mat(0x5585f1, 'cloth'), GOWN_D = K.mat(0x2a50b0, 'cloth'), ICE = K.mat(0x2273ff), ICE_D = K.mat(0x0757ff), ICE_L = K.mat(0x6191f1);
+  const RED = K.mat(0x2a0006, 'cloth'), GOLD = K.mat(0xa86818), SKIN = K.mat(0x3171ff, 'skin'), SKIN_D = K.mat(0x1e50c0, 'skin'), HAIR = K.mat(0x8eb2ee), LID = K.mat(0x0e1c4e);
+  const EYE = K.mat(0xa8e0ff, 'glow'); EYE.emissiveIntensity = 1.2;
+  const GEM = K.mat(0xc040ff, 'glow'); GEM.emissiveIntensity = 1.1;
+  const L = limbs, lower = bodyGrp.children.find(c => c.isGroup && c.position.y === 0 && c.children.some(m => m.material && m.material.transparent));
+  const torso = bodyGrp.children.find(c => c.isGroup && Math.abs(c.position.y - 1.5) < 1e-6);
+  const crown = headGrp.children.find(c => c.isGroup && Math.abs(c.position.y - 0.42) < 1e-6);
+  const shard = (p, len, w, m, x, y, z, rx, ry, rz) => { const o = K.put(p, new THREE.Mesh(new THREE.OctahedronGeometry(w, 0), m), x, y, z, rx, ry, rz); o.scale.set(1, len / w * 0.5, 0.55); return o; };
+
+  // ----- 치마 — 흰 드레스 위로 아래를 향한 얼음 조각이 세 겹 · 앞 진홍 띠 -----
+  K.put(lower, new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.84, 1.3, 12, 1, true), GOWN), 0, 0.72, 0);
+  for (let row = 0; row < 3; row++) {
+    const n = 12 + row * 3, r = 0.42 + row * 0.2, y = 1.08 - row * 0.36;
+    for (let i = 0; i < n; i++) {
+      const a = (i + row * 0.5) / n * Math.PI * 2, len = 0.34 + ((i * 7 + row) % 3) * 0.1;
+      // 아래로 뻗은 얼음 조각 — 위쪽 절반은 윗단에 묻히고 길쭉한 끝만 드러난다(짧으면 마름모 무늬로 읽힌다)
+      const o = shard(lower, len * 1.6, 0.075 + row * 0.012, (i + row) % 3 === 0 ? ICE_L : (i % 2 ? ICE : GOWN_D), Math.sin(a) * r, y - len * 0.2, Math.cos(a) * r, 0, a, 0);
+      o.rotation.set(Math.cos(a) * 0.3, 0, -Math.sin(a) * 0.3);
+    }
+  }
+  K.plate(lower, [[-0.12, 0], [0.12, 0], [0.13, -0.95], [0.0, -1.08], [-0.13, -0.95]], 0.02, RED, 0, 1.36, -0.36, 0.3, 0, 0);
+  [-1, 1].forEach(sx => K.box(lower, 0.025, 0.95, 0.03, GOLD, sx * 0.13, 0.88, -0.48, 0.3, 0, 0));
+  K.put(lower, new THREE.Mesh(new THREE.OctahedronGeometry(0.06, 0), GOLD), 0, 0.42, -0.58).scale.set(0.7, 1.2, 0.5);
+
+  // ----- 상체 — 흰 몸판 · 진홍 앞판 · 금 테 · 보라 브로치 · 털 깃과 얼음 가시 -----
+  K.cyl(torso, 0.3, 0.2, 0.52, GOWN, 10, 0, -0.04, 0);
+  K.plate(torso, [[-0.1, 0.2], [0.1, 0.2], [0.13, -0.3], [-0.13, -0.3]], 0.02, RED, 0, 0, -0.24, 0.12, 0, 0);
+  K.band(torso, 0.24, 0.04, GOLD, 0, -0.26, 0, 10);
+  K.put(torso, new THREE.Mesh(new THREE.OctahedronGeometry(0.06, 0), GEM), 0, 0.12, -0.27).scale.set(0.8, 1.2, 0.5);
+  K.put(torso, new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.015, 3, 6), GOLD), 0, 0.12, -0.26);
+  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; K.ico(torso, 0.1, GOWN, Math.sin(a) * 0.27, 0.28, Math.cos(a) * 0.24, 1.1, 0.8, 1.0, 0, 0.02); }   // 털 깃
+  [[-0.3, 0.42, 0.06, 0.32], [0.3, 0.42, 0.06, 0.32], [-0.18, 0.5, 0.16, 0.28], [0.18, 0.5, 0.16, 0.28], [0, 0.54, 0.22, 0.3]].forEach(([x, y, z, l]) => shard(torso, l, 0.07, ICE_L, x, y, z, -0.3, 0, -x * 0.8));
+
+  // ----- 머리 — 창백한 큰 얼굴 · 반쯤 감은 차가운 눈 · 긴 흰 머리(끝이 고드름) -----
+  K.ico(headGrp, 0.36, SKIN, 0, -0.02, -0.02, 0.86, 1.0, 0.86, 1);
+  [-1, 1].forEach(sx => {
+    K.box(headGrp, 0.13, 0.05, 0.03, LID, sx * 0.13, 0.03, -0.3, 0, sx * 0.25, sx * -0.12);   // 반쯤 덮인 눈
+    K.box(headGrp, 0.08, 0.02, 0.02, EYE, sx * 0.13, 0.0, -0.31, 0, sx * 0.25, sx * -0.12);
+    K.box(headGrp, 0.1, 0.018, 0.02, HAIR, sx * 0.13, 0.1, -0.3, 0, sx * 0.25, sx * 0.18);    // 눈썹
+  });
+  K.box(headGrp, 0.06, 0.012, 0.02, SKIN_D, 0, -0.2, -0.3, 0, 0, 0);
+  // 머리칼 — 정수리를 덮고(가르마) 뒤로 길게 · 옆머리 둘 · 끝은 고드름
+  K.ico(headGrp, 0.38, HAIR, 0, 0.1, 0.06, 0.95, 0.82, 1.02, 1);
+  for (let i = 0; i < 9; i++) {
+    const a = -1.5 + i * 0.375, x = Math.sin(a) * 0.3, z = 0.06 + Math.cos(a) * 0.22;
+    const len = 0.8 + (i % 3) * 0.22;
+    K.seg(headGrp, [x, 0.05, z], [x * 1.25, -len, z + 0.12], 0.1, 0.05, HAIR, 5);
+    shard(headGrp, 0.24, 0.05, ICE_L, x * 1.25, -len - 0.1, z + 0.12, 0, 0, 0);
+  }
+  [-1, 1].forEach(sx => { K.seg(headGrp, [sx * 0.3, 0.0, -0.12], [sx * 0.34, -0.5, -0.16], 0.08, 0.04, HAIR, 5); shard(headGrp, 0.2, 0.04, ICE_L, sx * 0.34, -0.6, -0.16, 0, 0, 0); });
+  // 왕관 — 금 띠 · 얼음 결정 · 가운데 큰 결정
+  if (crown) {
+    K.put(crown, new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.32, 0.12, 10, 1, true), GOLD), 0, 0.02, 0);
+    for (let i = 0; i < 9; i++) {
+      const a = (i - 4) / 9 * Math.PI * 1.6 + Math.PI, t = i === 4 ? 0.62 : 0.24 + (i % 2) * 0.14;
+      shard(crown, t, 0.06, i % 2 ? ICE : ICE_L, Math.sin(a) * 0.3, 0.08 + t * 0.45, Math.cos(a) * 0.3, Math.cos(a) * 0.15, 0, -Math.sin(a) * 0.15);
+      K.ico(crown, 0.025, GOLD, Math.sin(a) * 0.31, 0.06, Math.cos(a) * 0.31, 1, 1, 1, 0);
+    }
+  }
+  // ----- 팔 — 흰 긴 소매 · 얼음 소맷부리 · 창백한 손 -----
+  [L._iqArmR, L._iqArmL].forEach(A => {
+    K.ico(A.armGrp, 0.1, GOWN, 0, 0, 0, 1, 1, 1, 0);
+    K.cyl(A.armGrp, 0.07, 0.08, 0.36, GOWN, 7, 0, -0.18, 0);
+    K.put(A.elbowGrp, new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.15, 0.32, 8, 1, true), GOWN), 0, -0.15, 0);
+    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; shard(A.elbowGrp, 0.18, 0.04, ICE_L, Math.sin(a) * 0.14, -0.36, Math.cos(a) * 0.14, Math.cos(a) * 0.3, 0, -Math.sin(a) * 0.3); }
+    K.box(A.handGrp, 0.12, 0.03, 0.11, SKIN, 0, 0, 0, 0, 0, 0);
+    for (let f = 0; f < 4; f++) K.seg(A.handGrp, [(f - 1.5) * 0.028, 0.0, 0.04], [(f - 1.5) * 0.03, 0.06, 0.1], 0.013, 0.009, SKIN, 4);
+  });
+}
 
 
 // ===== 혼령(wraith) 전용 외형: 떠다니는 반투명 영체 =====
@@ -28082,6 +28990,7 @@ function createAdvancedMonster(x, z, type, isBoss, isRanged) {
   if (A1M && (type === 'goblin' || type === 'skeleton' || type === 'orc')) a1Monster(type, isBoss, isRanged, grp, bodyGrp, headGrp, limbs);   // v905: 메시만 갈아 끼운다(관절 그룹·limbs 그대로)
 
   } // end of non-wraith build
+  if (A2M && A2M_TYPES[type]) a2Monster(type, isBoss, isRanged, grp, bodyGrp, headGrp, limbs);   // v906: 옛 몸을 다 지은 뒤 메시만 갈아 끼운다(관절 그룹·기믹 그대로 · 난수 흐름 그대로)
 
   if (isWraith) {
     // 영체는 그림자 비활성(반투명), 살짝 떠 있는 느낌

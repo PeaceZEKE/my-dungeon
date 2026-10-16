@@ -1812,6 +1812,13 @@ function a2DarkKnight(P) {
   put(S, new THREE.OctahedronGeometry(0.035, 0), GEM, 0, -0.38, -0.06);
   // ===== 망토 =====
   a2DarkKnightCape(P);
+  // 분노 때 눈·가슴 보석도 같이 세진다(예전 마그마 재질처럼 _gkGlowMul 을 따른다 — 평소 1, 분노 약 2.7)
+  const prevU = limbs._gkUpdate;
+  limbs._gkUpdate = function (t, dt) {
+    if (prevU) prevU.call(this, t, dt);
+    const k = 1 + ((limbs._gkGlowMul || 1) - 1) * 0.35;
+    EYE.emissiveIntensity = 1.8 * k; EYE_D.emissiveIntensity = 1.7 * k;
+  };
 }
 
 // 흑기사 망토 — 어깨 뒤에서 땅까지 · 아래로 넓어지며 등을 감싸 휜다 · 끝단이 갈래갈래 해지고 구멍 몇 개 · 겉 짙은 파랑 / 안 더 짙게.
