@@ -1488,10 +1488,10 @@ function a3King(P) {
   for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i - 2) * 0.42, x = Math.cos(a) * 0.5, z = Math.sin(a) * 0.5 * 0.74 - 0.02;
     K.ico(torso, 0.075, GOLDL, x, -0.18, z, 1, 1, 0.45, 0); K.cone(torso, 0.03, 0.08, GOLD, 4, x, -0.18, z - 0.03, -Math.PI / 2, 0, 0); }
   for (const sx of [-1, 1]) for (let i = 0; i < 5; i++) { const t = i / 4, x = sx * (0.1 + t * 0.2), y = -0.28 - Math.sin(t * Math.PI) * 0.1; K.ico(torso, 0.024, i % 2 ? GOLDD : GOLD, x, y, -0.42 + t * 0.06, 1, 1, 1, 0); }
-  // 뒤 — 큰 결정 가시 무리가 머리 뒤에서 위로 부채처럼(원화의 실루엣 꼭대기)
+  // 뒤 — 큰 결정 가시 무리가 머리 뒤에서 위로 부채처럼(원화의 실루엣 꼭대기 · 1.55 배는 몸을 덮어 1.1 배로)
   for (const [x, z, h, rx, rz, r] of [[0, 0.22, 1.05, 0.12, 0, 0.11], [0.22, 0.2, 0.86, 0.18, -0.32, 0.1], [-0.22, 0.2, 0.86, 0.18, 0.32, 0.1], [0.42, 0.16, 0.66, 0.15, -0.6, 0.085], [-0.42, 0.16, 0.66, 0.15, 0.6, 0.085],
     [0.12, 0.34, 0.7, 0.4, -0.12, 0.08], [-0.12, 0.34, 0.7, 0.4, 0.12, 0.08], [0.56, 0.1, 0.48, 0.1, -0.85, 0.07], [-0.56, 0.1, 0.48, 0.1, 0.85, 0.07]]) {
-    const H = h * 1.55, R = r * 1.25; const geo = new THREE.CylinderGeometry(R, R * 1.15, H, 6); geo.translate(0, H / 2, 0); const tip = new THREE.ConeGeometry(R, R * 2.6, 6); tip.translate(0, H + R * 1.3, 0);
+    const H = h * 1.1, R = r * 1.05; const geo = new THREE.CylinderGeometry(R, R * 1.15, H, 6); geo.translate(0, H / 2, 0); const tip = new THREE.ConeGeometry(R, R * 2.6, 6); tip.translate(0, H + R * 1.3, 0);
     for (const gg of [geo, tip]) K.put(torso, new THREE.Mesh(gg, CRY), x * 1.1, 0.92, z, rx, 0, rz);
     { const c = new THREE.CylinderGeometry(R * 0.45, R * 0.5, H * 0.8, 6); c.translate(0, H * 0.45, -R * 0.62); K.put(torso, new THREE.Mesh(c, CRYC), x * 1.1, 0.92, z, rx, 0, rz); }   // 앞(카메라 쪽)으로 비치는 밝은 심
   }
@@ -1536,8 +1536,16 @@ function a3King(P) {
   K.plate(cloth, [[-0.02, 0], [0.02, 0], [0.02, -0.42], [-0.02, -0.42]], 0.035, GOLD, 0, -0.32, -0.17, 0.06, 0, 0);
   for (const sx of [-1, 0, 1]) K.plate(cloth, [[-0.025, 0], [0.025, 0], [0, 0.1]], 0.035, GOLD, sx * 0.07, -0.34, -0.17, 0.06, 0, 0);
   K.plate(cloth, [[-0.1, 0], [0.1, 0], [0.1, 0.03], [-0.1, 0.03]], 0.035, GOLD, 0, -0.35, -0.17, 0.06, 0, 0);
-  for (const sx of [-1, 1]) { crust(cloth, sx * 0.38, -0.3, -0.02, 0.2, 0.36, 0.17, 11, 0.06, 0.09, (x, y, z) => z > 0.4);   // 뼈 허리판
-    coralFringe(cloth, sx * 0.4, -0.42, -0.04, 0.14, 0.1, 3, sx > 0 ? -1.2 : Math.PI - 0.6, sx > 0 ? 0.6 : Math.PI + 1.2, -0.4); }
+  // 허리 양옆 치마 보호구 — 허리띠에서 엉덩이 옆으로 퍼지며 내려가는 뼈 겹판 셋(구멍 · 아랫단 금 테 · 끝에 산호)
+  for (const sx of [-1, 1]) {
+    const c0 = sx > 0 ? Math.PI / 2 + 0.55 : -Math.PI / 2 - 0.55, tl = 1.35;       // 앞옆(앞자락 양옆 · 허벅지 앞)을 중심으로 옆구리까지 감싼다
+    for (let i = 0; i < 3; i++) { const y = -0.32 - i * 0.2, rt = 0.5 + i * 0.06, rb = 0.64 + i * 0.07;
+      const gg = new THREE.CylinderGeometry(rt, rb, 0.24, 7, 1, true, c0 - tl / 2, tl); gg.scale(1, 1, 0.78); K.jit(gg, 0.012);
+      K.put(torso, new THREE.Mesh(gg, i % 2 ? BONED : BONE), 0, y, 0.02);
+      const gb = new THREE.CylinderGeometry(rb + 0.005, rb + 0.012, 0.045, 7, 1, true, c0 - tl / 2, tl); gb.scale(1, 1, 0.78); K.put(torso, new THREE.Mesh(gb, GOLDL), 0, y - 0.115, 0.02);
+      for (let k = 0; k < 3; k++) { const a = c0 + (k - 1) * 0.42, r = (rt + rb) / 2 + 0.01; K.ico(torso, 0.035, k % 2 ? PK : FLD, Math.sin(a) * r, y, 0.02 + Math.cos(a) * r * 0.78, 1, 1, 0.4, 0); } }
+    coralFringe(torso, sx * 0.62, -0.86, -0.22, 0.06, 0.2, 3, -1.0, 1.0, -0.3);
+  }
 
   // 머리 — 흰 수염의 각진 얼굴(아래 얼굴 블록) · 왼얼굴로 번진 산호 · 뿔 돋은 금관
   // 얼굴 — 적은 면으로 또렷하게: 각진 두개골 · 굵은 눈두덩과 찌푸린 눈썹 · 움푹한 눈구멍(오른눈 흰자 한 점 · 왼눈 청록) ·
@@ -1626,6 +1634,7 @@ function a3King(P) {
   K.cone(sword, 0.07, 0.26, GOLDL, 4, 0, 1.26, 0, 0, 0, 0); K.cone(sword, 0.04, 0.12, GOLD, 4, 0, 0.74, 0, Math.PI, 0, 0);
   for (const a of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) K.ico(sword, 0.045, EYE, Math.cos(a) * 0.21, 0.98, Math.sin(a) * 0.21, 1, 1, 1, 0);
   // 탑방패 — 금 테 · 구멍 난 뼈 판(구멍마다 산호) · 가운데 큰 청록 결정 · 위 금 가시
+  shield.scale.multiplyScalar(1.32);                                                                        // 원화의 큰 탑방패(몸통 반을 가린다)
   const tower = (s) => [[0, 0.82 * s], [0.38 * s, 0.7 * s], [0.42 * s, -0.55 * s], [0, -1.05 * s], [-0.42 * s, -0.55 * s], [-0.38 * s, 0.7 * s]];
   K.plate(shield, tower(1.08), 0.06, GOLD, 0, 0, 0.03, 0, 0, 0);
   K.plate(shield, tower(0.98), 0.09, BONE, 0, 0, 0, 0, 0, 0);
