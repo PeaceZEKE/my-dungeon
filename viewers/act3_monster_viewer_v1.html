@@ -1706,7 +1706,7 @@ function a3King(P) {
   K.plate(shield, [[0, 0.52], [0.18, 0], [0, -0.55], [-0.18, 0]], 0.04, GOLDD, 0, -0.02, -0.055, 0, 0, 0);
   for (const sx of [-1, 1]) K.cone(shield, 0.04, 0.18, GOLDL, 4, sx * 0.4, 0.82, 0, 0, 0, -sx * 0.3);
   K.cone(shield, 0.05, 0.24, GOLDL, 4, 0, 0.98, 0, 0, 0, 0);
-  for (let i = 0; i < 6; i++) branch(shield, [-0.42, -0.5 + i * 0.22, -0.02], [-1, 0.2 + K.rr() * 0.4, -0.3], 0.12, 0.03, 1);
+  // (방패 바깥 가장자리 산호 가지는 일렬로 나란히 붙어 어색해 뺐다 — 사용자 지시)
   c3MergeStatic(sword); c3MergeStatic(shield); c3MergeStatic(crown); c3MergeStatic(headGrp, [crown]);
   c3MergeStatic(bloom); c3MergeStatic(hR, [sword]); c3MergeStatic(hL);
   c3MergeStatic(elR, [hR]); c3MergeStatic(elL, [hL, shield]); c3MergeStatic(L.armR, [elR]); c3MergeStatic(L.armL, [elL]);
