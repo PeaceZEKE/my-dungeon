@@ -1402,6 +1402,9 @@ function a3RotHeart(P) {
 // 금속이 아닌 유기 외골격 — 크림 뼈판 · 진홍 살 · 산호 고름 · 금 테 · 두꺼운 어깨 · 오른어깨 청록 결정 · 금 한손검 · 뼈·살 카이트 방패(문장) · 해진 진홍 망토
 // 리그는 예전 그대로(엉덩이 2.0 · 무릎 −0.92 · 발 −0.78 · 몸통 2.3 · 어깨 (±0.84, 0.86) · 팔꿈치 −0.74 · 손 −0.68 · 머리 1.42(×1.26))
 function a3King(P) {
+  // 원화 refs/몬스터/3막/corruptking.jpg — 영웅 체격 · 검은 속갑 위에 구멍 숭숭 난 크림 뼈 판(구멍마다 산호 살) · 4분할 겉옷(청록 흑 / 크림)과
+  // 금 백합 문장 · 가슴을 가로지른 금사슬과 별 브로치 · 가죽 허리띠 · 오른어깨 뼈 견갑 + 청록 결정 무리 · 왼어깨를 덮은 산호 살덩이 ·
+  // 왼얼굴로 번진 산호와 빛나는 청록 눈 · 부러진 금관 · 썩은 금 검 · 뼈 카이트 방패 · 해진 진홍 망토(금 문장)
   const { K, grp, bodyGrp, headGrp, limbs } = P, C = A3_PAL, L = limbs;
   const sub = (g) => g.children.find(c => c.isGroup);
   const torso = L.armR.parent, crown = sub(headGrp);
@@ -1413,109 +1416,171 @@ function a3King(P) {
   const light = bodyGrp.children.find(c => c.isLight);
   a2ClearDeep(grp);
   if (light) light.color.setHex(0x40e8c8);
-  const BONE = K.mat(0x7a4a2a, 'skin'), BONED = K.mat(0x3c2c1c, 'skin'), BONEDD = K.mat(0x1c1612, 'skin');   // 상아빛 뼈판(살색과 갈리게 노랑을 뺐다)
-  const WINE = K.mat(0x2e080e, 'skin'), WINED = K.mat(0x180003, 'skin'), CORAL = K.mat(C.flesh, 'skin'), PKL = K.mat(C.pinkL, 'skin');
-  const GOLD = K.mat(0x5a2b00), GOLDD = K.mat(0x3a1c00), SKIN = K.mat(0x591e1d, 'skin'), SKIND = K.mat(0x3a120e, 'skin'), BEARD = K.mat(0x120700), HAIR = K.mat(0x0c0500);
-  const CAPE = K.mat(0x2e080e, 'cloth'), CAPED = K.mat(0x180003, 'cloth'), DARK = K.mat(0x0b101f), TEALP = K.mat(0x0b2a30, 'cloth');
+  const BONE = K.mat(0x7a4a2a, 'skin'), BONEL = K.mat(0x8c5834, 'skin'), BONED = K.mat(0x3c2c1c, 'skin'), BONEDD = K.mat(0x1c1612, 'skin');
+  const FL = K.mat(0x56192a, 'skin'), FLD = K.mat(0x34101b, 'skin'), PK = K.mat(0x661e2c, 'skin'), PKL = K.mat(0xdf1f45, 'skin');   // 살 — 3막 다른 몹과 같은 톤
+  const UND = K.mat(0x140d0a), UNDD = K.mat(0x0a0706), LEA = K.mat(0x2a1206), LEAD = K.mat(0x170903);                           // 검은 속갑 · 가죽
+  const TABT = K.mat(0x0b1a1e, 'cloth'), TABC = K.mat(0x6a4426, 'cloth'), TABCD = K.mat(0x3e2814, 'cloth');                      // 겉옷 — 청록 흑 / 크림
+  const GOLD = K.mat(0x5a2b00), GOLDD = K.mat(0x3a1c00), SKIN = K.mat(0x591e1d, 'skin'), SKIND = K.mat(0x3a120e, 'skin'), BEARD = K.mat(0x1e0e04), HAIR = K.mat(0x170a03);
+  const CAPE = K.mat(0x2e080e, 'cloth'), CAPED = K.mat(0x180003, 'cloth'), CAPEP = K.mat(0x4a1420, 'cloth'), TEALP = K.mat(0x0b2a30, 'cloth');
   const CRY = new THREE.MeshStandardMaterial({ color: 0x0a2a28, emissive: 0x30e8c0, emissiveIntensity: 0.55, roughness: 0.35, flatShading: true }); CRY._glowMat = true;
   const EYE = K.mat(0x40f0d0, 'glow'); EYE.emissiveIntensity = 0.8; EYE._glowMat = true;
   const BLADE = new THREE.MeshStandardMaterial({ color: 0x3a2008, emissive: 0x2a1000, emissiveIntensity: 0.2, roughness: 0.5, flatShading: true });
-  const pus = (parent, cx, cy, cz, rx, ry, rz, n, r0, r1, skip) => a3Shell(K, parent, { cx, cy, cz, rx, ry, rz, n, r0, r1, mats: [CORAL, CORAL, PKL, WINE], det: 0, sink: 0.2, skip });
-  const shell = (parent, cx, cy, cz, rx, ry, rz, t0, t1, m, L2, off, nu, nv) => a3Band(K, parent, m, cx, cy, cz, rx, ry, rz, t0, t1, L2, nu || 8, nv || 3, off || 0);
+  const pus = (parent, cx, cy, cz, rx, ry, rz, n, r0, r1, skip, mats) => a3Shell(K, parent, { cx, cy, cz, rx, ry, rz, n, r0, r1, mats: mats || [FL, FL, PK, FLD], det: 0, sink: 0.2, skip });
+  // 뼈 판의 구멍 — 표면에 박힌 어두운 구멍과 그 안을 메운 살 알갱이
+  const holes = (parent, cx, cy, cz, rx, ry, rz, n, skip) => a3Shell(K, parent, { cx, cy, cz, rx, ry, rz, n, r0: 0.03, r1: 0.06, mats: [FLD, PK, BONEDD, FL], det: 0, sink: 0.05, skip });
+  // 가지 친 산호 — 끝에 둥근 혹
+  const branch = (parent, p, d, len, r, depth) => {
+    const m = Math.hypot(...d) || 1, q = [p[0] + d[0] / m * len, p[1] + d[1] / m * len, p[2] + d[2] / m * len];
+    K.seg(parent, p, q, r, r * 0.72, depth % 2 ? PK : FL, 4); K.ico(parent, r * 0.95, depth ? FL : PKL, q[0], q[1], q[2], 1, 1, 1, 0);
+    if (depth > 0) for (let i = 0; i < 2; i++) branch(parent, q, [d[0] / m + (K.rr() - 0.5) * 1.2, d[1] / m + 0.25 + (K.rr() - 0.5) * 0.6, d[2] / m + (K.rr() - 0.5) * 1.2], len * 0.66, r * 0.7, depth - 1);
+  };
+  // 반쪽 타원체(x 부호 sx 쪽) — 4분할 겉옷
+  const half = (parent, m, sx, cx, cy, cz, rx, ry, rz, t0, t1) => {
+    const g = new THREE.SphereGeometry(1, 10, 7, sx > 0 ? Math.PI / 2 : -Math.PI / 2, Math.PI, t0 || 0, t1 || Math.PI);
+    g.scale(rx, ry, rz); return K.put(parent, new THREE.Mesh(g, m), cx, cy, cz);
+  };
+  const fleur = (parent, m, x, y, z, s, rx) => {          // 금 백합 문장
+    K.plate(parent, [[0, 0.2], [0.045, 0.08], [0.035, -0.02], [0, -0.05], [-0.035, -0.02], [-0.045, 0.08]].map(([a, b]) => [a * s, b * s]), 0.02, m, x, y, z, rx || 0, 0, 0);
+    for (const sx of [-1, 1]) K.plate(parent, K.mir([[0.03, 0.0], [0.1, 0.1], [0.15, 0.04], [0.12, -0.04], [0.05, -0.04]], sx).map(([a, b]) => [a * s, b * s]), 0.02, m, x, y, z, rx || 0, 0, 0);
+    K.plate(parent, [[-0.09, -0.05], [0.09, -0.05], [0.09, -0.08], [-0.09, -0.08]].map(([a, b]) => [a * s, b * s]), 0.02, m, x, y, z, rx || 0, 0, 0);
+    K.plate(parent, [[-0.025, -0.08], [0.025, -0.08], [0, -0.17]].map(([a, b]) => [a * s, b * s]), 0.02, m, x, y, z, rx || 0, 0, 0);
+  };
+  const jag = (w, h, n, depth) => { const p = [[-w, 0], [w, 0]]; for (let i = 0; i <= n; i++) { const x = w - (2 * w * i) / n; p.push([x, -h + (i % 2 ? h * depth : 0) - K.rr() * h * 0.08]); } return p; };
 
-  // 몸통 — 뼈 흉갑(가운데 금 능선 · 갈비 판) · 진홍 살 배 · 금 허리띠 · 등 판
-  K.ico(torso, 1, WINE, 0, 0.32, 0.04, 0.74, 0.76, 0.5, 1, 0.01);
-  K.ico(torso, 1, BONE, 0, 0.52, -0.08, 0.76, 0.52, 0.48, 1, 0.01);                       // 가슴판
-  for (let i = 0; i < 4; i++) K.ico(torso, 1, i % 2 ? BONED : BONE, 0, 0.18 - i * 0.12, -0.24 - i * 0.012, 0.62 - i * 0.05, 0.1, 0.3, 1);   // 갈비 겹판
-  [-1, 1].forEach(sx => { const pl = K.ico(torso, 1, BONED, sx * 0.3, 0.58, -0.36, 0.3, 0.3, 0.16, 1); pl.rotation.set(0.25, -sx * 0.5, -sx * 0.2); });   // 가슴 양쪽 겹판
-  pus(torso, -0.5, 0.45, -0.2, 0.16, 0.3, 0.14, 10, 0.04, 0.07, (x, y, z) => z > 0.2);   // 왼 옆구리로 번진 살
-  K.box(torso, 0.07, 0.62, 0.06, GOLD, 0, 0.44, -0.55, 0.12, 0, 0);                         // 가슴 능선 금 테
-  K.ico(torso, 0.12, CORAL, 0, 0.64, -0.52, 1.1, 0.9, 0.5, 1);                              // 가슴 가운데 오염 혹
-  pus(torso, 0.3, 0.28, -0.38, 0.22, 0.22, 0.1, 10, 0.035, 0.065, (x, y, z) => z > -0.2);
-  K.ico(torso, 1, BONED, 0, 0.47, 0.26, 0.72, 0.56, 0.3, 1);                             // 등판
-  K.band(torso, 0.62, 0.13, GOLD, 0, -0.2, 0.02, 12); K.band(torso, 0.625, 0.04, GOLDD, 0, -0.13, 0.02, 12);
-  K.ico(torso, 0.08, GOLD, 0, -0.2, -0.6, 1.3, 1.1, 0.5, 1);                             // 버클
-  K.seg(torso, [0, 0.95, 0], [0, 1.15, -0.02], 0.18, 0.15, SKIN, 7);                        // 목
-  // 망토 — 어깨 뒤에서 무릎 아래까지, 끝이 해졌다 · 등에 금 검 문장
-  const cape = (w, h, n) => { const p = [[-w * 0.8, 0], [w * 0.8, 0]]; for (let i = 0; i <= n; i++) { const x = w - (2 * w * i) / n; p.push([x, -h + (i % 2 ? h * 0.12 : 0) - K.rr() * h * 0.06]); } return p; };
-  K.plate(torso, cape(0.88, 2.0, 11), 0.03, CAPE, 0, 0.92, 0.55, -0.12, 0, 0);
-  K.plate(torso, cape(0.86, 1.95, 11), 0.02, CAPED, 0, 0.9, 0.58, -0.12, 0, 0);
-  K.plate(torso, [[-0.05, 0], [0.05, 0], [0.05, -0.6], [0, -0.7], [-0.05, -0.6]], 0.02, GOLD, 0, 0.55, 0.62, -0.12, Math.PI, 0);   // 문장(검)
-  K.plate(torso, [[-0.2, 0], [0.2, 0], [0.2, -0.05], [-0.2, -0.05]], 0.02, GOLD, 0, 0.42, 0.61, -0.12, Math.PI, 0);
-  // 앞자락(엉덩이에서 무릎까지 — 다리를 따라 흔들린다) · 금 테 · 문장
-  K.plate(cloth, [[-0.36, 0], [0.36, 0], [0.38, -1.0], [0.22, -1.12], [0.07, -0.98], [-0.1, -1.14], [-0.24, -1.0], [-0.38, -1.08]], 0.03, CAPE, 0, 0, -0.12, 0.06, 0, 0);
-  K.plate(cloth, [[-0.33, 0], [0.33, 0], [0.33, -0.06], [-0.33, -0.06]], 0.035, GOLD, 0, -0.02, -0.13, 0.06, 0, 0);
-  K.plate(cloth, [[-0.03, 0], [0.03, 0], [0.03, -0.4], [0, -0.48], [-0.03, -0.4]], 0.035, GOLD, 0, -0.2, -0.135, 0.06, 0, 0);
-  [-1, 1].forEach(sx => K.plate(cloth, [[-0.18, 0], [0.18, 0], [0.16, -0.7], [0.04, -0.82], [-0.12, -0.72], [-0.2, -0.78]], 0.03, CAPED, sx * 0.4, 0.02, 0.18, 0.04, sx * 0.9, 0));
+  // 몸통 — 검은 속갑 · 가슴 겉옷 4분할(오른쪽 청록 흑 · 왼쪽 크림) · 가운데 금 테 · 금사슬과 별 브로치 · 목도리 · 가죽 허리띠
+  K.ico(torso, 1, UND, 0, 0.3, 0.04, 0.7, 0.74, 0.46, 1, 0.01);
+  half(torso, TABT, 1, 0, 0.5, -0.08, 0.78, 0.54, 0.5);
+  half(torso, TABC, -1, 0, 0.5, -0.08, 0.78, 0.54, 0.5);
+  for (const [x, y, r] of [[0.34, 0.62, 0.07], [0.52, 0.38, 0.05], [0.2, 0.3, 0.05]]) K.ico(torso, r, TABC, x, y, -0.08 - 0.5 * Math.sqrt(Math.max(0, 1 - (x / 0.78) ** 2 - ((y - 0.5) / 0.54) ** 2)), 1, 1, 0.3, 0);   // 겉옷 해진 얼룩
+  for (const [x, y, r] of [[-0.3, 0.68, 0.06], [-0.5, 0.42, 0.07]]) K.ico(torso, r, TABT, x, y, -0.08 - 0.5 * Math.sqrt(Math.max(0, 1 - (x / 0.78) ** 2 - ((y - 0.5) / 0.54) ** 2)), 1, 1, 0.3, 0);
+  K.box(torso, 0.06, 0.66, 0.05, GOLD, 0, 0.48, -0.58, 0.1, 0, 0);
+  const chestZ = (x, y) => -0.1 - 0.52 * Math.sqrt(Math.max(0.02, 1 - (x / 0.8) ** 2 - ((y - 0.5) / 0.56) ** 2));
+  { const pts = []; for (let i = 0; i <= 9; i++) { const t = i / 9, x = 0.62 - t * 1.2, y = 0.86 - Math.sin(t * Math.PI) * 0.34 - t * 0.06; pts.push([x, y, chestZ(x, y) - 0.02]); }
+    for (let i = 0; i < pts.length - 1; i++) { K.seg(torso, pts[i], pts[i + 1], 0.022, 0.022, GOLDD, 4); K.ico(torso, 0.028, GOLD, pts[i][0], pts[i][1], pts[i][2], 1, 1, 1, 0); } }
+  for (const [x, y] of [[0.36, 0.62], [-0.34, 0.6]]) { const z = chestZ(x, y) - 0.04;                    // 별 브로치
+    for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; K.cone(torso, 0.022, 0.1, i % 2 ? GOLDD : GOLD, 4, x + Math.cos(a) * 0.05, y + Math.sin(a) * 0.05, z, Math.PI / 2, 0, -a + Math.PI / 2); }
+    K.ico(torso, 0.04, GOLD, x, y, z, 1, 1, 0.6, 0); K.ico(torso, 0.022, EYE, x, y, z - 0.02, 1, 1, 0.6, 0); }
+  K.band(torso, 0.3, 0.1, TABC, 0, 0.98, -0.02, 10); K.band(torso, 0.28, 0.08, UND, 0, 1.06, -0.02, 10);   // 목도리(크림 · 검은 줄)
+  K.band(torso, 0.31, 0.03, TABCD, 0, 0.94, -0.02, 10);
+  K.seg(torso, [0, 0.95, 0], [0, 1.15, -0.02], 0.18, 0.15, SKIN, 7);
+  K.band(torso, 0.62, 0.12, LEA, 0, -0.2, 0.02, 12); K.band(torso, 0.625, 0.03, LEAD, 0, -0.13, 0.02, 12);   // 가죽 허리띠
+  for (const [x, z] of [[0, -0.62], [0.36, -0.52], [-0.36, -0.52]]) { K.ico(torso, 0.07, GOLD, x, -0.2, z, 1.2, 1.2, 0.5, 1); K.ico(torso, 0.03, EYE, x, -0.2, z - 0.03, 1, 1, 0.5, 0); }
+  for (const sx of [-1, 1]) for (let i = 0; i < 5; i++) { const t = i / 4, x = sx * (0.12 + t * 0.22), y = -0.28 - Math.sin(t * Math.PI) * 0.12; K.ico(torso, 0.026, i % 2 ? GOLDD : GOLD, x, y, -0.6 + t * 0.06, 1, 1, 1, 0); }   // 늘어진 금사슬
+  // 왼쪽(−x) 옆구리 · 가슴으로 번진 산호
+  pus(torso, -0.56, 0.6, -0.12, 0.2, 0.34, 0.24, 16, 0.05, 0.09, (x, y, z) => x > 0.4);
+  for (let i = 0; i < 4; i++) branch(torso, [-0.5 + K.rr() * 0.1, 0.5 + K.rr() * 0.3, -0.36], [-0.3 + K.rr() * 0.6, 0.4, -0.6], 0.12, 0.035, 1);
+  K.ico(torso, 1, UNDD, 0, 0.47, 0.26, 0.7, 0.54, 0.28, 1);                                                // 등판
+  // 망토 — 어깨 뒤에서 종아리까지 · 해진 끝 · 등 금 문장 · 아래로 번진 살빛 얼룩
+  K.plate(torso, jag(0.9, 2.1, 13, 0.16), 0.03, CAPE, 0, 0.94, 0.55, -0.12, 0, 0);
+  K.plate(torso, jag(0.88, 2.0, 13, 0.14), 0.02, CAPED, 0, 0.92, 0.58, -0.12, 0, 0);
+  const capeZ = (y) => 0.55 + (0.94 - y) * Math.sin(0.12) + 0.035;                                   // 기운 망토 겉면
+  fleur(torso, GOLD, 0, 0.3, capeZ(0.3), 2.0, -0.12);
+  K.plate(torso, [[-0.03, 0], [0.03, 0], [0.03, -0.7], [0, -0.78], [-0.03, -0.7]], 0.02, GOLD, 0, 0.0, capeZ(0.0), -0.12, 0, 0);
+  for (let i = 0; i < 7; i++) { const x = (K.rr() - 0.5) * 1.5, y = -0.5 - K.rr() * 0.55, r = 0.08 + K.rr() * 0.1; K.ico(torso, r, i % 3 ? CAPEP : FLD, x, y, capeZ(y) - 0.015, 1.2, 1.5, 0.06, 1, 0.02); }
+  // 앞자락 — 4분할(오른쪽 크림 · 왼쪽 청록 흑) · 가운데 청록 띠에 금 백합 · 해진 끝(다리를 따라 흔들린다)
+  K.plate(cloth, [[0, 0], [0.38, 0], [0.4, -0.98], [0.26, -1.1], [0.14, -0.96], [0, -1.08]], 0.03, TABC, 0, 0, -0.12, 0.06, 0, 0);
+  K.plate(cloth, [[-0.38, 0], [0, 0], [0, -1.08], [-0.12, -0.96], [-0.26, -1.12], [-0.4, -1.0]], 0.03, TABT, 0, 0, -0.12, 0.06, 0, 0);
+  K.plate(cloth, [[-0.1, 0], [0.1, 0], [0.1, -0.98], [0, -1.08], [-0.1, -0.98]], 0.03, TEALP, 0, -0.01, -0.145, 0.06, 0, 0);
+  for (const sx of [-1, 1]) K.plate(cloth, [[-0.012, 0], [0.012, 0], [0.012, -1.0], [-0.012, -1.0]], 0.03, GOLD, sx * 0.1, -0.01, -0.15, 0.06, 0, 0);
+  fleur(cloth, GOLD, 0, -0.62, -0.17, 0.85, 0.06);
+  K.plate(cloth, [[-0.38, 0], [0.38, 0], [0.38, -0.06], [-0.38, -0.06]], 0.035, GOLDD, 0, -0.02, -0.15, 0.06, 0, 0);
+  [-1, 1].forEach(sx => K.plate(cloth, [[-0.18, 0], [0.18, 0], [0.16, -0.72], [0.04, -0.84], [-0.12, -0.74], [-0.2, -0.8]], 0.03, sx > 0 ? TABT : TABC, sx * 0.42, 0.02, 0.18, 0.04, sx * 0.9, 0));
 
-  // 머리 — 중년 얼굴 · 짙은 수염 · 오른쪽에 번진 산호 부패와 청록 눈 · 부러진 금관
-  K.ico(headGrp, 0.25, SKIN, 0, 0.02, 0, 0.92, 1.05, 0.98, 1, 0.004);
-  K.ico(headGrp, 0.13, SKIN, 0, -0.04, -0.17, 1.1, 0.8, 0.7, 1);                           // 광대·코
+  // 머리 — 중년 얼굴 · 짙은 갈색 수염·머리칼 · 왼얼굴(−x)로 번진 산호(관 위까지) · 그쪽 청록 눈 · 부러진 금관
+  K.ico(headGrp, 0.25, SKIN, 0, 0.02, 0, 0.9, 1.05, 0.98, 1, 0.004);
+  K.ico(headGrp, 0.13, SKIN, 0, -0.04, -0.17, 1.1, 0.8, 0.7, 1);
   K.box(headGrp, 0.05, 0.08, 0.05, SKIND, 0, -0.02, -0.26, -0.2, 0, 0);
-  K.box(headGrp, 0.3, 0.035, 0.05, BEARD, 0, 0.06, -0.21, 0.15, 0, 0);                     // 눈썹
-  K.ico(headGrp, 0.03, SKIND, -0.08, 0.02, -0.22, 1.3, 0.6, 0.6, 0);                       // 왼눈(그늘)
-  K.ico(headGrp, 0.035, EYE, 0.08, 0.02, -0.225, 1.2, 0.8, 0.6, 0);                         // 오른눈(청록)
-  K.ico(headGrp, 0.2, BEARD, 0, -0.17, -0.1, 1.1, 0.9, 0.85, 1, 0.01);                     // 수염
-  K.ico(headGrp, 0.12, BEARD, 0, -0.27, -0.13, 1.0, 1.1, 0.8, 1);
-  K.ico(headGrp, 0.26, HAIR, 0, 0.1, 0.08, 1.0, 0.85, 0.95, 1, 0.01);                       // 머리칼(뒤)
-  [-1, 1].forEach(sx => K.ico(headGrp, 0.12, HAIR, sx * 0.2, -0.05, 0.08, 0.6, 1.3, 0.9, 0));
-  pus(headGrp, 0.14, 0.05, -0.12, 0.1, 0.14, 0.1, 8, 0.03, 0.06, (x, y, z) => x < -0.2);     // 오른 얼굴의 부패
-  // 왕관 — 금 띠 + 뾰족한 날 일곱(앞 오른쪽 둘은 부러졌다) · 보석
+  K.box(headGrp, 0.13, 0.03, 0.04, BEARD, 0.08, 0.065, -0.215, 0.15, 0, -0.12);                             // 오른 눈썹(찌푸림)
+  K.ico(headGrp, 0.03, SKIND, 0.08, 0.02, -0.22, 1.3, 0.6, 0.6, 0);                                        // 오른눈(그늘)
+  K.ico(headGrp, 0.038, EYE, -0.08, 0.02, -0.225, 1.2, 0.85, 0.6, 0);                                     // 왼눈(청록 · 산호 쪽)
+  K.ico(headGrp, 0.2, BEARD, 0, -0.17, -0.1, 1.1, 0.9, 0.85, 1, 0.01);
+  K.ico(headGrp, 0.12, BEARD, 0, -0.28, -0.13, 1.0, 1.15, 0.8, 1);
+  K.box(headGrp, 0.16, 0.025, 0.03, BEARD, 0, -0.1, -0.245, 0, 0, 0);                                      // 콧수염
+  K.ico(headGrp, 0.27, HAIR, 0.02, 0.1, 0.07, 1.0, 0.85, 0.95, 1, 0.012);
+  for (const [x, y, z, rz] of [[0.18, 0.18, -0.08, -0.6], [0.06, 0.24, -0.14, -0.2], [0.22, 0.02, 0.02, -0.2], [-0.04, 0.26, 0.1, 0.3]]) K.cone(headGrp, 0.07, 0.24, HAIR, 4, x, y, z, -0.4, 0, rz);   // 흐트러진 머리 다발
+  K.ico(headGrp, 0.12, HAIR, 0.2, -0.05, 0.08, 0.6, 1.3, 0.9, 0);
+  pus(headGrp, -0.16, 0.06, -0.06, 0.12, 0.18, 0.16, 14, 0.03, 0.06, (x, y, z) => x > 0.1);
+  for (let i = 0; i < 3; i++) branch(headGrp, [-0.16, 0.18 + i * 0.04, -0.06 + i * 0.06], [-0.4 + K.rr() * 0.3, 1, -0.2 + K.rr() * 0.4], 0.12, 0.03, 1);   // 관 위로 솟은 산호 가지
   crown.position.set(0, 0.2, 0.01); crown.rotation.set(0.06, 0, -0.08);
   K.band(crown, 0.24, 0.07, GOLD, 0, 0, 0, 12);
-  for (let i = 0; i < 7; i++) { const a = -Math.PI / 2 + (i - 3) * 0.55, broken = (i === 4 || i === 5), h = broken ? 0.06 : 0.16 + (i === 3 ? 0.06 : 0);
+  for (let i = 0; i < 7; i++) { const a = -Math.PI / 2 + (i - 3) * 0.55, broken = (i === 1 || i === 2), h = broken ? 0.05 : 0.15 + (i === 3 ? 0.12 : 0);
     K.cone(crown, 0.045, h, i % 2 ? GOLDD : GOLD, 4, Math.cos(a) * 0.24, 0.035 + h / 2, Math.sin(a) * 0.24, 0, 0, 0); }
   K.ico(crown, 0.035, EYE, 0, 0.02, -0.25, 1, 1, 0.6, 0);
 
-  // 어깨 — 겹겹이 쌓인 큰 뼈 견갑(살 · 고름) · 오른어깨에 청록 결정 무리
+  // 어깨 — 크림 뼈 견갑 두 겹(가장자리 뼈 혹·가시 · 구멍 숭숭) · 오른어깨 청록 결정 무리(bloom) · 왼어깨는 산호 살덩이가 덮었다
   const pauldron = (A, sx) => {
-    const g = new THREE.Group(); g.position.set(sx * 0.04, 0.1, 0); g.rotation.z = -sx * 0.32; g.scale.setScalar(1.45); A.add(g);
-    const cap = (r, h, t1, m, y) => { const geo = new THREE.SphereGeometry(1, 10, 4, 0, Math.PI * 2, 0, t1); geo.scale(r, h, r * 0.95); K.jit(geo, 0.012); return K.put(g, new THREE.Mesh(geo, m), 0, y, 0); };
-    cap(0.4, 0.42, 1.05, BONE, 0); cap(0.38, 0.38, 1.3, WINE, -0.12); cap(0.36, 0.34, 1.5, BONED, -0.26);
-    K.put(g, new THREE.Mesh(new THREE.TorusGeometry(0.41, 0.02, 3, 16), GOLD), 0, 0.18, 0, Math.PI / 2, 0, 0);
-    pus(g, 0, 0.14, 0, 0.36, 0.3, 0.34, 16, 0.04, 0.08, (x, y) => y < 0.15);
-    for (let i = 0; i < 3; i++) K.cone(g, 0.05, 0.22, BONED, 4, sx * (0.18 + i * 0.08), 0.28 - i * 0.04, 0.08 - i * 0.1, 0, 0, -sx * (0.5 + i * 0.2));   // 뼈 가시
+    const g = new THREE.Group(); g.position.set(sx * 0.06, 0.1, 0); g.rotation.z = -sx * 0.3; g.scale.setScalar(1.25); A.add(g);
+    K.ico(g, 1, BONE, sx * 0.04, 0.02, 0, 0.44, 0.22, 0.4, 0, 0.03);
+    K.ico(g, 1, BONEL, sx * 0.0, 0.1, -0.02, 0.3, 0.14, 0.28, 0, 0.02);
+    K.ico(g, 1, BONED, sx * 0.1, -0.12, 0, 0.42, 0.18, 0.38, 0, 0.03);
+    for (let i = 0; i < 11; i++) { const a = i / 11 * Math.PI * 2, x = sx * 0.06 + Math.cos(a) * 0.4, z = Math.sin(a) * 0.38;   // 가장자리 뼈 혹·가시(윤곽이 들쭉날쭉)
+      if (sx * Math.cos(a) < -0.6) continue;
+      K.cone(g, 0.06, 0.16 + (i % 3) * 0.05, i % 2 ? BONEL : BONE, 4, x, -0.04 + (i % 2) * 0.05, z, Math.sin(a) * 1.3, 0, -Math.cos(a) * 1.3 * 1); }
+    for (let i = 0; i < 7; i++) { const a = (i / 6 - 0.5) * 2.6, x = sx * (0.12 + Math.cos(a) * 0.4), z = Math.sin(a) * 0.38; K.cone(g, 0.05, 0.14, BONED, 4, x, -0.2, z, Math.sin(a) * 1.6, 0, -sx * Math.cos(a) * 1.6); }   // 아랫단 가시
+    holes(g, sx * 0.04, 0.02, 0, 0.44, 0.22, 0.4, 14, (x, y, z) => y < 0.1);
+    holes(g, sx * 0.1, -0.12, 0, 0.42, 0.18, 0.38, 8, (x, y, z) => y > -0.2 || sx * x < 0.2);
+    if (sx < 0) {                                                                                          // 왼어깨 — 견갑을 넘쳐 덮은 산호 살덩이
+      pus(g, sx * 0.02, 0.06, 0, 0.42, 0.26, 0.4, 24, 0.05, 0.1, (x, y, z) => y < -0.1);
+      for (let i = 0; i < 6; i++) { const a = K.rr() * Math.PI * 2; branch(g, [sx * 0.02 + Math.cos(a) * 0.3, 0.18, Math.sin(a) * 0.3], [Math.cos(a) * 0.6, 0.8, Math.sin(a) * 0.6], 0.14, 0.04, 1); }
+      pus(g, sx * -0.3, 0.04, -0.2, 0.14, 0.12, 0.12, 8, 0.04, 0.07);                                    // 목 쪽으로 흘러내림
+    }
   };
   pauldron(L.armR, 1); pauldron(L.armL, -1);
-  for (const [x, y, z, h, rx, rz] of [[0, 0.1, 0, 0.5, 0.1, -0.15], [0.12, 0.02, 0.1, 0.36, 0.4, 0.3], [-0.1, 0.02, -0.08, 0.32, -0.3, -0.45], [0.06, 0, -0.14, 0.26, -0.5, 0.2], [-0.14, 0.04, 0.12, 0.28, 0.5, -0.6], [0.18, -0.02, -0.04, 0.22, 0, 0.7]]) {
-    const H2 = h * 1.3; const geo = new THREE.ConeGeometry(H2 * 0.24, H2, 5); geo.translate(0, H2 / 2, 0); K.put(bloom, new THREE.Mesh(geo, CRY), x * 1.8, y + 0.22, z * 1.8, rx * 1.4, 0, rz * 1.4);
+  // 결정 무리 — 육각 기둥 + 뾰족한 끝, 오른어깨 뒤에서 위·바깥으로 부채처럼
+  for (const [x, z, h, rx, rz, r] of [[0, 0, 0.75, 0.1, -0.2, 0.09], [0.16, 0.12, 0.6, 0.4, -0.55, 0.08], [-0.12, -0.06, 0.55, -0.3, 0.1, 0.07], [0.12, -0.14, 0.5, -0.5, -0.45, 0.07],
+    [-0.08, 0.16, 0.5, 0.55, 0.05, 0.07], [0.24, -0.02, 0.42, 0, -0.9, 0.06], [0.04, 0.22, 0.44, 0.8, -0.3, 0.06], [-0.18, 0.08, 0.36, 0.3, 0.4, 0.05], [0.2, 0.22, 0.34, 0.7, -0.8, 0.05]]) {
+    const geo = new THREE.CylinderGeometry(r, r * 1.1, h, 6); geo.translate(0, h / 2, 0); const tip = new THREE.ConeGeometry(r, r * 2.2, 6); tip.translate(0, h + r * 1.1, 0);
+    for (const gg of [geo, tip]) { gg.scale(0.85, 0.62, 0.85); K.put(bloom, new THREE.Mesh(gg, CRY), x * 1.4, 0.08, z * 1.4 + 0.08, rx, 0, rz); }
   }
-  K.ico(bloom, 0.16, WINE, 0, -0.04, 0, 1.3, 0.5, 1.2, 1);
-  // 팔 — 살 위팔 · 뼈 팔꿈치 덮개 · 뼈·금 건틀릿
+  K.ico(bloom, 0.16, FLD, 0, 0.1, 0, 1.4, 0.5, 1.3, 1);
+  pus(bloom, 0, 0.14, 0, 0.26, 0.1, 0.24, 8, 0.03, 0.05);
+  // 팔 — 검은 속갑 · 위팔 뼈 판 · 뼈 팔꿈치(가시) · 구멍 난 뼈 팔보호대 · 검은 건틀릿
   const arm = (A, E, H, sx) => {
-    K.seg(A, [0, -0.05, 0], [0, -0.74, 0], 0.22, 0.19, WINE, 7);
-    K.ico(A, 1, BONED, sx * 0.03, -0.42, 0, 0.25, 0.3, 0.23, 1);
-    K.ico(E, 0.19, BONE, 0, 0, 0.03, 1, 1, 1, 1); K.cone(E, 0.06, 0.2, BONED, 4, 0, 0.0, 0.2, Math.PI / 2, 0, 0);
-    K.seg(E, [0, 0, 0], [0, -0.66, 0], 0.2, 0.17, WINED, 7);
-    K.ico(E, 1, BONE, 0, -0.34, 0, 0.22, 0.32, 0.21, 1);
-    K.band(E, 0.2, 0.06, GOLD, 0, -0.56, 0, 9);
-    K.ico(H, 0.16, BONED, 0, -0.04, -0.02, 1.0, 0.9, 1.1, 1);
+    K.seg(A, [0, -0.05, 0], [0, -0.74, 0], 0.21, 0.18, UND, 7);
+    K.ico(A, 1, BONED, sx * 0.07, -0.36, 0, 0.18, 0.3, 0.2, 0, 0.02); holes(A, sx * 0.07, -0.36, 0, 0.18, 0.3, 0.2, 5, (x, y, z) => sx * x < 0.4);   // 위팔 바깥 뼈 판 한 장(안쪽은 검은 속갑)
+    K.ico(E, 0.18, BONE, 0, 0, 0.04, 1, 1, 1, 1); K.cone(E, 0.06, 0.22, BONEL, 4, 0, 0.0, 0.22, Math.PI / 2, 0, 0);
+    K.seg(E, [0, 0, 0], [0, -0.66, 0], 0.19, 0.16, UND, 7);
+    K.ico(E, 1, BONE, sx * 0.02, -0.32, -0.02, 0.21, 0.28, 0.2, 0, 0.025);
+    holes(E, sx * 0.02, -0.32, -0.02, 0.21, 0.28, 0.2, 9, (x, y, z) => Math.abs(y) > 0.75);
+    for (let i = 0; i < 3; i++) K.cone(E, 0.04, 0.12, BONEL, 4, sx * 0.2, -0.22 - i * 0.12, 0.02, 0, 0, -sx * Math.PI / 2);   // 팔보호대 바깥 가시
+    K.band(E, 0.2, 0.05, GOLD, 0, -0.56, 0, 9);
+    K.ico(H, 0.16, UNDD, 0, -0.04, -0.02, 1.0, 0.9, 1.1, 1);
+    for (let i = 0; i < 3; i++) K.box(H, 0.05, 0.04, 0.07, UND, (i - 1) * 0.06, -0.12, -0.12, 0, 0, 0);
   };
   arm(L.armR, elR, hR, 1); arm(L.armL, elL, hL, -1);
-  // 다리 — 뼈 허벅지 판 · 무릎 덮개 · 정강이 · 발
+  // 다리 — 검은 속갑 · 뼈 허벅지 판 · 큰 뾰족 무릎 덮개 · 구멍 난 뼈 정강이 · 검은 장화(뼈 코)
   const leg = (Lg, Kn, F) => {
-    K.seg(Lg, [0, 0, 0], [0, -0.92, 0], 0.28, 0.21, WINED, 7);
-    K.ico(Lg, 1, BONE, 0, -0.42, -0.06, 0.3, 0.44, 0.27, 1, 0.005);
-    K.ico(Kn, 0.2, BONE, 0, 0, -0.07, 1, 1, 0.9, 1); K.cone(Kn, 0.05, 0.16, BONED, 4, 0, 0, -0.2, -Math.PI / 2, 0, 0);
-    K.seg(Kn, [0, 0, 0], [0, -0.74, 0], 0.21, 0.17, WINED, 7);
-    K.ico(Kn, 1, BONE, 0, -0.36, -0.07, 0.24, 0.38, 0.21, 1);
-    K.band(Kn, 0.19, 0.06, GOLD, 0, -0.62, 0, 9);
-    K.ico(F, 0.21, BONED, 0, -0.16, -0.14, 1.0, 0.65, 1.6, 1);
+    K.seg(Lg, [0, 0, 0], [0, -0.92, 0], 0.27, 0.21, UND, 7);
+    K.ico(Lg, 1, BONED, 0, -0.56, -0.14, 0.22, 0.3, 0.16, 0, 0.02);                                // 허벅지 앞 뼈 판(옆·뒤는 검은 속갑)
+    holes(Lg, 0, -0.56, -0.14, 0.22, 0.3, 0.16, 5, (x, y, z) => z > -0.3);
+    K.ico(Kn, 0.2, BONE, 0, 0.02, -0.1, 1, 1.0, 0.8, 0, 0.02); K.cone(Kn, 0.08, 0.26, BONEL, 4, 0, 0.04, -0.26, -Math.PI / 2, 0, 0);
+    for (const sx of [-1, 1]) K.cone(Kn, 0.05, 0.16, BONE, 4, sx * 0.18, 0.06, -0.12, 0, 0, -sx * 1.3);
+    K.seg(Kn, [0, 0, 0], [0, -0.74, 0], 0.2, 0.17, UND, 7);
+    K.ico(Kn, 1, BONE, 0, -0.38, -0.08, 0.22, 0.34, 0.2, 0, 0.025);
+    holes(Kn, 0, -0.38, -0.08, 0.22, 0.34, 0.2, 10, (x, y, z) => z > 0.1 || Math.abs(y) > 0.8);
+    K.band(Kn, 0.19, 0.05, GOLDD, 0, -0.64, 0, 9);
+    K.ico(F, 0.21, LEAD, 0, -0.16, -0.12, 1.0, 0.65, 1.55, 1);
+    K.ico(F, 0.12, BONE, 0, -0.14, -0.38, 1.2, 0.6, 1.0, 1);
   };
   leg(L.legR, kR, fR); leg(L.legL, kL, fL);
-  // 검 — 금 손잡이 · 금 코등이(가운데 청록 보석) · 썩어 가는 금 칼날(산호가 슨 자리)
-  K.seg(sword, [0, -0.02, 0], [0, 0.26, 0], 0.03, 0.03, GOLDD, 6); K.ico(sword, 0.05, GOLD, 0, -0.04, 0, 1, 1, 1, 0);
-  K.box(sword, 0.34, 0.05, 0.06, GOLD, 0, 0.28, 0, 0, 0, 0); K.ico(sword, 0.03, EYE, 0, 0.28, -0.035, 1, 1, 0.6, 0);
-  K.plate(sword, [[-0.08, 0], [0.08, 0], [0.075, 1.25], [0, 1.48], [-0.075, 1.25]], 0.04, BLADE, 0, 0.3, 0, 0, 0, 0);
-  pus(sword, 0, 0.75, 0, 0.05, 0.35, 0.02, 8, 0.02, 0.035);
-  // 방패 — 뼈 카이트 방패 · 살 테 · 청록 판 위 금 문장
+  // 검 — 금 손잡이·코등이(뼈 가시 · 청록 보석) · 썩은 금 칼날에 산호가 슬었다
+  K.seg(sword, [0, -0.02, 0], [0, 0.26, 0], 0.03, 0.03, LEAD, 6); K.ico(sword, 0.055, GOLD, 0, -0.04, 0, 1, 1, 1, 0);
+  K.box(sword, 0.36, 0.05, 0.06, GOLD, 0, 0.28, 0, 0, 0, 0); K.ico(sword, 0.035, EYE, 0, 0.28, -0.035, 1, 1, 0.6, 0);
+  for (const sx of [-1, 1]) K.cone(sword, 0.03, 0.12, GOLDD, 4, sx * 0.2, 0.31, 0, 0, 0, -sx * 0.9);
+  K.plate(sword, [[-0.085, 0], [0.085, 0], [0.08, 1.25], [0, 1.5], [-0.08, 1.25]], 0.04, BLADE, 0, 0.3, 0, 0, 0, 0);
+  K.plate(sword, [[-0.02, 0], [0.02, 0], [0.02, 1.15], [-0.02, 1.15]], 0.05, GOLDD, 0, 0.32, 0, 0, 0, 0);
+  pus(sword, 0, 0.8, 0, 0.06, 0.45, 0.025, 12, 0.02, 0.04);
+  // 방패 — 뼈 카이트 방패(구멍마다 살) · 청록 판 위 금 백합 · 바깥 가장자리로 자란 산호 가지
   const kite = (s) => [[0, 0.62 * s], [0.42 * s, 0.4 * s], [0.38 * s, -0.3 * s], [0, -0.95 * s], [-0.38 * s, -0.3 * s], [-0.42 * s, 0.4 * s]];
-  K.plate(shield, kite(1.08), 0.05, WINE, 0, 0, 0.03, 0, 0, 0);
-  K.plate(shield, kite(1.0), 0.07, BONE, 0, 0, 0, 0, 0, 0);
-  K.plate(shield, kite(0.7), 0.04, TEALP, 0, 0.0, -0.035, 0, 0, 0);
-  K.plate(shield, [[-0.03, 0.32], [0.03, 0.32], [0.03, -0.42], [-0.03, -0.42]], 0.03, GOLD, 0, 0, -0.06, 0, 0, 0);
-  K.plate(shield, [[-0.18, 0.08], [0.18, 0.08], [0.18, 0.02], [-0.18, 0.02]], 0.03, GOLD, 0, 0, -0.06, 0, 0, 0);
-  pus(shield, -0.28, -0.2, -0.04, 0.12, 0.3, 0.05, 10, 0.03, 0.06, (x, y, z) => z > 0);
+  K.plate(shield, kite(1.12), 0.05, FLD, 0, 0, 0.03, 0, 0, 0);
+  K.plate(shield, kite(1.04), 0.08, BONE, 0, 0, 0, 0, 0, 0);
+  K.plate(shield, kite(0.7), 0.04, TEALP, 0, 0.0, -0.045, 0, 0, 0);
+  K.plate(shield, kite(0.74), 0.03, GOLDD, 0, 0.0, -0.035, 0, 0, 0);
+  fleur(shield, GOLD, 0, 0.0, -0.075, 1.5, 0);
+  for (let i = 0; i < 16; i++) { const t = i / 16, k = kite(0.87), a = k[Math.floor(t * 6)], b = k[(Math.floor(t * 6) + 1) % 6], f = (t * 6) % 1;   // 테두리 구멍
+    const x = a[0] + (b[0] - a[0]) * f, y = a[1] + (b[1] - a[1]) * f; K.ico(shield, 0.045 + (i % 3) * 0.01, i % 2 ? FLD : PK, x, y, -0.04, 1, 1, 0.4, 0); }
+  pus(shield, -0.36, -0.15, -0.03, 0.12, 0.38, 0.06, 14, 0.03, 0.06, (x, y, z) => z > 0);
+  for (let i = 0; i < 4; i++) branch(shield, [-0.4, -0.4 + i * 0.22, -0.02], [-1, 0.2 + K.rr() * 0.4, -0.3], 0.12, 0.03, 1);
   c3MergeStatic(sword); c3MergeStatic(shield); c3MergeStatic(crown); c3MergeStatic(headGrp, [crown]);
   c3MergeStatic(bloom); c3MergeStatic(hR, [sword]); c3MergeStatic(hL);
   c3MergeStatic(elR, [hR]); c3MergeStatic(elL, [hL, shield]); c3MergeStatic(L.armR, [elR]); c3MergeStatic(L.armL, [elL]);
