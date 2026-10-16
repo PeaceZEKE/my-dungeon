@@ -1713,6 +1713,41 @@ function a2DarkKnight(P) {
     K.cyl(headGrp, 0.15, 0.15, 0.08, ARM_D, 6, sx * 0.25, 0.06, 0.06, 0, 0, Math.PI / 2);   // 뿔 박힌 자리
   });
   for (let j = 2; j < ring.length - 1; j++) { const a = hv(0, j), b = hv(0, j + 1); K.seg(headGrp, [a[0], a[1], a[2] - 0.004], [b[0], b[1], b[2] - 0.004], 0.02, 0.02, ARM, 3); }
+  // 바이저 — 눈 틈 아래에서 세로 홈 양옆으로 볼을 덮는 판 두 장(원화). 투구 면을 따라 0.03 도톰하게 올리고 윗모서리에 밝은 날.
+  //   윗변은 눈 틈 아랫변을 따라 바깥으로 올라간다(틈이 판과 투구 사이 홈이 된다). 면은 정면 꼭짓점과 옆 꼭짓점 사이 두 칸(고리 0~1 · 1~2)
+  {
+    const VIS = K.mat(0x2c2f45), EDGE = K.mat(0x4a4f6a);
+    const yTopAt = (t) => 0.004 + 0.131 * (t - 0.47);          // 눈 틈(축 기울기 0.4 · 반폭 0.0425) 아랫변
+    const S = (sx, t, y, out) => { const j = y < ring[1][0] ? 0 : 1, f = (y - ring[j][0]) / (ring[j + 1][0] - ring[j][0]); return onFace(sx, t, j, f, out); };
+    [-1, 1].forEach(sx => {
+      const t0 = 0.2, t1 = 0.97, yb = ring[0][0] + 0.004, ym = ring[1][0];
+      const poly = [[t0, yb], [t1, yb], [t1, ym], [t1, yTopAt(t1)], [t0, yTopAt(t0)], [t0, ym]];
+      const fr = poly.map(([t, y]) => S(sx, t, y, 0.03)), bk = poly.map(([t, y]) => S(sx, t, y, -0.004));
+      const pos = [], n = poly.length;
+      const tri = (a, b, c, nx, nz) => {   // 바깥 방향(nx, nz)을 보게 감는다
+        const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        const cx = u[1] * v[2] - u[2] * v[1], cz = u[0] * v[1] - u[1] * v[0];
+        if (cx * nx + cz * nz < 0) pos.push(...a, ...c, ...b); else pos.push(...a, ...b, ...c);
+      };
+      const N = (o) => [-Math.sin(o.ry), -Math.cos(o.ry)];
+      [[0, 1, 2], [0, 2, 5], [5, 2, 3], [5, 3, 4]].forEach(([a, b, c]) => { const nn = N(fr[b]); tri(fr[a].p, fr[b].p, fr[c].p, nn[0], nn[1]); });   // 줄마다 나눈다(한 꼭짓점 부채꼴이면 가는 삼각형마다 모서리 빛이 그어졌다)
+      for (let i = 0; i < n; i++) {   // 옆 벽 — 바깥 방향은 다각형 바깥(가운데에서 먼 쪽)으로
+        const a = fr[i].p, b = fr[(i + 1) % n].p, c = bk[i].p, d = bk[(i + 1) % n].p;
+        const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], cen = S(sx, (t0 + t1) / 2, -0.1, 0.03).p;
+        const ox = m[0] - cen[0], oy = m[1] - cen[1], oz = m[2] - cen[2];
+        const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        const cr = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+        if (cr[0] * ox + cr[1] * oy + cr[2] * oz < 0) pos.push(...a, ...c, ...b, ...b, ...c, ...d); else pos.push(...a, ...b, ...c, ...b, ...d, ...c);
+      }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
+      put(headGrp, g, VIS, 0, 0, 0);
+      // 윗모서리 날 — 원화처럼 밝게(눈 틈 바로 아래 한 줄) · 바깥 세로 모서리도
+      const e0 = S(sx, t0, yTopAt(t0) - 0.008, 0.032).p, e1 = S(sx, t1, yTopAt(t1) - 0.008, 0.032).p;
+      K.seg(headGrp, e0, e1, 0.012, 0.012, EDGE, 3);
+      const o0 = S(sx, t1 - 0.02, yb + 0.01, 0.032).p, o1 = S(sx, t1 - 0.02, ym, 0.032).p, o2 = S(sx, t1 - 0.02, yTopAt(t1) - 0.01, 0.032).p;
+      K.seg(headGrp, o0, o1, 0.01, 0.01, EDGE, 3); K.seg(headGrp, o1, o2, 0.01, 0.01, EDGE, 3);
+    });
+  }
   { // 세로 홈 — 두 눈이 만나는 곳(정면 능선, y ≈ 0.02)에서 투구 아래끝까지. 능선이 y −0.06 에서 꺾이므로 두 토막으로 능선을 따라 눕힌다
     //   (한 토막 직선이면 꺾인 능선 끝이 홈 앞으로 삐져나와 코처럼 보였다). 가운데 붉은 빛은 뺀다
     const zAt = (y) => { const j = y > -0.06 ? 1 : 0, a = hv(0, j), b = hv(0, j + 1), f = (y - a[1]) / (b[1] - a[1]); return a[2] + (b[2] - a[2]) * f; };
