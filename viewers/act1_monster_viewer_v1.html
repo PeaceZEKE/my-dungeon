@@ -1486,7 +1486,8 @@ function a1Orc(P) {
     // 날은 자루를 축으로 90° 돌려 바닥 쪽(무기 그룹 -z — 쉴 때 아래)을 향한다(사용자 지시)
     K.plate(W, blade, 0.03, STEEL, 0, 0, 0, 0, Math.PI / 2, 0);
     K.plate(W, [[0.28, 0.52], [0.34, 0.62], [0.36, 0.74], [0.34, 0.86], [0.28, 0.96], [0.31, 0.74]], 0.035, K.mat(0x8a8a84, 'metal'), 0, 0, 0, 0, Math.PI / 2, 0);
-    if (isBoss) { K.plate(W, K.mir(blade, -1), 0.03, STEEL, 0, 0, 0, 0, Math.PI / 2, 0); K.cone(W, 0.04, 0.16, IRON, 4, 0, 0.92, 0, 0, 0, 0); }
+    // 보스 양날 — 아래 날이 바닥을 뚫지 않게 도끼를 0.3 rad 들어 쥐고 1.5 → 1.25 배로(예전 몸이 1.5 로 키워 둔 것을 덮어쓴다)
+    if (isBoss) { W.rotation.x = -Math.PI / 2 + 0.3; W.scale.setScalar(1.25); K.plate(W, K.mir(blade, -1), 0.03, STEEL, 0, 0, 0, 0, Math.PI / 2, 0); K.cone(W, 0.04, 0.16, IRON, 4, 0, 0.92, 0, 0, 0, 0); }
   }
 
   if (isBoss) {
