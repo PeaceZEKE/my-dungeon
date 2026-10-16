@@ -1248,13 +1248,18 @@ function a1Skeleton(P) {
     const CREST = K.mat(0x6e1612, 'cloth');
     for (let i = 0; i < 7; i++) { const t = i / 6; K.box(headGrp, 0.05, 0.13 - t * 0.04, 0.07, CREST, 0, 0.33 + Math.sin(t * Math.PI) * 0.03, -0.17 + t * 0.4, 0.3 - t * 0.8, 0, 0); }
   } else if (isRanged) {
-    // 궁수 — 두건(얼굴 둘레에 두꺼운 테 · 뒤로 늘어진 뾰족한 끝) + 어깨를 덮는 짧은 망토(목에서 이어진다)
-    //   공 껍질만 씌우면 위에서 파란 덩어리로만 보인다 — 얼굴 테·뾰족한 끝·어깨 망토가 '두건'으로 읽히게 한다
-    K.put(headGrp, new THREE.Mesh(new THREE.SphereGeometry(0.265, 10, 6, Math.PI * 1.5 + 0.8, Math.PI * 2 - 1.6, 0, Math.PI * 0.62), ROBE), 0, 0.03, 0.05).scale.set(1, 1.08, 1.1);
-    const rim = K.put(headGrp, new THREE.Mesh(new THREE.TorusGeometry(0.21, 0.035, 4, 12, Math.PI * 1.25), ROBE_D), 0, 0.02, -0.18, -0.12, 0, -Math.PI * 0.125);   // 위·양옆만 두르는 호(턱 아래는 트임)
-    rim.scale.set(1, 1.15, 1);
-    K.seg(headGrp, [0, 0.2, 0.22], [0, 0.12, 0.38], 0.09, 0.05, ROBE, 5);
-    K.seg(headGrp, [0, 0.12, 0.38], [0, -0.06, 0.46], 0.05, 0.008, ROBE, 5);
+    // 궁수 — 가죽 모자: 머리에 붙는 둥근 통 · 꿰맨 테 · 앞이 짧게 내려오고 뒤·옆이 위로 접혀 올라간 챙 · 바랜 청색 깃털(원거리 표시)
+    const CAP = K.mat(0x3e2614), CAP_D = K.mat(0x26170c), FEA = K.mat(0x2a4a7a, 'cloth'), FEA_D = K.mat(0x1a2e52, 'cloth');
+    // 머리에 붙는 모자를 뒤로 젖혀 쓴다(앞챙이 해골 얼굴을 가리면 위에서 해골로 안 읽힌다) · 앞은 짧은 끝 · 뒤·옆은 위로 접힌 챙
+    const cg = new THREE.Group(); cg.position.set(0, 0.09, 0.05); cg.rotation.x = 0.28; headGrp.add(cg);
+    K.put(cg, new THREE.Mesh(new THREE.SphereGeometry(0.235, 10, 5, 0, Math.PI * 2, 0, Math.PI * 0.5), CAP), 0, 0, 0).scale.set(1.04, 0.95, 1.08);
+    K.band(cg, 0.24, 0.045, CAP_D, 0, 0.01, 0, 12);
+    K.put(cg, new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.245, 0.11, 12, 1, true, -Math.PI * 0.62, Math.PI * 1.24), CAP_D), 0, 0.05, 0.01);   // 뒤·옆 접힌 챙(앞 트임)
+    K.cone(cg, 0.07, 0.12, CAP, 4, 0, 0.0, -0.25, -Math.PI / 2 + 0.25, 0, Math.PI / 4).scale.set(1, 1, 0.35);    // 앞 뾰족 끝
+    // 깃털 — 오른쪽 뒤에서 뒤로 비스듬히
+    const fg = new THREE.Group(); fg.position.set(0.2, 0.06, 0.06); fg.rotation.set(-0.9, 0.3, -0.35); cg.add(fg);
+    K.plate(fg, [[0, 0], [0.04, 0.06], [0.05, 0.2], [0.03, 0.34], [0, 0.4], [-0.025, 0.3], [-0.03, 0.14], [-0.02, 0.04]], 0.01, FEA, 0, 0, 0);
+    K.seg(fg, [0, 0, 0.006], [0, 0.38, 0.006], 0.006, 0.004, FEA_D, 3);
   } else {
     // 녹슨 반투구 + 챙
     K.put(headGrp, new THREE.Mesh(new THREE.SphereGeometry(0.245, 9, 4, 0, Math.PI * 2, 0, Math.PI / 2), IRON_D), 0, 0.06, 0.02).scale.set(1, 0.85, 1.05);
@@ -1345,9 +1350,6 @@ function a1Skeleton(P) {
     for (let i = 0; i < 4; i++) { const a = i * 1.57 + 0.4; K.seg(qv, [Math.cos(a) * 0.035, 0.18, Math.sin(a) * 0.035], [Math.cos(a) * 0.04, 0.3, Math.sin(a) * 0.04], 0.008, 0.008, GRIP, 3); K.cone(qv, 0.025, 0.07, RED, 3, Math.cos(a) * 0.04, 0.32, Math.sin(a) * 0.04, 0, 0, 0); }
     K.box(bodyGrp, 0.05, 0.6, 0.03, LEA, 0.0, 0.3, -0.2, 0.15, 0, 0.62);
     K.band(limbs.armL, 0.045, 0.13, LEA, 0, -0.31, -0.005, 6);
-    // 두건에서 이어진 짧은 어깨 망토(해진 아랫단)
-    const cp = K.put(bodyGrp, new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.3, 0.2, 10, 1, true), ROBE), 0, 0.44, 0.02); cp.scale.set(1.15, 1, 1);
-    for (let i = 0; i < 10; i++) { const a = i * 0.628; K.cone(bodyGrp, 0.05, 0.08 + (i % 2) * 0.04, ROBE, 3, Math.sin(a) * 0.31, 0.31 - (i % 2) * 0.02, Math.cos(a) * 0.29 + 0.02, Math.PI, 0, 0); }
   }
 }
 
