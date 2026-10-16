@@ -1242,25 +1242,43 @@ function a3FleshGiant(P) {
   K.seg(headGrp, [0.02, 0.62, 0.02], [0.14, 0.78, 0.0], 0.03, 0.01, BONE, 4); K.seg(headGrp, [0.02, 0.62, 0.02], [-0.12, 0.76, 0.04], 0.03, 0.01, BONE, 4);
   K.seg(headGrp, [0.02, 0.5, 0.02], [-0.1, 0.6, -0.04], 0.025, 0.008, BONE, 4);
   K.plate(headGrp, hem(0.07, 0.7, 4), 0.02, CLOTH, 0, 0.46, 0.2, -0.3, 0, 0);       // 해진 술
-  // 어깨 — 원화대로: 각진 큰 판(금 테) · 아래로 바깥을 덮으며 겹친 판 둘(금 테) · 목 쪽 위로 솟은 뿔 날(금 테) · 위의 종양 · 판 밑으로 비어져 나온 촉수
+  // 어깨 — 원화대로 한 장짜리 큰 판: 앞에서 보면 목 쪽 위 모서리가 뾰족하게 솟아 바깥으로 비스듬히 내려와 옆으로 꺾이는 각진 윤곽,
+  //         옆에서 보면 어깨를 덮은 반달 돔(가운데 종양). 윤곽(능선)·아래 테에 금 · 밑에 금 테 두른 겹판 하나 · 판 밑으로 촉수
+  //         (예전엔 둥근 돔 + 따로 세운 '뿔 날'로 지었는데 원화의 뾰족한 끝은 판 자체의 윤곽이다 — 사용자 지적)
+  // 견갑 = 팔 축(바깥 +x)을 돌려 감은 회전면 — 앞에서 보면 윤곽 그대로(목 쪽 뾰족한 끝 → 바깥으로 비스듬히 → 팔 위로 꺾여 내려옴),
+  //        옆에서 보면 반달 돔. 뾰족한 끝(ex)은 꼭대기에서만 솟게(cos^3) 해 옆에서도 날 끝이 뾰족하다
+  const revolve = (g, sx, prof, y0, phiM, nP, zs, m) => {        // prof: [x, r, ex] — r 축에서의 반지름 · ex 꼭대기에서만 더하는 솟음
+    const pos = [], idx = [], n = prof.length;
+    for (let j = 0; j <= nP; j++) { const f = -phiM + 2 * phiM * j / nP, c = Math.cos(f), sn = Math.sin(f);
+      for (const [x, r, ex] of prof) { const rr = r + (ex || 0) * Math.pow(Math.max(0, c), 2); pos.push(sx * x, y0 + rr * c, rr * sn * zs); } }
+    for (let j = 0; j < nP; j++) for (let i = 0; i < n - 1; i++) { const q = j * n + i; idx.push(q, q + 1, q + n, q + 1, q + n + 1, q + n); }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(sx > 0 ? idx : idx.map((v, i) => idx[i - (i % 3) + (2 - (i % 3))]));
+    geo.computeVertexNormals(); return K.put(g, new THREE.Mesh(geo.toNonIndexed(), m), 0, 0, 0);
+  };
+  const ringAt = (sx, x, r, y0, phiM, zs, n, ex) => { const o = []; for (let j = 0; j <= n; j++) { const f = -phiM + 2 * phiM * j / n, c = Math.cos(f), rr = r + (ex || 0) * Math.pow(Math.max(0, c), 2); o.push([sx * x, y0 + rr * c, rr * Math.sin(f) * zs]); } return o; };
+  const edge = (g, pts, r, m) => { for (let i = 0; i < pts.length - 1; i++) K.seg(g, pts[i], pts[i + 1], r, r, m, 4); };
+  const STC = K.mat(0x171624, 'cloth'), STDC = K.mat(0x100f17, 'cloth');
   const pauldron = (A, sx) => {
-    const g = new THREE.Group(); g.position.set(sx * 0.08, 0.1, 0); g.rotation.z = -sx * 0.32; A.add(g);
-    const shell = (r, h, t1, m) => { const geo = new THREE.SphereGeometry(1, 9, 3, 0, Math.PI * 2, 0, t1); geo.scale(r, h, r * 0.92); return K.put(g, new THREE.Mesh(geo, m), 0, 0, 0); };
-    shell(0.56, 0.32, 1.42, ST); K.ico(g, 1, STL, -sx * 0.04, 0.22, -0.04, 0.4, 0.12, 0.34, 0);         // 큰 판 · 빛 받는 윗면
-    const rim = (r, y, m, n) => K.put(g, new THREE.Mesh(new THREE.TorusGeometry(r, 0.026, 3, n || 7), m), 0, y, 0, Math.PI / 2, 0, 0);
-    rim(0.56 * Math.sin(1.42) + 0.005, 0.32 * Math.cos(1.42), GOLD, 9); g.children[g.children.length - 1].scale.set(1, 0.92, 1);
-    const lame = (rt, rb, h, y, m) => {                                                             // 바깥쪽 반 바퀴만 덮는 겹판
-      const L2 = Math.PI * 1.15, c = sx > 0 ? Math.PI / 2 : Math.PI * 1.5;
-      K.put(g, new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, 8, 1, true, c - L2 / 2, L2), m), 0, y, 0);
-      K.put(g, new THREE.Mesh(new THREE.CylinderGeometry(rb + 0.01, rb + 0.022, 0.035, 8, 1, true, c - L2 / 2, L2), GOLD), 0, y - h / 2 + 0.015, 0);
-    };
-    lame(0.52, 0.62, 0.12, -0.02, STD); lame(0.5, 0.6, 0.11, -0.12, ST);   // 짧게 · 바깥으로 벌어진다
-    const fin = [[-0.2, 0], [0.18, 0], [0.06, 0.42], [-0.04, 0.58]];                                 // 목 쪽 뿔 날
-    K.plate(g, fin.map(p => [p[0] * 1.14, p[1] * 1.08 - 0.02]), 0.03, GOLD, -sx * 0.2, 0.2, 0.04, -0.15, 0, sx * 0.3);   // 정면을 본다(옆으로 세우면 앞에서 막대로 보였다)
-    K.plate(g, fin, 0.06, ST, -sx * 0.2, 0.2, -0.01, -0.15, 0, sx * 0.3);
-    K.ico(g, 0.1, GLOW, sx * 0.14, 0.3, 0.06, 1, 0.9, 1, 1); K.ico(g, 0.14, FLD, sx * 0.14, 0.26, 0.06, 1.1, 0.5, 1.1, 1);   // 위의 종양
-    if (sx > 0) for (const [x, z] of [[0.26, -0.14], [0.32, 0.02]]) K.seg(g, [x, 0.2, z], [x + 0.1, 0.34, z - 0.02], 0.035, 0.008, BONE, 4);   // 오른 견갑에 돋은 뼈
-    burst(g, sx * 0.14, -0.3, -0.06, 0.24, 0.07, 0.24, 3, 4, [sx * 0.4, -0.7, -0.2]);
+    const g = new THREE.Group(); g.position.set(0, 0.02, 0); g.rotation.z = -sx * 0.1; A.add(g);
+    const y0 = -0.2, PM = Math.PI * 0.6, ZS = 1.15, NP = 12;
+    const prof = [[-0.24, 0.28, 0.04], [-0.17, 0.37, 0.24], [-0.08, 0.4, 0.1], [0.06, 0.39, 0.02], [0.22, 0.35, 0], [0.36, 0.28, 0], [0.47, 0.17, 0], [0.52, 0.05, 0]];
+    revolve(g, sx, prof, y0, PM, NP, ZS, STC);
+    // 금 테 — 앞에서 보이는 윤곽(꼭대기 능선) · 안쪽(목 쪽) 날 가장자리 · 앞뒤 끝
+    edge(g, prof.map(([x, r, ex]) => [sx * x, y0 + r + ex + 0.012, 0]), 0.028, GOLD);
+    edge(g, ringAt(sx, -0.24, 0.28, y0, PM, ZS, NP, 0.04), 0.026, GOLD);
+    edge(g, ringAt(sx, -0.17, 0.37, y0, PM, ZS, NP, 0.24), 0.02, GOLDD);
+    for (const sg of [-1, 1]) { const f = sg * PM, c = Math.cos(f), sn = Math.sin(f); edge(g, prof.map(([x, r, ex]) => { const rr = r + ex * Math.pow(Math.max(0, c), 2); return [sx * x, y0 + rr * c, rr * sn * ZS]; }), 0.024, GOLDD); }
+    // 밑 겹판 — 한 단 작은 회전면 · 아래 끝 금 테
+    const y1 = -0.36, P1 = Math.PI * 0.5;
+    const prof2 = [[0.1, 0.24, 0], [0.26, 0.27, 0], [0.4, 0.22, 0], [0.5, 0.13, 0], [0.53, 0.04, 0]];
+    revolve(g, sx, prof2, y1, P1, 10, 1.15, STDC);
+    for (const sg of [-1, 1]) { const f = sg * P1; edge(g, prof2.map(([x, r]) => [sx * x, y1 + r * Math.cos(f), r * Math.sin(f) * 1.15]), 0.022, GOLD); }
+    edge(g, ringAt(sx, 0.1, 0.24, y1, P1, 1.15, 10), 0.022, GOLDD);
+    // 옆면 가운데 종양(옆에서 보면 반달 한가운데) · 오른 견갑에 돋은 뼈 · 판 밑으로 비어져 나온 살
+    K.ico(g, 0.09, GLOW, sx * 0.48, y0 + 0.17, 0.0, 0.7, 1, 1, 1); K.ico(g, 0.12, FLD, sx * 0.46, y0 + 0.16, 0, 0.6, 1.1, 1.1, 1);
+    for (let i = 0; i < 5; i++) { const t = i / 5 * Math.PI * 2; K.ico(g, 0.026, PK, sx * 0.5, y0 + 0.17 + Math.sin(t) * 0.11, Math.cos(t) * 0.11, 1, 1, 1, 0); }
+    if (sx > 0) for (const [x, y, z] of [[-0.02, 0.18, -0.2], [0.14, 0.15, -0.14]]) K.seg(g, [x, y, z], [x + 0.06, y + 0.16, z - 0.1], 0.035, 0.008, BONE, 4);
+    burst(g, sx * 0.22, -0.42, -0.04, 0.22, 0.07, 0.24, 3, 4, [sx * 0.3, -0.7, -0.2]);
   };
   pauldron(L.armR, 1); pauldron(L.armL, -1);
   // 팔 — 위팔 판 · 팔꿈치 틈(촉수) · 큰 건틀릿
