@@ -1467,12 +1467,12 @@ function a3King(P) {
       K.ico(parent, 0.07 + K.rr() * 0.03, i % 2 ? PK : FL, x, cy, z, 1, 1, 1, 0); }   // 굵은 가지 + 밑동 혹(가는 가지는 화면에서 실선으로만 보였다)
   };
   // 몸통 — 넓은 뼈 흉갑(앞 능선 · 구멍) · 가운데 금 테 안의 빛나는 청록 결정 핵 · 금 허리띠와 메달 다섯 · 붉은 앞자락 금 삼지창
-  const CH = { y0: 0.0, y1: 1.0, rt: 0.74, rb: 0.5, zs: 0.7, cz: -0.02 };
+  const CH = { y0: 0.0, y1: 1.0, rt: 0.64, rb: 0.44, zs: 0.64, cz: -0.02 };
   const chestR = (y) => CH.rb + (Math.min(CH.y1, Math.max(CH.y0, y)) - CH.y0) / (CH.y1 - CH.y0) * (CH.rt - CH.rb);
   const chestZ = (x, y) => CH.cz + CH.zs * (-chestR(y) + 0.414 * Math.abs(x)) - 0.012;
   prism(torso, BONE, CH.rt, CH.rb, CH.y1 - CH.y0, 8, 0, 0.5, CH.cz, CH.zs);
-  prism(torso, UNDD, 0.62, 0.46, 0.9, 8, 0, 0.5, 0.08, 0.62);                                              // 등판
-  prism(torso, UND, 0.5, 0.54, 0.34, 8, 0, -0.14, 0.0, 0.72);                                               // 허리(비늘 속갑)
+  prism(torso, UNDD, 0.54, 0.4, 0.9, 8, 0, 0.5, 0.08, 0.6);                                              // 등판
+  prism(torso, UND, 0.44, 0.5, 0.34, 8, 0, -0.14, 0.0, 0.72);                                               // 허리(비늘 속갑)
   for (let i = 0; i < 18; i++) { const sx = i % 2 ? 1 : -1, x = sx * (0.22 + K.rr() * 0.4), y = 0.12 + K.rr() * 0.8; if (Math.abs(x) > chestR(y) * 0.9) continue;   // 흉갑 구멍(붉은 살)
     K.ico(torso, 0.04 + K.rr() * 0.035, i % 3 ? FLD : PK, x, y, chestZ(x, y) + 0.01, 1, 1, 0.35, 0); }
   // 결정 핵 — 가슴 가운데 마름모 금 테 + 뼈 틀 + 큰 청록 결정
@@ -1484,8 +1484,8 @@ function a3King(P) {
   }
   K.band(torso, 0.26, 0.12, BONED, 0, 1.0, -0.02, 8); K.band(torso, 0.28, 0.04, GOLD, 0, 0.95, -0.02, 8);   // 목 깃
   K.seg(torso, [0, 0.95, 0], [0, 1.15, -0.02], 0.16, 0.14, SKIN, 6);
-  { const g = new THREE.CylinderGeometry(0.55, 0.57, 0.14, 8, 1, true); g.scale(1, 1, 0.74); K.put(torso, new THREE.Mesh(g, GOLDD), 0, -0.18, 0.0); }   // 금 허리띠
-  for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i - 2) * 0.42, x = Math.cos(a) * 0.55, z = Math.sin(a) * 0.55 * 0.74 - 0.02;
+  { const g = new THREE.CylinderGeometry(0.5, 0.52, 0.14, 8, 1, true); g.scale(1, 1, 0.74); K.put(torso, new THREE.Mesh(g, GOLDD), 0, -0.18, 0.0); }   // 금 허리띠
+  for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i - 2) * 0.42, x = Math.cos(a) * 0.5, z = Math.sin(a) * 0.5 * 0.74 - 0.02;
     K.ico(torso, 0.075, GOLDL, x, -0.18, z, 1, 1, 0.45, 0); K.cone(torso, 0.03, 0.08, GOLD, 4, x, -0.18, z - 0.03, -Math.PI / 2, 0, 0); }
   for (const sx of [-1, 1]) for (let i = 0; i < 5; i++) { const t = i / 4, x = sx * (0.1 + t * 0.2), y = -0.28 - Math.sin(t * Math.PI) * 0.1; K.ico(torso, 0.024, i % 2 ? GOLDD : GOLD, x, y, -0.42 + t * 0.06, 1, 1, 1, 0); }
   // 뒤 — 큰 결정 가시 무리가 머리 뒤에서 위로 부채처럼(원화의 실루엣 꼭대기)
@@ -1511,7 +1511,7 @@ function a3King(P) {
   K.plate(cloth, [[-0.02, 0], [0.02, 0], [0.02, -0.42], [-0.02, -0.42]], 0.035, GOLD, 0, -0.32, -0.17, 0.06, 0, 0);
   for (const sx of [-1, 0, 1]) K.plate(cloth, [[-0.025, 0], [0.025, 0], [0, 0.1]], 0.035, GOLD, sx * 0.07, -0.34, -0.17, 0.06, 0, 0);
   K.plate(cloth, [[-0.1, 0], [0.1, 0], [0.1, 0.03], [-0.1, 0.03]], 0.035, GOLD, 0, -0.35, -0.17, 0.06, 0, 0);
-  for (const sx of [-1, 1]) { crust(cloth, sx * 0.4, -0.22, -0.02, 0.2, 0.26, 0.16, 9, 0.06, 0.09, (x, y, z) => z > 0.4);   // 뼈 허리판
+  for (const sx of [-1, 1]) { crust(cloth, sx * 0.38, -0.3, -0.02, 0.2, 0.36, 0.17, 11, 0.06, 0.09, (x, y, z) => z > 0.4);   // 뼈 허리판
     coralFringe(cloth, sx * 0.4, -0.42, -0.04, 0.14, 0.1, 3, sx > 0 ? -1.2 : Math.PI - 0.6, sx > 0 ? 0.6 : Math.PI + 1.2, -0.4); }
 
   // 머리 — 흰 수염의 각진 얼굴(아래 얼굴 블록) · 왼얼굴로 번진 산호 · 뿔 돋은 금관
@@ -1552,9 +1552,9 @@ function a3King(P) {
 
   // 어깨 — 큰 둥근 뼈 견갑(살 심 위 각진 뼈 조각 = 구멍마다 붉은 살) · 가장자리 산호 술 · 앞에 금 원판 · 아래 겹판
   const pauldron = (A, sx) => {
-    const g = new THREE.Group(); g.position.set(sx * 0.06, 0.1, 0); g.rotation.z = -sx * 0.2; g.scale.setScalar(1.3); A.add(g);
-    crust(g, sx * 0.06, 0.04, 0, 0.42, 0.34, 0.4, 26, 0.1, 0.16, (x, y, z) => y < -0.25);
-    crust(g, sx * 0.1, -0.26, 0, 0.36, 0.2, 0.34, 14, 0.08, 0.12, (x, y, z) => sx * x < -0.1 || y > 0.5);
+    const g = new THREE.Group(); g.position.set(sx * 0.06, 0.1, 0); g.rotation.z = -sx * 0.2; g.scale.setScalar(1.12); A.add(g);
+    crust(g, sx * 0.06, 0.04, 0, 0.4, 0.3, 0.38, 24, 0.09, 0.15, (x, y, z) => y < -0.25);
+    crust(g, sx * 0.1, -0.24, 0, 0.32, 0.18, 0.3, 12, 0.07, 0.11, (x, y, z) => sx * x < -0.1 || y > 0.5);
     coralFringe(g, sx * 0.06, 0.02, 0, 0.42, 0.4, 9, -Math.PI * 0.95, Math.PI * 0.95, 0.4);
     if (sx < 0) coralFringe(g, sx * 0.06, 0.2, 0, 0.3, 0.3, 5, -2.6, 2.6, 0.9);
     const rx = sx * 0.06 + sx * -0.2, rz = -0.38;                                                          // 앞 금 원판(별)
@@ -1577,17 +1577,20 @@ function a3King(P) {
   };
   arm(L.armR, elR, hR, 1); arm(L.armL, elL, hL, -1);
   // 다리 — 비늘 속갑 · 구멍 난 뼈 허벅지·무릎·정강이(산호) · 뼈 철갑화
+  // (하체는 원화처럼 굵은 판금 기둥 — 무릎·정강이·철갑화를 크게. 가늘면 상체만 뚱뚱해 보였다)
   const leg = (Lg, Kn, F) => {
-    K.seg(Lg, [0, 0, 0], [0, -0.92, 0], 0.23, 0.17, UND, 6);
-    crust(Lg, 0, -0.5, -0.04, 0.24, 0.32, 0.22, 12, 0.07, 0.11, (x, y, z) => z > 0.5);
-    { const o = new THREE.OctahedronGeometry(0.19, 0); o.scale(1, 1.15, 0.9); K.put(Kn, new THREE.Mesh(o, BONE), 0, 0.02, -0.1); }
-    K.cone(Kn, 0.07, 0.24, BONEL, 4, 0, 0.06, -0.26, -Math.PI / 2 - 0.3, 0, 0);
-    K.seg(Kn, [0, 0, 0], [0, -0.74, 0], 0.17, 0.14, UND, 6);
-    crust(Kn, 0, -0.36, -0.04, 0.2, 0.32, 0.19, 15, 0.075, 0.11, (x, y, z) => Math.abs(y) > 0.88);
-    coralFringe(Kn, 0, -0.5, 0, 0.18, 0.16, 3, 0.4, Math.PI * 2 - 0.4, 0.1);
-    K.box(F, 0.28, 0.2, 0.46, BONED, 0, -0.17, -0.1, 0, 0, 0);
-    K.box(F, 0.26, 0.08, 0.2, BONE, 0, -0.08, -0.22, 0.25, 0, 0);
-    K.cone(F, 0.13, 0.2, BONE, 4, 0, -0.17, -0.4, -Math.PI / 2, Math.PI / 4, 0);
+    K.seg(Lg, [0, 0, 0], [0, -0.92, 0], 0.27, 0.23, UND, 6);
+    crust(Lg, 0, -0.48, -0.03, 0.29, 0.4, 0.27, 16, 0.08, 0.12, (x, y, z) => z > 0.55);
+    { const o = new THREE.OctahedronGeometry(0.25, 0); o.scale(1, 1.1, 0.9); K.put(Kn, new THREE.Mesh(o, BONE), 0, 0.02, -0.1); }
+    K.cone(Kn, 0.09, 0.28, BONEL, 4, 0, 0.06, -0.3, -Math.PI / 2 - 0.3, 0, 0);
+    for (const sx of [-1, 1]) K.seg(Kn, [sx * 0.18, 0.04, -0.06], [sx * 0.36, 0.14, -0.1], 0.05, 0.005, BONE, 4);
+    K.seg(Kn, [0, 0, 0], [0, -0.74, 0], 0.22, 0.2, UND, 6);
+    crust(Kn, 0, -0.38, -0.03, 0.26, 0.4, 0.25, 18, 0.08, 0.12, (x, y, z) => Math.abs(y) > 0.9);
+    K.ico(Kn, 1, BONED, 0, -0.66, 0, 0.27, 0.1, 0.26, 0, 0.01);                                              // 발목 위로 퍼지는 아랫단
+    coralFringe(Kn, 0, -0.5, 0, 0.24, 0.22, 4, 0.4, Math.PI * 2 - 0.4, 0.1);
+    K.box(F, 0.36, 0.24, 0.58, BONED, 0, -0.16, -0.12, 0, 0, 0);
+    K.box(F, 0.34, 0.1, 0.26, BONE, 0, -0.04, -0.26, 0.28, 0, 0);
+    K.cone(F, 0.17, 0.24, BONE, 4, 0, -0.16, -0.48, -Math.PI / 2, Math.PI / 4, 0);
   };
   leg(L.legR, kR, fR); leg(L.legL, kL, fL);
   // 철퇴 — 뼈 자루 · 금 손잡이 · 금 테두리 가시 철퇴 머리(가운데 청록 보석)
