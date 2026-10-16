@@ -1644,9 +1644,18 @@ function a3King(P) {
     crust(Kn, 0, -0.38, -0.03, 0.26, 0.4, 0.25, 18, 0.08, 0.12, (x, y, z) => Math.abs(y) > 0.9);
     K.ico(Kn, 1, BONED, 0, -0.66, 0, 0.27, 0.1, 0.26, 0, 0.01);                                              // 발목 위로 퍼지는 아랫단
     coralFringe(Kn, 0, -0.5, 0, 0.24, 0.22, 4, 0.4, Math.PI * 2 - 0.4, 0.1);
-    K.box(F, 0.36, 0.24, 0.58, BONED, 0, -0.16, -0.12, 0, 0, 0);
-    K.box(F, 0.34, 0.1, 0.26, BONE, 0, -0.04, -0.26, 0.28, 0, 0);
-    K.cone(F, 0.17, 0.24, BONE, 4, 0, -0.16, -0.48, -Math.PI / 2, Math.PI / 4, 0);
+    // 철갑화 — 원화: 발목에서 발끝까지 금 테 두른 뼈 겹판 셋이 기왓장처럼 겹치고 둥근 코 덮개 · 어두운 밑창 · 뼈 뒤꿈치 · 발목 양옆 산호
+    K.box(F, 0.34, 0.08, 0.62, LEAD, 0, -0.27, -0.14, 0, 0, 0);                                                   // 밑창
+    K.ico(F, 1, UND, 0, -0.2, -0.12, 0.16, 0.08, 0.28, 0);                                                           // 발등 속(가죽·비늘)
+    for (let i = 0; i < 3; i++) { const z = 0.02 - i * 0.14, y = -0.2 - i * 0.012, sx = 0.19 - i * 0.008, sz = 0.13;   // 겹판 — 반구 껍질 기왓장(뒤 것이 앞 것 위에 겹친다)
+      const gg = new THREE.SphereGeometry(1, 8, 3, 0, Math.PI * 2, 0, Math.PI / 2); gg.scale(sx, 0.15 - i * 0.02, sz); K.jit(gg, 0.006);
+      K.put(F, new THREE.Mesh(gg, i % 2 ? BONEL : BONE), 0, y + (2 - i) * 0.03, z, 0.18, 0, 0);
+      { const gr = new THREE.SphereGeometry(1.05, 8, 1, Math.PI, Math.PI, Math.PI / 2 - 0.28, 0.28); gr.scale(sx, 0.15 - i * 0.02, sz); K.put(F, new THREE.Mesh(gr, GOLDL), 0, y + (2 - i) * 0.03, z, 0.18, 0, 0); }   // 앞쪽 아랫단 금 테(껍질 테두리 띠)
+      hole(F, { p: [(i % 2 ? 0.07 : -0.06), y + (2 - i) * 0.03 + (0.13 - i * 0.02) * 0.7, z + 0.01], n: new THREE.Vector3(0, 1, -0.4).normalize() }, 0.03); }
+    { const t = new THREE.SphereGeometry(1, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2); t.scale(0.17, 0.12, 0.15); K.put(F, new THREE.Mesh(t, BONE), 0, -0.23, -0.4); }   // 둥근 코 덮개
+    K.ico(F, 1, BONED, 0, -0.17, 0.14, 0.16, 0.12, 0.12, 0, 0.01);                                                  // 뒤꿈치
+    K.band(F, 0.2, 0.05, GOLDL, 0, -0.04, 0.0, 8);                                                                    // 발목 금 고리
+    for (const sx of [-1, 1]) coralTree(F, [sx * 0.19, -0.02, 0.02], [sx * 0.6, 0.8, 0.1], 0.14, 0.05, 1);        // 발목 양옆 산호
   };
   leg(L.legR, kR, fR); leg(L.legL, kL, fL);
   // 철퇴 — 뼈 자루 · 금 손잡이 · 금 테두리 가시 철퇴 머리(가운데 청록 보석)
