@@ -1716,7 +1716,7 @@ function a2DarkKnight(P) {
   // 바이저 — 눈 틈 아래에서 세로 홈 양옆으로 볼을 덮는 판 두 장(원화). 투구 면을 따라 0.03 도톰하게 올리고 윗모서리에 밝은 날.
   //   윗변은 눈 틈 아랫변을 따라 바깥으로 올라간다(틈이 판과 투구 사이 홈이 된다). 면은 정면 꼭짓점과 옆 꼭짓점 사이 두 칸(고리 0~1 · 1~2)
   {
-    const VIS = K.mat(0x2c2f45), EDGE = K.mat(0x4a4f6a);
+    const VIS = K.mat(0x2c2f45);
     const yTopAt = (t) => 0.004 + 0.131 * (t - 0.47);          // 눈 틈(축 기울기 0.4 · 반폭 0.0425) 아랫변
     const S = (sx, t, y, out) => { const j = y < ring[1][0] ? 0 : 1, f = (y - ring[j][0]) / (ring[j + 1][0] - ring[j][0]); return onFace(sx, t, j, f, out); };
     [-1, 1].forEach(sx => {
@@ -1741,11 +1741,10 @@ function a2DarkKnight(P) {
       }
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
       put(headGrp, g, VIS, 0, 0, 0);
-      // 윗모서리 날 — 원화처럼 밝게(눈 틈 바로 아래 한 줄) · 바깥 세로 모서리도
-      const e0 = S(sx, t0, yTopAt(t0) - 0.008, 0.032).p, e1 = S(sx, t1, yTopAt(t1) - 0.008, 0.032).p;
-      K.seg(headGrp, e0, e1, 0.012, 0.012, EDGE, 3);
-      const o0 = S(sx, t1 - 0.02, yb + 0.01, 0.032).p, o1 = S(sx, t1 - 0.02, ym, 0.032).p, o2 = S(sx, t1 - 0.02, yTopAt(t1) - 0.01, 0.032).p;
-      K.seg(headGrp, o0, o1, 0.01, 0.01, EDGE, 3); K.seg(headGrp, o1, o2, 0.01, 0.01, EDGE, 3);
+      // 금 테두리 — 판 가장자리를 한 바퀴(조금 안쪽 · 판 앞면 위). 꺾이는 고리(y −0.06)에서 한 번 꺾는다
+      const ti0 = t0 + 0.025, ti1 = t1 - 0.025, rim = [[ti0, yb + 0.014], [ti1, yb + 0.014], [ti1, ym], [ti1, yTopAt(ti1) - 0.014], [ti0, yTopAt(ti0) - 0.014], [ti0, ym]]
+        .map(([t, y]) => S(sx, t, y, 0.034).p);
+      for (let i = 0; i < rim.length; i++) K.seg(headGrp, rim[i], rim[(i + 1) % rim.length], 0.015, 0.015, GOLD, 4);
     });
   }
   { // 세로 홈 — 두 눈이 만나는 곳(정면 능선, y ≈ 0.02)에서 투구 아래끝까지. 능선이 y −0.06 에서 꺾이므로 두 토막으로 능선을 따라 눕힌다
