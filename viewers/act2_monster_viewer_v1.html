@@ -1713,11 +1713,13 @@ function a2DarkKnight(P) {
     K.cyl(headGrp, 0.15, 0.15, 0.08, ARM_D, 6, sx * 0.25, 0.06, 0.06, 0, 0, Math.PI / 2);   // 뿔 박힌 자리
   });
   for (let j = 2; j < ring.length - 1; j++) { const a = hv(0, j), b = hv(0, j + 1); K.seg(headGrp, [a[0], a[1], a[2] - 0.004], [b[0], b[1], b[2] - 0.004], 0.02, 0.02, ARM, 3); }
-  { // 세로 홈 — 두 눈이 만나는 곳(정면 능선, y ≈ 0.01)에서 투구 아래끝까지. 능선 기울기를 따라 눕힌다. 위쪽은 붉게 번진다
-    const yTop = 0.02, yBot = -0.24, zAt = (y) => { const j = y > -0.06 ? 1 : 0, a = hv(0, j), b = hv(0, j + 1), f = (y - a[1]) / (b[1] - a[1]); return a[2] + (b[2] - a[2]) * f; };
-    const zt = zAt(yTop), zb = zAt(yBot), len = Math.hypot(yTop - yBot, zt - zb), rx = Math.atan2(zb - zt, yTop - yBot);
-    B(headGrp, 0.075, len, 0.07, SLIT, 0, (yTop + yBot) / 2, (zt + zb) / 2 + 0.012, rx, 0, 0);
-    B(headGrp, 0.026, len * 0.22, 0.05, EYE_D, 0, yTop - len * 0.12, zt + (zb - zt) * 0.12 - 0.012, rx, 0, 0);   // 두 눈이 만나는 곳에서 조금 번진 붉은 빛
+  { // 세로 홈 — 두 눈이 만나는 곳(정면 능선, y ≈ 0.02)에서 투구 아래끝까지. 능선이 y −0.06 에서 꺾이므로 두 토막으로 능선을 따라 눕힌다
+    //   (한 토막 직선이면 꺾인 능선 끝이 홈 앞으로 삐져나와 코처럼 보였다). 가운데 붉은 빛은 뺀다
+    const zAt = (y) => { const j = y > -0.06 ? 1 : 0, a = hv(0, j), b = hv(0, j + 1), f = (y - a[1]) / (b[1] - a[1]); return a[2] + (b[2] - a[2]) * f; };
+    [[0.03, -0.06], [-0.06, -0.25]].forEach(([y0, y1]) => {
+      const z0 = zAt(y0), z1 = zAt(y1), len = Math.hypot(y0 - y1, z0 - z1) + 0.06, rx = Math.atan2(z1 - z0, y0 - y1);
+      B(headGrp, 0.075, len, 0.07, SLIT, 0, (y0 + y1) / 2, (z0 + z1) / 2 - 0.002, rx, 0, 0);
+    });
   }
   put(headGrp, new THREE.CylinderGeometry(0.33, 0.29, 0.06, 8), GOLD, 0, -0.22, 0.03);   // 뒤로 넓은 금 챙(앞은 부리에 묻힌다)
   put(headGrp, new THREE.CylinderGeometry(0.35, 0.35, 0.025, 8), GOLD_D, 0, -0.255, 0.03);
