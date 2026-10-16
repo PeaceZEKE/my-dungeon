@@ -1617,8 +1617,10 @@ function a2DarkKnight(P) {
   const MAG = limbs._dkMagma, CORE = limbs._dkMagmaCore;
   // 눈 — 세게 빛나면 블룸·포스트에 하얗게(주황으로) 떠서 붉은색이 안 남는다. 바탕을 검붉게 두고 발광을 낮게
   //       바탕색을 검정으로 두면 조명을 안 받아 어느 각도에서 봐도 발광색 그대로다(바탕이 있으면 비스듬히 볼 때 살구색으로 떴다)
-  const EYE = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xff3a08, emissiveIntensity: 0.8, roughness: 1, metalness: 0, flatShading: true });
-  const EYE_D = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xb00c00, emissiveIntensity: 0.7, roughness: 1, metalness: 0, flatShading: true });
+  //       원화만큼 밝게 — 심은 노란 주황(블룸으로 번진다) · 둘레는 붉게
+  //       톤매핑을 끈다 — 켜 두면 밝게 할수록 심이 크림색으로 바랜다(ACES 가 밝은 쪽 채도를 누른다). 끄면 적은 색이 그대로 나온다
+  const EYE = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffa21e, emissiveIntensity: 1.8, roughness: 1, metalness: 0, flatShading: true, toneMapped: false });
+  const EYE_D = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xf01c04, emissiveIntensity: 1.7, roughness: 1, metalness: 0, flatShading: true, toneMapped: false });
   EYE._glowMat = true; EYE_D._glowMat = true;
   const put = (p, g, m, x, y, z, rx, ry, rz) => K.put(p, new THREE.Mesh(g, m), x, y, z, rx, ry, rz);
   // 상자 판(크기는 지름) · 가운데에 조금 큰 얇은 금 판을 끼워 가장자리가 금 테로 보이게
@@ -1695,10 +1697,12 @@ function a2DarkKnight(P) {
   [-1, 1].forEach(sx => {
     // 눈 — 원화의 Y 자 틈: 면 바깥 끝에서 정면 능선까지 안쪽 아래로 기운 넓은 틈(어둠) · 그 안 붉은 빛(바깥쪽이 밝다).
     //       두 눈이 능선에서 만나고, 거기서 세로 홈이 투구 아래끝까지 내려간다(아래 · 가운데)
-    const e1 = onFace(sx, 0.47, 1, 0.6, 0.0), e2 = onFace(sx, 0.52, 1, 0.6, 0.014);
-    B(headGrp, 0.29, 0.085, 0.04, SLIT, e1.p[0], e1.p[1], e1.p[2], 0, e1.ry, sx * 0.4);
-    B(headGrp, 0.25, 0.062, 0.03, EYE_D, e2.p[0], e2.p[1], e2.p[2], 0, e2.ry, sx * 0.4);   // 틈을 채운 붉은 빛
-    const e3 = onFace(sx, 0.56, 1, 0.62, 0.02); B(headGrp, 0.13, 0.03, 0.03, EYE, e3.p[0], e3.p[1], e3.p[2], 0, e3.ry, sx * 0.4);   // 가운데 밝은 심
+    const e1 = onFace(sx, 0.47, 1, 0.6, 0.0);
+    const sl = new THREE.Group(); sl.position.set(...e1.p); sl.rotation.set(0, e1.ry, sx * 0.4); headGrp.add(sl);   // 틈의 축(로컬 x = 틈 길이 · −z = 바깥)
+    B(sl, 0.29, 0.085, 0.04, SLIT, 0, 0, 0);
+    // 눈은 틈 안쪽에 작게 — 틈 테두리를 덮지 않게 틈보다 작은 판을 틈 앞면에 바로 붙인다(붉은 둘레 · 노란 심)
+    B(sl, 0.13, 0.04, 0.008, EYE_D, sx * 0.02, 0, -0.022);
+    B(sl, 0.07, 0.018, 0.008, EYE, sx * 0.02, 0, -0.026);
     // 뿔 — 귀 높이에서 옆으로 나갔다 C 자로 솟아 끝이 위·안을 본다. 굵은 밑동 · 어두운 마디 고리 · 끝으로 갈수록 밝게
     const pts = [[sx * 0.2, 0.06, 0.06], [sx * 0.36, 0.07, 0.07], [sx * 0.48, 0.18, 0.06], [sx * 0.52, 0.35, 0.03], [sx * 0.47, 0.53, -0.01], [sx * 0.39, 0.68, -0.04]];
     const cuts = [0, 0.14, 0.16, 0.3, 0.32, 0.45, 0.47, 0.6, 0.62, 0.74, 0.76, 1.0];
@@ -1713,7 +1717,7 @@ function a2DarkKnight(P) {
     const yTop = 0.02, yBot = -0.24, zAt = (y) => { const j = y > -0.06 ? 1 : 0, a = hv(0, j), b = hv(0, j + 1), f = (y - a[1]) / (b[1] - a[1]); return a[2] + (b[2] - a[2]) * f; };
     const zt = zAt(yTop), zb = zAt(yBot), len = Math.hypot(yTop - yBot, zt - zb), rx = Math.atan2(zb - zt, yTop - yBot);
     B(headGrp, 0.075, len, 0.07, SLIT, 0, (yTop + yBot) / 2, (zt + zb) / 2 + 0.012, rx, 0, 0);
-    B(headGrp, 0.03, len * 0.3, 0.05, EYE_D, 0, yTop - len * 0.13, zt + (zb - zt) * 0.13 - 0.012, rx, 0, 0);   // 두 눈이 만나는 곳에서 조금 번진 붉은 빛
+    B(headGrp, 0.026, len * 0.22, 0.05, EYE_D, 0, yTop - len * 0.12, zt + (zb - zt) * 0.12 - 0.012, rx, 0, 0);   // 두 눈이 만나는 곳에서 조금 번진 붉은 빛
   }
   put(headGrp, new THREE.CylinderGeometry(0.33, 0.29, 0.06, 8), GOLD, 0, -0.22, 0.03);   // 뒤로 넓은 금 챙(앞은 부리에 묻힌다)
   put(headGrp, new THREE.CylinderGeometry(0.35, 0.35, 0.025, 8), GOLD_D, 0, -0.255, 0.03);
