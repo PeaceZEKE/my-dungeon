@@ -1496,16 +1496,41 @@ function a3King(P) {
     { const c = new THREE.CylinderGeometry(R * 0.45, R * 0.5, H * 0.8, 6); c.translate(0, H * 0.45, -R * 0.62); K.put(torso, new THREE.Mesh(c, CRYC), x * 1.1, 0.92, z, rx, 0, rz); }   // 앞(카메라 쪽)으로 비치는 밝은 심
   }
   K.ico(torso, 1, FLD, 0, 1.0, 0.24, 0.5, 0.14, 0.18, 0);                                                  // 결정 밑동의 살
-  // 망토 — 넓고 길게 · 해진 끝 · 등 금 문장(왕관 · 삼지창 · 양쪽 굽은 짐승)
-  K.plate(torso, jag(0.92, 2.25, 15, 0.18), 0.03, CAPE, 0, 0.96, 0.5, -0.12, 0, 0);
-  K.plate(torso, jag(0.9, 2.15, 15, 0.16), 0.02, CAPED, 0, 0.94, 0.53, -0.12, 0, 0);
-  const capeZ = (y) => 0.5 + (0.96 - y) * Math.sin(0.12) + 0.035;
-  { const y = 0.42; K.plate(torso, [[-0.18, 0], [-0.18, 0.12], [-0.1, 0.06], [0, 0.16], [0.1, 0.06], [0.18, 0.12], [0.18, 0], [-0.18, 0]], 0.02, GOLD, 0, y, capeZ(y), -0.12, Math.PI, 0); }   // 왕관
-  { const y = -0.75; K.plate(torso, [[-0.025, 0], [0.025, 0], [0.025, 0.85], [-0.025, 0.85]], 0.02, GOLD, 0, y, capeZ(y), -0.12, Math.PI, 0);   // 삼지창
-    for (const sx of [-1, 0, 1]) K.plate(torso, [[-0.03, 0], [0.03, 0], [0, 0.16]], 0.02, GOLD, sx * 0.1, y + 0.85, capeZ(y + 0.9), -0.12, Math.PI, 0);
-    K.plate(torso, [[-0.13, 0], [0.13, 0], [0.13, 0.04], [-0.13, 0.04]], 0.02, GOLD, 0, y + 0.82, capeZ(y + 0.85), -0.12, Math.PI, 0); }
-  for (const sx of [-1, 1]) K.plate(torso, K.mir([[0.12, 0.3], [0.3, 0.42], [0.4, 0.3], [0.34, 0.1], [0.42, -0.12], [0.3, -0.3], [0.2, -0.16], [0.26, 0.02], [0.16, 0.12]], sx), 0.02, GOLD, 0, -0.18, capeZ(-0.2), -0.12, Math.PI, 0);   // 굽은 짐승
-  for (let i = 0; i < 8; i++) { const x = (K.rr() - 0.5) * 1.5, y = -0.5 - K.rr() * 0.7, r = 0.07 + K.rr() * 0.08; K.ico(torso, r, i % 3 ? CAPEP : FLD, x, y, capeZ(y) - 0.015, 1.2, 1.5, 0.06, 1, 0.02); }
+  // 망토 — 어깨를 감싸고 등 뒤로 넓게 퍼지며 떨어지는 곡면(세로 주름) · 끝단은 길이를 들쭉날쭉 · 아래쪽에 해져 뚫린 구멍 ·
+  //        안감은 한 겹 어둡게 · 가장자리에 산호 · 어깨 사이 금사슬 · 등 금 문장(왕관 · 삼지창 · 양쪽 굽은 짐승)
+  //        (예전엔 기울인 평판 한 장이라 옆에서 보면 등에 붙인 간판 같았다)
+  const CAPE_T = 0.98, CAPE_L = 3.0, CAPE_NU = 24, CAPE_NV = 16;   // 바닥 가까이까지(원화)
+  const capeAt = (v, u, shrink) => {                          // v 0 = 어깨 · 1 = 끝단, u −1 ~ 1 = 왼쪽 → 오른쪽 가장자리
+    const R = (0.58 + v * 0.62) * (shrink || 1), TH = 1.45 - v * 0.12, th = u * TH;   // 아래로 갈수록 넓게 퍼져 앞에서도 다리 양옆으로 보인다
+    const pleat = 1 + Math.sin(th * 7 + 0.6) * 0.06 * Math.min(1, v * 2.2);
+    const zc = 0.06 + v * v * 0.42;
+    return [Math.sin(th) * R * pleat, CAPE_T - v * CAPE_L, zc + Math.cos(th) * R * pleat * 0.62];
+  };
+  const capeHem = []; for (let i = 0; i < CAPE_NU; i++) capeHem.push(0.86 + K.rr() * 0.14 - (i % 2) * 0.05);   // 열마다 끝단 길이
+  const capeGeo = (shrink, holes) => {
+    const pos = [];
+    for (let j = 0; j < CAPE_NV; j++) for (let i = 0; i < CAPE_NU; i++) {
+      const v0 = j / CAPE_NV, v1 = (j + 1) / CAPE_NV, u0 = -1 + 2 * i / CAPE_NU, u1 = -1 + 2 * (i + 1) / CAPE_NU;
+      if (v1 > capeHem[i] + 0.04) continue;                                            // 해진 끝단
+      if (holes && v0 > 0.5 && K.rr() < 0.07 + (v0 - 0.5) * 0.25) continue;            // 해져 뚫린 구멍(아래로 갈수록 많다)
+      const a = capeAt(v0, u0, shrink), b = capeAt(v0, u1, shrink), c = capeAt(v1, u0, shrink), d = capeAt(v1, u1, shrink);
+      pos.push(...a, ...c, ...b, ...b, ...c, ...d);
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g;
+  };
+  K.put(torso, new THREE.Mesh(capeGeo(1, true), CAPE), 0, 0, 0);
+  K.put(torso, new THREE.Mesh(capeGeo(0.965, true), CAPED), 0, 0, 0);
+  for (const sx of [-1, 1]) for (let i = 0; i < 4; i++) { const v = 0.55 + i * 0.1, q = capeAt(v, sx * 0.98); K.ico(torso, 0.06 + K.rr() * 0.04, i % 2 ? FL : PK, q[0], q[1], q[2], 1, 1.2, 1, 0); }   // 가장자리 산호
+  for (let i = 0; i < 7; i++) { const u = (K.rr() - 0.5) * 1.6, v = 0.62 + K.rr() * 0.22, q = capeAt(v, u); K.ico(torso, 0.06 + K.rr() * 0.05, i % 3 ? CAPEP : FLD, q[0], q[1], q[2] + 0.01, 1.2, 1.4, 0.3, 1, 0.02); }   // 살빛 번짐
+  { const pts = []; for (let i = 0; i <= 10; i++) { const t = i / 10, u = -0.9 + t * 1.8, q = capeAt(0.04, u); pts.push([q[0], q[1] - Math.sin(t * Math.PI) * 0.16, q[2] + 0.04]); }   // 어깨 사이 금사슬
+    for (let i = 0; i < pts.length - 1; i++) { K.seg(torso, pts[i], pts[i + 1], 0.02, 0.02, GOLDD, 4); K.ico(torso, 0.03, GOLD, pts[i][0], pts[i][1], pts[i][2], 1, 1, 1, 0); } }
+  const capeZ = (y) => { const v = (CAPE_T - y) / CAPE_L; return capeAt(v, 0)[2] + 0.025; };
+  const capeTilt = (y) => { const v = (CAPE_T - y) / CAPE_L; return Math.atan2(capeAt(v + 0.02, 0)[2] - capeAt(v - 0.02, 0)[2], 0.04 * CAPE_L); };
+  { const y = 0.42; K.plate(torso, [[-0.18, 0], [-0.18, 0.12], [-0.1, 0.06], [0, 0.16], [0.1, 0.06], [0.18, 0.12], [0.18, 0], [-0.18, 0]], 0.02, GOLD, 0, y, capeZ(y), -capeTilt(y), Math.PI, 0); }   // 왕관
+  { const y = -0.75; K.plate(torso, [[-0.025, 0], [0.025, 0], [0.025, 0.85], [-0.025, 0.85]], 0.02, GOLD, 0, y, capeZ(y + 0.4), -capeTilt(y + 0.4), Math.PI, 0);   // 삼지창
+    for (const sx of [-1, 0, 1]) K.plate(torso, [[-0.03, 0], [0.03, 0], [0, 0.16]], 0.02, GOLD, sx * 0.1, y + 0.85, capeZ(y + 0.9), -capeTilt(y + 0.9), Math.PI, 0);
+    K.plate(torso, [[-0.13, 0], [0.13, 0], [0.13, 0.04], [-0.13, 0.04]], 0.02, GOLD, 0, y + 0.82, capeZ(y + 0.85), -capeTilt(y + 0.85), Math.PI, 0); }
+  for (const sx of [-1, 1]) K.plate(torso, K.mir([[0.12, 0.3], [0.3, 0.42], [0.4, 0.3], [0.34, 0.1], [0.42, -0.12], [0.3, -0.3], [0.2, -0.16], [0.26, 0.02], [0.16, 0.12]], sx), 0.02, GOLD, 0, -0.18, capeZ(-0.18) + 0.01, -capeTilt(-0.18), Math.PI, 0);   // 굽은 짐승
   // 앞자락 — 붉은 천 · 금 삼지창 · 양옆 뼈 허리판(구멍)
   K.plate(cloth, [[-0.24, 0], [0.24, 0], [0.26, -0.98], [0.14, -1.1], [0.04, -0.96], [-0.08, -1.12], [-0.18, -0.98], [-0.26, -1.06]], 0.03, CAPE, 0, 0, -0.14, 0.06, 0, 0);
   K.plate(cloth, [[-0.02, 0], [0.02, 0], [0.02, -0.42], [-0.02, -0.42]], 0.035, GOLD, 0, -0.32, -0.17, 0.06, 0, 0);
