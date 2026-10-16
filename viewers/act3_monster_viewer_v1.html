@@ -1444,7 +1444,7 @@ function a3King(P) {
   // 가지 친 산호 — 끝에 둥근 혹
   const branch = (parent, p, d, len, r, depth) => {
     const m = Math.hypot(...d) || 1, q = [p[0] + d[0] / m * len, p[1] + d[1] / m * len, p[2] + d[2] / m * len];
-    K.seg(parent, p, q, r, r * 0.72, depth % 2 ? PK : FL, 4); K.ico(parent, r * 0.95, depth ? FL : PKL, q[0], q[1], q[2], 1, 1, 1, 0);
+    K.seg(parent, p, q, r, r * 0.72, depth % 2 ? PK : FL, 3); if (!depth) K.put(parent, new THREE.Mesh(new THREE.OctahedronGeometry(r * 0.95, 0), PKL), q[0], q[1], q[2]);
     if (depth > 0) for (let i = 0; i < 2; i++) branch(parent, q, [d[0] / m + (K.rr() - 0.5) * 1.2, d[1] / m + 0.25 + (K.rr() - 0.5) * 0.6, d[2] / m + (K.rr() - 0.5) * 1.2], len * 0.66, r * 0.7, depth - 1);
   };
   // 반쪽 타원체(x 부호 sx 쪽) — 4분할 겉옷
@@ -1464,7 +1464,8 @@ function a3King(P) {
   // 사슴뿔처럼 갈라지는 산호 — 끝은 둥근 공 대신 짧은 뭉툭한 가지(공을 달면 막대사탕으로 보였다)
   const coralTree = (parent, p, d, len, r, depth) => {
     const m = Math.hypot(...d) || 1, q = [p[0] + d[0] / m * len, p[1] + d[1] / m * len, p[2] + d[2] / m * len];
-    K.seg(parent, p, q, r, r * 0.75, depth % 2 ? FL : PK, 4); K.ico(parent, r * 0.8, depth % 2 ? FL : PK, q[0], q[1], q[2], 1, 1, 1, 0);
+    K.seg(parent, p, q, r, r * 0.75, depth % 2 ? FL : PK, 3);                                                    // 삼각 기둥(가지 하나 8면)
+    if (depth === 0) K.put(parent, new THREE.Mesh(new THREE.OctahedronGeometry(r * 0.85, 0), depth % 2 ? FL : PK), q[0], q[1], q[2]);   // 끝에만 뭉툭한 팔면체(마디 혹은 뺐다)
     if (depth > 0) for (let i = 0; i < 3; i++) { const t = (i - 1) * 0.9 + (K.rr() - 0.5) * 0.4; const dx = d[0] / m, dz = d[2] / m;
       coralTree(parent, q, [dx + Math.cos(t) * 0.5 * -dz * 2 + (K.rr() - 0.5) * 0.3, d[1] / m + 0.5, dz + Math.cos(t) * 0.5 * dx * 2 + (K.rr() - 0.5) * 0.3], len * 0.62, r * 0.72, depth - 1); }
   };
