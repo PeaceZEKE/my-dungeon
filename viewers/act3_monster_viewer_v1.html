@@ -1292,13 +1292,13 @@ function a3FleshGiant(P) {
     for (let i = 0; i < 4; i++) K.box(E, 0.05, 0.05, 0.08, ST, (i - 1.5) * 0.06, -0.55, -0.16, 0, 0, 0);
   };
   arm(L.armR, elR); arm(L.armL, elL);
-  // 철퇴 — 오른손에 쥔 자루 · 끝의 각진 쇠 머리(살과 촉수가 엉겨 붙었다). 걸을 때 팔을 흔들어도 바닥에 안 닿게 자루를 줄이고 앞으로 들었다
+  // 철퇴 — 오른손에 쥔 긴 자루 · 끝의 각진 쇠 머리(살과 촉수가 엉겨 붙었다). 평소엔 뒤로 바닥에 끌고 다닌다(아래 끌기)
   const ham = new THREE.Group(); ham.position.set(0, -0.52, -0.06); ham.rotation.set(-0.62, 0, 0.1); elR.add(ham);
-  K.seg(ham, [0, 0.3, 0], [0, -0.72, 0], 0.045, 0.045, STDD, 6);
+  K.seg(ham, [0, 0.3, 0], [0, -1.38, 0], 0.045, 0.045, STDD, 6);
   K.band(ham, 0.06, 0.24, CLOTHD, 0, -0.05, 0, 6); K.ico(ham, 0.07, GOLD, 0, 0.32, 0, 1, 1, 1, 0);
-  K.box(ham, 0.38, 0.38, 0.5, ST, 0, -0.87, 0, 0, 0, 0); K.box(ham, 0.4, 0.06, 0.52, GOLDD, 0, -0.7, 0, 0, 0, 0);
-  for (const sz of [-1, 1]) K.box(ham, 0.3, 0.3, 0.04, STL, 0, -0.87, sz * 0.26, 0, 0, 0);
-  burst(ham, 0.12, -0.97, -0.12, 0.14, 0.1, 0.14, 3, 4);
+  K.box(ham, 0.38, 0.38, 0.5, ST, 0, -1.55, 0, 0, 0, 0); K.box(ham, 0.4, 0.06, 0.52, GOLDD, 0, -1.38, 0, 0, 0, 0);
+  for (const sz of [-1, 1]) K.box(ham, 0.3, 0.3, 0.04, STL, 0, -1.55, sz * 0.26, 0, 0, 0);
+  burst(ham, 0.12, -1.65, -0.12, 0.14, 0.1, 0.14, 3, 4);
   // 다리 — 허벅지 판 · 무릎 틈(살·종양) · 정강이 판 · 뾰족한 쇠신
   const leg = (Lg) => {
     K.seg(Lg, [0, 0, 0], [0, -0.48, 0], 0.2, 0.18, MAIL, 7);
@@ -1312,6 +1312,29 @@ function a3FleshGiant(P) {
   };
   leg(L.legR); leg(L.legL);
   c3MergeStatic(ham); c3MergeStatic(headGrp);
+  // 끌기 — 철퇴 머리가 늘 몸 뒤쪽 바닥에 닿게 자루 방향을 매 프레임 다시 잡는다. 팔 자세는 게임 공용 걷기·휘두르기가 이 콜백보다
+  //        늦게 정하므로 _fgUpdate 가 아니라 행렬을 굽는 순간(updateMatrixWorld — 부모는 이미 이번 프레임 값)에 계산한다.
+  //        색·노멀·그림자 패스가 같은 행렬을 쓰므로 어긋나지 않는다. 팔을 들면(휘두르기·내려찍기) 손에 쥔 자세로 넘어간다
+  {
+    const qCarry = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.62, 0, 0.1)), DOWN = new THREE.Vector3(0, -1, 0);
+    const mA = new THREE.Matrix4(), mB = new THREE.Matrix4(), v = new THREE.Vector3(), d = new THREE.Vector3(), q = new THREE.Quaternion();
+    const HEAD = 1.55, GY = 0.22, base = THREE.Object3D.prototype.updateMatrixWorld;
+    ham.updateMatrixWorld = function (force) {
+      const par = this.parent;
+      if (par) {
+        mA.copy(grp.matrixWorld).invert().multiply(par.matrixWorld);             // 손 쪽 부모 → 몸 뿌리 공간
+        v.copy(this.position).applyMatrix4(mA);                                   // 손 자리
+        const sc = d.setFromMatrixColumn(mA, 1).length(), len = HEAD * sc;
+        const dy = Math.max(-1, Math.min(0.2, (GY - v.y) / len)), hz = Math.sqrt(1 - dy * dy);
+        d.set(0.3, 0, 1).normalize().multiplyScalar(hz); d.y = dy;               // 뒤(+z)·바깥으로 늘어져 머리가 바닥에
+        mB.extractRotation(mA).transpose(); d.transformDirection(mB);
+        q.setFromUnitVectors(DOWN, d);
+        const w = Math.max(0, Math.min(1, (L.armR.rotation.x - 0.65) / 0.55)), k = w * w * (3 - 2 * w);
+        this.quaternion.copy(q).slerp(qCarry, k);
+      }
+      base.call(this, force);
+    };
+  }
   c3MergeStatic(elR, [ham]); c3MergeStatic(elL); c3MergeStatic(L.armR, [elR]); c3MergeStatic(L.armL, [elL]);
   c3MergeStatic(L.legR); c3MergeStatic(L.legL); c3MergeStatic(torsoGrp);
   L._fgUpdate = function (t) {
