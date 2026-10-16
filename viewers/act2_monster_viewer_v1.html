@@ -1107,19 +1107,18 @@ function a2Monster(type, isBoss, isRanged, grp, bodyGrp, headGrp, limbs) {
       c3MergeStatic(L._swElbowR, [hR]); c3MergeStatic(L._swElbowL, [hL]);
       c3MergeStatic(L.armR, [L._swElbowR]); c3MergeStatic(L.armL, [L._swElbowL]); c3MergeStatic(bodyGrp, [L.armR, L.armL, ...keep]);
     } else if (type === 'darkknight') {
-      // 원화대로 새로 짓는다(사용자) — 망토(천 흔들림)와 대검 분노 불꽃만 예전 것을 남긴다
+      // 원화대로 새로 짓는다(사용자: 예전 것은 동작 부품·기믹만 — 관절 리그 · 대검 분노 불꽃 · 마그마 발광 재질). 망토도 새로
       const L = limbs, sub = (g) => g.children.find(c => c.isGroup);
-      const cape = bodyGrp.children.find(c => c.isGroup && c.children.some(m => m.isMesh && m.geometry && m.geometry.type === 'PlaneGeometry'));
-      const keep = new Set([cape, ...(L._dkSwordFlames || [])]);
+      const keep = new Set([...(L._dkSwordFlames || [])]);
       a2ClearDeep(grp, keep);
       const J = { kneeR: sub(L.legR), kneeL: sub(L.legL), elbowR: sub(L.armR), elbowL: sub(L.armL) };
       J.handR = L._dkSword.parent; J.handL = sub(J.elbowL);
-      P.J = J; P.cape = cape;
+      P.J = J;
       a2DarkKnight(P);
       c3MergeStatic(headGrp); c3MergeStatic(L._dkSword, [...keep]); c3MergeStatic(J.handR, [L._dkSword]); c3MergeStatic(J.handL);
       c3MergeStatic(J.elbowR, [J.handR]); c3MergeStatic(J.elbowL, [J.handL]); c3MergeStatic(L.armR, [J.elbowR]); c3MergeStatic(L.armL, [J.elbowL]);
       c3MergeStatic(J.kneeR); c3MergeStatic(J.kneeL); c3MergeStatic(L.legR, [J.kneeR]); c3MergeStatic(L.legL, [J.kneeL]);
-      c3MergeStatic(bodyGrp, [L.armR, L.armL, L.legR, L.legL, cape]);
+      c3MergeStatic(bodyGrp, [L.armR, L.armL, L.legR, L.legL, P.cape]);
     } else if (type === 'icequeen') {
       const L = limbs, A = [L._iqArmR, L._iqArmL];
       const head = headGrp, halo = head.children.find(c => c.isGroup && c.children.some(m => m.userData && m.userData.bx !== undefined));
@@ -1603,7 +1602,7 @@ function a2SE(rx, ry, rz, e1, e2, o) {
     const th = Math.PI * (1 - (t0 + (t1 - t0) * v)), ph = p0 + (p1 - p0) * u;
     const st = sp(Math.sin(th), e1);
     return [rx * st * sp(Math.sin(ph), e2), ry * sp(Math.cos(th), e1), -rz * st * sp(Math.cos(ph), e2)];
-  }, o.nu || 20, o.nv || 12);
+  }, o.nu || 12, o.nv || 8);
 }
 function a2DarkKnight(P) {
   const { K, bodyGrp, headGrp, limbs, J } = P;
@@ -1614,13 +1613,13 @@ function a2DarkKnight(P) {
   const MAG = limbs._dkMagma, CORE = limbs._dkMagmaCore;
   const put = (p, g, m, x, y, z, rx, ry, rz) => K.put(p, new THREE.Mesh(g, m), x, y, z, rx, ry, rz);
   // 금 테 고리(납작한 원환을 판 가장자리에) — 지름·높이 비율
-  const rim = (p, rx, rz, x, y, z, rxx, ryy, rzz, t) => { const o = put(p, new THREE.TorusGeometry(1, (t || 0.035) * 0.6 / Math.max(rx, rz), 5, 24), GOLD, x, y, z, Math.PI / 2 + (rxx || 0), ryy || 0, rzz || 0); o.scale.set(rx * 1.04 + 0.006, rz * 1.04 + 0.006, 1); return o; };   // 판 겉면보다 조금 밖 — 같은 반지름이면 겉면과 겹쳐 금빛 얼룩이 된다
-  P.cape.traverse(o => { if (o.isMesh && o.material && o.material.color) o.material.color.setHex(o.material.color.getHex() === 0x4a5a82 ? 0x0a1a6a : 0x060c30); });
+  const rim = (p, rx, rz, x, y, z, rxx, ryy, rzz, t) => { const o = put(p, new THREE.TorusGeometry(1, (t || 0.035) * 0.6 / Math.max(rx, rz), 4, 18), GOLD, x, y, z, Math.PI / 2 + (rxx || 0), ryy || 0, rzz || 0); o.scale.set(rx * 1.04 + 0.006, rz * 1.04 + 0.006, 1); return o; };   // 판 겉면보다 조금 밖 — 같은 반지름이면 겉면과 겹쳐 금빛 얼룩이 된다
+  a2DarkKnightCape(P);
 
   // ===== 상체 =====
   const T = new THREE.Group(); T.position.set(0, 1.24, 0); T.rotation.x = 0.1; bodyGrp.add(T);
   const CH = [0.48, 0.42, 0.36, 0.55, 0.7, 0, 0.08, 0.02];
-  put(T, a2SE(CH[0], CH[1], CH[2], CH[3], CH[4]), ARM, CH[5], CH[6], CH[7]);             // 흉갑
+  put(T, a2SE(CH[0], CH[1], CH[2], CH[3], CH[4], { nu: 18, nv: 12 }), ARM, CH[5], CH[6], CH[7]);             // 흉갑
   // 흉갑 앞 표면 위의 점(초타원체 음함수를 z 로 푼다) — 금 테·마그마 금을 표면에 붙이려고
   const chZ = (x, y, out) => { const [rx, ry, rz, e1, e2, cx, cy, cz] = CH; const yy = Math.min(0.999, Math.abs((y - cy) / ry)), xx = Math.min(0.999, Math.abs((x - cx) / rx));
     const A = Math.pow(Math.max(0, 1 - Math.pow(yy, 2 / e1)), e1 / e2) - Math.pow(xx, 2 / e2); return cz - rz * Math.pow(Math.max(0, A), e2 / 2) - (out || 0); };
@@ -1662,7 +1661,7 @@ function a2DarkKnight(P) {
   // ===== 팔 — 겹친 가시 견갑(금 테 · 눈 · 이끼) · 팔뚝 보호대 · 큰 건틀릿 =====
   const arm = (A, E, H, sx) => {
     const o = sx * 0.07;
-    put(A, a2SE(0.37, 0.32, 0.37, 0.9, 0.9, { t0: 0.42 }), ARM, o, 0.0, 0);                   // 견갑 지붕(둥근 돔)
+    put(A, a2SE(0.37, 0.32, 0.37, 0.9, 0.9, { t0: 0.42, nu: 18, nv: 7 }), ARM, o, 0.0, 0);                   // 견갑 지붕(둥근 돔)
     rim(A, 0.355, 0.355, o, 0.02, 0, 0, 0, sx * 0.12, 0.04);
     for (let i = 0; i < 2; i++) { const y = -0.1 - i * 0.1, r = 0.35 - i * 0.03; put(A, new THREE.CylinderGeometry(r, r + 0.045, 0.11, 20, 1, false), i ? ARM_L : ARM, o + sx * 0.02, y, 0, 0, 0, sx * 0.18); if (i === 1) rim(A, r + 0.045, r + 0.045, o + sx * 0.02, y - 0.055, 0, 0, 0, sx * 0.18, 0.024); }
     // 가시 셋 — 돔 표면에서 바깥·위로(밑동을 표면에 박고 끝은 0.3 밖으로)
@@ -1720,6 +1719,45 @@ function a2DarkKnight(P) {
   put(S, new THREE.OctahedronGeometry(0.035, 0), GEM, 0, -0.38, -0.05);
 }
 
+// 흑기사 망토 — 어깨 뒤에서 땅까지 · 아래로 넓어지며 등을 감싸 휜다 · 끝단이 갈래갈래 해지고 구멍 몇 개 · 겉 짙은 파랑 / 안 더 짙게.
+// 정점마다 쉬는 자리를 기억해 두고 매 프레임 물결로 흔든다(예전 _gkUpdate 뒤에 이어 붙인다 — 마그마 맥동·분노 불꽃은 그쪽이 계속 한다)
+function a2DarkKnightCape(P) {
+  const { bodyGrp, limbs } = P;
+  const NU = 12, NV = 12, W0 = 0.86, W1 = 1.3, H = 1.62;
+  const hash = (i) => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+  const len = []; for (let i = 0; i <= NU; i++) len.push(H * (0.86 + 0.14 * hash(i) - (i % 3 === 1 ? 0.1 : 0)));   // 끝단 갈래
+  const rest = [], pos = [], idx = [], uvv = [];
+  for (let j = 0; j <= NV; j++) for (let i = 0; i <= NU; i++) {
+    const u = i / NU, v = j / NV, w = W0 + (W1 - W0) * v, a = (u - 0.5) * w;
+    const y = -v * len[i], bend = 0.32 * (1 - Math.pow((u - 0.5) * 2, 2));   // 가운데가 뒤로 볼록(등을 감싼다)
+    const z = bend * (0.15 + v * 0.85) + v * 0.18;   // 윗단은 거의 곧게(위에서 볼 때 머리 뒤로 활처럼 뜨지 않게)
+    rest.push([a, y, z, u, v]); pos.push(a, y, z); uvv.push(u, v);
+  }
+  const holes = new Set([NU * 3 + 4, NU * 6 + 8, NU * 8 + 3, NU * 9 + 10]);
+  for (let j = 0; j < NV; j++) for (let i = 0; i < NU; i++) {
+    if (holes.has(j * NU + i)) continue;
+    const a = j * (NU + 1) + i, b = a + 1, c = a + NU + 1, d = c + 1; idx.push(a, c, b, b, c, d);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  const outer = getLowPolyMat(0x0a1a6a); outer.side = THREE.DoubleSide; outer.flatShading = false;
+  const capeGrp = new THREE.Group(); capeGrp.position.set(0, 1.54, 0.36); bodyGrp.add(capeGrp);
+  const cape = new THREE.Mesh(g, outer); cape.castShadow = false; cape.receiveShadow = true; capeGrp.add(cape);
+  const lg = g.clone(); const inner = getLowPolyMat(0x060c30); inner.side = THREE.DoubleSide; inner.flatShading = false;
+  const lining = new THREE.Mesh(lg, inner); lining.position.z = -0.025; lining.scale.set(0.98, 0.99, 1); capeGrp.add(lining);
+  P.cape = capeGrp;
+  const prev = limbs._gkUpdate;
+  limbs._gkUpdate = function (t, dt) {
+    if (prev) prev.call(this, t, dt);
+    const p = g.attributes.position, q = lg.attributes.position;
+    for (let k = 0; k < rest.length; k++) {
+      const [x, y, z, u, v] = rest[k];
+      const wave = Math.sin(t * 2.2 + v * 4.0 + u * 1.5) * 0.11 * v + Math.sin(t * 1.5 + u * 3.0) * 0.05 * v;
+      const flap = Math.sin(t * 1.3 + u * 2.0) * 0.04 * v * (u - 0.5);
+      p.setXYZ(k, x + flap, y, z + wave); q.setXYZ(k, x + flap, y, z + wave);
+    }
+    p.needsUpdate = true; q.needsUpdate = true; g.computeVertexNormals(); lg.computeVertexNormals();
+  };
+}
 // 매개 곡면(인덱스 격자 → 부드러운 법선). fn(u, v) → [x, y, z], u·v 는 0..1
 function a2Surf(fn, nu, nv) {
   const pos = [], idx = [];
@@ -1754,7 +1792,7 @@ function a2DarkKnightHelm(P) {
   const at = (ph, y, out) => { const r = R(y, ph) + (out || 0); return [r * Math.sin(ph), y, -r * Math.cos(ph)]; };
   const put = (g, m) => K.put(headGrp, new THREE.Mesh(g, m), 0, 0, 0);
   // 투구 껍질 — 이음매는 뒤(φ = π)
-  put(a2Surf((u, v) => at(-Math.PI + u * Math.PI * 2, Y0 + (Y1 - Y0) * v), 28, 14), ARM);
+  put(a2Surf((u, v) => at(-Math.PI + u * Math.PI * 2, Y0 + (Y1 - Y0) * v), 24, 12), ARM);
   put(a2Surf((u, v) => at(-Math.PI + u * Math.PI * 2, Y0 + 0.002 + v * 0.002, -0.06 * (1 - v)), 28, 1), ARM);   // 아래 막음(속이 비쳐 보이지 않게)
   // 금 테(아래 단) · 리벳
   put(a2Surf((u, v) => at(-Math.PI + u * Math.PI * 2, Y0 + 0.01 + v * 0.06, 0.012), 28, 1), GOLD);
