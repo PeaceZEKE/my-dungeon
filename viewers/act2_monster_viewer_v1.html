@@ -948,7 +948,7 @@ function c3MergeStatic(root, skip) {
 // ============================================================
 //  2막 몬스터 뷰어 — 구울·유령 기사·골렘·혼령·궁중 마법사 + 40/50/60층 보스(1막 뷰어를 복사해 만들었다).
 //  예전 몸: 구울은 makeMonOld 의 사람형 분기, 나머지는 게임 v905 의 전용 빌더(build…Body)를 글자 그대로 옮긴 것.
-//  새 몸은 a2 블록(/*A2NEW*/ … /*A2END*/ — 게임에 그대로 들어간다. 예전 몸을 지은 뒤 메시만 갈아 끼운다).
+//  새 몸은 a2 블록(A2NEW · A2END 표시 사이 — 게임에 그대로 들어간다. 예전 몸을 지은 뒤 메시만 갈아 끼운다).
 //  ?type=ghoul|ghostknight|golem|wraith|courtmage|servantwraith|darkknight|icequeen · ?cmp=0 나란히 / 1 예전 / 2 새것 · ?ty=N 시선 높이 · 골렘 ?sleep=1 휴면 자세
 // ============================================================
 const darkMetal = getLowPolyMat(0x7a837c, true);  
@@ -1152,9 +1152,11 @@ function a2Ghoul(P) {
   K.ico(tg, 0.14, SKIN, 0, 0.44, 0.12, 1.35, 0.85, 0.9, 1, 0.01);       // 곱사등
   for (let i = 0; i < 4; i++)                                             // 갈비뼈(앞·옆으로 감싼다)
     K.put(tg, new THREE.Mesh(new THREE.TorusGeometry(0.19 - i * 0.012, 0.02, 3, 10, Math.PI * 1.1), BONE), 0, 0.42 - i * 0.07, 0.01, -Math.PI / 2 + 0.2, 0, -0.05 * Math.PI).scale.set(1.15, 0.85, 1);
-  for (let i = 0; i < 8; i++) {                                           // 등뼈 마디 — 혹 위로 솟는다
-    const t = i / 7, y = 0.64 - t * 0.62, z = 0.2 + Math.sin(t * Math.PI) * 0.08 - t * 0.06;
-    K.ico(tg, 0.052 - t * 0.016, BONE, 0, y, z, 1.15, 0.75, 1.1, 0);
+  // 등뼈 마디 — 등 표면(가슴통·배·혹 타원체 중 가장 뒤)을 따라 붙인다. 마디 중심을 표면 바로 안쪽에 두어 반쯤 묻힌다
+  const backZ = (y) => { let z = 0; for (const [cy, ry, cz, rz] of [[0.33, 0.204, 0.02, 0.139], [0.12, 0.12, 0.0, 0.075], [0.44, 0.119, 0.12, 0.126]]) { const u = (y - cy) / ry; if (Math.abs(u) < 1) z = Math.max(z, cz + rz * Math.sqrt(1 - u * u)); } return z; };
+  for (let i = 0; i < 8; i++) {
+    const t = i / 7, y = 0.54 - t * 0.48, r = 0.05 - t * 0.014;
+    K.ico(tg, r, BONE, 0, y, backZ(y) - r * 0.45, 1.15, 0.75, 1.0, 0);
   }
   [-1, 1].forEach(sx => K.ico(tg, 0.08, SKIN_L, sx * 0.15, 0.48, 0.16, 1.1, 0.5, 0.75, 0));   // 어깨뼈
   // 수의 — 허리에 감은 너덜천(앞·뒤) + 한쪽 어깨에 걸친 띠
