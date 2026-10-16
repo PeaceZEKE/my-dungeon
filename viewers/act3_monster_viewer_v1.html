@@ -1418,11 +1418,39 @@ function a3King(P) {
   a2ClearDeep(grp);
   if (light) light.color.setHex(0x40e8c8);
   // 뼈 판은 각진 면 그대로(피부 표식이면 노멀을 뭉개 둥근 거품처럼 보였다)
-  const BONE = K.mat(0x7a4a2a), BONEL = K.mat(0x8c5834), BONED = K.mat(0x3c2c1c), BONEDD = K.mat(0x1c1612);
+  const BONE = K.mat(0x7a4a2a, 'rot'), BONEL = K.mat(0x8c5834, 'rot'), BONED = K.mat(0x3c2c1c, 'rot'), BONEDD = K.mat(0x1c1612);
+  // 부패 무늬 — 뼈 판(공용 'rot' 재질)에 썩은 얼룩 · 붉은 핏줄 그물 · 곰팡이 반점, 금(공용 'tarn')에 검푸른 녹.
+  //   셰이더에서 정점의 '몸 기준 좌표'(position)로 값 노이즈를 읽는다 — 월드 좌표면 걸을 때 무늬가 몸 위를 미끄러진다.
+  //   좌표를 0.035 칸으로 끊어 도트처럼 계단지게. 텍스처 이미지·THREE 객체를 새로 안 만든다(난수 흐름 그대로)
+  const rotify = (m, mode) => {
+    m.onBeforeCompile = (sh) => {
+      sh.vertexShader = 'varying vec3 vRotP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vRotP = position;');
+      sh.fragmentShader = 'varying vec3 vRotP;\n' +
+        'float a3h(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }\n' +
+        'float a3n(vec3 x){ vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);\n' +
+        '  return mix(mix(mix(a3h(i), a3h(i + vec3(1,0,0)), f.x), mix(a3h(i + vec3(0,1,0)), a3h(i + vec3(1,1,0)), f.x), f.y),\n' +
+        '             mix(mix(a3h(i + vec3(0,0,1)), a3h(i + vec3(1,0,1)), f.x), mix(a3h(i + vec3(0,1,1)), a3h(i + vec3(1,1,1)), f.x), f.y), f.z); }\n' +
+        sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n' + (mode === 'bone' ?
+        '  { vec3 q = floor(vRotP / 0.035) * 0.035; vec3 c = diffuseColor.rgb;\n' +
+        '    float st = a3n(q * 2.6) * 0.62 + a3n(q * 7.0 + 3.1) * 0.38;\n' +
+        '    c = mix(c, c * vec3(0.5, 0.36, 0.3), step(0.56, st));                 // 썩어 거뭇해진 얼룩\n' +
+        '    c = mix(c, c * vec3(0.3, 0.16, 0.15), step(0.7, st));                  // 얼룩 가운데 더 짙게\n' +
+        '    float vn = abs(a3n(q * 4.2 + 11.0) - 0.5);\n' +
+        '    c = mix(c, vec3(0.32, 0.025, 0.05), step(vn, 0.032) * step(0.35, a3n(q * 1.6 + 5.0)));   // 붉은 핏줄 그물(일부 구역에만)\n' +
+        '    c = mix(c, vec3(0.2, 0.22, 0.08), step(0.83, a3n(q * 13.0 + 2.0)) * 0.7);                 // 곰팡이 반점\n' +
+        '    diffuseColor.rgb = c; }' :
+        '  { vec3 q = floor(vRotP / 0.035) * 0.035; vec3 c = diffuseColor.rgb;\n' +
+        '    float t = a3n(q * 3.4) * 0.6 + a3n(q * 9.0 + 1.7) * 0.4;\n' +
+        '    c = mix(c, vec3(0.03, 0.07, 0.05), step(0.58, t) * 0.75);               // 검푸른 녹\n' +
+        '    c = mix(c, c * 0.45, step(0.5, t) * (1.0 - step(0.58, t)));           // 녹 가장자리 그을음\n' +
+        '    diffuseColor.rgb = c; }'));
+    };
+    m.customProgramCacheKey = () => 'a3rot-' + mode;
+  };
   const FL = K.mat(0x56192a, 'skin'), FLD = K.mat(0x34101b, 'skin'), PK = K.mat(0x661e2c, 'skin'), PKL = K.mat(0xdf1f45, 'skin');   // 살 — 3막 다른 몹과 같은 톤
   const UND = K.mat(0x140d0a), UNDD = K.mat(0x0a0706), LEA = K.mat(0x2a1206), LEAD = K.mat(0x170903);                           // 검은 속갑 · 가죽
   const TABT = K.mat(0x0b1a1e, 'cloth'), TABC = K.mat(0x6a4426, 'cloth'), TABCD = K.mat(0x3e2814, 'cloth');                      // 겉옷 — 청록 흑 / 크림
-  const GOLD = K.mat(0x6a3400), GOLDD = K.mat(0x3a1c00), GOLDL = K.mat(0x8a4a00), SKIN = K.mat(0x591e1d, 'skin'), SKIND = K.mat(0x3a120e, 'skin'), BEARD = K.mat(0x4a3e36), HAIR = K.mat(0x3a302a);   // 흰 수염·머리(이 조명에서 회백으로 나온다)
+  const GOLD = K.mat(0x6a3400, 'tarn'), GOLDD = K.mat(0x3a1c00, 'tarn'), GOLDL = K.mat(0x8a4a00, 'tarn'), SKIN = K.mat(0x591e1d, 'skin'), SKIND = K.mat(0x3a120e, 'skin'), BEARD = K.mat(0x4a3e36), HAIR = K.mat(0x3a302a);   // 흰 수염·머리(이 조명에서 회백으로 나온다)
   const CAPE = K.mat(0x2e080e, 'cloth'), CAPED = K.mat(0x180003, 'cloth'), CAPEP = K.mat(0x4a1420, 'cloth'), TEALP = K.mat(0x0b2a30, 'cloth');
   // 결정 — 스스로 빛난다: 톤매핑을 끄고(밝힐수록 크림색으로 바래지 않게) 발광을 세게, 바탕은 어두운 청록이라 면마다 명암이 조금 남는다.
   //        블룸 임계를 넘어 둘레로 번진다(2막 흑기사 눈·보석과 같은 요령). 속에 더 밝은 심(CRYC)을 한 겹 넣는다
@@ -1430,6 +1458,7 @@ function a3King(P) {
   const CRYC = new THREE.MeshBasicMaterial({ color: 0x7affe6, toneMapped: false }); CRYC._glowMat = true;
   const EYE = K.mat(0x40f0d0, 'glow'); EYE.emissiveIntensity = 0.8; EYE._glowMat = true;
   const BLADE = new THREE.MeshStandardMaterial({ color: 0x3a2008, emissive: 0x2a1000, emissiveIntensity: 0.2, roughness: 0.5, flatShading: true });
+  rotify(BONE.userData.mergeInto, 'bone'); rotify(GOLD.userData.mergeInto, 'gold');
   const pus = (parent, cx, cy, cz, rx, ry, rz, n, r0, r1, skip, mats) => a3Shell(K, parent, { cx, cy, cz, rx, ry, rz, n, r0, r1, mats: mats || [FL, FL, PK, FLD], det: 0, sink: 0.2, skip });
   // 뼈 판의 구멍 — 표면에 박힌 어두운 구멍과 그 안을 메운 살 알갱이
   const holes = (parent, cx, cy, cz, rx, ry, rz, n, skip) => a3Shell(K, parent, { cx, cy, cz, rx, ry, rz, n, r0: 0.03, r1: 0.06, mats: [FLD, PK, BONEDD, FL], det: 0, sink: 0.05, skip });
