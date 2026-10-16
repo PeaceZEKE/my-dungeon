@@ -1196,8 +1196,9 @@ function a3FleshGiant(P) {
   headGrp.position.set(0, 2.56, -0.06);
   const ST = K.mat(0x171624), STL = K.mat(0x25233a), STD = K.mat(0x100f17), STDD = K.mat(0x08070c);
   const GOLD = K.mat(0x5a2b00), GOLDD = K.mat(0x3a1c00), CLOTH = K.mat(0x2e080e, 'cloth'), CLOTHD = K.mat(0x180003, 'cloth');
-  const FL = K.mat(C.flesh, 'skin'), FLD = K.mat(C.fleshD, 'skin'), PKL = K.mat(C.pinkL, 'skin'), PK = K.mat(C.pink, 'skin'), BONE = K.mat(0x3c2c1c), MAIL = K.mat(0x0c0b10);
-  const GLOW = new THREE.MeshStandardMaterial({ color: 0x3a0806, emissive: 0xff5a3a, emissiveIntensity: 0.55, roughness: 0.5, flatShading: false }); GLOW._glowMat = true; markOrganic(GLOW);
+  // 살은 다른 3막 몹(연보라빛 분홍 살덩이)과 같은 대역 — 산호 빨강(0x700709 → 화면 #783c34)은 혼자 튀었다
+  const FL = K.mat(0x56192a, 'skin'), FLD = K.mat(0x34101b, 'skin'), PKL = K.mat(0xdf1f45, 'skin'), PK = K.mat(0x661e2c, 'skin'), BONE = K.mat(0x3c2c1c), MAIL = K.mat(0x0c0b10);
+  const GLOW = new THREE.MeshStandardMaterial({ color: 0x2a0a12, emissive: 0xd8607a, emissiveIntensity: 0.4, roughness: 0.5, flatShading: false }); GLOW._glowMat = true; markOrganic(GLOW);
   const SLIT = K.mat(0xff6a3a, 'glow'); SLIT.emissiveIntensity = 0.9; SLIT._glowMat = true;
   // 촉수 — 갑옷 틈에서 비어져 나와 휘는 가는 살 · 끝에 작은 혹 / 종양 — 빛나는 공
   const tendril = (parent, p, d, len, r) => {
@@ -1284,7 +1285,7 @@ function a3FleshGiant(P) {
   c3MergeStatic(elR, [ham]); c3MergeStatic(elL); c3MergeStatic(L.armR, [elR]); c3MergeStatic(L.armL, [elL]);
   c3MergeStatic(L.legR); c3MergeStatic(L.legL); c3MergeStatic(torsoGrp);
   L._fgUpdate = function (t) {
-    GLOW.emissiveIntensity = 0.45 + Math.sin(t * 1.6) * 0.2 + Math.sin(t * 3.3) * 0.08;
+    GLOW.emissiveIntensity = 0.34 + Math.sin(t * 1.6) * 0.14 + Math.sin(t * 3.3) * 0.06;
     SLIT.emissiveIntensity = Math.max(0.5, 0.9 + Math.sin(t * 2.4) * 0.25);
     const br = Math.sin(t * 0.8); torsoGrp.scale.set(1 + br * 0.008, 1 + br * 0.006, 1 + br * 0.008);
   };
