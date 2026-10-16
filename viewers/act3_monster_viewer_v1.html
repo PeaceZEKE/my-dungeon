@@ -1461,10 +1461,16 @@ function a3King(P) {
   const jag = (w, h, n, depth) => { const p = [[-w, 0], [w, 0]]; for (let i = 0; i <= n; i++) { const x = w - (2 * w * i) / n; p.push([x, -h + (i % 2 ? h * depth : 0) - K.rr() * h * 0.08]); } return p; };
 
   const prism = (parent, m, rt, rb, h, n, x, y, z, zs, t0, tl) => { const g = new THREE.CylinderGeometry(rt, rb, h, n, 1, false, t0 || 0, tl || Math.PI * 2); g.scale(1, 1, zs || 1); return K.put(parent, new THREE.Mesh(g, m), x, y, z); };
+  // 사슴뿔처럼 갈라지는 산호 — 끝은 둥근 공 대신 짧은 뭉툭한 가지(공을 달면 막대사탕으로 보였다)
+  const coralTree = (parent, p, d, len, r, depth) => {
+    const m = Math.hypot(...d) || 1, q = [p[0] + d[0] / m * len, p[1] + d[1] / m * len, p[2] + d[2] / m * len];
+    K.seg(parent, p, q, r, r * 0.75, depth % 2 ? FL : PK, 4); K.ico(parent, r * 0.8, depth % 2 ? FL : PK, q[0], q[1], q[2], 1, 1, 1, 0);
+    if (depth > 0) for (let i = 0; i < 3; i++) { const t = (i - 1) * 0.9 + (K.rr() - 0.5) * 0.4; const dx = d[0] / m, dz = d[2] / m;
+      coralTree(parent, q, [dx + Math.cos(t) * 0.5 * -dz * 2 + (K.rr() - 0.5) * 0.3, d[1] / m + 0.5, dz + Math.cos(t) * 0.5 * dx * 2 + (K.rr() - 0.5) * 0.3], len * 0.62, r * 0.72, depth - 1); }
+  };
   const coralFringe = (parent, cx, cy, cz, rx, rz, n, a0, a1, up) => {          // 가장자리에 돋은 산호 술
     for (let i = 0; i < n; i++) { const a = a0 + (a1 - a0) * (i + 0.5) / n, x = cx + Math.cos(a) * rx, z = cz + Math.sin(a) * rz;
-      branch(parent, [x, cy, z], [Math.cos(a) * 0.8, up || 0.3, Math.sin(a) * 0.8], 0.1 + K.rr() * 0.05, 0.07, 1);
-      K.ico(parent, 0.07 + K.rr() * 0.03, i % 2 ? PK : FL, x, cy, z, 1, 1, 1, 0); }   // 굵은 가지 + 밑동 혹(가는 가지는 화면에서 실선으로만 보였다)
+      coralTree(parent, [x, cy, z], [Math.cos(a) * 0.8, up || 0.3, Math.sin(a) * 0.8], 0.13 + K.rr() * 0.05, 0.06, 1); }
   };
   // 몸통 — 넓은 뼈 흉갑(앞 능선 · 구멍) · 가운데 금 테 안의 빛나는 청록 결정 핵 · 금 허리띠와 메달 다섯 · 붉은 앞자락 금 삼지창
   const CH = { y0: 0.0, y1: 1.0, rt: 0.64, rb: 0.44, zs: 0.64, cz: -0.02 };
@@ -1583,17 +1589,34 @@ function a3King(P) {
     K.seg(crown, p0, p1, 0.07, 0.055, BONE, 5); K.seg(crown, p1, p2, 0.055, 0.035, BONEL, 5); K.seg(crown, p2, p3, 0.035, 0.005, BONEL, 5); }
   for (let i = 0; i < 3; i++) branch(headGrp, [-0.16, 0.18 + i * 0.04, -0.06 + i * 0.06], [-0.4 + K.rr() * 0.3, 1, -0.2 + K.rr() * 0.4], 0.12, 0.03, 1);
 
-  // 어깨 — 큰 둥근 뼈 견갑(살 심 위 각진 뼈 조각 = 구멍마다 붉은 살) · 가장자리 산호 술 · 앞에 금 원판 · 아래 겹판
+  // 어깨 — 원화: 어깨를 덮는 큰 매끈한 뼈 껍질(돔) · 바깥 가장자리가 둥근 혹으로 물결진다 · 큰 둥근 구멍이 숭숭(속은 붉은 살) ·
+  //        아래로 겹판 둘이 팔을 타고 내려가며 바깥으로 퍼지고(아랫단 금 테 · 바깥 아래 모서리가 뾰족) · 앞 금 원판 · 위·바깥으로 산호 가지
+  //        (조각을 박아 지은 껍질은 원화의 '구멍 난 한 덩어리 뼈'가 아니라 자갈 더미로 읽혔다)
+  const onEll = (cx, cy, cz, rx, ry, rz, th, ph) => { const n = [Math.sin(th) * Math.cos(ph), Math.cos(th), Math.sin(th) * Math.sin(ph)];
+    return { p: [cx + n[0] * rx, cy + n[1] * ry, cz + n[2] * rz], n: new THREE.Vector3(n[0] / rx, n[1] / ry, n[2] / rz).normalize() }; };
+  const hole = (g, at, r) => { const o = K.ico(g, r, K.rr() < 0.3 ? PK : FLD, at.p[0], at.p[1], at.p[2], 1, 1, 1, 0); o.quaternion.setFromUnitVectors(K.UP, at.n); o.scale.set(1, 0.28, 1); };
   const pauldron = (A, sx) => {
-    const g = new THREE.Group(); g.position.set(sx * 0.06, 0.1, 0); g.rotation.z = -sx * 0.2; g.scale.setScalar(1.12); A.add(g);
-    crust(g, sx * 0.06, 0.04, 0, 0.4, 0.3, 0.38, 24, 0.09, 0.15, (x, y, z) => y < -0.25);
-    crust(g, sx * 0.1, -0.24, 0, 0.32, 0.18, 0.3, 12, 0.07, 0.11, (x, y, z) => sx * x < -0.1 || y > 0.5);
-    coralFringe(g, sx * 0.06, 0.02, 0, 0.42, 0.4, 9, -Math.PI * 0.95, Math.PI * 0.95, 0.4);
-    if (sx < 0) coralFringe(g, sx * 0.06, 0.2, 0, 0.3, 0.3, 5, -2.6, 2.6, 0.9);
-    const rx = sx * 0.06 + sx * -0.2, rz = -0.38;                                                          // 앞 금 원판(별)
-    K.cyl(g, 0.11, 0.11, 0.04, GOLD, 8, rx, -0.02, rz, Math.PI / 2, 0, 0);
-    for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; K.cone(g, 0.02, 0.07, GOLDL, 4, rx + Math.cos(a) * 0.05, -0.02 + Math.sin(a) * 0.05, rz - 0.03, Math.PI / 2, 0, -a + Math.PI / 2); }
-    for (let i = 0; i < 4; i++) { const a = (i / 3 - 0.5) * 2.2; K.seg(g, [sx * (0.1 + Math.cos(a) * 0.32), -0.36, Math.sin(a) * 0.3], [sx * (0.1 + Math.cos(a) * 0.46), -0.46, Math.sin(a) * 0.4], 0.035, 0.004, BONED, 4); }
+    const g = new THREE.Group(); g.position.set(sx * 0.08, 0.14, 0); g.rotation.z = -sx * 0.16; g.scale.setScalar(1.2); A.add(g);
+    const C = [sx * 0.08, 0.0, 0], RX = 0.44, RY = 0.4, RZ = 0.42;
+    { const d = new THREE.SphereGeometry(1, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.64);                                  // 돔 — 아래 가장자리를 둥근 혹 모양으로 물결지게
+      const P = d.attributes.position; for (let i = 0; i < P.count; i++) { const x = P.getX(i), y = P.getY(i), z = P.getZ(i), k = Math.max(0, 0.45 - y) / 0.9, f = 1 + Math.cos(Math.atan2(z, x) * 7) * 0.14 * k; P.setXYZ(i, x * f, y - Math.max(0, Math.cos(Math.atan2(z, x) * 7)) * 0.08 * k, z * f); }
+      d.scale(RX, RY, RZ); K.jit(d, 0.01); K.put(g, new THREE.Mesh(d, BONE), C[0], C[1], C[2]); }
+    K.ico(g, 1, FLD, C[0], C[1] - 0.02, C[2], RX * 0.95, RY * 0.9, RZ * 0.95, 1);                                     // 속(구멍으로 비치는 살)
+    for (let i = 0; i < 22; i++) { const th = 0.2 + K.rr() * 1.45, ph = K.rr() * Math.PI * 2; if (sx * Math.cos(ph) < -0.5 && th > 0.6) continue;   // 큰 둥근 구멍(원화는 스펀지처럼 숭숭)
+      hole(g, onEll(C[0], C[1], C[2], RX * 1.01, RY * 1.01, RZ * 1.01, th, ph), 0.06 + K.rr() * 0.05); }
+    for (let j = 0; j < 2; j++) {                                                                                       // 겹판 둘 — 팔을 타고 내려가며 바깥으로 퍼진다
+      const y = -0.18 - j * 0.17, rt = 0.4 - j * 0.03, rb = 0.47 - j * 0.02, c0 = sx > 0 ? Math.PI / 2 : -Math.PI / 2, tl = 2.3;
+      const gg = new THREE.CylinderGeometry(rt, rb, 0.2, 9, 1, true, c0 - tl / 2, tl); gg.scale(1, 1, 0.92); K.jit(gg, 0.012);
+      K.put(g, new THREE.Mesh(gg, j ? BONE : BONED), sx * (0.12 + j * 0.04), y, 0, 0, 0, sx * 0.14);
+      const gb = new THREE.CylinderGeometry(rb + 0.006, rb + 0.012, 0.04, 9, 1, true, c0 - tl / 2, tl); gb.scale(1, 1, 0.92); K.put(g, new THREE.Mesh(gb, GOLDL), sx * (0.12 + j * 0.04), y - 0.105, 0, 0, 0, sx * 0.14);
+      for (let k = 0; k < 4; k++) { const a = c0 + (k - 1.5) * 0.45, r = (rt + rb) / 2 + 0.01; hole(g, { p: [sx * (0.12 + j * 0.04) + Math.sin(a) * r, y, Math.cos(a) * r * 0.92], n: new THREE.Vector3(Math.sin(a), 0.2, Math.cos(a)).normalize() }, 0.04); }
+    }
+    K.seg(g, [sx * 0.5, -0.42, -0.18], [sx * 0.62, -0.62, -0.24], 0.06, 0.006, BONEL, 4);                              // 아랫단 바깥 앞 모서리 뾰족한 끝
+    const rx = sx * -0.12, rz = -0.4;                                                                                    // 앞 금 원판(별)
+    K.cyl(g, 0.11, 0.11, 0.045, GOLD, 8, rx, -0.04, rz, Math.PI / 2, 0, 0);
+    for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; K.cone(g, 0.02, 0.07, GOLDL, 4, rx + Math.cos(a) * 0.05, -0.04 + Math.sin(a) * 0.05, rz - 0.03, Math.PI / 2, 0, -a + Math.PI / 2); }
+    coralFringe(g, C[0] + sx * 0.06, 0.18, 0, 0.34, 0.34, 7, sx > 0 ? -1.6 : Math.PI - 1.6, sx > 0 ? 1.6 : Math.PI + 1.6, 0.9);   // 위·바깥으로 솟는 산호
+    if (sx < 0) coralFringe(g, C[0], 0.3, 0, 0.18, 0.18, 4, -2.6, 2.6, 1.2);
   };
   pauldron(L.armR, 1); pauldron(L.armL, -1);
   // 팔 — 비늘 속갑 · 위팔 뼈 판 · 뼈 팔꿈치 · 구멍 난 뼈 팔보호대 + 산호 · 뼈 건틀릿
