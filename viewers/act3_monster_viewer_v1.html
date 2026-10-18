@@ -1385,10 +1385,13 @@ function a3RotHeart(P) {
   const { K, bodyGrp, grp, limbs } = P;
   a2ClearDeep(grp);
   bodyGrp.children.filter(c => c.isGroup && c !== limbs.head).forEach(c => bodyGrp.remove(c));   // 예전 껍질 힌지
-  const FL = K.mat(0x6a1222, 'skin'), FLD = K.mat(0x3a0a14, 'skin'), FLDD = K.mat(0x1e050a, 'skin'), PK = K.mat(0x7a1a26, 'skin'), PKL = K.mat(0x9a2238, 'skin');
+  const FL = K.mat(0x6a1222, 'skin'), FLD = K.mat(0x5c1020, 'skin'), FLDD = K.mat(0x3c0814, 'skin'), PK = K.mat(0x7a1a26, 'skin'), PKL = K.mat(0x9a2238, 'skin');
   const VEINL = K.mat(0x8a2a24, 'skin'), POD = K.mat(0x7a1a1e, 'skin'), HOLE = K.mat(0x0c0204);
-  const SHELL = K.mat(0x4a1626, 'rot'), SHELLL = K.mat(0x40121f, 'rot'), SHELLD = K.mat(0x1c0610), RIM = K.mat(0x7a4a2a, 'rotb'), RIML = K.mat(0x8c5834, 'rotb');
-  a3Rotify(SHELL.userData.mergeInto, 'bone'); a3Rotify(RIM.userData.mergeInto, 'clean');
+  const SHELL = K.mat(0x702438, 'rot'), SHELLL = K.mat(0x641f31, 'rot'), SHELLD = K.mat(0x1c0610, 'shin'), RIM = K.mat(0x7a4a2a, 'rotb'), RIML = K.mat(0x8c5834, 'rotb');
+  a3Rotify(SHELL.userData.mergeInto, 'bone');
+  // 게임 시점(위에서 내려다봄)에서는 판 윗면이 플레이어 횃불을 거의 못 받아 새까맣다(CLAUDE.md '위를 향한 면이 어두운 것은 색 문제가 아니다') — 판 앞·안쪽에 어두운 진홍 자체 발광
+  SHELL.userData.mergeInto.emissive.setHex(0x4a1222); SHELLD.userData.mergeInto.emissive.setHex(0x260810);
+  RIM.userData.mergeInto.emissive.setHex(0x2a1a0c); FL.userData.mergeInto.emissive.setHex(0x22060c);   // 뼈 테·살도 윗면이 새까매지지 않게 조금 a3Rotify(RIM.userData.mergeInto, 'clean');
   const GLOW = new THREE.MeshStandardMaterial({ color: 0x4a0a0c, emissive: 0x9a1408, emissiveIntensity: 0.5, roughness: 0.6, metalness: 0, flatShading: true, toneMapped: false });   // 톤매핑을 끄면 밝혀도 크림색으로 바래지 않고 붉게 남는다 GLOW._glowMat = true;
   const CY = 2.1, WZ = -2.2;                                   // 심장 가운데 높이 · 뒤 벽면
   const rr = K.rr;
@@ -1550,7 +1553,7 @@ function a3RotHeart(P) {
   {
     const STA = K.mat(0x847d67), STB = K.mat(0x6e6854), STC = K.mat(0x7a735e), STD = K.mat(0x5a5444), MORT = K.mat(0x2a2620), MOSS = K.mat(0x26301a);
     const sts = [STA, STB, STC, STA, STD];
-    const wall = new THREE.Group(); bodyGrp.add(wall);
+    const wall = new THREE.Group(); grp.add(wall); limbs._rhWall = wall;   // 심장과 따로 — 심장이 부서져도 벽은 남긴다(killEnemy 가 떼어 바닥 그룹으로 옮긴다)
     const FZ = WZ - 0.04;                                       // 돌 앞면(뿌리가 그 앞을 탄다)
     const top = (x) => 3.75 + 0.35 * Math.cos(x * 1.3) - (x > 0.9 ? (x - 0.9) * 0.55 : 0);   // 가운데 벽 윗선(오른쪽이 무너져 낮다)
     K.box(wall, 5.0, 3.9, 0.55, MORT, 0, 1.95, FZ - 0.33);
@@ -1562,18 +1565,26 @@ function a3RotHeart(P) {
         x += w;
       }
     }
-    // 기둥 — 앞으로 튀어나온 각진 돌기둥. 왼쪽은 높이 남고 오른쪽은 중간에서 부러져 위 돌이 기울었다
-    for (const [px, hTop, broken] of [[-2.45, 5.6, 0], [2.45, 4.3, 1]]) {
-      K.box(wall, 0.95, hTop, 0.9, MORT, px, hTop / 2, FZ - 0.05);
-      let y = 0, c = 0;
-      while (y < hTop - 0.1) {
-        const hh = 0.5 + rr() * 0.2, last = y + hh >= hTop - 0.1;
-        const dx = (rr() - 0.5) * 0.06, w = 1.05 + rr() * 0.08;
-        K.box(wall, w, Math.min(hh, hTop - y) - 0.04, 1.0, sts[(c++ + (broken ? 2 : 0)) % 5], px + dx, y + Math.min(hh, hTop - y) / 2, FZ + 0.02, 0, 0, last && broken ? 0.22 : (rr() - 0.5) * 0.03);
+    // 기둥 — 벽에 반쯤 박힌 둥근 돌기둥(네모 받침 · 북돌 쌓기). 왼쪽은 머리돌까지 남고 오른쪽은 중간에서 부러져 윗북이 기울고 한 북은 바닥에 굴렀다
+    for (const [px, hTop, broken] of [[-2.45, 5.5, 0], [2.45, 4.1, 1]]) {
+      const pz = FZ + 0.04, R = 0.5;
+      K.box(wall, 1.22, 0.34, 1.22, STD, px, 0.17, pz);                      // 받침
+      K.cyl(wall, 0.62, 0.55, 0.16, STB, 10, px, 0.42, pz);                  // 받침 위 쇠시리
+      let y = 0.5, c = 0;
+      while (y < hTop - 0.05) {
+        const hh = Math.min(0.55 + rr() * 0.18, hTop - y), last = y + hh >= hTop - 0.05;
+        const d = K.cyl(wall, R - 0.01 + rr() * 0.03, R + rr() * 0.02, hh - 0.04, sts[(c++ + (broken ? 2 : 0)) % 5], 10, px + (rr() - 0.5) * 0.05, y + hh / 2, pz + (rr() - 0.5) * 0.04, 0, rr() * 0.6, 0);
+        if (last && broken) { d.rotation.z = -0.2; d.rotation.x = 0.12; d.position.x += 0.08; }
         y += hh;
       }
-      if (!broken) { K.box(wall, 1.2, 0.22, 1.15, STC, px, hTop + 0.08, FZ + 0.03); K.box(wall, 0.55, 0.5, 0.6, STA, px + 0.18, hTop + 0.44, FZ - 0.05, 0, 0.2, 0.08); }   // 갓돌 + 남은 윗돌 하나
-      else for (let i = 0; i < 3; i++) K.box(wall, 0.32 + rr() * 0.2, 0.25, 0.4, sts[i], px - 0.2 + i * 0.25, hTop + 0.12, FZ - 0.1 + rr() * 0.2, rr() * 0.3, rr(), rr() * 0.4);   // 부러진 자리 깨진 돌
+      if (!broken) {                                                          // 머리돌(퍼지는 대접 + 네모 판) + 남은 윗돌 하나
+        K.cyl(wall, R, 0.66, 0.32, STC, 10, px, hTop + 0.16, pz);
+        K.box(wall, 1.36, 0.2, 1.36, STA, px, hTop + 0.42, pz);
+        K.box(wall, 0.6, 0.48, 0.62, STB, px + 0.2, hTop + 0.76, pz - 0.08, 0, 0.25, 0.08);
+      } else {
+        for (let i = 0; i < 3; i++) K.ico(wall, 0.16 + rr() * 0.08, sts[i], px - 0.22 + i * 0.22, hTop + 0.08, pz - 0.1 + rr() * 0.25, 1.3, 0.7, 1, 0, 0.03);   // 부러진 자리 깨진 돌
+        K.cyl(wall, R, R, 0.6, STA, 10, px + 0.35, R * 0.92, pz + 1.15, Math.PI / 2, 0, 0.5);   // 바닥에 구른 북돌
+      }
     }
     // 뾰족 아치 — 심장 뒤 위쪽(쐐기돌 두 줄 호가 꼭대기에서 만난다) + 안쪽 움푹한 판
     const AR = 1.95, AH = 5.0, AY = 3.7;
@@ -1595,6 +1606,7 @@ function a3RotHeart(P) {
   c3MergeStatic(core);
   shells.forEach(s => c3MergeStatic(s.hinge));
   c3MergeStatic(bodyGrp, [core, glow, limbs.head, ...shells.map(s => s.hinge)]);
+  c3MergeStatic(limbs._rhWall);
   limbs._rhShells = shells; limbs._rhGlow = GLOW; limbs._rhCore = core;
 }
 
