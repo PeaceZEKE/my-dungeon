@@ -1429,7 +1429,7 @@ function a3RotHeart(P) {
       const rA = r * (1 - i / n * 0.85), rB = r * (1 - (i + 1) / n * 0.85);
       a += (rr() - 0.5) * 0.7;
       let nx, ny, nz;
-      if (!onFloor) { nx = px + Math.cos(a) * 0.42; ny = py + Math.sin(a) * 0.42; nz = WZ + 0.06 + rB * 0.6; if (floor && ny < 0.12) { ny = 0.1; onFloor = true; nz = WZ + 0.25; } }
+      if (!onFloor) { nx = Math.max(-1.85, Math.min(1.85, px + Math.cos(a) * 0.42)); ny = Math.min(5.0, py + Math.sin(a) * 0.42); nz = WZ + 0.06 + rB * 0.6; if (floor && ny < 0.12) { ny = 0.1; onFloor = true; nz = WZ + 0.25; } }
       else { fz += 0.4; nx = px + Math.cos(a) * 0.22; ny = 0.05 + rB * 0.4; nz = pz + 0.38; }
       K.seg(bodyGrp, [px, py, pz], [nx, ny, nz], rA, rB, i % 3 === 2 ? FLD : FL, rA > 0.1 ? 5 : 4);
       if (i % 2 === 1 && rA > 0.06) K.ico(bodyGrp, rA * 1.15, FL, nx, ny, nz, 1, 1, 1, 0);
@@ -1464,8 +1464,10 @@ function a3RotHeart(P) {
     K.ico(bodyGrp, 0.13, RIML, bx + 0.62, 0.1, bz - 0.2, 1.1, 0.9, 1.2, 0);
   }
   // ---- 껍질 넷 — 마름모 외곽선을 십자 이음매로 나눈 두꺼운 판 + 두툼한 뼈 테 ----
-  const W = 1.78, HU = 2.08, HD = 1.72, PE = 1.25, GAP = 0.075, Z0 = -0.1, D = 1.6, T = 0.2, B0 = 0.1;
+  // 바깥 변의 뼈 테(외곽선)는 심장 둘레에 고정된 틀이고, 판(+ 이음매 쪽 테)만 그 바깥 변을 경첩 삼아 바깥으로 젖혀진다
+  const W = 1.78, HU = 2.08, HD = 1.72, PE = 1.25, GAP = 0.075, Z0 = -0.1, D = 1.6, T = 0.2, B0 = 0.1, OPEN = 1.95;
   const rOut = (th, H) => 1 / ((Math.abs(Math.cos(th)) / W) ** PE + (Math.abs(Math.sin(th)) / H) ** PE) ** (1 / PE);
+  const frame = new THREE.Group(); frame.position.set(0, CY, 0.05); bodyGrp.add(frame);
   const shells = [];
   for (const [sx, sy] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
     const H = sy > 0 ? HU : HD;
@@ -1489,53 +1491,106 @@ function a3RotHeart(P) {
       g.setIndex(flip ? idx.map((v, k) => idx[k - k % 3 + [0, 2, 1][k % 3]]) : idx); g.computeVertexNormals(); return K.put(hinge, new THREE.Mesh(g, m), 0, 0, 0);
     };
     mk(fp, false, sy > 0 ? SHELL : SHELLL); mk(bp, true, SHELLD);
-    // 테두리 고리 — 바깥 변(곱게) → 바깥 이음매 → 가운데 → 안 이음매
+    // 테두리 고리 — 바깥 변(곱게, 0..14) → 바깥 이음매 → 가운데 → 안 이음매
     const loop = [];
     for (let i = 0; i <= 14; i++) loop.push(at(i / 14, 1));
     for (let j = 5; j >= 0; j--) loop.push(at(1, j / 6));
     loop.push(at(0.5, 0));
     for (let j = 0; j < 6; j++) loop.push(at(0, j / 6));
-    // 뼈 테 — 단면 네 점(바깥 위 · 안 위(돋움) · 안 아래 · 바깥 뒤)을 고리 따라 잇는다
+    // 뼈 테 단면 네 점(바깥 위 · 안 위(돋움) · 안 아래 · 바깥 뒤)
     const cx = loop.reduce((s, p) => s + p[0], 0) / loop.length, cy = loop.reduce((s, p) => s + p[1], 0) / loop.length;
     const N = loop.length, sec = [];
     for (let i = 0; i < N; i++) {
       const p = loop[i], pa = loop[(i + N - 1) % N], pb = loop[(i + 1) % N];
       let tx = pb[0] - pa[0], ty = pb[1] - pa[1]; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
       let nx = -ty, ny = tx; if (nx * (cx - p[0]) + ny * (cy - p[1]) < 0) { nx = -nx; ny = -ny; }
-      const w = 0.17 + rr() * 0.08 + (i % 5 === 2 ? 0.08 : 0), h = 0.12 + rr() * 0.05;
+      const outer = i <= 14, w = (outer ? 0.22 : 0.17) + rr() * 0.08 + (i % 5 === 2 ? 0.08 : 0), h = (outer ? 0.16 : 0.12) + rr() * 0.05;
       const qx = p[0] + nx * w, qy = p[1] + ny * w, zp = zAt(p[0], p[1]), zq = zAt(qx, qy);
       const zt = Math.max(zp + h * 0.7, zq + h * 0.45);
       sec.push([[p[0] - nx * 0.03, p[1] - ny * 0.03, zt], [qx, qy, zq + h], [qx, qy, zq - 0.03], [p[0] - nx * 0.05, p[1] - ny * 0.05, zp - T - 0.04]]);
     }
-    const rp = [], ri = [];
-    for (let i = 0; i < N; i++) for (let k = 0; k < 4; k++) rp.push(...sec[i][k]);
-    for (let i = 0; i < N; i++) {
-      const i2 = (i + 1) % N;
-      for (let k = 0; k < 4; k++) {
-        const k2 = (k + 1) % 4, a = i * 4 + k, b = i * 4 + k2, c = i2 * 4 + k, d = i2 * 4 + k2;
+    // 단면 목록 → 띠(양끝 마개)
+    const tube = (list, parent) => {
+      const rp = [], ri = [], M = list.length;
+      for (const s4 of list) for (const v of s4) rp.push(...v);
+      for (let i = 0; i < M - 1; i++) for (let k = 0; k < 4; k++) {
+        const k2 = (k + 1) % 4, a = i * 4 + k, b = i * 4 + k2, c = (i + 1) * 4 + k, d = (i + 1) * 4 + k2;
         if (sx * sy > 0) ri.push(a, c, d, a, d, b); else ri.push(a, d, c, a, b, d);
       }
-    }
-    { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3)); g.setIndex(ri); g.computeVertexNormals(); K.put(hinge, new THREE.Mesh(g, RIM), 0, 0, 0); }
-    // 바깥 변의 뼈 가시(테에서 안쪽으로 파고든 톱니) 몇 개
+      const e = (M - 1) * 4;
+      ri.push(0, 1, 2, 0, 2, 3, e, e + 2, e + 1, e, e + 3, e + 2);   // 마개(양면이 아니라 한쪽만 — 열린 끝은 판 뒤로 숨는다)
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3)); g.setIndex(ri); g.computeVertexNormals();
+      return K.put(parent, new THREE.Mesh(g, RIM), 0, 0, 0);
+    };
+    tube(sec.slice(0, 15), frame);                          // 고정 틀(바깥 변)
+    tube(sec.slice(14).concat([sec[0]]), hinge);            // 판과 같이 움직이는 이음매 쪽 테
+    // 바깥 변의 뼈 가시(틀에서 안쪽으로 파고든 톱니) — 틀에 붙어 남는다
     for (const t of [0.22, 0.5, 0.78]) {
-      const p = at(t, 0.93), q = at(t, 0.74);
-      K.seg(hinge, [p[0], p[1], zAt(p[0], p[1]) + 0.08], [q[0], q[1], zAt(q[0], q[1]) + 0.03], 0.06, 0.012, RIML, 4);
+      const p = at(t, 0.97), q = at(t, 0.84);
+      K.seg(frame, [p[0], p[1], zAt(p[0], p[1]) + 0.12], [q[0], q[1], zAt(q[0], q[1]) + 0.1], 0.06, 0.012, RIML, 4);
     }
-    // 여는 동작 — rotation.x 를 여는 정도로 읽는다(updateRotHeart 그대로)
-    let dx = cxy[0], dy = cxy[1] * (sy > 0 ? 0.9 : 0.35); const dl = Math.hypot(dx, dy); dx /= dl; dy /= dl;
-    const piv = new THREE.Vector3(cxy[0], cxy[1], zAt(cxy[0], cxy[1])), axis = new THREE.Vector3(dy, -dx, 0);
-    const mT = new THREE.Matrix4(), mR = new THREE.Matrix4(), mS = new THREE.Matrix4(), mP = new THREE.Matrix4().makeTranslation(-piv.x, -piv.y, -piv.z);
+    // 여는 동작 — rotation.x(0 → −1.25)를 여는 정도로 읽어 바깥 변(현)을 축으로 판을 돌린다(updateRotHeart 그대로)
+    const pA = at(0, 1), pB = at(1, 1);
+    const A3 = new THREE.Vector3(pA[0], pA[1], zAt(pA[0], pA[1])), B3 = new THREE.Vector3(pB[0], pB[1], zAt(pB[0], pB[1]));
+    const axis = B3.clone().sub(A3).normalize();
+    const C3 = new THREE.Vector3(cxy[0], cxy[1], zAt(cxy[0], cxy[1])).sub(A3);
+    const sgn = C3.clone().applyAxisAngle(axis, 0.3).z > C3.z ? 1 : -1;   // 가운데 쪽이 먼저 앞으로 들리는 방향 = 바깥으로 젖혀짐
+    const mT = new THREE.Matrix4(), mR = new THREE.Matrix4(), mP = new THREE.Matrix4().makeTranslation(-A3.x, -A3.y, -A3.z);
     hinge.matrixAutoUpdate = false;
     hinge.updateMatrixWorld = function (force) {
       const k = Math.max(0, Math.min(1.2, -this.rotation.x / 1.25)), e = k * k * (3 - 2 * Math.min(1, k));
-      mT.makeTranslation(piv.x + dx * e * 1.4, CY + piv.y + dy * e * 1.4, 0.05 + piv.z - e * 0.6);
-      mR.makeRotationAxis(axis, e * (sy > 0 ? 1.0 : 0.7)); mS.makeScale(1 + e * 0.1, 1 + e * 0.1, 1 + e * 0.1);
-      this.matrix.copy(mT).multiply(mR).multiply(mS).multiply(mP);
+      mT.makeTranslation(A3.x, CY + A3.y, 0.05 + A3.z); mR.makeRotationAxis(axis, sgn * e * OPEN);
+      this.matrix.copy(mT).multiply(mR).multiply(mP);
       this.matrixWorldNeedsUpdate = true;
       THREE.Object3D.prototype.updateMatrixWorld.call(this, force);
     };
     shells.push({ hinge, base: 0 });
+  }
+  // ---- 무너진 벽 — 심장이 박힌 돌벽 한 토막(설정화): 줄눈 속 · 돌 쌓기 · 양옆 기둥(왼쪽 높고 오른쪽 부러짐) · 위 뾰족 아치 · 밑 잔해 ----
+  {
+    const STA = K.mat(0x847d67), STB = K.mat(0x6e6854), STC = K.mat(0x7a735e), STD = K.mat(0x5a5444), MORT = K.mat(0x2a2620), MOSS = K.mat(0x26301a);
+    const sts = [STA, STB, STC, STA, STD];
+    const wall = new THREE.Group(); bodyGrp.add(wall);
+    const FZ = WZ - 0.04;                                       // 돌 앞면(뿌리가 그 앞을 탄다)
+    const top = (x) => 3.75 + 0.35 * Math.cos(x * 1.3) - (x > 0.9 ? (x - 0.9) * 0.55 : 0);   // 가운데 벽 윗선(오른쪽이 무너져 낮다)
+    K.box(wall, 5.0, 3.9, 0.55, MORT, 0, 1.95, FZ - 0.33);
+    for (let row = 0; row < 8; row++) {
+      const y0 = row * 0.6, hh = 0.56 + rr() * 0.04; let x = -2.0 + (row % 2) * 0.32;
+      while (x < 2.0) {
+        const w = Math.min(0.55 + rr() * 0.45, 2.0 - x), xc = x + w / 2;
+        if (w > 0.12 && y0 + hh * 0.5 < top(xc) && !(Math.abs(xc) < 1.25 && y0 > 3.7)) K.box(wall, w - 0.06, hh - 0.05, 0.32, sts[Math.floor(rr() * 5)], xc, y0 + hh / 2 + 0.02, FZ - 0.16 + rr() * 0.04, 0, 0, (rr() - 0.5) * 0.03);
+        x += w;
+      }
+    }
+    // 기둥 — 앞으로 튀어나온 각진 돌기둥. 왼쪽은 높이 남고 오른쪽은 중간에서 부러져 위 돌이 기울었다
+    for (const [px, hTop, broken] of [[-2.45, 5.6, 0], [2.45, 4.3, 1]]) {
+      K.box(wall, 0.95, hTop, 0.9, MORT, px, hTop / 2, FZ - 0.05);
+      let y = 0, c = 0;
+      while (y < hTop - 0.1) {
+        const hh = 0.5 + rr() * 0.2, last = y + hh >= hTop - 0.1;
+        const dx = (rr() - 0.5) * 0.06, w = 1.05 + rr() * 0.08;
+        K.box(wall, w, Math.min(hh, hTop - y) - 0.04, 1.0, sts[(c++ + (broken ? 2 : 0)) % 5], px + dx, y + Math.min(hh, hTop - y) / 2, FZ + 0.02, 0, 0, last && broken ? 0.22 : (rr() - 0.5) * 0.03);
+        y += hh;
+      }
+      if (!broken) { K.box(wall, 1.2, 0.22, 1.15, STC, px, hTop + 0.08, FZ + 0.03); K.box(wall, 0.55, 0.5, 0.6, STA, px + 0.18, hTop + 0.44, FZ - 0.05, 0, 0.2, 0.08); }   // 갓돌 + 남은 윗돌 하나
+      else for (let i = 0; i < 3; i++) K.box(wall, 0.32 + rr() * 0.2, 0.25, 0.4, sts[i], px - 0.2 + i * 0.25, hTop + 0.12, FZ - 0.1 + rr() * 0.2, rr() * 0.3, rr(), rr() * 0.4);   // 부러진 자리 깨진 돌
+    }
+    // 뾰족 아치 — 심장 뒤 위쪽(쐐기돌 두 줄 호가 꼭대기에서 만난다) + 안쪽 움푹한 판
+    const AR = 1.95, AH = 5.0, AY = 3.7;
+    for (const s of [-1, 1]) for (let i = 0; i < 5; i++) {
+      const AM = Math.acos((AR - 1.25) / AR), t0 = i / 5, t1 = (i + 1) / 5, ang = (t) => t * AM;   // 반대쪽에 중심을 둔 호 둘이 가운데서 만난다
+      const pt = (t) => [s * (AR * Math.cos(ang(t)) - (AR - 1.25)), AY + (AH - AY) * Math.sin(ang(t)) / Math.sin(AM)];
+      const a0 = pt(t0), a1 = pt(t1), mx = (a0[0] + a1[0]) / 2, my = (a0[1] + a1[1]) / 2, L = Math.hypot(a1[0] - a0[0], a1[1] - a0[1]);
+      K.box(wall, L - 0.05, 0.5, 0.5, sts[(i + (s > 0 ? 1 : 0)) % 5], mx, my, FZ - 0.08, 0, 0, Math.atan2(a1[1] - a0[1], a1[0] - a0[0]));
+    }
+    K.box(wall, 0.42, 0.42, 0.52, STC, 0, AH + 0.05, FZ - 0.07, 0, 0, Math.PI / 4);   // 이맛돌
+    K.plate(wall, [[-1.25, AY], [1.25, AY], [0.95, 4.35], [0.4, 4.8], [0, 4.9], [-0.4, 4.8], [-0.95, 4.35]], 0.2, STD, 0, 0, FZ - 0.42);
+    // 잔해 — 밑동 둘레 바닥에 굴러떨어진 돌
+    for (let i = 0; i < 11; i++) {
+      const side = i % 2 ? 1 : -1, x = side * (1.6 + rr() * 1.4), z = WZ + 0.3 + rr() * 1.1, r = 0.16 + rr() * 0.26;
+      K.ico(wall, r, sts[i % 5], x, r * 0.55, z, 1.2, 0.75, 1, 0, r * 0.12);
+    }
+    for (let i = 0; i < 5; i++) K.box(wall, 0.18 + rr() * 0.2, 0.05, 0.12 + rr() * 0.1, MOSS, -2.2 + rr() * 4.4, 0.6 + rr() * 3.2, FZ + 0.01);   // 돌 틈 이끼
   }
   c3MergeStatic(core);
   shells.forEach(s => c3MergeStatic(s.hinge));
@@ -3978,18 +4033,6 @@ const VARS = ['일반'];
 let typeIdx = 0, varIdx = 0, cmpMode = 0;   // 0 나란히 · 1 예전만 · 2 새것만
 { const q = /[?&]type=(\w+)/.exec(location.search); if (q && TYPES.includes(q[1])) typeIdx = TYPES.indexOf(q[1]); const v = /[?&]var=(\d)/.exec(location.search); if (v) varIdx = +v[1]; const c = /[?&]cmp=(\d)/.exec(location.search); if (c) cmpMode = +c[1]; }
 let heroes = [];
-// 뷰어 전용 뒤 벽(3막 석재 블록) — 심장 뿌리가 벽면을 타는지 보려고. 삼각형 수 집계에서 뺀다(userData.viewerOnly)
-let _hwb = null;
-function heartWallBackdrop() {
-  if (_hwb) return _hwb;
-  const g = new THREE.Group(); g.userData.viewerOnly = true;
-  const mA = getLowPolyMat(0x847d67), mB = getLowPolyMat(0x6e6854), mC = getLowPolyMat(0x2a2a22);
-  let s = 77; const r = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
-  const core = new THREE.Mesh(new THREE.BoxGeometry(7.2, 5.6, 0.8), mC); core.position.set(0, 2.8, -2.65); g.add(core);
-  for (let row = 0; row < 8; row++) { let x = -3.6 + (row % 2) * 0.45; while (x < 3.6) { const w = Math.min(0.75 + r() * 0.5, 3.6 - x); if (w > 0.15) { const b = new THREE.Mesh(new THREE.BoxGeometry(w - 0.05, 0.66, 0.3), r() < 0.5 ? mA : mB); b.position.set(x + w / 2, 0.36 + row * 0.7, -2.38 + r() * 0.05); g.add(b); } x += w; } }
-  g.traverse(o => { if (o.isMesh) o.userData.viewerOnly = true; });
-  return (_hwb = g);
-}
 function rebuild() {
   for (const h of heroes) scene.remove(h.obj);
   heroes = [];
@@ -3999,7 +4042,6 @@ function rebuild() {
   for (const [v2, x] of list) {
     const p = makeMonOld(type, boss, ranged, v2); p.obj.position.x = x; p.v2 = v2;
     if (BLOB_ON) p.obj.add(makeBlobShadow((boss ? 2.3 : 1.4) / p.obj.scale.x));
-    if (type === 'rotheart' && v2 && !/[?&]wall=0/.test(location.search)) p.obj.add(heartWallBackdrop());   // 뷰어 전용 — 게임에서는 보스 방 벽이 이 자리에 온다
     scene.add(p.obj); heroes.push(p);
   }
   target.y = boss ? ({ broodtick: 1.9, gluttonghoul: 3.1, corruptking: 2.2, rotheart: 2.0 }[type] || 1.5) : (type === 'fleshgiant' ? 1.5 : type === 'stingwasp' ? 1.2 : 0.62);
@@ -4015,7 +4057,7 @@ const verEl = document.getElementById('ver');
 function updateVer() {
   const real = Math.abs(camZoom - 1) < 0.02;
   let tri = 0, calls = 0;
-  for (const h of heroes) if (h.v2) h.obj.traverse(o => { if (o.isMesh && o.visible && !o.userData.viewerOnly) { calls++; tri += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; } });
+  for (const h of heroes) if (h.v2) h.obj.traverse(o => { if (o.isMesh && o.visible) { calls++; tri += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; } });
   verEl.innerHTML = 'act3_monster_viewer v1' + (PX_MODE ? ' · px' : ' · px=0') + '<br>' + ACTS[actIdx].name
     + '<br>' + camZoom.toFixed(1) + '× ' + (real ? '<span style="color:#8ad08a">게임 실제 크기</span>' : '<span style="color:#d08a84">확대</span>')
     + (cmpMode !== 1 ? '<br>새 모델 메시 ' + calls + ' · 삼각형 ' + Math.round(tri) : '');
