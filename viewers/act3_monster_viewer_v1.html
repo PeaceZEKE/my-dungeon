@@ -1344,56 +1344,202 @@ function a3FleshGiant(P) {
   };
 }
 
+// 부패 무늬(뼈 판 공용 'rot' 재질 · 금 공용 'tarn' 재질) — 왕·심장이 같이 쓴다
+function a3Rotify(m, mode) {
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = 'varying vec3 vRotP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vRotP = position;');
+    sh.fragmentShader = 'varying vec3 vRotP;\n' +
+      'float a3h(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }\n' +
+      'float a3n(vec3 x){ vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);\n' +
+      '  return mix(mix(mix(a3h(i), a3h(i + vec3(1,0,0)), f.x), mix(a3h(i + vec3(0,1,0)), a3h(i + vec3(1,1,0)), f.x), f.y),\n' +
+      '             mix(mix(a3h(i + vec3(0,0,1)), a3h(i + vec3(1,0,1)), f.x), mix(a3h(i + vec3(0,1,1)), a3h(i + vec3(1,1,1)), f.x), f.y), f.z); }\n' +
+      sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n' + (mode === 'bone' ?
+      '  { vec3 q = floor(vRotP / 0.035) * 0.035; vec3 c = diffuseColor.rgb;\n' +
+      '    float st = a3n(q * 2.6) * 0.62 + a3n(q * 7.0 + 3.1) * 0.38;\n' +
+      '    c = mix(c, c * vec3(0.5, 0.36, 0.3), step(0.56, st));                 // 썩어 거뭇해진 얼룩\n' +
+      '    c = mix(c, c * vec3(0.3, 0.16, 0.15), step(0.7, st));                  // 얼룩 가운데 더 짙게\n' +
+      '    float vn = abs(a3n(q * 4.2 + 11.0) - 0.5);\n' +
+      '    c = mix(c, vec3(0.32, 0.025, 0.05), step(vn, 0.032) * step(0.35, a3n(q * 1.6 + 5.0)));   // 붉은 핏줄 그물(일부 구역에만)\n' +
+      '    c = mix(c, vec3(0.2, 0.22, 0.08), step(0.83, a3n(q * 13.0 + 2.0)) * 0.7);                 // 곰팡이 반점\n' +
+      '    diffuseColor.rgb = c; }' : mode === 'clean' ?
+      '  { vec3 q = floor(vRotP / 0.035) * 0.035; vec3 c = diffuseColor.rgb;\n' +       // 뼈 테(심장) — 핏줄 그물 없이 얼룩·실금만
+      '    float st = a3n(q * 2.2) * 0.62 + a3n(q * 6.0 + 3.1) * 0.38;\n' +
+      '    c = mix(c, c * vec3(0.62, 0.5, 0.42), step(0.6, st));\n' +
+      '    c = mix(c, c * vec3(0.38, 0.24, 0.2), step(abs(a3n(q * 5.0 + 7.0) - 0.5), 0.025));\n' +
+      '    diffuseColor.rgb = c; }' :
+      '  { vec3 q = floor(vRotP / 0.035) * 0.035; vec3 c = diffuseColor.rgb;\n' +
+      '    float t = a3n(q * 3.4) * 0.6 + a3n(q * 9.0 + 1.7) * 0.4;\n' +
+      '    c = mix(c, vec3(0.03, 0.07, 0.05), step(0.58, t) * 0.75);               // 검푸른 녹\n' +
+      '    c = mix(c, c * 0.45, step(0.5, t) * (1.0 - step(0.58, t)));           // 녹 가장자리 그을음\n' +
+      '    diffuseColor.rgb = c; }'));
+  };
+  m.customProgramCacheKey = () => 'a3rot-' + mode;
+}
 // ---------- 90층 부패의 심장 ----------
-// 벽에 박힌 산호빛 심장(정면 +z — 방 안쪽) · 굵은 핏줄 · 벽·바닥으로 뻗는 살 뿌리 · 검붉은 각질 껍질 넷(뼈 테) — 열리면 꽃잎처럼 바깥으로 젖혀진다
-// updateRotHeart 가 쓰는 손잡이: _rhCore(제자리에서 부푼다) · _rhGlow(발광 세기) · _rhShells[].hinge.rotation.x(여닫기)
+// 무너진 벽에 박힌 심장(설정화 rotheart.jpg) — 닫히면 뼈 테 두른 마름모 껍질 넷이 십자 이음매로 맞물리고(이음매로 붉은 살이 비친다),
+// 열리면 껍질이 박쥐 날개처럼 바깥으로 젖혀져 살덩이에 싸인 붉은 핵이 드러난다. 뿌리는 뒤 벽면(z WZ)을 타고 위아래로 번지고,
+// 아래 굵은 밑동은 바닥으로 흘러내려 퍼진다 · 둘레에 구멍 뚫린 종양 알갱이 · 바닥에 뼈 갈비.
+// updateRotHeart 가 쓰는 손잡이는 그대로: _rhCore(제자리에서 부푼다) · _rhGlow(발광 세기) · _rhShells[].hinge.rotation.x(여닫기).
+// 껍질은 hinge.rotation.x(0 → −1.25)를 '여는 정도'로 읽어 행렬을 직접 짓는다 — 바깥으로 밀려나며 뒤로 물러나고 바깥 끝이 앞으로 들린다.
 function a3RotHeart(P) {
-  const { K, grp, bodyGrp, limbs } = P, C = A3_PAL;
+  const { K, bodyGrp, grp, limbs } = P;
   a2ClearDeep(grp);
   bodyGrp.children.filter(c => c.isGroup && c !== limbs.head).forEach(c => bodyGrp.remove(c));   // 예전 껍질 힌지
-  const FL = K.mat(C.flesh, 'skin'), FLD = K.mat(C.fleshD, 'skin'), PK = K.mat(C.pink, 'skin'), PKL = K.mat(C.pinkL, 'skin'), VEIN = K.mat(C.fleshDD, 'skin');
-  const SHELL = K.mat(0x2a0a06), SHELLD = K.mat(0x120403), RIM = K.mat(C.bone), ROOT = K.mat(C.fleshD, 'skin');
-  const GLOW = new THREE.MeshStandardMaterial({ color: 0x2a0810, emissive: 0xff5a3a, emissiveIntensity: 0.5, roughness: 0.6, metalness: 0 }); GLOW._glowMat = true;
-  const CY = 1.9;
-  // 심장 몸통 — 제자리에서 부풀도록 그룹 원점을 심장 가운데에
+  const FL = K.mat(0x6a1222, 'skin'), FLD = K.mat(0x3a0a14, 'skin'), FLDD = K.mat(0x1e050a, 'skin'), PK = K.mat(0x7a1a26, 'skin'), PKL = K.mat(0x9a2238, 'skin');
+  const VEINL = K.mat(0x8a2a24, 'skin'), POD = K.mat(0x7a1a1e, 'skin'), HOLE = K.mat(0x0c0204);
+  const SHELL = K.mat(0x4a1626, 'rot'), SHELLL = K.mat(0x40121f, 'rot'), SHELLD = K.mat(0x1c0610), RIM = K.mat(0x7a4a2a, 'rotb'), RIML = K.mat(0x8c5834, 'rotb');
+  a3Rotify(SHELL.userData.mergeInto, 'bone'); a3Rotify(RIM.userData.mergeInto, 'clean');
+  const GLOW = new THREE.MeshStandardMaterial({ color: 0x4a0a0c, emissive: 0x9a1408, emissiveIntensity: 0.5, roughness: 0.6, metalness: 0, flatShading: true, toneMapped: false });   // 톤매핑을 끄면 밝혀도 크림색으로 바래지 않고 붉게 남는다 GLOW._glowMat = true;
+  const CY = 2.1, WZ = -2.2;                                   // 심장 가운데 높이 · 뒤 벽면
+  const rr = K.rr;
+  // ---- 핵 — 뒤 살덩이 · 발광 핵을 둘러싼 살 고리 · 종양 알갱이 · Y 자 핏줄 ----
   const core = new THREE.Group(); core.position.set(0, CY, 0); bodyGrp.add(core);
-  K.ico(core, 1, FL, 0, 0, 0, 1.2, 1.3, 1.0, 2, 0.04);
-  a3Shell(K, core, { cx: 0, cy: 0, cz: 0, rx: 1.2, ry: 1.3, rz: 1.0, n: 34, r0: 0.18, r1: 0.32, mats: [FL, FL, PK, PKL, FLD], sink: 0.5, det: 1 });
-  for (let i = 0; i < 7; i++) {                                                     // 굵은 핏줄(표면을 따라 위에서 아래로)
-    const a = -1.2 + i * 0.4, pts = [];
-    for (let k = 0; k <= 6; k++) { const t = -1.0 + k / 3, y = t * 1.25, w = Math.sqrt(Math.max(0.05, 1 - t * t)); pts.push([Math.sin(a + t * 0.3) * 1.22 * w, y, Math.cos(a + t * 0.3) * 1.02 * w]); }
-    for (let k = 0; k < pts.length - 1; k++) K.seg(core, pts[k], pts[k + 1], 0.07, 0.06, VEIN, 4);
-  }
-  const glow = K.put(bodyGrp, new THREE.Mesh(new THREE.IcosahedronGeometry(0.95, 1), GLOW), 0, CY, 0.3);
-  // 살 뿌리 — 심장 뒤에서 벽(−z 2.4 안팎)으로 휘어 들어가고, 아래 것은 바닥으로 흘러내린다
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2 + 0.2, cx = Math.cos(a), cy = Math.sin(a);
-    const p0 = [cx * 0.8, CY + cy * 0.85, -0.55], p1 = [cx * 1.45, CY + cy * 1.35, -1.25], p2 = [cx * 1.9, Math.max(0.1, CY + cy * 1.9), -2.35];
-    if (cy < -0.4) { p1[1] = Math.max(0.25, p1[1]); p2[1] = 0.06; p2[2] = -1.6; }
-    K.seg(bodyGrp, p0, p1, 0.26, 0.19, ROOT, 6); K.ico(bodyGrp, 0.2, ROOT, p1[0], p1[1], p1[2], 1, 1, 1, 0);
-    K.seg(bodyGrp, p1, p2, 0.19, 0.08, ROOT, 6);
-    if (cy < -0.4) K.ico(bodyGrp, 0.3, ROOT, p2[0], 0.05, p2[2], 1.6, 0.3, 1.4, 0);
-  }
-  for (let i = 0; i < 5; i++) { const x = -1.4 + i * 0.7; K.ico(bodyGrp, 0.3 + K.rr() * 0.15, FLD, x, 0.12, 0.2 + K.rr() * 0.4, 1.3, 0.45, 1.1, 1); }   // 바닥에 번진 살
-  // 껍질 넷 — 정면 돔을 대각선으로 나눈 판(가운데서 십자로 맞물린다). 힌지는 판의 바깥 테에 둔다
-  const RS = 1.62, T1 = 1.3, shells = [];
-  for (let i = 0; i < 4; i++) {
-    const spin = new THREE.Group(); spin.position.set(0, CY, 0.1); spin.rotation.z = Math.PI / 4 + i * Math.PI / 2; bodyGrp.add(spin);
-    const hy = RS * Math.sin(T1), hz = RS * Math.cos(T1);
-    const hinge = new THREE.Group(); hinge.position.set(0, hy, hz); spin.add(hinge);
-    const patch = (f, t0, t1, w, m) => { const g = new THREE.SphereGeometry(RS * f, 7, 4, Math.PI * 1.5 - w / 2, w, t0, t1 - t0); g.rotateX(Math.PI / 2); g.translate(0, -hy, -hz); K.jit(g, 0.04); return K.put(hinge, new THREE.Mesh(g, m), 0, 0, 0); };
-    patch(1.0, 0.04, T1, Math.PI / 2 - 0.05, SHELL);
-    patch(0.985, 0.06, T1 - 0.02, Math.PI / 2 - 0.07, SHELLD);                    // 안감(열렸을 때 보이는 쪽)
-    patch(1.03, T1 - 0.16, T1 + 0.02, Math.PI / 2 - 0.02, RIM);                   // 바깥 뼈 테
-    for (const side of [-1, 1]) {                                                  // 맞닿는 두 변의 뼈 테
-      const g = new THREE.SphereGeometry(RS * 1.025, 1, 6, Math.PI * 1.5 + side * (Math.PI / 4 - 0.07) - 0.05, 0.1, 0.06, T1 - 0.06); g.rotateX(Math.PI / 2); g.translate(0, -hy, -hz); K.put(hinge, new THREE.Mesh(g, RIM), 0, 0, 0);
+  K.ico(core, 1, FLD, 0, 0, -0.5, 1.3, 1.45, 0.85, 2, 0.05);
+  const pod = (g, r, x, y, z, nx, ny, nz) => {                 // 구멍 뚫린 종양 알갱이(바깥 n 쪽에 구멍 서넛)
+    K.ico(g, r, POD, x, y, z, 1, 1, 1, 1, r * 0.06);
+    const n = new THREE.Vector3(nx, ny, nz).normalize(), t1 = new THREE.Vector3(-n.y, n.x, 0.3).normalize(), t2 = n.clone().cross(t1);
+    for (let i = 0; i < 4; i++) {
+      const a = i * 1.7 + rr(), s = 0.55 * r, d = n.clone().multiplyScalar(r * 0.92).addScaledVector(t1, Math.cos(a) * s).addScaledVector(t2, Math.sin(a) * s);
+      K.ico(g, r * 0.2, HOLE, x + d.x, y + d.y, z + d.z, 1, 1, 1, 0);
     }
-    K.cone(hinge, 0.07, 0.3, RIM, 4, 0, -0.2, 0.08, -0.6, 0, 0);                   // 테의 뼈 가시
+  };
+  for (let i = 0; i < 17; i++) {                               // 살 덩이(발광 핵 둘레 — 크기가 제각각인 혹이 두 겹)
+    const a = i / 17 * Math.PI * 2 + 0.1 + (rr() - 0.5) * 0.25, ca = Math.cos(a), sa = Math.sin(a), big = i % 3 === 0, r = big ? 0.42 + rr() * 0.14 : 0.22 + rr() * 0.12;
+    const d = big ? 1.12 + rr() * 0.12 : 0.92 + rr() * 0.08, x = ca * d, y = sa * d * 1.15, z = big ? -0.12 : 0.0 + rr() * 0.1;
+    if (i % 5 === 2) pod(core, r * 0.85, x * 1.04, y * 1.04, z + 0.05, ca, sa, 0.8);
+    else K.ico(core, r, [FL, PK, FLD, FL, PKL][i % 5], x, y, z, 1 + rr() * 0.3, 0.85 + rr() * 0.3, 0.8, 1, r * 0.08);
+  }
+  const gz = (x, y) => 0.22 + 0.72 * Math.sqrt(Math.max(0, 1 - (x / 0.86) ** 2 - (y / 1.02) ** 2)) + 0.05;
+  const veinOn = (pts, r0, r1) => { const q = pts.map(([x, y]) => [x, y, gz(x, y)]); for (let i = 0; i < q.length - 1; i++) K.seg(core, q[i], q[i + 1], r0 + (r1 - r0) * i / (q.length - 1), r0 + (r1 - r0) * (i + 1) / (q.length - 1), VEINL, 5); };
+  veinOn([[-0.5, 0.8], [-0.38, 0.5], [-0.15, 0.25], [0, 0.08]], 0.05, 0.07);
+  veinOn([[0.48, 0.78], [0.36, 0.5], [0.14, 0.26], [0, 0.08]], 0.05, 0.07);
+  veinOn([[0, 0.08], [0.03, -0.3], [-0.02, -0.65], [0, -0.92]], 0.075, 0.09);
+  veinOn([[-0.15, 0.25], [-0.42, 0.12], [-0.62, -0.1]], 0.04, 0.025);
+  veinOn([[0.03, -0.3], [0.35, -0.45], [0.55, -0.62]], 0.04, 0.025);
+  const glow = K.put(bodyGrp, new THREE.Mesh(new THREE.IcosahedronGeometry(1, 2), GLOW), 0, CY, 0.22); glow.scale.set(0.86, 1.02, 0.72);
+  // ---- 뒤 — 줄기와 벽에 붙은 살막 ----
+  K.ico(bodyGrp, 1, FLD, 0, CY, -1.35, 0.85, 1.05, 0.75, 1, 0.06);
+  a3Shell(K, bodyGrp, { cx: 0, cy: CY - 0.1, cz: WZ + 0.05, rx: 1.15, ry: 1.5, rz: 0.12, n: 16, r0: 0.22, r1: 0.4, mats: [FLD, FLDD, FL], sink: 0.1, det: 0, skip: (x, y, z) => z < 0.2 });   // 벽에 붙은 살막(혹 몇 개)
+  // ---- 벽을 타는 뿌리 — 벽면(z WZ)을 따라 굽이치며 가늘어지고 갈라진다. 바닥에 닿으면 앞으로 흘러 퍼진다 ----
+  const vine = (x, y, ang, len, r, depth, floor) => {
+    let z = WZ + 0.06 + r * 0.6, onFloor = floor && y < 0.25, fz = 0;
+    let px = x, py = y, pz = onFloor ? 0.08 : z, a = ang;
+    const n = Math.max(2, Math.round(len / 0.42));
+    for (let i = 0; i < n; i++) {
+      const rA = r * (1 - i / n * 0.85), rB = r * (1 - (i + 1) / n * 0.85);
+      a += (rr() - 0.5) * 0.7;
+      let nx, ny, nz;
+      if (!onFloor) { nx = px + Math.cos(a) * 0.42; ny = py + Math.sin(a) * 0.42; nz = WZ + 0.06 + rB * 0.6; if (floor && ny < 0.12) { ny = 0.1; onFloor = true; nz = WZ + 0.25; } }
+      else { fz += 0.4; nx = px + Math.cos(a) * 0.22; ny = 0.05 + rB * 0.4; nz = pz + 0.38; }
+      K.seg(bodyGrp, [px, py, pz], [nx, ny, nz], rA, rB, i % 3 === 2 ? FLD : FL, rA > 0.1 ? 5 : 4);
+      if (i % 2 === 1 && rA > 0.06) K.ico(bodyGrp, rA * 1.15, FL, nx, ny, nz, 1, 1, 1, 0);
+      if (depth > 0 && i > 0 && i < n - 1 && rr() < 0.38) vine(nx, ny, a + (rr() < 0.5 ? -1 : 1) * (0.6 + rr() * 0.5), len * 0.5, rB * 0.75, depth - 1, floor);
+      if (!onFloor && rr() < 0.16 && rB > 0.05) pod(bodyGrp, 0.13 + rr() * 0.1, nx + Math.cos(a + 1.6) * 0.18, ny + Math.sin(a + 1.6) * 0.18, nz + 0.12, 0, 0, 1);
+      px = nx; py = ny; pz = nz;
+    }
+  };
+  for (const [a, len, r, fl] of [[2.05, 2.6, 0.17, 0], [1.75, 2.2, 0.15, 0], [1.25, 2.2, 0.15, 0], [0.95, 2.7, 0.17, 0], [2.9, 1.8, 0.14, 0], [0.25, 1.8, 0.14, 0], [3.6, 2.6, 0.17, 1], [-0.45, 2.6, 0.17, 1], [4.2, 2.4, 0.15, 1], [5.2, 2.4, 0.15, 1]])
+    vine(Math.cos(a) * 1.25, CY - 0.2 + Math.sin(a) * 1.6, a, len, r, 2, !!fl);
+  // ---- 밑동 — 심장 아래에서 바닥으로 흘러내린 굵은 뿌리, 바닥에 닿아 앞·옆으로 퍼진다 ----
+  const tr = [[0, CY - 1.15, -0.55], [0.05, CY - 1.65, -0.35], [-0.04, 0.55, -0.1], [0, 0.12, 0.15]];
+  for (let i = 0; i < tr.length - 1; i++) K.seg(bodyGrp, tr[i], tr[i + 1], 0.36 - i * 0.06, 0.3 - i * 0.06, i % 2 ? FLD : FL, 6);
+  K.ico(bodyGrp, 0.42, FLD, 0, 0.12, 0.15, 1.5, 0.45, 1.3, 1, 0.04);
+  for (let i = 0; i < 6; i++) {
+    const a = -0.2 + i / 5 * (Math.PI + 0.4), L = 1.1 + rr() * 0.7;
+    let p = [0, 0.1, 0.15];
+    for (let k = 0; k < 3; k++) {
+      const aa = a + (rr() - 0.5) * 0.5, q = [p[0] + Math.cos(aa) * L / 3, 0.06, p[2] + Math.sin(aa) * L / 3];
+      K.seg(bodyGrp, p, q, 0.17 * (1 - k / 3), 0.17 * (1 - (k + 1) / 3) + 0.02, FL, 4); p = q;
+    }
+    if (i % 2 === 0) pod(bodyGrp, 0.16 + rr() * 0.08, p[0], 0.14, p[2], 0, 1, 0.4);
+  }
+  for (let i = 0; i < 7; i++) { const a = rr() * Math.PI, d = 0.8 + rr() * 1.3; K.ico(bodyGrp, 0.28 + rr() * 0.18, i % 2 ? FLD : FLDD, Math.cos(a) * d * 1.3, 0.05, Math.sin(a) * d * 0.8 - 0.3, 1.5, 0.3, 1.2, 1); }   // 바닥에 번진 살
+  // 뼈 갈비(바닥에 반쯤 묻힌 모험가의 잔해)
+  { const bx = 1.55, bz = 0.55;
+    K.seg(bodyGrp, [bx - 0.5, 0.06, bz + 0.15], [bx + 0.45, 0.07, bz - 0.12], 0.045, 0.04, RIML, 4);
+    for (let i = 0; i < 4; i++) {
+      const g = new THREE.TorusGeometry(0.32 - i * 0.035, 0.032, 3, 7, Math.PI), m = K.put(bodyGrp, new THREE.Mesh(g, i % 2 ? RIM : RIML), bx - 0.38 + i * 0.25, 0.02, bz + 0.1 - i * 0.07);
+      m.rotation.set(0, Math.PI / 2 - 0.28, 0);
+    }
+    K.ico(bodyGrp, 0.13, RIML, bx + 0.62, 0.1, bz - 0.2, 1.1, 0.9, 1.2, 0);
+  }
+  // ---- 껍질 넷 — 마름모 외곽선을 십자 이음매로 나눈 두꺼운 판 + 두툼한 뼈 테 ----
+  const W = 1.78, HU = 2.08, HD = 1.72, PE = 1.25, GAP = 0.075, Z0 = -0.1, D = 1.6, T = 0.2, B0 = 0.1;
+  const rOut = (th, H) => 1 / ((Math.abs(Math.cos(th)) / W) ** PE + (Math.abs(Math.sin(th)) / H) ** PE) ** (1 / PE);
+  const shells = [];
+  for (const [sx, sy] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
+    const H = sy > 0 ? HU : HD;
+    const at = (a, b) => { const th = a * Math.PI / 2, rho = B0 + (1 - B0) * b, r = rOut(th, H) * rho; return [sx * (Math.cos(th) * r + GAP), sy * (Math.sin(th) * r + GAP)]; };
+    const cxy = at(0.5, 0.55);
+    const zAt = (X, Y) => {
+      const x0 = Math.max(0, Math.abs(X) - GAP), y0 = Math.max(0, Math.abs(Y) - GAP), th = Math.atan2(y0, x0);
+      const rho = Math.min(1, Math.hypot(x0, y0) / rOut(th, H)), dd = Math.hypot(X - cxy[0], Y - cxy[1]) / 1.05;
+      return Z0 + D * (1 - rho * rho) + 0.16 * Math.max(0, 1 - dd * dd);
+    };
+    const hinge = new THREE.Group(); bodyGrp.add(hinge);
+    // 판 — 앞면(SHELL)·뒷면(SHELLD, 열렸을 때 보이는 안쪽)
+    const NA = 7, NB = 5, fp = [], bp = [], idx = [];
+    for (let j = 0; j <= NB; j++) for (let i = 0; i <= NA; i++) { const [x, y] = at(i / NA, j / NB), z = zAt(x, y); fp.push(x, y, z); bp.push(x, y, z - T); }
+    for (let j = 0; j < NB; j++) for (let i = 0; i < NA; i++) {
+      const a = j * (NA + 1) + i, b = a + 1, c = a + NA + 1, d = c + 1;
+      if (sx * sy > 0) idx.push(a, d, b, a, c, d); else idx.push(a, b, d, a, d, c);
+    }
+    const mk = (pos, flip, m) => {
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setIndex(flip ? idx.map((v, k) => idx[k - k % 3 + [0, 2, 1][k % 3]]) : idx); g.computeVertexNormals(); return K.put(hinge, new THREE.Mesh(g, m), 0, 0, 0);
+    };
+    mk(fp, false, sy > 0 ? SHELL : SHELLL); mk(bp, true, SHELLD);
+    // 테두리 고리 — 바깥 변(곱게) → 바깥 이음매 → 가운데 → 안 이음매
+    const loop = [];
+    for (let i = 0; i <= 14; i++) loop.push(at(i / 14, 1));
+    for (let j = 5; j >= 0; j--) loop.push(at(1, j / 6));
+    loop.push(at(0.5, 0));
+    for (let j = 0; j < 6; j++) loop.push(at(0, j / 6));
+    // 뼈 테 — 단면 네 점(바깥 위 · 안 위(돋움) · 안 아래 · 바깥 뒤)을 고리 따라 잇는다
+    const cx = loop.reduce((s, p) => s + p[0], 0) / loop.length, cy = loop.reduce((s, p) => s + p[1], 0) / loop.length;
+    const N = loop.length, sec = [];
+    for (let i = 0; i < N; i++) {
+      const p = loop[i], pa = loop[(i + N - 1) % N], pb = loop[(i + 1) % N];
+      let tx = pb[0] - pa[0], ty = pb[1] - pa[1]; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+      let nx = -ty, ny = tx; if (nx * (cx - p[0]) + ny * (cy - p[1]) < 0) { nx = -nx; ny = -ny; }
+      const w = 0.17 + rr() * 0.08 + (i % 5 === 2 ? 0.08 : 0), h = 0.12 + rr() * 0.05;
+      const qx = p[0] + nx * w, qy = p[1] + ny * w, zp = zAt(p[0], p[1]), zq = zAt(qx, qy);
+      const zt = Math.max(zp + h * 0.7, zq + h * 0.45);
+      sec.push([[p[0] - nx * 0.03, p[1] - ny * 0.03, zt], [qx, qy, zq + h], [qx, qy, zq - 0.03], [p[0] - nx * 0.05, p[1] - ny * 0.05, zp - T - 0.04]]);
+    }
+    const rp = [], ri = [];
+    for (let i = 0; i < N; i++) for (let k = 0; k < 4; k++) rp.push(...sec[i][k]);
+    for (let i = 0; i < N; i++) {
+      const i2 = (i + 1) % N;
+      for (let k = 0; k < 4; k++) {
+        const k2 = (k + 1) % 4, a = i * 4 + k, b = i * 4 + k2, c = i2 * 4 + k, d = i2 * 4 + k2;
+        if (sx * sy > 0) ri.push(a, c, d, a, d, b); else ri.push(a, d, c, a, b, d);
+      }
+    }
+    { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3)); g.setIndex(ri); g.computeVertexNormals(); K.put(hinge, new THREE.Mesh(g, RIM), 0, 0, 0); }
+    // 바깥 변의 뼈 가시(테에서 안쪽으로 파고든 톱니) 몇 개
+    for (const t of [0.22, 0.5, 0.78]) {
+      const p = at(t, 0.93), q = at(t, 0.74);
+      K.seg(hinge, [p[0], p[1], zAt(p[0], p[1]) + 0.08], [q[0], q[1], zAt(q[0], q[1]) + 0.03], 0.06, 0.012, RIML, 4);
+    }
+    // 여는 동작 — rotation.x 를 여는 정도로 읽는다(updateRotHeart 그대로)
+    let dx = cxy[0], dy = cxy[1] * (sy > 0 ? 0.9 : 0.35); const dl = Math.hypot(dx, dy); dx /= dl; dy /= dl;
+    const piv = new THREE.Vector3(cxy[0], cxy[1], zAt(cxy[0], cxy[1])), axis = new THREE.Vector3(dy, -dx, 0);
+    const mT = new THREE.Matrix4(), mR = new THREE.Matrix4(), mS = new THREE.Matrix4(), mP = new THREE.Matrix4().makeTranslation(-piv.x, -piv.y, -piv.z);
+    hinge.matrixAutoUpdate = false;
+    hinge.updateMatrixWorld = function (force) {
+      const k = Math.max(0, Math.min(1.2, -this.rotation.x / 1.25)), e = k * k * (3 - 2 * Math.min(1, k));
+      mT.makeTranslation(piv.x + dx * e * 1.4, CY + piv.y + dy * e * 1.4, 0.05 + piv.z - e * 0.6);
+      mR.makeRotationAxis(axis, e * (sy > 0 ? 1.0 : 0.7)); mS.makeScale(1 + e * 0.1, 1 + e * 0.1, 1 + e * 0.1);
+      this.matrix.copy(mT).multiply(mR).multiply(mS).multiply(mP);
+      this.matrixWorldNeedsUpdate = true;
+      THREE.Object3D.prototype.updateMatrixWorld.call(this, force);
+    };
     shells.push({ hinge, base: 0 });
   }
   c3MergeStatic(core);
   shells.forEach(s => c3MergeStatic(s.hinge));
-  c3MergeStatic(bodyGrp, [core, glow, limbs.head, ...shells.map(s => s.hinge.parent)]);
+  c3MergeStatic(bodyGrp, [core, glow, limbs.head, ...shells.map(s => s.hinge)]);
   limbs._rhShells = shells; limbs._rhGlow = GLOW; limbs._rhCore = core;
 }
 
@@ -1422,31 +1568,7 @@ function a3King(P) {
   // 부패 무늬 — 뼈 판(공용 'rot' 재질)에 썩은 얼룩 · 붉은 핏줄 그물 · 곰팡이 반점, 금(공용 'tarn')에 검푸른 녹.
   //   셰이더에서 정점의 '몸 기준 좌표'(position)로 값 노이즈를 읽는다 — 월드 좌표면 걸을 때 무늬가 몸 위를 미끄러진다.
   //   좌표를 0.035 칸으로 끊어 도트처럼 계단지게. 텍스처 이미지·THREE 객체를 새로 안 만든다(난수 흐름 그대로)
-  const rotify = (m, mode) => {
-    m.onBeforeCompile = (sh) => {
-      sh.vertexShader = 'varying vec3 vRotP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vRotP = position;');
-      sh.fragmentShader = 'varying vec3 vRotP;\n' +
-        'float a3h(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }\n' +
-        'float a3n(vec3 x){ vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);\n' +
-        '  return mix(mix(mix(a3h(i), a3h(i + vec3(1,0,0)), f.x), mix(a3h(i + vec3(0,1,0)), a3h(i + vec3(1,1,0)), f.x), f.y),\n' +
-        '             mix(mix(a3h(i + vec3(0,0,1)), a3h(i + vec3(1,0,1)), f.x), mix(a3h(i + vec3(0,1,1)), a3h(i + vec3(1,1,1)), f.x), f.y), f.z); }\n' +
-        sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n' + (mode === 'bone' ?
-        '  { vec3 q = floor(vRotP / 0.035) * 0.035; vec3 c = diffuseColor.rgb;\n' +
-        '    float st = a3n(q * 2.6) * 0.62 + a3n(q * 7.0 + 3.1) * 0.38;\n' +
-        '    c = mix(c, c * vec3(0.5, 0.36, 0.3), step(0.56, st));                 // 썩어 거뭇해진 얼룩\n' +
-        '    c = mix(c, c * vec3(0.3, 0.16, 0.15), step(0.7, st));                  // 얼룩 가운데 더 짙게\n' +
-        '    float vn = abs(a3n(q * 4.2 + 11.0) - 0.5);\n' +
-        '    c = mix(c, vec3(0.32, 0.025, 0.05), step(vn, 0.032) * step(0.35, a3n(q * 1.6 + 5.0)));   // 붉은 핏줄 그물(일부 구역에만)\n' +
-        '    c = mix(c, vec3(0.2, 0.22, 0.08), step(0.83, a3n(q * 13.0 + 2.0)) * 0.7);                 // 곰팡이 반점\n' +
-        '    diffuseColor.rgb = c; }' :
-        '  { vec3 q = floor(vRotP / 0.035) * 0.035; vec3 c = diffuseColor.rgb;\n' +
-        '    float t = a3n(q * 3.4) * 0.6 + a3n(q * 9.0 + 1.7) * 0.4;\n' +
-        '    c = mix(c, vec3(0.03, 0.07, 0.05), step(0.58, t) * 0.75);               // 검푸른 녹\n' +
-        '    c = mix(c, c * 0.45, step(0.5, t) * (1.0 - step(0.58, t)));           // 녹 가장자리 그을음\n' +
-        '    diffuseColor.rgb = c; }'));
-    };
-    m.customProgramCacheKey = () => 'a3rot-' + mode;
-  };
+  const rotify = a3Rotify;
   const FL = K.mat(0x56192a, 'skin'), FLD = K.mat(0x34101b, 'skin'), PK = K.mat(0x661e2c, 'skin'), PKL = K.mat(0xdf1f45, 'skin');   // 살 — 3막 다른 몹과 같은 톤
   const UND = K.mat(0x140d0a), UNDD = K.mat(0x0a0706), LEA = K.mat(0x2a1206), LEAD = K.mat(0x170903);                           // 검은 속갑 · 가죽
   const TABT = K.mat(0x0b1a1e, 'cloth'), TABC = K.mat(0x6a4426, 'cloth'), TABCD = K.mat(0x3e2814, 'cloth');                      // 겉옷 — 청록 흑 / 크림
@@ -3856,6 +3978,18 @@ const VARS = ['일반'];
 let typeIdx = 0, varIdx = 0, cmpMode = 0;   // 0 나란히 · 1 예전만 · 2 새것만
 { const q = /[?&]type=(\w+)/.exec(location.search); if (q && TYPES.includes(q[1])) typeIdx = TYPES.indexOf(q[1]); const v = /[?&]var=(\d)/.exec(location.search); if (v) varIdx = +v[1]; const c = /[?&]cmp=(\d)/.exec(location.search); if (c) cmpMode = +c[1]; }
 let heroes = [];
+// 뷰어 전용 뒤 벽(3막 석재 블록) — 심장 뿌리가 벽면을 타는지 보려고. 삼각형 수 집계에서 뺀다(userData.viewerOnly)
+let _hwb = null;
+function heartWallBackdrop() {
+  if (_hwb) return _hwb;
+  const g = new THREE.Group(); g.userData.viewerOnly = true;
+  const mA = getLowPolyMat(0x847d67), mB = getLowPolyMat(0x6e6854), mC = getLowPolyMat(0x2a2a22);
+  let s = 77; const r = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  const core = new THREE.Mesh(new THREE.BoxGeometry(7.2, 5.6, 0.8), mC); core.position.set(0, 2.8, -2.65); g.add(core);
+  for (let row = 0; row < 8; row++) { let x = -3.6 + (row % 2) * 0.45; while (x < 3.6) { const w = Math.min(0.75 + r() * 0.5, 3.6 - x); if (w > 0.15) { const b = new THREE.Mesh(new THREE.BoxGeometry(w - 0.05, 0.66, 0.3), r() < 0.5 ? mA : mB); b.position.set(x + w / 2, 0.36 + row * 0.7, -2.38 + r() * 0.05); g.add(b); } x += w; } }
+  g.traverse(o => { if (o.isMesh) o.userData.viewerOnly = true; });
+  return (_hwb = g);
+}
 function rebuild() {
   for (const h of heroes) scene.remove(h.obj);
   heroes = [];
@@ -3865,6 +3999,7 @@ function rebuild() {
   for (const [v2, x] of list) {
     const p = makeMonOld(type, boss, ranged, v2); p.obj.position.x = x; p.v2 = v2;
     if (BLOB_ON) p.obj.add(makeBlobShadow((boss ? 2.3 : 1.4) / p.obj.scale.x));
+    if (type === 'rotheart' && v2 && !/[?&]wall=0/.test(location.search)) p.obj.add(heartWallBackdrop());   // 뷰어 전용 — 게임에서는 보스 방 벽이 이 자리에 온다
     scene.add(p.obj); heroes.push(p);
   }
   target.y = boss ? ({ broodtick: 1.9, gluttonghoul: 3.1, corruptking: 2.2, rotheart: 2.0 }[type] || 1.5) : (type === 'fleshgiant' ? 1.5 : type === 'stingwasp' ? 1.2 : 0.62);
@@ -3880,7 +4015,7 @@ const verEl = document.getElementById('ver');
 function updateVer() {
   const real = Math.abs(camZoom - 1) < 0.02;
   let tri = 0, calls = 0;
-  for (const h of heroes) if (h.v2) h.obj.traverse(o => { if (o.isMesh && o.visible) { calls++; tri += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; } });
+  for (const h of heroes) if (h.v2) h.obj.traverse(o => { if (o.isMesh && o.visible && !o.userData.viewerOnly) { calls++; tri += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; } });
   verEl.innerHTML = 'act3_monster_viewer v1' + (PX_MODE ? ' · px' : ' · px=0') + '<br>' + ACTS[actIdx].name
     + '<br>' + camZoom.toFixed(1) + '× ' + (real ? '<span style="color:#8ad08a">게임 실제 크기</span>' : '<span style="color:#d08a84">확대</span>')
     + (cmpMode !== 1 ? '<br>새 모델 메시 ' + calls + ' · 삼각형 ' + Math.round(tri) : '');
