@@ -1843,7 +1843,7 @@ function a4Columns(K, parent, list, OB, OBL, LAVA, LAVAY) {
 // 복면·사슬·견갑·해골 띠·앞치마·갈고리·대도끼·꼬리·발굽과 모든 자세 함수는 v861~v865 그대로.
 function a4Executioner(P) {
   const { bodyGrp, limbs } = P;
-  const K = a4Kit(P.seed, 0.46, 0.04);
+  const K = a4Kit(P.seed, 0.34, 0.05);
   const M = a4Mats(bodyGrp);
   M.flesh.forEach(m => { a4Lava(m, K.u); m.needsUpdate = true; });
   a4Recolor(bodyGrp, [[0x2b1310, 0x1d1110], [0x3d1a14, 0x2a1916], [0x160908, 0x0d0707],
@@ -1865,8 +1865,8 @@ function a4Executioner(P) {
 // 날개·망토·후광·대검·화염 사슬과 모든 자세 함수는 v866 그대로.
 function a4Sovereign(P) {
   const { bodyGrp, limbs } = P;
-  const K = a4Kit(P.seed, 0.58, 0.032);
-  const K2 = a4Kit(P.seed + 1, 0.42, 0.04);
+  const K = a4Kit(P.seed, 0.42, 0.04);
+  const K2 = a4Kit(P.seed + 1, 0.31, 0.05);
   const M = a4Mats(bodyGrp);
   K.u.mask = { value: 1 };
   M.hard.forEach(m => { a4Lava(m, K.u); m.needsUpdate = true; });
