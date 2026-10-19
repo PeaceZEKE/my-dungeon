@@ -4733,7 +4733,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v907'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v908'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -23438,10 +23438,9 @@ function a3RotHeart(P) {
     K.ico(bodyGrp, 0.13, RIML, bx + 0.62, 0.1, bz - 0.2, 1.1, 0.9, 1.2, 0);
   }
   // ---- 껍질 넷 — 마름모 외곽선을 십자 이음매로 나눈 두꺼운 판 + 두툼한 뼈 테 ----
-  // 바깥 변의 뼈 테(외곽선)는 심장 둘레에 고정된 틀이고, 판(+ 이음매 쪽 테)만 그 바깥 변을 경첩 삼아 바깥으로 젖혀진다
+  // 판과 뼈 테 전부가 바깥 변(현)을 경첩 삼아 바깥으로 젖혀진다(v908 — v907 은 바깥 변 테를 고정 틀로 남겼다)
   const W = 1.78, HU = 2.08, HD = 1.72, PE = 1.25, GAP = 0.075, Z0 = -0.1, D = 1.6, T = 0.2, B0 = 0.1, OPEN = 1.95;
   const rOut = (th, H) => 1 / ((Math.abs(Math.cos(th)) / W) ** PE + (Math.abs(Math.sin(th)) / H) ** PE) ** (1 / PE);
-  const frame = new THREE.Group(); frame.position.set(0, CY, 0.05); bodyGrp.add(frame);
   const shells = [];
   for (const [sx, sy] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) {
     const H = sy > 0 ? HU : HD;
@@ -23496,12 +23495,12 @@ function a3RotHeart(P) {
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3)); g.setIndex(ri); g.computeVertexNormals();
       return K.put(parent, new THREE.Mesh(g, RIM), 0, 0, 0);
     };
-    tube(sec.slice(0, 15), frame);                          // 고정 틀(바깥 변)
-    tube(sec.slice(14).concat([sec[0]]), hinge);            // 판과 같이 움직이는 이음매 쪽 테
-    // 바깥 변의 뼈 가시(틀에서 안쪽으로 파고든 톱니) — 틀에 붙어 남는다
+    tube(sec.slice(0, 15), hinge);                          // 바깥 변 테 — v908: 고정하지 않고 판과 같이 열린다(위에서 보면 돔 옆면을 덮는 넓은 띠라 열린 뒤에도 핵을 가렸다)
+    tube(sec.slice(14).concat([sec[0]]), hinge);            // 이음매 쪽 테
+    // 바깥 변의 뼈 가시(테에서 안쪽으로 파고든 톱니) — 판과 같이 열린다
     for (const t of [0.22, 0.5, 0.78]) {
       const p = at(t, 0.97), q = at(t, 0.84);
-      K.seg(frame, [p[0], p[1], zAt(p[0], p[1]) + 0.12], [q[0], q[1], zAt(q[0], q[1]) + 0.1], 0.06, 0.012, RIML, 4);
+      K.seg(hinge, [p[0], p[1], zAt(p[0], p[1]) + 0.12], [q[0], q[1], zAt(q[0], q[1]) + 0.1], 0.06, 0.012, RIML, 4);
     }
     // 여는 동작 — rotation.x(0 → −1.25)를 여는 정도로 읽어 바깥 변(현)을 축으로 판을 돌린다(updateRotHeart 그대로)
     const pA = at(0, 1), pB = at(1, 1);
