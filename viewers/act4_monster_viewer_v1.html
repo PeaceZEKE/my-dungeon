@@ -1672,7 +1672,7 @@ function a4LavaGolem(P) {
 function a4LavaBeast(P) {
   const { grp, bodyGrp, headGrp, limbs } = P;
   a4Reset(grp, bodyGrp, headGrp, limbs);
-  const K = a4Kit(P.seed, 0.42, 0.045);
+  const K = a4Kit(P.seed, 0.78, 0.03);
   const H = K.mat(0x1c1413, 'crust'), HD = K.mat(0x0e0909, 'crust'), HL = K.mat(0x2a1e1c, 'crust');
   const RK = K.mat(0x241c1a), RKL = K.mat(0x332826);                  // 바위 덩이
   const B = K.mat(0x1c2027), BL = K.mat(0x2a2f38), BD = K.mat(0x0f1216);
@@ -1843,7 +1843,7 @@ function a4Columns(K, parent, list, OB, OBL, LAVA, LAVAY) {
 // 복면·사슬·견갑·해골 띠·앞치마·갈고리·대도끼·꼬리·발굽과 모든 자세 함수는 v861~v865 그대로.
 function a4Executioner(P) {
   const { bodyGrp, limbs } = P;
-  const K = a4Kit(P.seed, 0.24, 0.06);
+  const K = a4Kit(P.seed, 0.46, 0.04);
   const M = a4Mats(bodyGrp);
   M.flesh.forEach(m => { a4Lava(m, K.u); m.needsUpdate = true; });
   a4Recolor(bodyGrp, [[0x2b1310, 0x1d1110], [0x3d1a14, 0x2a1916], [0x160908, 0x0d0707],
@@ -1865,8 +1865,8 @@ function a4Executioner(P) {
 // 날개·망토·후광·대검·화염 사슬과 모든 자세 함수는 v866 그대로.
 function a4Sovereign(P) {
   const { bodyGrp, limbs } = P;
-  const K = a4Kit(P.seed, 0.3, 0.05);
-  const K2 = a4Kit(P.seed + 1, 0.22, 0.06);
+  const K = a4Kit(P.seed, 0.58, 0.032);
+  const K2 = a4Kit(P.seed + 1, 0.42, 0.04);
   const M = a4Mats(bodyGrp);
   K.u.mask = { value: 1 };
   M.hard.forEach(m => { a4Lava(m, K.u); m.needsUpdate = true; });
