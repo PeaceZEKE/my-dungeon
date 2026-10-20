@@ -1813,8 +1813,8 @@ function a4LavaBeast(P) {
   limbs._lbVents = function () { const out = []; for (const v of vents) { const w = new THREE.Vector3(); v.getWorldPosition(w); out.push(w); } return out; };
 }
 
-// ---------- 보스 다시 칠하기(처형자 · 군주) ----------
-// 두 보스는 자세 함수(_exPose · _hsPose)·복면 벗기기·날개·사슬이 몸 그룹에 깊이 얽혀 있어 통째로 다시 짓지 않는다 —
+// ---------- 보스 다시 칠하기(처형자) ----------
+// 처형자는 자세 함수(_exPose · _hsPose)·복면 벗기기·날개·사슬이 몸 그룹에 깊이 얽혀 있어 통째로 다시 짓지 않는다 —
 // 예전 몸을 그대로 두고 ① 합친 재질에 용암 그물을 걸고 ② 합친 정점색을 색 대응표로 바꾸고 ③ 부품을 얹는다.
 // 객체를 새로 만드는 것은 ③ 뿐이고 a1Lcg 안이라 난수 흐름은 그대로다.
 function a4Mats(root) {   // 몸 아래 재질 모으기: 살(markOrganic · 정점색) / 단단(정점색 · 앞면) / 천(정점색 · 양면)
@@ -1843,7 +1843,7 @@ function a4Columns(K, parent, list, OB, OBL, LAVA, LAVAY) {
 // 복면·사슬·견갑·해골 띠·앞치마·갈고리·대도끼·꼬리·발굽과 모든 자세 함수는 v861~v865 그대로.
 function a4Executioner(P) {
   const { bodyGrp, limbs } = P;
-  const K = a4Kit(P.seed, 0.34, 0.05);
+  const K = a4Kit(P.seed, 0.24, 0.06);
   const M = a4Mats(bodyGrp);
   M.flesh.forEach(m => { a4Lava(m, K.u); m.needsUpdate = true; });
   a4Recolor(bodyGrp, [[0x2b1310, 0x1d1110], [0x3d1a14, 0x2a1916], [0x160908, 0x0d0707],
@@ -1861,37 +1861,285 @@ function a4Executioner(P) {
 }
 
 // ---------- 120층 지옥의 군주 ----------
-// 설정화: 흑요석 갑주를 덮은 용암 그물(금 테·뿔·가죽은 그대로) · 어깨 금 해골 원판 · 가슴 핵의 별빛 · 살갗도 갈라진다.
-// 날개·망토·후광·대검·화염 사슬과 모든 자세 함수는 v866 그대로.
+// 손잡이: armR armL legR legL head bodyGrp · _hsSword _hsChainHang _hsChainHand _hsHand · _hsWing _hsFlap _hsFire _hsHeat · _hsPose(이름, k, s) · _hsUpdate(t, dt)
+// 관절 자리·대검 모양(EDGE)·자세 각도는 v866 과 같다(보스 패턴 판정이 이 각도를 믿는다) — 겉모습만 원화대로 새로 짓는다:
+// 온몸을 덮은 흑요석 판금(용암 그물이 갈라져 빛난다)과 금 테 · 높은 목 갑주와 V 자 가슴판 · 가슴의 별빛 핵 · 마디진 팔다리 갑주 ·
+// 금 해골 원판이 박힌 가시 견갑 · 마름모 무릎 갑주 · 닫힌 투구(T 자 눈빛 · 뾰족한 면갑) · 금관 · 바깥으로 휘었다 솟는 큰 뿔 · 불의 후광 ·
+// 금 십자 장식 진홍 앞 깃발 · 너덜한 진홍 망토 · 붉은 막 박쥐 날개 · 불길 날 흑요석 대검 · 왼팔을 감은 달군 사슬.
 function a4Sovereign(P) {
-  const { bodyGrp, limbs } = P;
-  const K = a4Kit(P.seed, 0.42, 0.04);
-  const K2 = a4Kit(P.seed + 1, 0.31, 0.05);
-  const M = a4Mats(bodyGrp);
-  K.u.mask = { value: 1 };
-  M.hard.forEach(m => { a4Lava(m, K.u); m.needsUpdate = true; });
-  M.flesh.forEach(m => { a4Lava(m, K2.u); m.needsUpdate = true; });
-  const GOLD = K.mat(0x8c6c2c), GOLDD = K.mat(0x50401a), BONE = K.mat(0x8a7a60), HOL = K.mat(0x0a0606), LAVAY = K.mat(A4_PAL.lavaY, 'lava'), LAVA = K.mat(A4_PAL.lava, 'lava');
-  // 어깨 해골 원판(앞에서 보이는 견갑 바깥 면)
-  [[limbs.armR, 1], [limbs.armL, -1]].forEach(([g, sg]) => {
-    const sk = new THREE.Group(); sk.position.set(sg * 0.14, 0.12, -0.36); g.add(sk);
-    K.cyl(sk, 0.13, 0.13, 0.04, GOLD, 10, 0, 0, 0, Math.PI / 2, 0, 0);
-    K.cyl(sk, 0.15, 0.15, 0.025, GOLDD, 10, 0, 0, 0.012, Math.PI / 2, 0, 0);
-    K.ico(sk, 0.075, BONE, 0, 0.012, -0.03, 1, 1.05, 0.7, 0);
-    [-1, 1].forEach(s2 => K.box(sk, 0.032, 0.026, 0.02, HOL, s2 * 0.028, 0.02, -0.08));
-    K.box(sk, 0.05, 0.016, 0.02, HOL, 0, -0.035, -0.075);
-    c3MergeStatic(sk);
+  const { grp, bodyGrp, headGrp, limbs } = P;
+  a4Reset(grp, bodyGrp, headGrp, limbs);
+  const K = a4Kit(P.seed, 0.4, 0.045);
+  const A = K.mat(0x1b1920, 'crust'), AL = K.mat(0x2a2632, 'crust'), AD = K.mat(0x0e0d12, 'crust');
+  const G = K.mat(0x8c6c2c), GD = K.mat(0x55431c), HORN = K.mat(0x17121a), HORNL = K.mat(0x2e2532), BONE = K.mat(0x8a7a60), VOID = K.mat(0x060507), LEA = K.mat(0x241812);
+  const RED = K.mat(0x5a0f16, 'cloth'), REDD = K.mat(0x320810, 'cloth'), MEMB = K.mat(0x52101a, 'cloth');
+  const LAVA = K.mat(A4_PAL.lava, 'lava'), LAVAY = K.mat(A4_PAL.lavaY, 'lava');
+  const glowB = (hex) => { const m = new THREE.MeshBasicMaterial({ color: hex, toneMapped: false, fog: false }); m._glowMat = true; return m; };
+  const edgeMat = glowB(0xff6a1e), eyeMat = glowB(0xffd27a), coreMat = glowB(0xffa040), chainMat = glowB(0xff5a16);
+  const vein = (parent, pts, r) => { for (let i = 1; i < pts.length; i++) K.seg(parent, pts[i - 1], pts[i], r, r * 0.8, LAVA, 4); };
+  const trim = (parent, pts, r) => { for (let i = 1; i < pts.length; i++) K.seg(parent, pts[i - 1], pts[i], r, r, G, 4); };   // 금 테 선
+
+  // ---- 다리: 마디진 넓적다리 · 마름모 무릎 갑주 · 정강이 갑주 · 겹판 쇠구두 ----
+  function makeLeg(sign) {
+    const g = new THREE.Group(); g.position.set(sign * 0.27, 1.12, 0.02); bodyGrp.add(g);
+    K.seg(g, [0, 0, 0], [0, -0.52, -0.06], 0.21, 0.16, A, 8);
+    [-0.12, -0.3].forEach((y, i) => { K.cyl(g, 0.225 - i * 0.02, 0.215 - i * 0.02, 0.12, i ? A : AL, 8, 0, y, -0.03 + y * 0.1); K.band(g, 0.228 - i * 0.02, 0.025, G, 0, y - 0.06, -0.03 + y * 0.1, 8); });
+    const kn = new THREE.Group(); kn.position.set(0, -0.52, -0.06); g.add(kn);
+    K.ico(kn, 0.17, GD, 0, 0.0, -0.08, 1.0, 1.25, 0.45, 0);                         // 무릎 갑주 금 테(마름모)
+    K.ico(kn, 0.145, AL, 0, 0.0, -0.1, 1.0, 1.25, 0.5, 0);
+    K.cone(kn, 0.045, 0.18, G, 4, 0, 0.0, -0.2, -1.4, 0, 0);
+    K.seg(kn, [0, 0, 0], [0, -0.5, 0.05], 0.14, 0.11, AD, 7);
+    K.cyl(kn, 0.15, 0.13, 0.44, A, 8, 0, -0.25, -0.02, -0.1, 0, 0);
+    K.band(kn, 0.152, 0.03, G, 0, -0.04, -0.03, 8); K.band(kn, 0.135, 0.025, G, 0, -0.45, 0.0, 8);
+    K.box(kn, 0.22, 0.1, 0.3, AD, 0, -0.55, -0.06); K.box(kn, 0.2, 0.07, 0.16, AL, 0, -0.52, -0.25, 0.25, 0, 0); K.box(kn, 0.17, 0.06, 0.12, A, 0, -0.56, -0.36, 0.1, 0, 0);
+    K.box(kn, 0.23, 0.025, 0.04, G, 0, -0.49, -0.2, 0.25, 0, 0);
+    return g;
+  }
+  const legR = makeLeg(1), legL = makeLeg(-1);
+
+  // ---- 허리: 판 띠 · 금 버클 · 갑주 치마 · 금 십자 진홍 앞 깃발 ----
+  const hip = new THREE.Group(); hip.position.set(0, 1.16, 0); bodyGrp.add(hip);
+  K.cyl(hip, 0.44, 0.47, 0.2, A, 10, 0, 0, 0); K.band(hip, 0.475, 0.035, G, 0, 0.09, 0, 10);
+  K.ico(hip, 0.1, G, 0, 0, -0.46, 1.3, 1, 0.5, 0); K.ico(hip, 0.045, coreMat, 0, 0, -0.5, 1, 1, 1, 0);
+  [[-0.3, -0.36], [0.3, -0.36], [-0.44, 0.0], [0.44, 0.0], [-0.2, 0.36], [0.2, 0.36]].forEach(([x, z]) => {   // 겹판 치마(두 단)
+    const ry = Math.atan2(x, z);
+    for (let k = 0; k < 2; k++) { const y = -0.2 - k * 0.2, w = 0.32 - k * 0.03;
+      const pl = K.box(hip, w, 0.24, 0.05, k ? A : AL, x * (1.04 + k * 0.05), y, z * (1.04 + k * 0.05), 0, ry, 0); pl.rotateX(-0.16);
+      const pt = K.box(hip, w + 0.01, 0.03, 0.06, G, x * (1.08 + k * 0.05), y - 0.12, z * (1.08 + k * 0.05), 0, ry, 0); pt.rotateX(-0.16); }
   });
-  // 가슴 핵의 별빛(네 갈래)
-  const star = new THREE.Group(); star.position.set(0, 1.82, -0.5); bodyGrp.add(star);
-  [0, 1, 2, 3].forEach(i => { const a = i * Math.PI / 2; K.cone(star, 0.03, i % 2 ? 0.2 : 0.28, i % 2 ? LAVA : LAVAY, 4, Math.sin(a) * 0.1, Math.cos(a) * 0.1, 0, 0, 0, -a); });
+  const ban = new THREE.Group(); ban.position.set(0, -0.06, -0.47); ban.rotation.x = 0.06; hip.add(ban);
+  K.plate(ban, [[-0.17, 0], [0.17, 0], [0.17, -0.84], [0.1, -0.98], [0.04, -0.88], [0, -1.02], [-0.04, -0.88], [-0.1, -0.98], [-0.17, -0.84]], 0.03, RED, 0, 0, 0);
+  K.box(ban, 0.36, 0.06, 0.04, G, 0, -0.02, -0.01);
+  [-1, 1].forEach(s2 => K.box(ban, 0.022, 0.84, 0.04, GD, s2 * 0.15, -0.44, -0.01));
+  K.box(ban, 0.03, 0.62, 0.04, G, 0, -0.42, -0.02); K.box(ban, 0.2, 0.03, 0.04, G, 0, -0.6, -0.02); K.box(ban, 0.07, 0.07, 0.04, G, 0, -0.6, -0.03, 0, 0, Math.PI / 4);
+  K.cone(ban, 0.04, 0.12, G, 4, 0, -0.78, -0.02, Math.PI, 0, 0);
+  K.plate(hip, [[-0.26, 0], [0.26, 0], [0.24, -0.62], [0.1, -0.74], [0, -0.66], [-0.1, -0.74], [-0.24, -0.62]], 0.03, REDD, 0, -0.06, 0.44);
+
+  // ---- 몸통: 판금 · V 자 가슴판과 금 테 · 별빛 핵 · 겹 배 판 ----
+  const torso = new THREE.Group(); torso.position.set(0, 1.66, 0); torso.rotation.x = 0.04; bodyGrp.add(torso);
+  K.ico(torso, 0.58, A, 0, 0, 0, 1.25, 0.98, 0.85, 1);
+  K.ico(torso, 0.52, A, 0, 0.12, 0.26, 1.3, 0.9, 0.7, 1);
+  K.ico(torso, 0.6, AL, 0, 0.16, -0.18, 1.18, 0.8, 0.5, 1);                                 // 가슴판
+  K.box(torso, 0.06, 0.5, 0.08, AL, 0, 0.12, -0.46, -0.12, 0, 0);                            // 가운데 능선
+  trim(torso, [[-0.62, 0.36, -0.2], [-0.3, 0.22, -0.42], [0, -0.1, -0.49], [0.3, 0.22, -0.42], [0.62, 0.36, -0.2]], 0.026);   // V 금 테
+  trim(torso, [[-0.56, 0.0, -0.22], [-0.3, -0.16, -0.38], [0, -0.3, -0.42], [0.3, -0.16, -0.38], [0.56, 0.0, -0.22]], 0.022);
+  for (let k = 0; k < 3; k++) { const y = -0.3 - k * 0.15, r = 0.5 - k * 0.04; K.cyl(torso, r, r * 0.97, 0.13, k % 2 ? A : AL, 10, 0, y, -0.04); K.band(torso, r * 0.98, 0.02, GD, 0, y - 0.065, -0.04, 10); }
+  // 별빛 핵(따로 — 심장처럼 뛴다)
+  const star = new THREE.Group(); star.position.set(0, 0.16, -0.5); torso.add(star);
+  K.ico(star, 0.08, coreMat, 0, 0, 0, 1, 1, 0.6, 0);
+  [0, 1, 2, 3, 4, 5, 6, 7].forEach(i => { const a = i * Math.PI / 4, L = i % 2 ? 0.14 : 0.26; K.cone(star, i % 2 ? 0.025 : 0.035, L, coreMat, 4, Math.sin(a) * (0.06 + L / 2), Math.cos(a) * (0.06 + L / 2), 0, 0, 0, -a); });
+  vein(torso, [[0.04, 0.0, -0.47], [0.1, -0.2, -0.43], [0.06, -0.38, -0.44]], 0.014);
+  // 목 갑주(높은 칼라) + 앞 V 판
+  K.cyl(torso, 0.37, 0.25, 0.26, A, 10, 0, 0.6, -0.04); K.band(torso, 0.26, 0.03, G, 0, 0.73, -0.04, 10); K.band(torso, 0.36, 0.03, G, 0, 0.48, -0.04, 10);
+  K.plate(torso, [[-0.17, 0], [0.17, 0], [0, -0.26]], 0.04, AL, 0, 0.66, -0.34, -0.3, 0, 0);
+  trim(torso, [[-0.17, 0.66, -0.36], [0, 0.42, -0.42], [0.17, 0.66, -0.36]], 0.02);
+  K.box(torso, 0.05, 0.06, 0.03, G, 0, 0.54, -0.42, 0, 0, Math.PI / 4);
+
+  // ---- 머리: 닫힌 투구(뾰족한 면갑 · T 자 눈빛) · 금관 · 큰 뿔 · 불의 후광 ----
+  headGrp.position.set(0, 2.42, -0.1); bodyGrp.add(headGrp); limbs.head = headGrp;
+  K.ico(headGrp, 0.25, A, 0, 0.05, 0.04, 1.0, 1.08, 1.1, 1);
+  K.ico(headGrp, 0.21, AL, 0, -0.03, -0.12, 1.0, 1.15, 0.75, 1);
+  K.cone(headGrp, 0.13, 0.22, AL, 4, 0, -0.06, -0.24, -Math.PI / 2, Math.PI / 4, 0).scale.set(1.3, 1, 0.7);   // 앞으로 뾰족한 면갑
+  K.box(headGrp, 0.03, 0.34, 0.06, AL, 0, 0.0, -0.3, 0.1, 0, 0);                         // 콧날 능선
+  K.box(headGrp, 0.26, 0.04, 0.04, VOID, 0, 0.04, -0.3); K.box(headGrp, 0.05, 0.16, 0.04, VOID, 0, -0.04, -0.33);
+  [-1, 1].forEach(s2 => K.put(headGrp, new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.022, 0.02), eyeMat), s2 * 0.07, 0.04, -0.325, 0, 0, s2 * -0.15));
+  K.box(headGrp, 0.02, 0.1, 0.02, eyeMat, 0, -0.04, -0.355);
+  trim(headGrp, [[-0.2, 0.12, -0.18], [-0.14, -0.18, -0.24], [0, -0.3, -0.3], [0.14, -0.18, -0.24], [0.2, 0.12, -0.18]], 0.018);
+  const circ = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.035, 4, 14), G); K.put(headGrp, circ, 0, 0.16, 0.0, Math.PI / 2 + 0.12, 0, 0);
+  for (let i = 0; i < 7; i++) { const a = -1.2 + i * 0.4, h = i === 3 ? 0.3 : (i % 2 ? 0.14 : 0.2); K.cone(headGrp, 0.035, h, i === 3 ? G : (i % 2 ? GD : G), 4, Math.sin(a) * 0.26, 0.18 + h / 2, -Math.cos(a) * 0.26, -0.15, 0, -Math.sin(a) * 0.2); }
+  K.ico(headGrp, 0.035, coreMat, 0, 0.22, -0.27, 1, 1, 1, 0);
+  [-1, 1].forEach(s2 => {
+    const PP = [[s2 * 0.2, 0.1, 0.02], [s2 * 0.42, 0.2, 0.05], [s2 * 0.58, 0.42, 0.08], [s2 * 0.6, 0.72, 0.1], [s2 * 0.5, 0.98, 0.08], [s2 * 0.36, 1.1, 0.04]];
+    const R0 = [0.1, 0.09, 0.075, 0.058, 0.04, 0.012];
+    for (let i = 1; i < PP.length; i++) { K.seg(headGrp, PP[i - 1], PP[i], R0[i - 1], R0[i], i % 2 ? HORN : HORNL, 7); if (i < 5) K.ico(headGrp, R0[i] * 1.08, HORNL, PP[i][0], PP[i][1], PP[i][2], 1, 0.55, 1, 0); }   // 마디진 뿔
+  });
+  const haloGrp = new THREE.Group(); haloGrp.position.set(0, 0.36, 0.5); haloGrp.rotation.x = 0.5; headGrp.add(haloGrp);
+  const haloSpin = new THREE.Group(); haloGrp.add(haloSpin);
+  const hOut = new THREE.MeshBasicMaterial({ color: 0xff5a14, transparent: true, opacity: 0.85, fog: false, depthWrite: false, toneMapped: false });
+  const hCore = new THREE.MeshBasicMaterial({ color: 0xffc848, transparent: true, opacity: 0.95, fog: false, depthWrite: false, toneMapped: false });
+  hOut._glowMat = hCore._glowMat = true;
+  haloSpin.add(new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.05, 5, 30), hOut));
+  haloSpin.add(new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.02, 4, 30), hCore));
+  for (let i = 0; i < 14; i++) {
+    const a = i / 14 * Math.PI * 2, k = i % 2 ? 0.65 : 1.0;
+    const fo = new THREE.Mesh(new THREE.ConeGeometry(0.07 * k, 0.32 * k, 5), hOut); fo.position.set(Math.cos(a) * (0.6 + 0.14 * k), Math.sin(a) * (0.6 + 0.14 * k), 0); fo.rotation.z = a - Math.PI / 2; haloSpin.add(fo);
+    const fc = new THREE.Mesh(new THREE.ConeGeometry(0.035 * k, 0.18 * k, 5), hCore); fc.position.set(Math.cos(a) * (0.6 + 0.08 * k), Math.sin(a) * (0.6 + 0.08 * k), 0.01); fc.rotation.z = a - Math.PI / 2; haloSpin.add(fc);
+  }
+  c3MergeStatic(haloSpin); haloSpin.traverse(o => { if (o.isMesh) { o.userData.fx = true; o.renderOrder = o.material === hCore ? 3 : 2; } });
+
+  // ---- 망토(어깨에서 바닥까지 · 갈라진 밑단 · 금 걸쇠) ----
+  const capeGrp = new THREE.Group(); capeGrp.position.set(0, 2.02, 0.22); capeGrp.rotation.x = -0.1; bodyGrp.add(capeGrp);
+  { const h = 1.78; K.put(capeGrp, new THREE.Mesh(new THREE.CylinderGeometry(0.54, 0.95, h, 14, 1, true, -Math.PI / 2, Math.PI), RED), 0, -h / 2, 0);
+    for (let i = 0; i <= 12; i++) { const th = -Math.PI / 2 + Math.PI * i / 12, L = 0.14 + 0.2 * ((i * 7) % 3) / 2;
+      K.cone(capeGrp, 0.085, L, i % 2 ? REDD : RED, 3, 0.95 * Math.sin(th), -h - L / 2 + 0.03, 0.95 * Math.cos(th), Math.PI, 0, 0); }
+    [-1, 1].forEach(s2 => { K.ico(capeGrp, 0.085, G, s2 * 0.42, -0.04, -0.12, 1, 1, 0.5, 0); K.ico(capeGrp, 0.035, coreMat, s2 * 0.42, -0.04, -0.16, 1, 1, 1, 0); }); }
+
+  // ---- 박쥐 날개(붉은 막 · 검은 뼈 · 막 위 용암 핏줄) ----
+  function makeWing(s) {
+    const g = new THREE.Group(); g.position.set(s * 0.24, 2.12, 0.34); bodyGrp.add(g);
+    const Q = { R: [0, 0, 0], E: [s * 0.72, 0.34, 0.16], W: [s * 1.48, 0.72, 0.28], F1: [s * 2.32, 0.98, 0.34], F2: [s * 2.18, 0.12, 0.46], F3: [s * 1.66, -0.52, 0.5], F4: [s * 0.96, -0.74, 0.4], Rl: [s * 0.12, -0.44, 0.1] };
+    K.seg(g, Q.R, Q.E, 0.075, 0.06, HORN, 6); K.seg(g, Q.E, Q.W, 0.06, 0.045, HORN, 6);
+    K.ico(g, 0.075, HORNL, ...Q.E, 1, 1, 1, 0); K.ico(g, 0.06, HORNL, ...Q.W, 1, 1, 1, 0);
+    K.cone(g, 0.045, 0.28, G, 5, Q.W[0] + s * 0.02, Q.W[1] + 0.16, Q.W[2], 0, 0, -s * 0.3);
+    ['F1', 'F2', 'F3', 'F4'].forEach(k => K.seg(g, Q.W, Q[k], 0.038, 0.012, HORN, 5));
+    const sag = (a, b, k) => { const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2]; return [m[0] + (Q.W[0] - m[0]) * k, m[1] + (Q.W[1] - m[1]) * k, m[2] + (Q.W[2] - m[2]) * k + 0.04]; };
+    const tris = [], T = (a, b, c) => tris.push(...a, ...b, ...c);
+    const fan = [Q.F1, sag(Q.F1, Q.F2, 0.24), Q.F2, sag(Q.F2, Q.F3, 0.24), Q.F3, sag(Q.F3, Q.F4, 0.22), Q.F4];
+    for (let i = 1; i < fan.length; i++) T(Q.W, fan[i - 1], fan[i]);
+    const sE = [(Q.F4[0] + Q.Rl[0]) / 2 + (Q.E[0] - (Q.F4[0] + Q.Rl[0]) / 2) * 0.25, (Q.F4[1] + Q.Rl[1]) / 2 + (Q.E[1] - (Q.F4[1] + Q.Rl[1]) / 2) * 0.25, 0.3];
+    T(Q.W, Q.F4, Q.E); T(Q.E, Q.F4, sE); T(Q.E, sE, Q.Rl); T(Q.E, Q.Rl, Q.R);
+    const mg = new THREE.BufferGeometry(); mg.setAttribute('position', new THREE.Float32BufferAttribute(tris, 3)); mg.computeVertexNormals();
+    K.put(g, new THREE.Mesh(mg, MEMB));
+    vein(g, [Q.W, sag(Q.F1, Q.F2, 0.5), [Q.F2[0] * 0.93, Q.F2[1] + 0.12, Q.F2[2]]], 0.014);
+    vein(g, [Q.W, sag(Q.F2, Q.F3, 0.55), [Q.F3[0] * 0.95, Q.F3[1] + 0.1, Q.F3[2]]], 0.012);
+    c3MergeStatic(g);
+    return g;
+  }
+  const wingR = makeWing(1), wingL = makeWing(-1);
+
+  // ---- 팔: 가시 견갑(겹판 · 금 테 · 금 해골 원판) · 마디진 위팔 · 팔꿈치 갑주 · 건틀릿 · 왼팔 달군 사슬 ----
+  function makeArm(sign) {
+    const g = new THREE.Group(); g.position.set(sign * 0.74, 2.02, 0.0); bodyGrp.add(g);
+    K.ico(g, 0.27, A, 0, 0, 0, 1, 1, 1, 1);
+    [[0.36, 1.25, 0.6, 1.15, 0.06, 0.18, -0.25, A], [0.32, 1.2, 0.45, 1.08, 0.13, 0.03, -0.42, AL], [0.28, 1.15, 0.4, 1.0, 0.19, -0.1, -0.58, A]].forEach(([r, sx, sy, sz, x, y, rz, m]) => {
+      const o = K.ico(g, r, m, sign * x, y, 0, sx, sy, sz, 1); o.rotation.z = sign * rz;
+      const t = new THREE.Mesh(new THREE.TorusGeometry(r * 1.12, 0.026, 4, 16), G); K.put(g, t, sign * x, y - 0.03, 0, Math.PI / 2, sign * (0.25 - rz * 0.3), 0);
+    });
+    [[0.1, 0.44, 0.0, -0.2, 0.36], [0.3, 0.36, -0.12, -0.7, 0.3], [0.3, 0.36, 0.14, -0.7, 0.28], [-0.04, 0.44, 0.14, 0.15, 0.24], [0.42, 0.18, 0.0, -1.1, 0.22]].forEach(([x, y, z, rz, h]) => {
+      K.cone(g, 0.065, h, AD, 5, sign * x, y, z, 0, 0, sign * rz); K.cyl(g, 0.072, 0.072, 0.025, G, 5, sign * x, y, z, 0, 0, sign * rz); });   // 가시 + 밑동 금 고리
+    // 금 해골 원판(견갑 앞면)
+    const sk = new THREE.Group(); sk.position.set(sign * 0.15, 0.12, -0.37); g.add(sk);
+    K.cyl(sk, 0.13, 0.13, 0.04, G, 10, 0, 0, 0, Math.PI / 2, 0, 0); K.cyl(sk, 0.15, 0.15, 0.025, GD, 10, 0, 0, 0.012, Math.PI / 2, 0, 0);
+    K.ico(sk, 0.075, BONE, 0, 0.012, -0.03, 1, 1.05, 0.7, 0);
+    [-1, 1].forEach(s2 => K.box(sk, 0.032, 0.026, 0.02, VOID, s2 * 0.028, 0.02, -0.08)); K.box(sk, 0.05, 0.016, 0.02, VOID, 0, -0.035, -0.075);
+    // 위팔: 겹친 띠 셋
+    K.seg(g, [0, -0.05, 0], [0, -0.55, 0], 0.17, 0.14, AD, 7);
+    for (let k = 0; k < 3; k++) { const y = -0.16 - k * 0.13, r = 0.18 - k * 0.012; K.cyl(g, r, r * 0.94, 0.11, k % 2 ? A : AL, 8, 0, y, 0); K.band(g, r * 0.99, 0.018, GD, 0, y - 0.055, 0, 8); }
+    const el = new THREE.Group(); el.position.set(0, -0.57, 0); g.add(el);
+    K.ico(el, 0.14, AL, 0, 0, 0, 1, 1, 1, 0); K.cone(el, 0.04, 0.16, G, 4, 0, 0.0, 0.13, 1.4, 0, 0);
+    K.seg(el, [0, 0, 0], [0, -0.5, 0], 0.14, 0.11, AD, 7);
+    K.cyl(el, 0.14, 0.16, 0.38, A, 8, 0, -0.3, 0); [-0.13, -0.47].forEach(y => K.band(el, 0.16, 0.03, G, 0, y, 0, 8));
+    K.cone(el, 0.045, 0.22, AD, 4, sign * 0.13, -0.2, 0.06, 0, 0, -sign * 1.1);
+    if (sign < 0) for (let i = 0; i < 6; i++) { const l = new THREE.Mesh(new THREE.TorusGeometry(0.165, 0.022, 4, 10), chainMat); K.put(el, l, 0, -0.08 - i * 0.07, 0, Math.PI / 2 + (i % 2 ? 0.3 : -0.3), 0, (i % 3) * 0.2); }   // 팔을 감은 달군 사슬
+    const hand = new THREE.Group(); hand.position.set(0, -0.56, 0); el.add(hand);
+    K.ico(hand, 0.145, AD, 0, 0, 0, 1.05, 0.9, 1.15, 0);
+    for (let i = 0; i < 4; i++) K.box(hand, 0.045, 0.1, 0.06, AL, -0.075 + i * 0.05, -0.08, -0.1, -0.5, 0, 0);
+    K.box(hand, 0.2, 0.03, 0.05, G, 0, 0.06, -0.08);
+    g.rotation.set(0.12, 0, sign * 0.14); el.rotation.x = 0.3;
+    return { g, el, hand };
+  }
+  const aR = makeArm(1), aL = makeArm(-1);
+  const chainHang = new THREE.Group(); chainHang.position.set(0, -0.1, 0); aL.hand.add(chainHang);
+  for (let i = 0; i < 7; i++) { const l = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.018, 4, 8), chainMat); K.put(chainHang, l, 0, -0.08 - i * 0.085, 0, 0, i % 2 ? Math.PI / 2 : 0, 0); }
+  K.cone(chainHang, 0.07, 0.3, edgeMat, 5, 0, -0.78, 0, Math.PI, 0, 0);
+  K.put(chainHang, new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.022, 4, 8, Math.PI * 1.2), edgeMat), 0.04, -0.74, 0, 0, 0, -0.4);
+
+  // ---- 흑요석 대검(오른손 · 자루 +y · 날 xy 평면 — v866 과 같은 모양·자리) · 불길 날 ----
+  const sword = new THREE.Group();
+  K.seg(sword, [0, -0.3, 0], [0, 0.18, 0], 0.042, 0.04, LEA, 6);
+  [-0.2, -0.05, 0.1].forEach(y => K.band(sword, 0.046, 0.02, GD, 0, y, 0, 6));
+  K.ico(sword, 0.08, G, 0, -0.34, 0, 1, 1, 1, 0); K.ico(sword, 0.04, coreMat, 0, -0.34, -0.06, 1, 1, 1, 0);
+  K.box(sword, 0.6, 0.1, 0.13, G, 0, 0.21, 0);
+  [-1, 1].forEach(s2 => { K.cone(sword, 0.05, 0.26, GD, 5, s2 * 0.34, 0.3, 0, 0, 0, -s2 * 0.6); K.cone(sword, 0.04, 0.2, G, 5, s2 * 0.2, 0.08, 0, Math.PI, 0, s2 * 0.4); });
+  K.ico(sword, 0.055, coreMat, 0, 0.22, -0.07, 1, 1, 1, 0);
+  const shp = new THREE.Shape();
+  const EDGE = [[0.14, 0.26], [0.15, 0.7], [0.12, 0.95], [0.16, 1.2], [0.13, 1.5], [0.15, 1.75], [0.1, 2.05], [0, 2.4]];
+  shp.moveTo(-EDGE[0][0], EDGE[0][1]); EDGE.forEach(p => shp.lineTo(p[0], p[1])); for (let i = EDGE.length - 2; i >= 0; i--) shp.lineTo(-EDGE[i][0], EDGE[i][1]);
+  const bg = new THREE.ExtrudeGeometry(shp, { depth: 0.06, bevelEnabled: false }); bg.translate(0, 0, -0.03);
+  K.put(sword, new THREE.Mesh(bg, A));
+  [-1, 1].forEach(s2 => { for (let i = 1; i < EDGE.length; i++) {
+    K.seg(sword, [s2 * (EDGE[i - 1][0] + 0.014), EDGE[i - 1][1], 0], [s2 * (EDGE[i][0] + 0.014), EDGE[i][1], 0], 0.028, 0.028, edgeMat, 4);
+    if (i < EDGE.length - 1) K.cone(sword, 0.03, 0.12, edgeMat, 4, s2 * (EDGE[i][0] + 0.05), EDGE[i][1] - 0.05, 0, 0, 0, -s2 * 0.9);   // 날의 불꽃 톱니
+  } });
+  [-1, 1].forEach(z => { vein(sword, [[0, 0.35, z * 0.034], [0.03, 0.8, z * 0.034], [-0.02, 1.25, z * 0.034], [0.02, 1.7, z * 0.034], [0, 2.1, z * 0.034]], 0.016); vein(sword, [[0.03, 0.8, z * 0.034], [0.09, 1.0, z * 0.034]], 0.01); vein(sword, [[0.02, 1.7, z * 0.034], [-0.08, 1.85, z * 0.034]], 0.01); });
+  const swFlames = [];
+  const sfOut = new THREE.MeshBasicMaterial({ color: 0xff5a14, transparent: true, opacity: 0, fog: false, depthWrite: false, toneMapped: false });
+  const sfCore = new THREE.MeshBasicMaterial({ color: 0xffc040, transparent: true, opacity: 0, fog: false, depthWrite: false, toneMapped: false });
+  sfOut._glowMat = sfCore._glowMat = true;
+  const swFlameGrp = new THREE.Group(); sword.add(swFlameGrp);
+  [-1, 1].forEach(s2 => { for (let i = 1; i < EDGE.length - 1; i++) {
+    const [x, y] = EDGE[i];
+    const fo = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.5, 5), sfOut); fo.userData = { bx: s2 * (x + 0.14), by: y, k: i + s2 * 3, s2 }; fo.rotation.z = -s2 * 1.25; swFlameGrp.add(fo); swFlames.push(fo);
+    const fc = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.3, 5), sfCore); fc.userData = { bx: s2 * (x + 0.08), by: y, k: i + 0.5 + s2 * 3, s2 }; fc.rotation.z = -s2 * 1.25; swFlameGrp.add(fc); swFlames.push(fc);
+  } });
+  swFlameGrp.visible = false; K.fx(swFlameGrp);
+  sword.position.set(0, -0.1, -0.02); sword.rotation.set(-Math.PI / 2, Math.PI / 2, 0);
+  aR.hand.add(sword);
+  const SW_RX = sword.rotation.x;
+  const tail = new THREE.Group(); tail.position.set(0, 1.08, 0.38); bodyGrp.add(tail);   // 원화에 꼬리가 없다 — 빈 자리(흔들기 코드 호환)
+
+  c3MergeStatic(sword, [swFlameGrp]);
+  c3MergeStatic(chainHang);
+  [aR.el, aL.el].forEach(g => c3MergeStatic(g, [aR.hand, aL.hand]));
+  c3MergeStatic(aR.hand, [sword]); c3MergeStatic(aL.hand, [chainHang]);
+  [aR.g, aL.g].forEach(g => c3MergeStatic(g, [aR.el, aL.el]));
+  [legR, legL].forEach(g => c3MergeStatic(g));
   c3MergeStatic(star); K.fx(star);
-  const up = limbs._hsUpdate;
+  c3MergeStatic(headGrp, [haloGrp]); c3MergeStatic(capeGrp);
+  c3MergeStatic(bodyGrp, [headGrp, legR, legL, aR.g, aL.g, tail, capeGrp, wingR, wingL, star]);
+  // star 는 torso 안이라 bodyGrp 병합 때 빠지도록 위치를 그대로 두고 torso 대신 bodyGrp 에 옮긴다
+  { const w = new THREE.Vector3(0, 0.16, -0.5); w.applyEuler(new THREE.Euler(0.04, 0, 0)); w.y += 1.66; star.position.copy(w); star.rotation.set(0.04, 0, 0); bodyGrp.add(star); }
+
+  limbs.armR = aR.g; limbs.armL = aL.g; limbs.legR = legR; limbs.legL = legL; limbs.head = headGrp; limbs.bodyGrp = bodyGrp;
+  limbs._hsSword = sword; limbs._hsChainHang = chainHang; limbs._hsChainHand = aL.hand; limbs._hsHand = aR.hand;
+  limbs._hsWing = 0; limbs._hsFlap = 0; limbs._hsFire = 0; limbs._hsHeat = 0;
+  const ARM0 = { rx: 0.12, rxR: 0.32, rzR: 0.14, rzL: -0.14, el: 0.3, elR: 0.75 }, DROP = 1.37, SLAM = 0.78;
+  limbs._hsPose = function (name, k, s) {   // v866 과 글자 그대로 같은 각도
+    s = s || 1; k = Math.max(0, Math.min(1, k || 0));
+    const R = aR.g.rotation, L = aL.g.rotation, B = bodyGrp.rotation;
+    let rx = ARM0.rxR, rz = ARM0.rzR, lx = ARM0.rx, lz = ARM0.rzL, elR = ARM0.elR, elL = ARM0.el, sx = SW_RX - DROP, bx = 0, by = 0, hx = 0, lgR = null, lgL = null;
+    if (name === 'side') {
+      rx = Math.PI * 0.5; rz = s * k * 1.35; elR = ARM0.elR * (1 - k); sx = SW_RX - DROP * (1 - k) - Math.PI / 2 * k; by = -s * k * 0.45; lx = 0.4 * k; lz = -0.14 - 0.3 * k;
+    } else if (name === 'sweep') {
+      rx = Math.PI * 0.5; rz = s * (1.35 - k * 2.7); elR = 0; sx = SW_RX - Math.PI / 2; by = -s * 0.45 + s * k * 0.9; lx = 0.4; lz = -0.44;
+    } else if (name === 'raise') {
+      rx = k * Math.PI * 1.05; lx = k * Math.PI * 0.98; rz = 0.14 - k * 0.2; lz = -0.14 + k * 0.28; elR = ARM0.elR * (1 - k); elL = 0.3 + k * 0.15; bx = -0.18 * k; hx = -0.2 * k;
+      sx = SW_RX - DROP - (Math.PI / 2 - DROP) * k;
+    } else if (name === 'slam') {
+      rx = Math.PI * 1.05 - k * Math.PI * SLAM; lx = Math.PI * 0.98 - k * Math.PI * (SLAM - 0.06); rz = -0.06; lz = 0.14; elR = 0; elL = 0.45 - k * 0.3; bx = -0.18 + k * 0.45; hx = -0.2 + k * 0.3;
+      sx = SW_RX - Math.PI / 2;
+    } else if (name === 'chainWind') {
+      lx = -k * 1.1; lz = -0.14 - k * 0.55; elL = 0.3 + k * 0.5; by = k * 0.4; bx = -0.06 * k;
+    } else if (name === 'chainThrow') {
+      lx = -1.1 + k * 2.65; lz = -0.69 + k * 0.6; elL = 0.8 - k * 0.8; by = 0.4 - k * 0.7; bx = -0.06 + k * 0.14;
+    } else if (name === 'chainPull') {
+      lx = 1.55 - k * 1.1; lz = -0.09 - k * 0.2; elL = k * 1.2; by = -0.3 + k * 0.5; bx = 0.08 - k * 0.2;
+    } else if (name === 'fly') {
+      rx = 0.35 * k + ARM0.rxR * (1 - k); rz = ARM0.rzR + 0.8 * k; lx = 0.35 * k + ARM0.rx * (1 - k); lz = ARM0.rzL - 0.8 * k; elR = ARM0.elR * (1 - k) + 0.2 * k; elL = 0.3 + 0.1 * k; bx = 0.12 * k; hx = 0.1 * k; lgR = 0.35 * k; lgL = 0.12 * k;
+      sx = SW_RX - DROP - 0.6 * k;
+    } else if (name === 'roar') {
+      rx = 0.3 * k + ARM0.rxR * (1 - k); rz = ARM0.rzR + 1.0 * k; lx = 0.3 * k; lz = ARM0.rzL - 1.0 * k; bx = -0.28 * k; hx = -0.4 * k; elR = ARM0.elR * (1 - k);
+    }
+    R.x = rx; R.z = rz; L.x = lx; L.z = lz; aR.el.rotation.x = elR; aL.el.rotation.x = elL; sword.rotation.x = sx; B.x = bx; B.y = by; headGrp.rotation.x = hx;
+    if (lgR !== null) { legR.rotation.x = lgR; legL.rotation.x = lgL; }
+  };
+  limbs._hsPose('rest', 0);
+  let wingK = 0;
   limbs._hsUpdate = function (t, dt) {
-    up.call(this, t, dt);
-    const g = 0.8 + 0.2 * Math.sin(t * 2.0) + (limbs._hsHeat || 0) * 0.3 + (limbs._hsFire || 0) * 0.2;
-    K.u.glow.value = g; K2.u.glow.value = g; K.lava.color.setScalar(g);
-    star.scale.setScalar(0.9 + 0.15 * Math.sin(t * 3.1));
+    dt = dt || 0.016;
+    const p = 0.5 + 0.5 * Math.sin(t * 2.2), fire = limbs._hsFire || 0, heat = limbs._hsHeat || 0;
+    const beat = Math.pow(Math.max(0, Math.sin(t * 3.4)), 6);
+    const gl = 0.8 + 0.2 * p + fire * 0.25 + heat * 0.15;
+    K.u.glow.value = gl; K.lava.color.setScalar(gl);
+    edgeMat.color.setRGB(1, 0.42, 0.12).multiplyScalar(0.85 + 0.15 * p + heat * 0.35 + fire * 0.2);
+    eyeMat.color.setRGB(1, 0.82, 0.48).multiplyScalar(0.9 + 0.15 * Math.sin(t * 3.1) + heat * 0.2);
+    coreMat.color.setRGB(1, 0.63, 0.25).multiplyScalar(0.85 + 0.35 * beat + fire * 0.2);
+    star.scale.setScalar(0.9 + 0.3 * beat);
+    chainMat.color.setRGB(1, 0.35, 0.09).multiplyScalar(0.75 + 0.2 * p);
+    haloSpin.rotation.z = t * 0.55;
+    { const f = 1 + 0.06 * Math.sin(t * 13) + 0.04 * Math.sin(t * 21 + 1.1); haloSpin.scale.set(f, f, 1); hOut.opacity = 0.8 + 0.1 * Math.sin(t * 9); }
+    wingK += ((limbs._hsWing || 0) - wingK) * Math.min(1, dt * 4.5);
+    const flap = (limbs._hsFlap || 0) * Math.sin(t * 6.0), br = 0.03 * Math.sin(t * 1.6);
+    [[wingR, 1], [wingL, -1]].forEach(([g, s]) => {
+      g.rotation.set(0.08 * wingK, -s * (1.2 - 1.0 * wingK), s * (1.1 - 0.98 * wingK + flap * 0.6 + br));
+      g.scale.set(0.6 + 0.4 * wingK, 0.9 + 0.1 * wingK, 1);
+    });
+    capeGrp.rotation.x = -0.1 - 0.05 * Math.sin(t * 1.3) - 0.25 * wingK * (limbs._hsFlap ? 1 : 0.4);
+    swFlameGrp.visible = fire > 0.02;
+    if (swFlameGrp.visible) {
+      sfOut.opacity = 0.75 * fire; sfCore.opacity = 0.9 * fire;
+      for (const f of swFlames) { const u = f.userData, w = Math.sin(t * 17 + u.k * 2.1), v = Math.cos(t * 13 + u.k * 1.3); f.scale.set(1 + 0.15 * v, (0.8 + 0.35 * Math.abs(w)) * fire, 1 + 0.15 * v); f.position.set(u.bx + u.s2 * 0.04 * Math.abs(w) * fire, u.by + 0.03 * v, 0); }
+    }
   };
 }
 /*A4END*/
