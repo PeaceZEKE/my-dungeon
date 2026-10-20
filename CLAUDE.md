@@ -77,7 +77,7 @@ sed -n "$((S+1)),$((E-1))p" index.html > /tmp/gc.js && node --check /tmp/gc.js
 
 ## 프로젝트 스킬 — `.claude/skills/`
 
-반복 작업은 스킬로 묶어 두었다(2026-10-14). 해당 작업을 할 때 먼저 불러 쓴다.
+반복 작업은 스킬로 묶어 두었다(2026-10-14). 해당 작업을 할 때 먼저 불러 쓴다. 여러 에이전트를 돌리는 저장된 워크플로는 `.claude/workflows/` 에 있다(`monster-model`).
 
 | 스킬 | 언제 |
 |---|---|
@@ -89,6 +89,7 @@ sed -n "$((S+1)),$((E-1))p" index.html > /tmp/gc.js && node --check /tmp/gc.js
 | `dl-new-content` | 새 기능·몬스터·창·문자열 넣기 전후 점검표 · 고운바탕 서브셋 검사 |
 | `dl-portrait` | GPT(codex)로 초상화 뽑아 64px 로 넣기 |
 | `dl-crazygames-check` | CrazyGames 제출·업데이트 전 점검표 |
+| `dl-monster-model` | 몬스터·보스 모델 새로 짓기·다시 짓기 — 원화 → 작업 폴더(하네스·계약) → 저장된 워크플로 `monster-model`(빌더 여럿 → 심사 → 합성 → 적대적 검증 → 수정, **에이전트 노력 고정이라 세션 노력 설정과 무관**) |
 
 스킬 안 스크립트는 저장소 루트에서 실행하고, 세션 스크래치패드에 기대지 않는다(세션이 끝나면 사라진다).
 

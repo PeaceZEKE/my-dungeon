@@ -4219,10 +4219,10 @@ document.getElementById('varBtn').addEventListener('click', () => { varIdx = (va
 let atkT = -1;
 document.getElementById('atkBtn').addEventListener('click', () => { atkT = 0; });
 // 지옥의 군주 자세(게임 보스 패턴과 같은 _hsPose) — 다른 몬스터에는 영향 없다
-const HS_POSES = [['기본', null], ['가로베기 준비', ['side', 1, 0, 0, 0, 0]], ['가로베기', ['sweep', 1, 0, 0, 0, 0]], ['내려찍기 준비', ['raise', 1, 1, 0.3, 0, 1]], ['내려찍기', ['slam', 1, 0, 0, 0, 0]],
-  ['사슬 던지기', ['chainThrow', 1, 0, 0, 0, 0]], ['비행', ['fly', 1, 1, 1, 0, 0]], ['포효(3페이즈 불꽃)', ['roar', 1, 0, 0, 1, 0]]];
+const HS_POSES = [['기본', null, null], ['가로베기 준비', ['side', 1, 1], null], ['가로베기', ['sweep', 1, 1], null], ['내려찍기 준비', ['raise', 1, 1], { _hsWing: 1, _hsFlap: 0.3, _hsHeat: 1 }], ['내려찍기', ['slam', 1, 1], null],
+  ['사슬 던지기', ['chainThrow', 1, 1], null], ['비행', ['fly', 1, 1], { _hsWing: 1, _hsFlap: 1 }], ['포효(3페이즈 불꽃)', ['roar', 1, 1], { _hsFire: 1 }]];
 let hsPoseIdx = 0;
-document.getElementById('poseBtn').addEventListener('click', e => { hsPoseIdx = (hsPoseIdx + 1) % HS_POSES.length; window.__pose = HS_POSES[hsPoseIdx][1]; e.target.textContent = '군주 자세: ' + HS_POSES[hsPoseIdx][0];
+document.getElementById('poseBtn').addEventListener('click', e => { hsPoseIdx = (hsPoseIdx + 1) % HS_POSES.length; window.__pose = HS_POSES[hsPoseIdx][1]; window.__limbs = Object.assign({ _hsWing: 0, _hsFlap: 0, _hsFire: 0, _hsHeat: 0 }, HS_POSES[hsPoseIdx][2] || {}); if (!window.__pose) window.__limbs = null; e.target.textContent = '군주 자세: ' + HS_POSES[hsPoseIdx][0];
   if (!window.__pose) for (const h of heroes) if (h.limbs._hsPose) { h.limbs._hsPose('rest', 0); h.limbs._hsWing = h.limbs._hsFlap = h.limbs._hsFire = h.limbs._hsHeat = 0; } });
 document.getElementById('cmpBtn').addEventListener('click', () => { cmpMode = (cmpMode + 1) % 3; rebuild(); });
 document.getElementById('spinBtn').addEventListener('click', e => { autoSpin = !autoSpin; e.target.textContent = '자동회전: ' + (autoSpin ? '켬' : '끔'); });
@@ -4262,7 +4262,8 @@ function step(dt) { if (autoSpin) { camYaw += dt * 0.32; updateCam(); } if (atkT
       else { const p = Math.min(1, (atkT - 0.4) / 0.22); aR = Math.PI * 1.05 - p * p * p * Math.PI * 0.55; }
     }
     if (L.armR) L.armR.rotation.x = aR; if (L.armL) L.armL.rotation.x = aL;
-    if (window.__pose && L._hsPose) { const P = window.__pose; L._hsPose(P[0], P[1], 1); L._hsWing = P[2] || 0; L._hsFlap = P[3] || 0; L._hsFire = P[4] || 0; L._hsHeat = P[5] || 0; }   // 군주 자세 단추 · 하네스: window.__pose = [이름, 진행, 날개, 날갯짓, 불꽃, 달아오름]
+    if (window.__limbs) Object.assign(L, window.__limbs);
+    if (window.__pose) for (const k in L) if (/^_[a-z]{2}Pose$/.test(k) && typeof L[k] === 'function') L[k](window.__pose[0], window.__pose[1], window.__pose[2] || 1);   // 자세 단추 · 하네스(dl-monster-model): window.__pose = [이름, 진행, 쪽] · window.__limbs = { _hsWing: 1, … }
     h.swingTimer = (atkT >= 0 && atkT < SW) ? 0.3 : 0; h.phase2 = (h.phase2 || 0) + dt;
     if (L.bug) { const ph = h.phase; h.phase = h.phase2; updateBugRig(h, dt, walking); h.phase = ph; }
     for (const k of ['_fiUpdate', '_pyUpdate', '_hhUpdate', '_lgUpdate', '_lbUpdate', '_exUpdate', '_hsUpdate']) if (typeof L[k] === 'function') L[k](T + h.phase, dt);
