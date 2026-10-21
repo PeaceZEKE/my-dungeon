@@ -78,6 +78,8 @@
     background:rgba(12,16,24,0.88); border:1px solid rgba(240,210,140,0.35); border-radius:12px; padding:10px 16px; color:#f3ead2; font-size:14px; line-height:1.5; text-align:center;
     opacity:0; transition:opacity .35s; box-shadow:0 4px 12px rgba(0,0,0,0.5); }
   #tipBar.show { opacity:1; }
+  #tipBar.por { display:flex; align-items:center; gap:12px; text-align:left; }  /* v911: 보스 한마디 초상화(64px 1배 — 정수 배율) */
+  #tipBarPor { width:64px; height:64px; flex:none; image-rendering:pixelated; border-radius:6px; }
   #tipBar .t { font-size:11px; letter-spacing:2px; color:#d9b56c; margin-bottom:3px; font-weight:700; }
   #tipBar.m { bottom:12px; max-width:min(400px,46vw); font-size:11px; line-height:1.4; padding:4px 8px; }
   #tipBar.m .t { font-size:9px; letter-spacing:1px; margin-bottom:1px; }
@@ -524,7 +526,7 @@ html.rotland .npcPor { width:96px; height:96px; } html.rotland .npcPorWin { widt
   <div id="howtoHintList" style="font-size:13px; line-height:1.7; color:#dbe4f0; text-align:left;"></div>
 </div>
 
-<div id="tipBar" class="hidden"><div class="t" id="tipBarT"></div><div id="tipBarB"></div></div>
+<div id="tipBar" class="hidden"><img id="tipBarPor" class="npcPor" alt="" style="display:none;"><div id="tipBarTx"><div class="t" id="tipBarT"></div><div id="tipBarB"></div></div></div>
 <div class="overlay hidden" id="howtoOverlay">
   <h1 id="howtoTitle">조작 방법</h1>
   <div id="howtoSub" style="font-size:13px; color:#a0aec0; letter-spacing:1px; margin-top:-6px; margin-bottom:6px;"></div>
@@ -4733,7 +4735,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v910'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v911'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -14198,7 +14200,7 @@ function storyBossLine(e, kind) {
   if (!meta.storySeen || typeof meta.storySeen !== 'object') meta.storySeen = {};
   meta.storySeen[k] = 1; saveMeta();
   const t = _i18n(B[kind]);
-  storyBar(monsterName(e.type), B.n ? t : '“' + t + '”', !!B.n);
+  storyBar(monsterName(e.type), B.n ? t : '“' + t + '”', !!B.n, 'boss' + f);
 }
 function storyBossTick() {
   const f = player.floor; if (f % 10 || !STORY_BOSS[f] || storySeen('b' + f + 'enc')) return;
@@ -14215,12 +14217,19 @@ function storyCollect() {
   storyBar(_i18n('📜 기록') + ' ' + (i + 1) + '/' + STORY_LORE.length + ' — ' + _i18n(n.L.who), _i18n(n.L.text));
 }
 // 안내 띠(v823)를 빌려 쓴다 — 떠 있던 안내는 내린다(이미 본 것으로 기록돼 다시 안 뜬다). ?tut=0 이어도 뜬다
-function storyBar(title, body, narr) {
+function storyBar(title, body, narr, por) {
   const el = $('tipBar'); if (!el) return;
+  tipPor(por);   // v911: 보스 한마디면 그 보스 초상화(없으면 숨김)
   el.classList.toggle('m', !!isTouchDevice); el.classList.remove('hidden');
   $('tipBarT').textContent = title; $('tipBarB').textContent = body; $('tipBarB').style.fontStyle = narr ? 'italic' : '';   // v891: 짐승 보스 서술은 기울여 대사와 가른다
   void el.offsetWidth; el.classList.add('show');
   tut.cur = '__story'; tut.t = Math.min(12, 5 + body.length * 0.09); tut.gap = 0;
+}
+function tipPor(k) {
+  const el = $('tipBar'), im = $('tipBarPor'); if (!el || !im) return;
+  const src = k ? npcPorSrc(k) : null;
+  if (src) { if (im.getAttribute('src') !== src) im.src = src; im.style.display = 'block'; el.classList.add('por'); }
+  else { im.style.display = 'none'; el.classList.remove('por'); }
 }
 // 여관 '원정대의 기록' 창: 주운 기록은 글 전체, 못 주운 것은 자리만
 function storyCount() { return STORY_LORE.filter(L => storyGot(L.id)).length; }
@@ -14242,11 +14251,16 @@ function openLore() {
     // v891: 이 막에서 들은 보스 한마디(깨어날 때 · 쓰러질 때) — 들은 것만
     const heard = [];
     for (let f = (act - 1) * ACT_LEN + 10; f <= act * ACT_LEN; f += 10) { const B = STORY_BOSS[f]; if (!B) continue;
-      for (const kind of ['enc', 'die']) if (storySeen('b' + f + kind)) heard.push([B, kind]); }
+      for (const kind of ['enc', 'die']) if (storySeen('b' + f + kind)) heard.push([B, kind, f]); }
     if (!lore.length && !heard.length) continue;
     head(_i18n(act + '막'));
     for (const L of lore) storyGot(L.id) ? row(_i18n(L.who), _i18n(L.text)) : row('???', _i18n('아직 찾지 못한 기록'), true);
-    if (heard.length) { head('— ' + _i18n('들은 말'), true); for (const [B, kind] of heard) row(monsterName(B.type), B.n ? _i18n(B[kind]) : '“' + _i18n(B[kind]) + '”', false, B.n); }
+    if (heard.length) { head('— ' + _i18n('들은 말'), true); let lastF = -1;
+      for (const [B, kind, f] of heard) { row(monsterName(B.type), B.n ? _i18n(B[kind]) : '“' + _i18n(B[kind]) + '”', false, B.n);
+        // v911: 그 보스의 첫 줄에만 초상화(64px · 왼쪽)
+        const src = f !== lastF ? npcPorSrc('boss' + f) : null; lastF = f;
+        if (src) { const it = box.lastChild, im = document.createElement('img'); im.src = src; im.alt = ''; im.className = 'npcPor';
+          im.style.cssText = 'float:left; width:64px; height:64px; image-rendering:pixelated; margin:0 10px 0 0; border-radius:6px;'; it.insertBefore(im, it.firstChild); it.style.overflow = 'hidden'; } } }
   }
   ov.classList.remove('hidden');
 }
@@ -39359,7 +39373,7 @@ function tutTick(dt) {
   const k = tut.q.shift(); const txt = TUT_TEXT[k]();
   if (!meta.tips) meta.tips = {}; meta.tips[k] = 1; saveMeta();
   el.classList.toggle('m', !!isTouchDevice); el.classList.remove('hidden');
-  $('tipBarT').textContent = _i18n('길잡이'); $('tipBarB').textContent = txt; $('tipBarB').style.fontStyle = '';
+  tipPor(null); $('tipBarT').textContent = _i18n('길잡이'); $('tipBarB').textContent = txt; $('tipBarB').style.fontStyle = '';
   void el.offsetWidth; el.classList.add('show');
   tut.cur = k; tut.t = Math.min(11, 4.5 + txt.length * 0.08); // 글자 수만큼 더 오래(한글 60자 ≈ 9.3초)
 }
