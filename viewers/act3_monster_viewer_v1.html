@@ -1746,6 +1746,8 @@ function a3Glutton(P) {
   // ===== 배(꿰맨 자국) — 이빨 우리 두 쪽 = 꿰맨 자리에서 갈라지는 뱃가죽 두 쪽 =====
   const BC = { x: 0, y: 1.42, z: -0.42 }, BR = [0.62, 0.84, 0.76];
   const bellyGrp = new THREE.Group(); bodyGrp.add(bellyGrp);
+  // 위액이 나오는 자리 — 열린 배 입 앞(배 그룹 안이라 부풀기를 따라간다 · 게임 spawnFireball 이 읽는다)
+  const bileAt = new THREE.Object3D(); bileAt.position.set(0, BC.y - 0.04, BC.z - BR[2] - 0.06); bellyGrp.add(bileAt); L._ggBile = bileAt;
   const PIV = { x: 0.52, y: BC.y, z: -0.3 };
   const flip = (g) => { const ix = g.index; if (ix) { const a = ix.array; for (let i = 0; i < a.length; i += 3) { const t = a[i + 1]; a[i + 1] = a[i + 2]; a[i + 2] = t; } } const n = g.attributes.normal; for (let i = 0; i < n.count; i++) n.setXYZ(i, -n.getX(i), -n.getY(i), -n.getZ(i)); return g; };
   // 배 표면 위 앞 가운데 선(x = 0)의 점
