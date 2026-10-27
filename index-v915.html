@@ -4571,6 +4571,11 @@ const DARK_ON = !/[?&]dark=0/.test(location.search);
 // v810: 환경으로 이야기하기(?lore=0 — 1·2막 끌려간 핏자국·손톱자국·벽 할퀸 자국·쓰러진 모험가) · 2막 문 닫히는 소리 + 스쳐 가는 유령(?ghost=0) ·
 // 3막 숨 쉬는 벽이 심장 박동에 맞춰 뛴다(?a3beat=0)
 const LORE_ON = !/[?&]lore=0/.test(location.search);
+// v915 저자극 모드(PEGI 12 QA 대비 · ?mild=1 · 기본 꺼짐 — 다시 낼 때 MILD_DEFAULT 만 true 로): 피를 붉지 않은 어두운 그을음·진흙빛으로.
+//   색만 바꾼다 — 개수·자리·난수 흐름이 그대로라 끄면 v914 와 픽셀 단위로 같다. 모험가·쪽지·핏물 웅덩이 자리는 남는다
+const MILD_DEFAULT = false;
+const MILD = /[?&]mild=1/.test(location.search) || (MILD_DEFAULT && !/[?&]mild=0/.test(location.search));
+const MILD_STAIN = [0x221c17, 0x1d1813, 0x18140f, 0x261f19];   // 끌린 자국(흙·그을음)
 const GHOST_ON = !/[?&]ghost=0/.test(location.search);
 // v889: 스토리 ① — 첫 원정대의 기록(v890: 군단 → 원정대)(?story=0). 1막 쓰러진 모험가 곁에 쪽지 한 장(층당 하나 · 순서대로) → 주우면 안내 띠에 글 · 여관 '군단의 기록' 창에 모인다(meta.lore)
 const STORY_ON = !/[?&]story=0/.test(location.search);
@@ -4745,7 +4750,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v914'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v915'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -14169,8 +14174,8 @@ function cor3Pool(g, x, z, rnd, sc) {
   for (let i = 0; i < N; i++) { const t = i / N * Math.PI * 2; rr.push(1 + 0.18 * Math.cos(2 * t + ph[0]) + 0.12 * Math.cos(3 * t + ph[1]) + 0.07 * Math.cos(5 * t + ph[2])); }
   const mx = Math.max(...rr), sh = new THREE.Shape(), sh2 = new THREE.Shape();
   rr.forEach((r, i) => { const t = i / N * Math.PI * 2, px = Math.cos(t) * r / mx * R, pz = Math.sin(t) * r / mx * R; i ? sh.lineTo(px, pz) : sh.moveTo(px, pz); i ? sh2.lineTo(px * 1.12, pz * 1.12) : sh2.moveTo(px * 1.12, pz * 1.12); });
-  const ring = cas2Part(g, new THREE.ShapeGeometry(sh2), 0x3e2420, x, 0.075, z, 'solid', 0.05); ring.rotation.x = -Math.PI / 2;   // 가장자리 마른 얼룩
-  const pool = cas2Part(g, new THREE.ShapeGeometry(sh), 0x30090f, x, 0.085, z, 'metal', 0.04); pool.rotation.x = -Math.PI / 2;
+  const ring = cas2Part(g, new THREE.ShapeGeometry(sh2), MILD ? 0x2a2a1e : 0x3e2420, x, 0.075, z, 'solid', 0.05); ring.rotation.x = -Math.PI / 2;   // 가장자리 마른 얼룩
+  const pool = cas2Part(g, new THREE.ShapeGeometry(sh), MILD ? 0x141a12 : 0x30090f, x, 0.085, z, 'metal', 0.04); pool.rotation.x = -Math.PI / 2;
   cor3Pools.push({ x, z, R, rr: rr.map(r => r / mx), g });   // v873: 발걸음 판정(질척) — 각도마다 반지름 비율
   for (let i = 0; i < 3; i++) { const a = rnd() * 6.28, r = R * (0.3 + rnd() * 0.5); cor3Bone(g, x + Math.cos(a) * r, z + Math.sin(a) * r, 0.6 + rnd() * 0.4, rnd() * 6.28, 0.02, rnd); }
   if (rnd() < 0.5) cor3Skull(g, x + (rnd() - 0.5) * R, 0.0, z + (rnd() - 0.5) * R, rnd() * 6.28, rnd);
@@ -14591,7 +14596,7 @@ function storyActTick(dt) {
 // ===== v810: 환경으로 이야기하기(LORE_ON, 1·2막) — 방에서 복도로 끌려간 핏자국(시작부 손톱자국·웅덩이) · 벽 할퀸 자국(2막) · 벽에 기대 쓰러진 모험가 =====
 // 배치는 층 번호 시드 자체 난수. THREE 객체 생성자가 generateUUID 로 Math.random 을 먹으므로 짓는 동안만 그 난수로 바꿔 끼운다
 // (골렘 빌더 요령) — 그래서 ?lore=0 과 층 생성 난수 흐름이 같다.
-const LORE_BLOOD = [0x4a0c10, 0x3e0a0d, 0x340809, 0x521014];   // 마른 피(횃불 밑에서 새빨갛게 뜨지 않게 어둡게)
+const LORE_BLOOD = MILD ? MILD_STAIN : [0x4a0c10, 0x3e0a0d, 0x340809, 0x521014];   // 마른 피(횃불 밑에서 새빨갛게 뜨지 않게 어둡게)
 const lorePlaced = [];   // 배치 기록(검증용)
 function buildLoreDecor(dgn, act) {
   let s = (((player.floor | 0) * 2654435761) ^ 0x5bd1e995) >>> 0;
@@ -14605,7 +14610,7 @@ function buildLoreInner(dgn, act, rnd) {
   const cor = new Set(corridorTiles.map(c => c.x + ',' + c.y)), wx = gx => (gx - MAP_W / 2) * TILE, wz = gy => (gy - MAP_H / 2) * TILE;
   const cellOf = (x, z) => [Math.round(x / TILE + MAP_W / 2), Math.round(z / TILE + MAP_H / 2)];
   const trap = new Set(collapseTiles.map(c => c.gx + ',' + c.gy)), boss = pickBossRoom(dgn), pk = a => a[Math.floor(rnd() * a.length)];
-  const BLOOD = act === 2 ? [0x2e090b, 0x280709, 0x200506, 0x34090c] : LORE_BLOOD;   // 2막은 달빛·환경광이 밝아 같은 색이 새빨갛게 뜬다
+  const BLOOD = MILD ? MILD_STAIN : act === 2 ? [0x2e090b, 0x280709, 0x200506, 0x34090c] : LORE_BLOOD;   // 2막은 달빛·환경광이 밝아 같은 색이 새빨갛게 뜬다
   // 바닥 무늬 높이: 1막 복셀은 그 자리 지면 + 0.03, 2막 석판은 가장 높은 석판(+0.105) 위, ?vox=0 1막 타일은 윗면 위
   const BASE = act === 2 ? 0.12 : 0.26;
   let lay = 0; const FY = (x, z, local) => (local ? 0.03 : groundH ? groundHeightAt(x, z) + 0.03 : BASE) + (lay++ % 5) * 0.004;   // 겹친 무늬끼리 깊이 싸움 없게 조금씩 띄운다
@@ -14641,10 +14646,10 @@ function buildLoreInner(dgn, act, rnd) {
     // 시작부: 웅덩이 + 튄 자국 + 끌려가지 않으려 긁은 손톱자국(끌린 방향 반대로 네 줄)
     if (ok(p0.x, p0.z)) {
       const pa = Math.atan2(-p0.dx, -p0.dz);   // 마른 웅덩이: 끌려간 쪽으로 길쭉한 얼룩 셋을 겹친다(한 장이면 빨간 원판, 윤기 재질이면 횃불에 번쩍인다)
-      for (let i = 0; i < 3; i++) { const o = i * 0.35, m = blot(g, p0.x + p0.dx * o + (rnd() - 0.5) * 0.3, p0.z + p0.dz * o + (rnd() - 0.5) * 0.3, (0.75 - i * 0.18) * (0.9 + rnd() * 0.3), [0x1c0607, 0x260809, 0x30090b][i]); m.rotation.z = pa + (rnd() - 0.5) * 0.5; m.scale.set(0.75, 1.35, 1); }
+      for (let i = 0; i < 3; i++) { const o = i * 0.35, m = blot(g, p0.x + p0.dx * o + (rnd() - 0.5) * 0.3, p0.z + p0.dz * o + (rnd() - 0.5) * 0.3, (0.75 - i * 0.18) * (0.9 + rnd() * 0.3), (MILD ? [0x141110, 0x1a1613, 0x201b17] : [0x1c0607, 0x260809, 0x30090b])[i]); m.rotation.z = pa + (rnd() - 0.5) * 0.5; m.scale.set(0.75, 1.35, 1); }
       for (let i = 0; i < 6; i++) { const a = rnd() * 6.28, rr = 0.9 + rnd() * 0.9; if (ok(p0.x + Math.cos(a) * rr, p0.z + Math.sin(a) * rr)) blot(g, p0.x + Math.cos(a) * rr, p0.z + Math.sin(a) * rr, 0.05 + rnd() * 0.1, pk(BLOOD)); }
       const bx = p0.x - p0.dx * 0.9, bz = p0.z - p0.dz * 0.9, ang = Math.atan2(-p0.dx, -p0.dz);
-      for (let i = 0; i < 4; i++) { const o = (i - 1.5) * 0.13, x = bx - p0.dz * o, z = bz + p0.dx * o; if (ok(x, z)) decal(g, x, z, 0.5 + rnd() * 0.25, 0.045, ang + (rnd() - 0.5) * 0.12, i % 2 ? 0x120c0a : 0x2a0a0b); }
+      for (let i = 0; i < 4; i++) { const o = (i - 1.5) * 0.13, x = bx - p0.dz * o, z = bz + p0.dx * o; if (ok(x, z)) decal(g, x, z, 0.5 + rnd() * 0.25, 0.045, ang + (rnd() - 0.5) * 0.12, i % 2 ? 0x120c0a : (MILD ? 0x1e1915 : 0x2a0a0b)); }
     }
     for (let i = 2; i < N; i++) {
       const u = i / N, p = at(u), qx = -p.dz, qz = p.dx, wob = Math.sin(ph + u * L * 0.7) * 0.22, fade = 1 - u * 0.85;
@@ -14756,7 +14761,7 @@ function loreBody4(g, x, z, nx, nz, rnd, blot) {
 // 쓰러진 모험가 하나(월드 좌표로 짓는다 — 부른 쪽이 그룹 원점으로 옮긴다). 지면 높이는 그룹째 올리므로 여기선 0 기준
 function loreBody(g, x, z, nx, nz, act, rnd, blot) {
   const ux = -nz, uz = nx, ry = Math.atan2(nx, nz), W = (lx, lz) => [x + ux * lx + nx * lz, z + uz * lx + nz * lz];
-  blot(g, x + nx * 0.4, z + nz * 0.4, 0.75 + rnd() * 0.3, rnd() < 0.5 ? 0x2e0a0b : 0x3a0c0e, 'solid', true);   // 밑에 마른 핏자국
+  blot(g, x + nx * 0.4, z + nz * 0.4, 0.75 + rnd() * 0.3, rnd() < 0.5 ? (MILD ? 0x1d1813 : 0x2e0a0b) : (MILD ? 0x241d17 : 0x3a0c0e), 'solid', true);   // 밑에 마른 핏자국(저자극: 그을음)
   cor3Ribs(g, x + nx * 0.45, z + nz * 0.45, ry + Math.PI / 2, rnd);
   const fallen = rnd() < 0.35;   // 머리가 굴러떨어진 쪽
   if (fallen) { const [a, b] = W((rnd() - 0.5) * 1.6, 1.3 + rnd() * 0.5); cor3Skull(g, a, 0, b, rnd() * 6.28, rnd); }
