@@ -73,12 +73,12 @@ python3 $C/covers.py <커버·영상 폴더> --out "$SCRATCH/thumbs.png"   # 커
 신작 부스트('new' 라벨)는 Full Launch 날짜 기준으로 보이므로 **Full 을 요청하기 전에 전부 끝낸다**(게임 6개 관찰 — 문서화된 내용은 아니다 · Basic → Full 19~55일, 중앙값 약 31일).
 - [ ] gameplayStart: 시작·재개·부활·다음 층마다 / gameplayStop: 메뉴·회차 끝·일시정지·마을·광고. **탭 포커스를 잃었을 때는 부르지 않는다**(sdk/game). v897 위치는 5절 표.
 - [x] **muteAudio** — `SDK.game.settings.muteAudio` 를 읽고 `addSettingsChangeListener` 로 따라간다(HTML5 필수 — sdk-audit [4]·cg-sim · v898 `SFX.setCfgMute` · v899 소리를 다시 켜면 조용한 동안 요청된 곡으로 맞춘다 `wantTrack`/`resync`).
-- [ ] **Data 모듈로 저장**(로컬 저장에 기대지 말 것 · ≤ 1MB · 제출 때 Progress Save 토글) — 지금 localStorage 키 5개: `dungeon_meta` · `dungeon_meta_test` · `dungeon_run` · `dungeon_lang` · `dungeon_best_score`.
-- [ ] 부활 광고: **세션당 1회**(지금 회차당 1회 + 제안 쿨다운 3분) · **5초 카운트다운** · 부활 직후 무적 2~3초(지금 2.0초) · 광고 없는 대안(골드 부활 — 있음) · 목숨을 잃을 때마다 제안 금지(액션 가이드 · requirements/ads).
+- [x] **Data 모듈로 저장**(v913 `cgDataInit`·`dlSet` · `?cgdata=0`)(로컬 저장에 기대지 말 것 · ≤ 1MB · 제출 때 Progress Save 토글) — 지금 localStorage 키 5개: `dungeon_meta` · `dungeon_meta_test` · `dungeon_run` · `dungeon_lang` · `dungeon_best_score`.
+- [x] (v913 5초 카운트다운 `reviveCdStart` · `?revcd=0`) 부활 광고: **세션당 1회**(지금 회차당 1회 + 제안 쿨다운 3분) · **5초 카운트다운** · 부활 직후 무적 2~3초(지금 2.0초) · 광고 없는 대안(골드 부활 — 있음) · 목숨을 잃을 때마다 제안 금지(액션 가이드 · requirements/ads).
 - [ ] 미드게임: 첫 광고는 3~5분 뒤 · 전투 중·메뉴 이동 버튼에서 금지 · 보상형 직후 연달아 금지 · 두 레벨 사이엔 미드게임과 보상형 이어하기 중 하나만 · RPG 는 '아껴서'(막 끝 쉼터 도착 같은 큰 전환점) — v897 자리: 막 끝 쉼터(`descend`) · 정산 → 마을(`restartBtn`).
 - [ ] 보상형 버튼: 건너뛰기 버튼과 크기·글꼴·색이 같게 · 동영상 아이콘 · 광고 차단기를 켜도 정상 플레이 · 눌러도 아무 일 없는 버튼 없음.
-- [ ] `happytime` 은 보스 처치(12번)·신기록에만(지금 신기록만) · `setGameContext` 로 층·직업 → 싫어요 이유를 층별로.
-- [ ] CrazyGames 앱(전체 화면): `env(safe-area-inset-*)` 여백 · iOS 백그라운드 복귀 때 AudioContext resume(지금 ac() 는 'suspended' 만) — sdk-audit [4]·[7]. iOS·저메모리 안드로이드는 DPR 1 고정.
+- [x] `happytime` 은 보스 처치(12번)·신기록에만(v913 보스 처치도 · `?bosshappy=0`) · `setGameContext` 로 층·직업 → 싫어요 이유를 층별로.
+- [x] CrazyGames 앱(전체 화면): `env(safe-area-inset-*)` 여백(v913 `safeAreaUpdate` · `?safe=0`) · iOS 백그라운드 복귀 때 AudioContext resume(지금 ac() 는 'suspended' 만) — sdk-audit [4]·[7]. iOS·저메모리 안드로이드는 DPR 1 고정.
 - [ ] 배너를 쓴다면 평균 5초 이상 열린 화면(대장간·여관·교관 창)에만, 화면당 2개, 30초 뒤 갱신.
 - [ ] 독점 여부(Full 후 2개월 브라우저 사이트 독점 = 그 2개월 보상 +50% — 약관 3.1·5.5) · GitHub Pages 공개본 처리 · 업데이트는 다른 제3자보다 늦지 않게(약관 4.6).
 

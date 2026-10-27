@@ -149,7 +149,7 @@ RV=$(G 'lastReviveOfferAt[)]? > [0-9]+' | head -1)
 [ -n "$RV" ] && info "부활 광고 제안 쿨다운 $(printf '%s' "$RV" | grep -o '> [0-9]*' | grep -o '[0-9]*')ms(${RV%%:*}줄) · 회차당 1회(runReviveUsed) · 골드 부활 대안 — 액션 가이드 권장: 세션당 1회 · 5초 카운트다운 · 부활 뒤 무적 2~3초"
 SRO=$(G 'function showReviveOffer' | head -1 | cut -d: -f1)
 if [ -n "$SRO" ]; then
-  if BODY "$SRO" | grep -qiE 'countdown|카운트|setInterval'; then ok "부활 제안에 카운트다운 있음(showReviveOffer ${SRO}줄)"
+  if BODY "$SRO" | grep -qiE 'countdown|카운트|setInterval|reviveCd'; then ok "부활 제안에 카운트다운 있음(showReviveOffer ${SRO}줄)"
   else warn "부활 제안(showReviveOffer ${SRO}줄)에 5초 카운트다운 없음(액션 장르 가이드 권장)"; fi
 fi
 
@@ -167,7 +167,7 @@ else warn "muteAudio(SDK.game.settings.muteAudio · addSettingsChangeListener) �
 # ---------------------------------------------------------------- 5
 echo "[5] 저장·언어·기타 SDK (Full 필수/권장)"
 LSK=$(G "localStorage[.](get|set)Item[(]'[a-z_]+'" | grep -o "Item('[a-z_]*'" | grep -o "'[a-z_]*'" | sort -u | tr '\n' ' ')
-[ "$(GN 'SDK[.]data[.]|[.]data[.](get|set)Item')" -gt 0 ] && ok "Data 모듈 사용" || warn "SDK Data 모듈 미사용 — localStorage 키: ${LSK}+ metaKey()(dungeon_meta · dungeon_meta_test) · 1MB 이내 · 제출 때 Progress Save 토글"
+[ "$(GN 'SDK[.]data([.]|[^A-Za-z])|[.]data[.](get|set)Item')" -gt 0 ] && ok "Data 모듈 사용" || warn "SDK Data 모듈 미사용 — localStorage 키: ${LSK}+ metaKey()(dungeon_meta · dungeon_meta_test) · 1MB 이내 · 제출 때 Progress Save 토글"
 [ "$(GN 'systemInfo')" -gt 0 ] && ok "systemInfo(locale) 사용" || bad "SDK user.systemInfo.locale 로 언어를 안 고른다(requirements/gameplay — 없으면 영어). 지금은 저장값 → navigator.language → en(detectLang $(G 'function detectLang' | cut -d: -f1)줄) — locale 을 navigator 앞에 끼우면 된다"
 [ "$(GN 'setGameContext')" -gt 0 ] && ok "setGameContext 사용" || info "setGameContext 없음(권장 — 싫어요 피드백에 층·직업이 붙는다)"
 info "happytime 호출: $(CALLS '(^|[^A-Za-z0-9_])cgHappytime[(]' 'function cgHappytime' | awk '{print $1" "$2}' | tr '\n' ' ')(보스 처치·신기록 같은 순간에만 아껴서)"
