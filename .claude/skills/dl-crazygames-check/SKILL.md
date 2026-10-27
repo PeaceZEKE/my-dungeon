@@ -30,7 +30,7 @@ python3 $C/covers.py <커버·영상 폴더> --out "$SCRATCH/thumbs.png"   # 커
 
 **첫 60초** — Basic 판정은 평균 플레이 시간·1분 전환·D1 을 다른 게임과 비교한다(docs 첫 페이지 · basic-launch-metrics). 통과·탈락을 가른 것은 콘텐츠 깊이가 아니라 첫 1분이었다(개발자 사례 One More Fly · Cyber Gomoku · Poki Vortella).
 - [x] 신규 유저(저장 없음)가 **1클릭으로 1층 전투**에 들어간다 — v898 `quickStartDungeon`(`?quick=0` 이면 v897 처럼 마을부터 — 기존 유저는 늘 마을). cg-sim `캐릭터 1클릭 → gameplayStart` 가 ✓ 이고 `(1층)` 이어야 한다(`마을` 이면 ⚠ — 신호만 앞당긴 것).
-- [x] `gameplayStart` 를 **처음 조작 가능한 순간**에 부른다(v898 — 신규 유저는 1층 `startFloor` · 기존 유저의 마을은 아직 플레이로 안 친다 — Full 전에 볼 것) — SDK 가 있으면 초기 다운로드를 로딩 시작 → 첫 gameplayStart 로 잰다(requirements/technical).
+- [x] `gameplayStart` 를 **처음 조작 가능한 순간**에 부른다(v898 — 신규 유저는 1층 `startFloor` · 기존 유저의 마을은 아직 플레이로 안 친다 — Full 전에 볼 것 · **v914 부터 CrazyGames 의 기존 유저는 마을 대신 캠프 메뉴**(`?camp=0` 이면 마을) — 메뉴 화면이라 gameplayStart 를 안 부르는 것이 맞다) — SDK 가 있으면 초기 다운로드를 로딩 시작 → 첫 gameplayStart 로 잰다(requirements/technical).
 - [ ] 10초 안에 첫 적, 60초 안에 첫 처치 + 상자 또는 레벨업 · 조작 안내는 막지 않는 오버레이(텍스트 창 없음) · 1~3층에서 첫 사망이 안 나온다 — 새 저장으로 녹화하거나 `dl-playbot` 1~3층.
 
 **로딩·크기·성능**
