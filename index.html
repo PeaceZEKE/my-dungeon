@@ -4571,9 +4571,9 @@ const DARK_ON = !/[?&]dark=0/.test(location.search);
 // v810: 환경으로 이야기하기(?lore=0 — 1·2막 끌려간 핏자국·손톱자국·벽 할퀸 자국·쓰러진 모험가) · 2막 문 닫히는 소리 + 스쳐 가는 유령(?ghost=0) ·
 // 3막 숨 쉬는 벽이 심장 박동에 맞춰 뛴다(?a3beat=0)
 const LORE_ON = !/[?&]lore=0/.test(location.search);
-// v915 저자극 모드(PEGI 12 QA 대비 · ?mild=1 · 기본 꺼짐 — 다시 낼 때 MILD_DEFAULT 만 true 로): 피를 붉지 않은 어두운 그을음·진흙빛으로.
+// v915 저자극 모드(PEGI 12 QA 대비 · v916 부터 기본 켬 · ?mild=0 이면 예전 핏빛): 피를 붉지 않은 어두운 그을음·진흙빛으로.
 //   색만 바꾼다 — 개수·자리·난수 흐름이 그대로라 끄면 v914 와 픽셀 단위로 같다. 모험가·쪽지·핏물 웅덩이 자리는 남는다
-const MILD_DEFAULT = false;
+const MILD_DEFAULT = true;   // v916: 기본 켬(사용자 지시 — CrazyGames 검수 대비)
 const MILD = /[?&]mild=1/.test(location.search) || (MILD_DEFAULT && !/[?&]mild=0/.test(location.search));
 const MILD_STAIN = [0x221c17, 0x1d1813, 0x18140f, 0x261f19];   // 끌린 자국(흙·그을음)
 const GHOST_ON = !/[?&]ghost=0/.test(location.search);
@@ -4618,7 +4618,7 @@ const STORY_BOSS = {
   40:  { type: 'servantwraith',          enc: '손님이시군요. 폐하께서는… 지금 아무도 만나지 않으십니다.',          die: '문을… 지키지 못했습니다, 폐하…' },
   50:  { type: 'darkknight',             enc: '너보다 먼저 온 자들도 이 문을 지났다. 하나도 돌아가지 못했지.',      die: '왕비 전하를… 깨우지 마라…' },
   60:  { type: 'icequeen',               enc: '…그이가 왔나요? …아니군요.',                                     die: '따뜻하네요. 이제… 녹아도 되겠어요.' },
-  70:  { type: 'broodtick',     n: true, enc: '썩은 살로 지은 둥지 밑으로 시녀들의 옷자락이 비어져 나와 있다.',      die: '알주머니가 터지며 단내가 번진다 — 이 성을 삼킨 역병의 냄새다.' },
+  70:  { type: 'broodtick',     n: true, enc: MILD ? '썩은 살로 지은 둥지가 숨 쉬듯 부풀었다 가라앉는다.' : '썩은 살로 지은 둥지 밑으로 시녀들의 옷자락이 비어져 나와 있다.' /* v916 저자극: 시신을 암시하지 않게 */,      die: '알주머니가 터지며 단내가 번진다 — 이 성을 삼킨 역병의 냄새다.' },
   80:  { type: 'gluttonghoul',  n: true, enc: '연회장이었던 자리. 아직도 먹고 있다.',                              die: '배 속에서 왕실 문장이 새겨진 은잔이 쏟아져 나온다.' },
   90:  { type: 'corruptking',            enc: '왕비는… 무사한가? …대답하라!',                                      die: '카이른이여… 미안하다.' },
   100: { type: 'lavabeast',     n: true, enc: '지옥의 문지기. 등의 기둥마다 끊어진 족쇄가 박혀 있다.',              die: '식어 가는 껍질 틈으로 셀 수 없는 비명이 새어 나온다.' },
@@ -4750,7 +4750,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v915'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v916'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
@@ -14577,6 +14577,7 @@ function storyActTick(dt) {
     "왕비 전하를… 깨우지 마라…": ["Do not… wake Her Majesty…", "王妃殿下を…起こすな…", "不要……惊醒王后殿下……", "No… despiertes a Su Majestad la reina…", "Não… acorde Sua Majestade, a rainha…", "Не… буди Её величество…"],
     "…그이가 왔나요? …아니군요.": ["…Has he come? …No. It is not him.", "…あの人が来たの？ …違うのね。", "……是他来了吗？……不是啊。", "…¿Ha venido él? …No. No es él.", "…Ele veio? …Não. Não é ele.", "…Он пришёл? …Нет. Не он."],
     "따뜻하네요. 이제… 녹아도 되겠어요.": ["It's warm. I can… melt now.", "温かい。もう…溶けてもいいのね。", "好温暖。现在……可以融化了。", "Qué calor. Ya puedo… derretirme.", "Que calor. Agora posso… derreter.", "Тепло. Теперь можно… растаять."],
+    "썩은 살로 지은 둥지가 숨 쉬듯 부풀었다 가라앉는다.": ["A nest built of rotten flesh swells and sinks as if breathing.", "腐肉で作った巣が、息をするように膨らんではしぼむ。", "腐肉筑成的巢穴像在呼吸般一鼓一缩。", "Un nido de carne podrida se hincha y se hunde como si respirara.", "Um ninho de carne podre incha e murcha como se respirasse.", "Гнездо из гнилой плоти вздымается и опадает, будто дышит."],
     "썩은 살로 지은 둥지 밑으로 시녀들의 옷자락이 비어져 나와 있다.": ["Maids' hems poke out from beneath a nest built of rotten flesh.", "腐肉で作った巣の下から、侍女たちの裾がはみ出している。", "腐肉筑成的巢底下，露出了侍女们的衣角。", "Bajo un nido de carne podrida asoman bajos de vestidos de doncellas.", "Sob um ninho de carne podre aparecem barras de vestidos de criadas.", "Из-под гнезда из гнилой плоти торчат подолы служанок."],
     "알주머니가 터지며 단내가 번진다 — 이 성을 삼킨 역병의 냄새다.": ["The egg sacs burst and a sweet stench spreads — the smell of the plague that swallowed this castle.", "卵嚢が弾け、甘い臭いが広がる — この城を呑んだ疫病の臭いだ。", "卵囊破裂，甜腻的气味弥漫开来——那是吞噬这座城的瘟疫的气味。", "Los sacos de huevos revientan y se extiende un hedor dulzón: el olor de la plaga que devoró este castillo.", "Os sacos de ovos estouram e um fedor adocicado se espalha — o cheiro da praga que devorou este castelo.", "Яйцевые мешки лопаются, растекается приторный смрад — запах мора, поглотившего этот замок."],
     "연회장이었던 자리. 아직도 먹고 있다.": ["Where the banquet hall once was. It is still eating.", "かつての宴会場。まだ食べ続けている。", "这里曾是宴会厅。它还在吃。", "Donde antes estaba el salón de banquetes. Sigue comiendo.", "Onde antes ficava o salão de banquetes. Ainda está comendo.", "Здесь когда-то был пиршественный зал. Оно всё ещё ест."],
