@@ -4406,11 +4406,118 @@ function detectLang() {
   return 'en';
 }
 let LANG = detectLang();
+// v917 번역 보강: v852~v869 에 en 에만 넣은 91줄(4막·3막 보스·재료·새 스킬 9종·경비병 대사) + WebGL 오류 화면 4줄을 ja·zh·es·pt·ru 에도
+{ const T5 = {
+  "전쟁 함성": ["ウォークライ", "战吼", "Grito de guerra", "Grito de guerra", "Боевой клич"],
+  "대지 가르기": ["大地割り", "裂地斩", "Partetierra", "Racha-terra", "Раскол земли"],
+  "철벽": ["鉄壁", "铁壁", "Muro de hierro", "Muralha de ferro", "Железная стена"],
+  "메테오": ["メテオ", "陨石术", "Meteoro", "Meteoro", "Метеор"],
+  "서리 고리": ["フロストノヴァ", "冰霜新星", "Nova de escarcha", "Nova congelante", "Кольцо инея"],
+  "마나 폭주": ["マナ暴走", "法力奔涌", "Oleada de maná", "Surto de mana", "Всплеск маны"],
+  "속박 덫": ["拘束の罠", "束缚陷阱", "Trampa de atadura", "Armadilha de prisão", "Ловушка-капкан"],
+  "후퇴 사격": ["後退射撃", "后撤射击", "Retirada", "Recuo com disparo", "Отскок с выстрелом"],
+  "폭발 화살": ["爆裂矢", "爆裂箭", "Flecha explosiva", "Flecha explosiva", "Взрывная стрела"],
+  "주변 적을 1.5초 기절시키고(보스 제외) 4초 동안 받는 피해 -30%": ["周囲の敵を1.5秒気絶させ(ボス除く)、4秒間被ダメージ-30%", "使周围敌人眩晕1.5秒(首领除外)，4秒内受到伤害-30%", "Aturde a los enemigos cercanos 1,5 s (no jefes) y recibes un 30% menos de daño durante 4 s", "Atordoa inimigos próximos por 1,5 s (exceto chefes) e reduz em 30% o dano recebido por 4 s", "Оглушает врагов рядом на 1,5 с (кроме боссов), 4 с получаемый урон −30%"],
+  "앞으로 땅을 갈라 일직선의 적에게 큰 피해 + 짧은 기절(보스 제외)": ["前方の地面を割り、直線上の敵に大ダメージ+短い気絶(ボス除く)", "劈开前方大地，对直线上的敌人造成重创并短暂眩晕(首领除外)", "Parte el suelo al frente: mucho daño a los enemigos en línea + aturdimiento breve (no jefes)", "Racha o chão à frente: grande dano aos inimigos em linha + breve atordoamento (exceto chefes)", "Раскалывает землю впереди: большой урон врагам на линии + короткое оглушение (кроме боссов)"],
+  "2초 동안 앞·옆에서 오는 피해 -90%, 막은 피해의 30%를 되돌린다": ["2秒間、前方・側面からのダメージ-90%、防いだダメージの30%を反射", "2秒内来自正面与侧面的伤害-90%，并反弹所挡伤害的30%", "Durante 2 s, -90% de daño de frente y lados; devuelve el 30% del daño bloqueado", "Por 2 s, -90% de dano pela frente e laterais; devolve 30% do dano bloqueado", "На 2 с урон спереди и сбоку −90%, 30% заблокированного урона отражается"],
+  "지점에 운석이 떨어져 크게 폭발하고 3초 동안 불바다를 남긴다": ["指定地点に隕石が落ちて大爆発し、3秒間火の海を残す", "在指定位置降下陨石引发大爆炸，留下3秒火海", "Un meteorito cae en un punto, explota y deja el suelo ardiendo 3 s", "Um meteoro cai num ponto, explode e deixa o chão em chamas por 3 s", "Метеор падает в точку, взрывается и оставляет огонь на 3 с"],
+  "주변 적을 2.5초 얼리고 피해를 준다": ["周囲の敵を2.5秒凍らせ、ダメージを与える", "冻结周围敌人2.5秒并造成伤害", "Congela a los enemigos cercanos 2,5 s y los daña", "Congela inimigos próximos por 2,5 s e causa dano", "Замораживает врагов рядом на 2,5 с и наносит урон"],
+  "5초 동안 화염구 연사 속도 2배 · 기력 소모 없음": ["5秒間、火球の連射速度2倍・スタミナ消費なし", "5秒内火球连射速度翻倍 · 不消耗体力", "Durante 5 s, bolas de fuego al doble de velocidad · sin gasto de aguante", "Por 5 s, bolas de fogo com o dobro da cadência · sem gastar fôlego", "На 5 с огненные шары вдвое чаще · без расхода выносливости"],
+  "발밑에 덫을 놓는다 — 밟은 적은 피해를 입고 2초 묶인다(보스는 피해만, 최대 2개)": ["足元に罠を置く — 踏んだ敵はダメージを受け2秒拘束(ボスはダメージのみ、最大2個)", "在脚下设置陷阱 — 踩中的敌人受到伤害并被束缚2秒(首领只受伤害，最多2个)", "Pon una trampa a tus pies: el enemigo que la pise recibe daño y queda atado 2 s (jefes solo daño; máx. 2)", "Coloca uma armadilha aos pés: quem pisar sofre dano e fica preso 2 s (chefes só dano; máx. 2)", "Ставит капкан под ногами: наступивший враг получает урон и обездвижен на 2 с (боссы — только урон, до 2 шт.)"],
+  "뒤로 뛰어 물러나며 앞쪽 부채꼴로 화살 5발": ["後ろへ跳び退きながら前方扇状に矢を5本", "向后跃退并向前方扇形射出5支箭", "Salta hacia atrás y dispara un abanico de 5 flechas", "Salta para trás e dispara um leque de 5 flechas", "Отскок назад с веером из 5 стрел вперёд"],
+  "맞은 자리에서 터지는 화살 — 주변 적까지 피해 + 넉백": ["命中地点で炸裂する矢 — 周囲の敵にもダメージ+ノックバック", "命中处爆炸的箭 — 波及周围敌人并击退", "Flecha que estalla al impactar: daña y empuja a los enemigos cercanos", "Flecha que explode no impacto: causa dano e empurra inimigos próximos", "Стрела взрывается при попадании: урон и отбрасывание врагов рядом"],
+  "거수의 용암 비늘": ["巨獣の溶岩鱗", "巨兽熔岩鳞", "Escama de lava de la bestia", "Escama de lava da fera", "Лавовая чешуя зверя"],
+  "처형자의 도끼날": ["処刑人の斧刃", "处刑者斧刃", "Hoja de hacha del verdugo", "Lâmina do machado do carrasco", "Лезвие топора палача"],
+  "군주의 뿔": ["君主の角", "君主之角", "Cuerno del soberano", "Chifre do soberano", "Рог владыки"],
+  "용암 거수 (100층)": ["溶岩の巨獣 (100F)", "熔岩巨兽 (100层)", "Bestia de lava (F100)", "Fera de lava (F100)", "Лавовый зверь (эт.100)"],
+  "화염 처형자 (110층)": ["炎の処刑人 (110F)", "烈焰处刑者 (110层)", "Verdugo de fuego (F110)", "Carrasco flamejante (F110)", "Огненный палач (эт.110)"],
+  "지옥의 군주 (120층)": ["地獄の君主 (120F)", "地狱君主 (120层)", "Soberano del Infierno (F120)", "Soberano do Inferno (F120)", "Владыка Преисподней (эт.120)"],
+  "용암 비늘 갑주": ["溶岩鱗の鎧", "熔岩鳞甲", "Armadura de escamas de lava", "Armadura de escamas de lava", "Доспех из лавовой чешуи"],
+  "처형자의 대도끼": ["処刑人の大斧", "处刑者巨斧", "Gran hacha del verdugo", "Machado do carrasco", "Секира палача"],
+  "군주의 인장": ["君主の印章", "君主印章", "Sello del soberano", "Selo do soberano", "Печать владыки"],
+  "장판·분출·중독 피해 -": ["床・噴出・毒ダメージ -", "地面·喷发·中毒伤害 -", "Daño de suelo, erupción y veneno -", "Dano de chão, erupção e veneno -", "Урон от зон, извержений и яда −"],
+  "공격 속도 +": ["攻撃速度 +", "攻击速度 +", "Velocidad de ataque +", "Velocidade de ataque +", "Скорость атаки +"],
+  "스킬 쿨다운 -": ["スキルクールダウン -", "技能冷却 -", "Enfriamiento de habilidades -", "Recarga de habilidades -", "Перезарядка навыков −"],
+  " · 지옥": [" · 地獄", " · 地狱", " · Infierno", " · Inferno", " · Ад"],
+  "🔒 봉인된 포탈 — 30층을 넘어서면 열린다": ["🔒 封印されたポータル — 30階を越えると開く", "🔒 封印的传送门 — 越过第30层后开启", "🔒 Portal sellado: se abre al superar el piso 30", "🔒 Portal selado: abre ao passar do andar 30", "🔒 Запечатанный портал — откроется после 30-го этажа"],
+  "던전 입구는 마을 구석 경비대 초소 안에 있네. 조심히 내려가게.": ["ダンジョンの入口は町の隅、衛兵詰所の中にある。気をつけて下りなさい。", "地牢入口在镇子角落的卫兵哨所里。下去时小心。", "La entrada a la mazmorra está en una esquina del pueblo, dentro del puesto de guardia. Baja con cuidado.", "A entrada da masmorra fica num canto da vila, dentro do posto da guarda. Desça com cuidado.", "Вход в подземелье — в углу деревни, в караульной. Спускайся осторожно."],
+  "던전 경비병": ["ダンジョンの番兵", "地牢守卫", "Guardia de la mazmorra", "Guarda da masmorra", "Страж подземелья"],
+  "멈추게. 여기서부터는 던전일세.": ["止まれ。ここから先はダンジョンだ。", "站住。从这里开始就是地牢了。", "Alto. A partir de aquí empieza la mazmorra.", "Alto. Daqui em diante é a masmorra.", "Стой. Дальше — подземелье."],
+  "준비가 됐다면 계단을 내려가게. 문은 우리가 지키지.": ["準備ができたら階段を下りなさい。門は我々が守る。", "准备好了就走下台阶吧。大门由我们守着。", "Si estás listo, baja las escaleras. Nosotros guardamos la puerta.", "Se estiver pronto, desça as escadas. Nós guardamos o portão.", "Если готов — спускайся по лестнице. Ворота мы удержим."],
+  "저 아래서 올라오는 건 뭐든 막는 게 우리 일이지.": ["下から這い上がってくるものは何であれ止めるのが我々の仕事だ。", "不管下面爬上来什么，拦住它都是我们的职责。", "Lo que sea que suba de ahí abajo, nuestro trabajo es detenerlo.", "Seja o que for que suba lá de baixo, nosso trabalho é detê-lo.", "Что бы ни лезло снизу — наша работа это остановить."],
+  "겁이 난다면 돌아가도 부끄러운 일이 아니네.": ["怖いなら引き返しても恥ではないぞ。", "害怕的话回去也不丢人。", "No es ninguna vergüenza volver atrás si tienes miedo.", "Não há vergonha em voltar se estiver com medo.", "Нет позора в том, чтобы повернуть назад, если страшно."],
+  "어젯밤에도 문 너머에서 긁는 소리가 났네.": ["昨夜も扉の向こうで引っかく音がした。", "昨晚门那边又传来了抓挠声。", "Anoche volví a oír arañazos tras esa puerta.", "Ontem à noite ouvi arranhões atrás daquela porta de novo.", "Прошлой ночью за дверью снова скреблись."],
+  "...아무것도 아니길 바라야지.": ["…何でもないといいがな。", "……但愿什么都不是。", "...Esperemos que no fuera nada.", "...Tomara que não tenha sido nada.", "…Будем надеяться, что ничего."],
+  "깊이 내려갈수록 돌아오는 자가 적다네.": ["深く潜るほど、戻ってくる者は少ない。", "下得越深，回来的人越少。", "Cuanto más bajan, menos regresan.", "Quanto mais fundo vão, menos voltam.", "Чем глубже спускаются, тем меньше возвращаются."],
+  "살아서 돌아오게.": ["生きて戻ってこい。", "活着回来。", "Vuelve con vida.", "Volte com vida.", "Возвращайся живым."],
+  "부패의 심장": ["腐敗の心臓", "腐败之心", "Corazón de la putrefacción", "Coração da podridão", "Сердце гнили"],
+  "🫀 껍질이 단단하다 — 왕을 먼저 쓰러뜨려라!": ["🫀 殻が硬い — 先に王を倒せ!", "🫀 外壳太坚硬 — 先击倒国王!", "🫀 La coraza resiste: ¡derriba primero al Rey!", "🫀 A casca resiste — derrube o Rei primeiro!", "🫀 Панцирь прочен — сначала повергни Короля!"],
+  "👑 심장이 왕을 붙들고 있다 — 심장을 노려라!": ["👑 心臓が王を支えている — 心臓を狙え!", "👑 心脏在支撑着国王 — 攻击心脏!", "👑 El Corazón lo sostiene: ¡ataca el Corazón!", "👑 O Coração o mantém de pé — ataque o Coração!", "👑 Сердце держит Короля — бей по Сердцу!"],
+  "🫀 왕이 무릎 꿇었다 — 심장의 껍질이 열렸다!": ["🫀 王が膝をついた — 心臓の殻が開いた!", "🫀 国王跪倒了 — 心脏的外壳打开了!", "🫀 El Rey ha caído: ¡el Corazón queda expuesto!", "🫀 O Rei caiu — o Coração está exposto!", "🫀 Король пал на колени — панцирь Сердца раскрыт!"],
+  "👑 심장이 왕을 되살렸다! (체력 ": ["👑 心臓が王を蘇らせた!(体力 ", "👑 心脏让国王复活了!(生命 ", "👑 ¡El Corazón revivió al Rey! (vida ", "👑 O Coração reviveu o Rei! (vida ", "👑 Сердце воскресило Короля! (здоровье "],
+  "💔 부패의 심장이 멎었다!": ["💔 腐敗の心臓が止まった!", "💔 腐败之心停止了跳动!", "💔 ¡El Corazón de la putrefacción se ha detenido!", "💔 O Coração da podridão parou!", "💔 Сердце гнили остановилось!"],
+  "포자 벌레": ["胞子虫", "孢子虫", "Insecto de esporas", "Inseto de esporos", "Споровый жук"],
+  "농침벌": ["膿針蜂", "脓刺蜂", "Avispa de pus", "Vespa de pus", "Гнойная оса"],
+  "포란충": ["抱卵虫", "抱卵虫", "Garrapata madre", "Carrapato-mãe", "Клещ-наседка"],
+  "탐식 구울": ["貪食のグール", "贪食食尸鬼", "Ghoul glotón", "Carniçal glutão", "Упырь-обжора"],
+  "부패한 왕": ["腐敗した王", "腐败之王", "Rey corrupto", "Rei corrompido", "Прогнивший король"],
+  "부패한 구울": ["腐ったグール", "腐烂食尸鬼", "Ghoul putrefacto", "Carniçal pútrido", "Гнилой упырь"],
+  "살덩이 거인": ["肉塊の巨人", "肉块巨人", "Gigante de carne", "Gigante de carne", "Мясной великан"],
+  "화염 임프": ["炎のインプ", "火焰小鬼", "Diablillo de fuego", "Diabrete de fogo", "Огненный бес"],
+  "화염술사": ["炎術師", "火焰术士", "Piromante", "Piromante", "Пиромант"],
+  "불의 사냥개": ["地獄の猟犬", "地狱猎犬", "Sabueso infernal", "Cão infernal", "Адская гончая"],
+  "용암 골렘": ["溶岩ゴーレム", "熔岩魔像", "Gólem de lava", "Golem de lava", "Лавовый голем"],
+  "용암 거수": ["溶岩の巨獣", "熔岩巨兽", "Bestia de lava", "Fera de lava", "Лавовый зверь"],
+  "화염 처형자": ["炎の処刑人", "烈焰处刑者", "Verdugo de fuego", "Carrasco flamejante", "Огненный палач"],
+  "지옥의 군주": ["地獄の君主", "地狱君主", "Soberano del Infierno", "Soberano do Inferno", "Владыка Преисподней"],
+  "🦇 지옥의 군주가 날개를 편다 — 하늘에서 용암 비가 내린다!": ["🦇 地獄の君主が翼を広げる — 空から溶岩の雨が降る!", "🦇 地狱君主展开双翼 — 天降熔岩之雨!", "🦇 El Soberano del Infierno despliega las alas: ¡llueve lava del cielo!", "🦇 O Soberano do Inferno abre as asas — chove lava do céu!", "🦇 Владыка Преисподней расправляет крылья — с неба льётся лава!"],
+  "🔥 군주가 분노한다 — 대검에 불이 붙고 바닥이 무너진다!": ["🔥 君主が怒る — 大剣に火がつき、床が崩れる!", "🔥 君主暴怒 — 大剑燃起烈焰，地面开始崩塌!", "🔥 El Soberano enfurece: ¡su espadón arde y el suelo se derrumba!", "🔥 O Soberano se enfurece — o montante pega fogo e o chão desaba!", "🔥 Владыка в ярости — меч вспыхивает, пол рушится!"],
+  "😈 군주가 임프를 불러낸다!": ["😈 君主がインプを呼び出す!", "😈 君主召唤了小鬼!", "😈 ¡El Soberano invoca diablillos!", "😈 O Soberano invoca diabretes!", "😈 Владыка призывает бесов!"],
+  "🔥 군주가 하늘에 있다 — 내려올 때를 노려라!": ["🔥 君主は空にいる — 降りてくる時を狙え!", "🔥 君主在空中 — 等它落地时出手!", "🔥 El Soberano está en el aire: ¡ataca cuando aterrice!", "🔥 O Soberano está no ar — ataque quando pousar!", "🔥 Владыка в небе — бей, когда приземлится!"],
+  "군주의 불길이 꺼지자, 지옥의 바닥이 무너졌다.": ["君主の炎が消えると、地獄の床が崩れ落ちた。", "君主的火焰熄灭时，地狱的地面崩塌了。", "Al apagarse las llamas del Soberano, el suelo del Infierno cedió.", "Quando as chamas do Soberano se apagaram, o chão do Inferno cedeu.", "Когда пламя Владыки угасло, пол Преисподней обрушился."],
+  "떨어진다. 빛도, 소리도 닿지 않는 곳으로.": ["落ちていく。光も、音も届かない場所へ。", "坠落。坠向光与声音都无法触及之处。", "Caes. Hacia un lugar donde no llega la luz ni el sonido.", "Caindo. Para um lugar aonde nem luz nem som chegam.", "Падение. Туда, куда не доходят ни свет, ни звук."],
+  "지옥은 끝이 아니었다.": ["地獄は終わりではなかった。", "地狱并不是尽头。", "El Infierno no era el fondo.", "O Inferno não era o fundo.", "Ад не был дном."],
+  "— 5막 · 심연 —": ["— 第5幕 · 深淵 —", "— 第五幕 · 深渊 —", "— Acto V · El Abismo —", "— Ato V · O Abismo —", "— Акт V · Бездна —"],
+  "(다음 업데이트에서 이어집니다)": ["(次のアップデートに続く)", "(下次更新继续)", "(Continuará en una próxima actualización)", "(Continua numa próxima atualização)", "(Продолжение — в следующем обновлении)"],
+  "🔥 화염 처형자의 복면이 벗겨졌다 — 도끼에 불이 붙어 내려찍을 때마다 불 파도!": ["🔥 炎の処刑人の覆面が剥がれた — 斧に火がつき、叩きつけるたびに炎の波!", "🔥 烈焰处刑者的面罩脱落 — 斧头燃起火焰，每次劈砍都掀起火浪!", "🔥 El Verdugo de fuego pierde la máscara: su hacha arde y cada golpe lanza una ola de fuego!", "🔥 O Carrasco flamejante perde a máscara — o machado pega fogo e cada golpe lança uma onda de chamas!", "🔥 С Огненного палача слетает маска — топор вспыхивает, каждый удар гонит волну огня!"],
+  "🌋 용암 거수의 등껍질이 깨졌다 — 화산탄이 쏟아진다!": ["🌋 溶岩の巨獣の甲羅が割れた — 火山弾が降り注ぐ!", "🌋 熔岩巨兽的背甲裂开了 — 火山弹倾泻而下!", "🌋 ¡El caparazón de la Bestia de lava se agrietó: llueven bombas volcánicas!", "🌋 A carapaça da Fera de lava rachou — chovem bombas vulcânicas!", "🌋 Панцирь Лавового зверя треснул — сыплются вулканические бомбы!"],
+  "희귀": ["レア", "稀有", "Raro", "Raro", "Редкое"],
+  "영웅": ["エピック", "史诗", "Épico", "Épico", "Эпическое"],
+  "전설": ["レジェンド", "传说", "Legendario", "Lendário", "Легендарное"],
+  "포란충의 각질판": ["抱卵虫の角質板", "抱卵虫角质板", "Placa de quitina de la garrapata", "Placa de quitina do carrapato", "Хитиновая пластина клеща"],
+  "포란충 (70층)": ["抱卵虫 (70F)", "抱卵虫 (70层)", "Garrapata madre (F70)", "Carrapato-mãe (F70)", "Клещ-наседка (эт.70)"],
+  "탐식의 어금니": ["貪食の臼歯", "贪食臼齿", "Muela del glotón", "Molar do glutão", "Коренной зуб обжоры"],
+  "탐식 구울 (80층)": ["貪食のグール (80F)", "贪食食尸鬼 (80层)", "Ghoul glotón (F80)", "Carniçal glutão (F80)", "Упырь-обжора (эт.80)"],
+  "부러진 왕관 조각": ["折れた王冠の欠片", "断裂的王冠碎片", "Fragmento de corona rota", "Fragmento de coroa partida", "Осколок сломанной короны"],
+  "부패한 왕 (90층)": ["腐敗した王 (90F)", "腐败之王 (90层)", "Rey corrupto (F90)", "Rei corrompido (F90)", "Прогнивший король (эт.90)"],
+  "포란충 각질 갑주": ["抱卵虫の角質鎧", "抱卵虫角质甲", "Armadura de quitina", "Armadura de quitina", "Хитиновый доспех"],
+  "부패한 왕관": ["腐敗した王冠", "腐败王冠", "Corona podrida", "Coroa podre", "Прогнившая корона"],
+  "공격력 +": ["攻撃力 +", "攻击力 +", "Ataque +", "Ataque +", "Атака +"],
+  "최대 체력 +": ["最大体力 +", "最大生命 +", "Vida máx. +", "Vida máx. +", "Макс. здоровье +"],
+  " · 최상위": [" · 最上位", " · 顶级", " · Cumbre", " · Topo", " · Высший"],
+  "🥚 포란충이 새끼를 낳는다!": ["🥚 抱卵虫が子を産む!", "🥚 抱卵虫产下了幼虫!", "🥚 ¡La Garrapata madre suelta a sus crías!", "🥚 O Carrapato-mãe solta suas crias!", "🥚 Клещ-наседка выпускает потомство!"],
+  "🩸 탐식 구울이 배를 연다 — 두 번째 입이 드러났다!": ["🩸 貪食のグールが腹を開く — 第二の口が現れた!", "🩸 贪食食尸鬼张开腹部 — 露出了第二张嘴!", "🩸 El Ghoul glotón abre el vientre: ¡una segunda boca!", "🩸 O Carniçal glutão abre a barriga — uma segunda boca!", "🩸 Упырь-обжора раскрывает брюхо — вторая пасть!"],
+  "👑 부패한 왕의 오염원이 터져 나온다!": ["👑 腐敗した王の汚染源が噴き出す!", "👑 腐败之王的污染源爆发了!", "👑 ¡Estalla la plaga del Rey corrupto!", "👑 A praga do Rei corrompido irrompe!", "👑 Из Прогнившего короля вырывается скверна!"],
+  "🛡️ 방패에 막혔다 — 옆이나 뒤를 노려라!": ["🛡️ 盾に防がれた — 横か後ろを狙え!", "🛡️ 被盾牌挡住了 — 攻击侧面或背后!", "🛡️ Bloqueado por el escudo: ¡ataca por el flanco o la espalda!", "🛡️ Bloqueado pelo escudo — ataque pelo lado ou pelas costas!", "🛡️ Удар принял щит — бей сбоку или в спину!"],
+  };
+  ['ja', 'zh', 'es', 'pt', 'ru'].forEach((l, i) => { const d = I18N_DICT[l]; if (d) for (const k in T5) if (d[k] === undefined) d[k] = T5[k][i]; });
+  const T6 = {
+  "그래픽을 시작할 수 없습니다": ["Can't start graphics", "グラフィックを開始できません", "无法启动图形", "No se pueden iniciar los gráficos", "Não foi possível iniciar os gráficos", "Не удалось запустить графику"],
+  "브라우저가 이 페이지에 3D 그래픽(WebGL)을 열어 주지 못했습니다. 이 게임을 여러 탭에 열어 두면 생길 수 있습니다.": ["Your browser couldn't open 3D graphics (WebGL) for this page. This can happen if the game is open in several tabs.", "ブラウザがこのページで3Dグラフィック(WebGL)を開けませんでした。このゲームを複数のタブで開いていると起こることがあります。", "浏览器无法为此页面开启3D图形(WebGL)。在多个标签页中打开本游戏时可能发生。", "Tu navegador no pudo abrir gráficos 3D (WebGL) para esta página. Puede pasar si el juego está abierto en varias pestañas.", "Seu navegador não conseguiu abrir gráficos 3D (WebGL) nesta página. Isso pode acontecer se o jogo estiver aberto em várias abas.", "Браузер не смог открыть 3D-графику (WebGL) на этой странице. Так бывает, если игра открыта в нескольких вкладках."],
+  "다른 탭을 모두 닫고 새로고침해 주세요. 그래도 안 되면 브라우저를 완전히 종료했다 다시 열어 보세요.": ["Close all other tabs and reload. If that fails, fully quit the browser and open it again.", "他のタブをすべて閉じて再読み込みしてください。それでもだめならブラウザを完全に終了して開き直してください。", "请关闭其他所有标签页并刷新。仍不行的话，请完全退出浏览器后重新打开。", "Cierra las demás pestañas y recarga. Si no funciona, cierra el navegador por completo y vuelve a abrirlo.", "Feche todas as outras abas e recarregue. Se não resolver, feche o navegador por completo e abra de novo.", "Закройте другие вкладки и обновите страницу. Если не поможет — полностью закройте браузер и откройте снова."],
+  "새로고침": ["Reload", "再読み込み", "刷新", "Recargar", "Recarregar", "Обновить"],
+  };
+  ['en', 'ja', 'zh', 'es', 'pt', 'ru'].forEach((l, i) => { const d = I18N_DICT[l]; if (d) for (const k in T6) if (d[k] === undefined) d[k] = T6[k][i]; });
+}
+// v917: 그 언어 사전에 없는 문장은 한국어 대신 영어로(?i18nfb=0 이면 예전처럼 한국어). 나중에 en 에만 넣은 문장이 다른 언어 화면에 한국어로 뜨지 않게
+const I18N_FB = !/[?&]i18nfb=0/.test(location.search);
 function _i18n(s) {
   if (LANG === 'ko') return s;
   const d = I18N_DICT[LANG];
   const v = d ? d[s] : undefined;
-  return v !== undefined ? v : s;
+  if (v !== undefined) return v;
+  if (I18N_FB && LANG !== 'en') { const e = I18N_DICT.en && I18N_DICT.en[s]; if (e !== undefined) return e; }
+  return s;
 }
 function setLang(l) {
   if (!I18N_LANGS.includes(l) || l === LANG) return;
@@ -4750,7 +4857,7 @@ const MAGE_KEEP = parseFloat((location.search.match(/[?&]mkeep=([\d.]+)/) || [])
 const MAGE_RANGE = parseFloat((location.search.match(/[?&]mrange=([\d.]+)/) || [])[1]) || 2.4;
 let cgReady = false, cgAdsAvailable = AD_TEST;
 let runReviveUsed = false; // 보상형 광고 부활: 회차당 1회(이어하기 세이브에 포함)
-const GAME_VERSION = 'v916'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
+const GAME_VERSION = 'v917'; // 버전 배지용 — 새 버전 파일 만들 때마다 갱신
 // 3막 몬스터(포자 벌레·농침벌·포란충·탐식 구울·부패한 왕). ?m3=0 이면 61층 이후에도
 // 2막 몬스터가 나온다(새 몬스터를 끄는 스위치 — 예전 동작과 비교할 때 쓴다).
 const ACT3_MOBS = !/[?&]m3=0/.test(location.search);
